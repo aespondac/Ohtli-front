@@ -1809,10 +1809,13 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
       final fullName = '${_nombresController.text.trim()} ${_apellidosController.text.trim()}'.trim();
       await credential.user?.updateDisplayName(fullName);
       
+      // Enviar correo de verificación de dirección de correo
+      await credential.user?.sendEmailVerification();
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('¡Cuenta creada con éxito! Bienvenido, $fullName.'),
+            content: Text('¡Cuenta creada! Hemos enviado un correo de verificación a ${_emailController.text.trim()}.'),
             backgroundColor: const Color(0xFF2C666E), // Stormy Teal
           ),
         );
@@ -2286,10 +2289,13 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
       final fullName = '${_nombresController.text.trim()} ${_apellidosController.text.trim()}'.trim();
       await credential.user?.updateDisplayName(fullName);
       
+      // Enviar correo de verificación de dirección de correo
+      await credential.user?.sendEmailVerification();
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('¡Cuenta creada con éxito! Bienvenido, $fullName.'),
+            content: Text('¡Cuenta creada! Hemos enviado un correo de verificación a ${_emailController.text.trim()}.'),
             backgroundColor: const Color(0xFF2C666E), // Stormy Teal
           ),
         );
