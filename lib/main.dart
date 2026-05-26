@@ -462,6 +462,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                   child: Image.asset(
                     'assets/bg.png',
                     fit: BoxFit.cover,
+                    alignment: const Alignment(-0.4, 0.0),
                   ),
                 ),
                 // Overlay oscuro dramático
@@ -578,16 +579,30 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                             hintText: 'Contraseña',
                             obscureText: _obscurePassword,
                             suffixIcon: IconButton(
-                              icon: SvgPicture.asset(
-                                _obscurePassword ? 'assets/Visibility_Off.svg' : 'assets/Visibility.svg',
-                                width: 22,
-                                height: 22,
-                                colorFilter: const ColorFilter.mode(
-                                  colorStormyTeal,
-                                  BlendMode.srcIn,
+                              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                              icon: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                transitionBuilder: (Widget child, Animation<double> animation) {
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: ScaleTransition(
+                                      scale: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: SvgPicture.asset(
+                                  _obscurePassword ? 'assets/Visibility_Off.svg' : 'assets/Visibility.svg',
+                                  key: ValueKey<bool>(_obscurePassword),
+                                  width: 20,
+                                  height: 20,
+                                  fit: BoxFit.contain,
+                                  colorFilter: const ColorFilter.mode(
+                                    colorStormyTeal,
+                                    BlendMode.srcIn,
+                                  ),
                                 ),
                               ),
-                              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                             ),
                             validator: (val) {
                               if (val == null || val.isEmpty) return 'Ingresa tu contraseña';
@@ -890,6 +905,7 @@ class MobileWelcomePage extends StatelessWidget {
             child: Image.asset(
               'assets/bg.png',
               fit: BoxFit.cover,
+              alignment: const Alignment(-0.4, 0.0),
             ),
           ),
           // Overlay oscuro
@@ -905,22 +921,13 @@ class MobileWelcomePage extends StatelessWidget {
             left: 24,
             child: GestureDetector(
               onTap: onBack,
-              child: Container(
+              child: SvgPicture.asset(
+                'assets/icon_isologo.svg',
                 width: 52,
                 height: 52,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: SvgPicture.asset(
-                    'assets/icon_isologo.svg',
-                    colorFilter: const ColorFilter.mode(
-                      Color(0xFF0A090C),
-                      BlendMode.srcIn,
-                    ),
-                  ),
+                colorFilter: const ColorFilter.mode(
+                  Color(0xFFF0EEE9), // Cloudy White
+                  BlendMode.srcIn,
                 ),
               ),
             ),
@@ -1106,16 +1113,30 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                         hintText: 'Contraseña',
                         obscureText: _obscurePassword,
                         suffixIcon: IconButton(
-                          icon: SvgPicture.asset(
-                            _obscurePassword ? 'assets/Visibility_Off.svg' : 'assets/Visibility.svg',
-                            width: 22,
-                            height: 22,
-                            colorFilter: const ColorFilter.mode(
-                              colorStormyTeal,
-                              BlendMode.srcIn,
+                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          icon: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (Widget child, Animation<double> animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: ScaleTransition(
+                                  scale: animation,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: SvgPicture.asset(
+                              _obscurePassword ? 'assets/Visibility_Off.svg' : 'assets/Visibility.svg',
+                              key: ValueKey<bool>(_obscurePassword),
+                              width: 20,
+                              height: 20,
+                              fit: BoxFit.contain,
+                              colorFilter: const ColorFilter.mode(
+                                colorStormyTeal,
+                                BlendMode.srcIn,
+                              ),
                             ),
                           ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                         ),
                         validator: (val) {
                           if (val == null || val.isEmpty) return 'Ingresa tu contraseña';
