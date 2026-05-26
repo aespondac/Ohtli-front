@@ -10,24 +10,42 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  const configApiKey = String.fromEnvironment('apiKey');
+  const configAuthDomain = String.fromEnvironment('authDomain');
+  const configProjectId = String.fromEnvironment('projectId');
+  const configStorageBucket = String.fromEnvironment('storageBucket');
+  const configMessagingSenderId = String.fromEnvironment('messagingSenderId');
+  const configAppId = String.fromEnvironment('appId');
+  const configMeasurementId = String.fromEnvironment('measurementId');
+
+  FirebaseOptions options;
+  if (configApiKey.isNotEmpty) {
+    options = const FirebaseOptions(
+      apiKey: configApiKey,
+      authDomain: configAuthDomain,
+      projectId: configProjectId,
+      storageBucket: configStorageBucket,
+      messagingSenderId: configMessagingSenderId,
+      appId: configAppId,
+      measurementId: configMeasurementId,
+    );
+  } else {
+    // Fallback local con credenciales de desarrollo para evitar fallos de carga inicial
+    options = const FirebaseOptions(
+      apiKey: "AIzaSyD-localDevFakeKeyForOhtliQuestAuth",
+      authDomain: "othli-497404.firebaseapp.com",
+      projectId: "othli-497404",
+      storageBucket: "othli-497404.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "1:1234567890:web:fakeAppId",
+    );
+  }
+
   try {
-    // Inicializar Firebase para Web (autodetecta en hosting o usa fallback local)
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(options: options);
   } catch (e) {
-    try {
-      await Firebase.initializeApp(
-        options: const FirebaseOptions(
-          apiKey: "AIzaSyD-localDevFakeKeyForOhtliQuestAuth",
-          authDomain: "othli-497404.firebaseapp.com",
-          projectId: "othli-497404",
-          storageBucket: "othli-497404.appspot.com",
-          messagingSenderId: "1234567890",
-          appId: "1:1234567890:web:fakeAppId",
-        ),
-      );
-    } catch (err) {
-      print("Firebase initialization error: $err");
-    }
+    print("Firebase initialization error: $e");
   }
   runApp(const OhtliApp());
 }
