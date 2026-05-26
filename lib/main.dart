@@ -263,7 +263,6 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
             'assets/logo.svg',
             width: 240,
             fit: BoxFit.contain,
-            colorFilter: ColorFilter.mode(colorStormyTeal, BlendMode.srcIn),
             placeholderBuilder: (BuildContext context) => _buildLogoFallback(colorStormyTeal, colorXoconostle),
             errorBuilder: (context, error, stackTrace) => _buildLogoFallback(colorStormyTeal, colorXoconostle),
           ),
@@ -461,7 +460,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                 // Imagen de fondo con guitarrista
                 Positioned.fill(
                   child: Image.asset(
-                    'assets/guitarist_bg.png',
+                    'assets/bg.png',
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -527,7 +526,6 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                             'assets/logo.svg',
                             width: 140,
                             fit: BoxFit.contain,
-                            colorFilter: const ColorFilter.mode(colorStormyTeal, BlendMode.srcIn),
                             errorBuilder: (context, error, stackTrace) => Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               decoration: BoxDecoration(
@@ -580,10 +578,14 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                             hintText: 'Contraseña',
                             obscureText: _obscurePassword,
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                                color: colorStormyTeal.withOpacity(0.7),
-                                size: 20,
+                              icon: SvgPicture.asset(
+                                _obscurePassword ? 'assets/Visibility_Off.svg' : 'assets/Visibility.svg',
+                                width: 22,
+                                height: 22,
+                                colorFilter: const ColorFilter.mode(
+                                  colorStormyTeal,
+                                  BlendMode.srcIn,
+                                ),
                               ),
                               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                             ),
@@ -886,7 +888,7 @@ class MobileWelcomePage extends StatelessWidget {
           // Imagen de fondo full screen
           Positioned.fill(
             child: Image.asset(
-              'assets/guitarist_bg.png',
+              'assets/bg.png',
               fit: BoxFit.cover,
             ),
           ),
@@ -897,36 +899,30 @@ class MobileWelcomePage extends StatelessWidget {
             ),
           ),
           
-          // Icono brújula superior izquierdo y flecha de regreso
+          // Icono brújula superior izquierdo (tappable para volver)
           Positioned(
-            top: 24,
+            top: 40,
             left: 24,
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                  onPressed: onBack,
+            child: GestureDetector(
+              onTap: onBack,
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: SvgPicture.asset(
-                      'assets/icon_isologo.svg',
-                      colorFilter: const ColorFilter.mode(
-                        Color(0xFF0A090C),
-                        BlendMode.srcIn,
-                      ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: SvgPicture.asset(
+                    'assets/icon_isologo.svg',
+                    colorFilter: const ColorFilter.mode(
+                      Color(0xFF0A090C),
+                      BlendMode.srcIn,
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ),
 
@@ -1066,7 +1062,6 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                         'assets/logo.svg',
                         width: 130,
                         fit: BoxFit.contain,
-                        colorFilter: const ColorFilter.mode(colorStormyTeal, BlendMode.srcIn),
                         errorBuilder: (context, error, stackTrace) => Text(
                           'Ohtli',
                           style: GoogleFonts.inter(
@@ -1111,10 +1106,14 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                         hintText: 'Contraseña',
                         obscureText: _obscurePassword,
                         suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                            color: colorStormyTeal.withOpacity(0.7),
-                            size: 20,
+                          icon: SvgPicture.asset(
+                            _obscurePassword ? 'assets/Visibility_Off.svg' : 'assets/Visibility.svg',
+                            width: 22,
+                            height: 22,
+                            colorFilter: const ColorFilter.mode(
+                              colorStormyTeal,
+                              BlendMode.srcIn,
+                            ),
                           ),
                           onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                         ),
