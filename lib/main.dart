@@ -21,6 +21,11 @@ class OhtliApp extends StatelessWidget {
         brightness: Brightness.light,
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF0EEE9), // Cloud Dancer
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2C666E), // Stormy Teal
+          primary: const Color(0xFF2C666E),
+          error: const Color(0xFF6C3953), // Xoconostle
+        ),
         textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
       ),
       home: const MainNavigationController(),
@@ -494,19 +499,6 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                           letterSpacing: 2.0,
                         ),
                       ),
-                      const SizedBox(height: 36),
-                      // Marca de agua en bajísima opacidad del mockup
-                      Opacity(
-                        opacity: 0.12,
-                        child: Text(
-                          'dcansñdlcsdñlcrnocin acmdñocmsk acje poaecaema acmñ',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            color: Colors.white,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -733,7 +725,14 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                     : [],
                               ),
                               child: InkWell(
-                                onTap: () {},
+                                onTap: () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Iniciando sesión con Google...'),
+                                      backgroundColor: colorStormyTeal,
+                                    ),
+                                  );
+                                },
                                 borderRadius: BorderRadius.circular(30),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -782,19 +781,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 24),
-                          
-                          // Placeholder watermark sutil en esquina inferior
-                          Opacity(
-                            opacity: 0.12,
-                            child: Text(
-                              'dcansñdlcsdñlcrnocin acmdñocmsk acje poaecaema acmñ',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                color: colorOnyx,
-                              ),
-                            ),
-                          ),
+
                         ],
                       ),
                     ),
@@ -822,6 +809,7 @@ Widget _buildCustomTextField({
 }) {
   const colorInputBg = Color(0xFFDCD8CF); // Warm beige/gray de los mockups
   const colorOnyx = Color(0xFF0A090C);
+  const colorXoconostle = Color(0xFF6C3953);
 
   return TextFormField(
     controller: controller,
@@ -839,6 +827,10 @@ Widget _buildCustomTextField({
         fontSize: 14,
         fontWeight: FontWeight.w400,
         color: colorOnyx.withOpacity(0.45),
+      ),
+      errorStyle: GoogleFonts.inter(
+        color: colorXoconostle,
+        fontSize: 12,
       ),
       filled: true,
       fillColor: colorInputBg,
@@ -858,11 +850,11 @@ Widget _buildCustomTextField({
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
-        borderSide: const BorderSide(color: Colors.redAccent, width: 1.0),
+        borderSide: const BorderSide(color: colorXoconostle, width: 1.0),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(30),
-        borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
+        borderSide: const BorderSide(color: colorXoconostle, width: 1.5),
       ),
     ),
   );
@@ -1261,7 +1253,14 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                 : [],
                           ),
                           child: InkWell(
-                            onTap: () {},
+                            onTap: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Iniciando sesión con Google...'),
+                                  backgroundColor: colorStormyTeal,
+                                ),
+                              );
+                            },
                             borderRadius: BorderRadius.circular(30),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
