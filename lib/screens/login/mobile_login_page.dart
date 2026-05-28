@@ -6,6 +6,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/user_profile_helper.dart';
 
 class MobileLoginPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -43,9 +45,9 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       if (kIsWeb) {
         await FirebaseAuth.instance.setPersistence(
@@ -56,7 +58,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -82,9 +84,10 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
       } else if (e.code == 'too-many-requests') {
         errorMessage = 'Demasiados intentos fallidos. Intenta más tarde.';
       } else if (e.code == 'invalid-credential') {
-        errorMessage = 'Credenciales inválidas. Verifica tu correo y contraseña.';
+        errorMessage =
+            'Credenciales inválidas. Verifica tu correo y contraseña.';
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -124,8 +127,22 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
         );
       }
       final googleProvider = GoogleAuthProvider();
-      final credential = await FirebaseAuth.instance.signInWithPopup(googleProvider);
-      
+      final credential = await FirebaseAuth.instance.signInWithPopup(
+        googleProvider,
+      );
+
+      // Initialize/verify user document in Cloud Firestore with restore support
+      final user = credential.user;
+      if (user != null) {
+        try {
+          await UserProfileHelper.syncAndRestoreProfile(user);
+        } catch (fsError) {
+          print(
+            "Error checking/initializing Firestore user document upon Google Sign In (mobile): $fsError",
+          );
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -184,7 +201,10 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
             top: 24,
             left: 16,
             child: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
+              icon: Icon(
+                Icons.arrow_back_rounded,
+                color: OhtliColors.onyx,
+              ),
               onPressed: widget.onBack,
             ),
           ),
@@ -232,7 +252,9 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 20),
-                          child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+                          child: CircularProgressIndicator(
+                            color: OhtliColors.stormyTeal,
+                          ),
                         )
                       else ...[
                         // INPUT CORREO
@@ -241,8 +263,11 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                           hintText: 'Correo electrónico',
                           keyboardType: TextInputType.emailAddress,
                           validator: (val) {
-                            if (val == null || val.isEmpty) return 'Ingresa tu correo';
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val)) {
+                            if (val == null || val.isEmpty)
+                              return 'Ingresa tu correo';
+                            if (!RegExp(
+                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                            ).hasMatch(val)) {
                               return 'Correo no válido';
                             }
                             return null;
@@ -257,14 +282,19 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                           obscureText: _obscurePassword,
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                              _obscurePassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
                               color: OhtliColors.stormyTeal.withOpacity(0.7),
                               size: 20,
                             ),
-                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                           validator: (val) {
-                            if (val == null || val.isEmpty) return 'Ingresa tu contraseña';
+                            if (val == null || val.isEmpty)
+                              return 'Ingresa tu contraseña';
                             return null;
                           },
                         ),
@@ -327,7 +357,8 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                       color: OhtliColors.xoconostle,
                                       fontWeight: FontWeight.w600,
                                     ),
-                                    recognizer: TapGestureRecognizer()..onTap = widget.onForgotPasswordClick,
+                                    recognizer: TapGestureRecognizer()
+                                      ..onTap = widget.onForgotPasswordClick,
                                   ),
                                 ],
                               ),
@@ -338,8 +369,10 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
 
                         // BOTÓN: Iniciar sesión
                         MouseRegion(
-                          onEnter: (_) => setState(() => _isSubmitHovering = true),
-                          onExit: (_) => setState(() => _isSubmitHovering = false),
+                          onEnter: (_) =>
+                              setState(() => _isSubmitHovering = true),
+                          onExit: (_) =>
+                              setState(() => _isSubmitHovering = false),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             width: double.infinity,
@@ -349,7 +382,8 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                               boxShadow: _isSubmitHovering
                                   ? [
                                       BoxShadow(
-                                        color: OhtliColors.stormyTeal.withOpacity(0.2),
+                                        color: OhtliColors.stormyTeal
+                                            .withOpacity(0.2),
                                         blurRadius: 8,
                                         offset: const Offset(0, 3),
                                       ),
@@ -388,7 +422,9 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Text(
                                 'ó',
                                 style: GoogleFonts.inter(
@@ -410,8 +446,10 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
 
                         // BOTÓN GOOGLE
                         MouseRegion(
-                          onEnter: (_) => setState(() => _isGoogleHovering = true),
-                          onExit: (_) => setState(() => _isGoogleHovering = false),
+                          onEnter: (_) =>
+                              setState(() => _isGoogleHovering = true),
+                          onExit: (_) =>
+                              setState(() => _isGoogleHovering = false),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             width: double.infinity,
@@ -437,7 +475,9 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                               onTap: _handleGoogleSignIn,
                               borderRadius: BorderRadius.circular(30),
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
@@ -445,7 +485,11 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                       'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg',
                                       width: 18,
                                       height: 18,
-                                      placeholderBuilder: (context) => const Icon(Icons.g_mobiledata, size: 20),
+                                      placeholderBuilder: (context) =>
+                                          const Icon(
+                                            Icons.g_mobiledata,
+                                            size: 20,
+                                          ),
                                     ),
                                     const SizedBox(width: 12),
                                     Text(
@@ -453,7 +497,9 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                       style: GoogleFonts.inter(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w400,
-                                        color: OhtliColors.onyx.withOpacity(0.8),
+                                        color: OhtliColors.onyx.withOpacity(
+                                          0.8,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -479,7 +525,8 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                   color: OhtliColors.xoconostle,
                                   fontWeight: FontWeight.w600,
                                 ),
-                                recognizer: TapGestureRecognizer()..onTap = widget.onRegisterClick,
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = widget.onRegisterClick,
                               ),
                             ],
                           ),

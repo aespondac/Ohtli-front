@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../widgets/user_profile_helper.dart';
 
 class MobileRegisterPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -48,10 +49,10 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
-    
+
     if (password != confirmPassword) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -61,52 +62,52 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
       );
       return;
     }
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
-      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: password,
-      );
-      
-      final fullName = '${_nombresController.text.trim()} ${_apellidosController.text.trim()}'.trim();
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: password,
+          );
+
+      final fullName =
+          '${_nombresController.text.trim()} ${_apellidosController.text.trim()}'
+              .trim();
       await credential.user?.updateDisplayName(fullName);
-      
-      // Initialize user document in Cloud Firestore
+
+      // Initialize user document in Cloud Firestore with restore support
       final user = credential.user;
       if (user != null) {
         try {
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-            'uid': user.uid,
-            'displayName': fullName,
-            'email': user.email ?? _emailController.text.trim(),
-            'phone': '',
-            'photoURL': '',
-            'addresses': [],
-            'privacy_share': true,
-            'privacy_notifications': true,
-            'privacy_public': false,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-          print("Successfully initialized Firestore user document upon email registration (mobile).");
+          await UserProfileHelper.syncAndRestoreProfile(
+            user,
+            customDisplayName: fullName,
+          );
+          print(
+            "Successfully initialized Firestore user document upon email registration (mobile).",
+          );
         } catch (fsError) {
-          print("Error initializing Firestore document upon email registration (mobile): $fsError");
+          print(
+            "Error initializing Firestore document upon email registration (mobile): $fsError",
+          );
         }
       }
-      
+
       // Enviar correo de verificación de dirección de correo con redirección estética
       final actionCodeSettings = ActionCodeSettings(
         url: '${Uri.base.origin}/?mode=verifyEmail',
         handleCodeInApp: true,
       );
       await credential.user?.sendEmailVerification(actionCodeSettings);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('¡Cuenta creada! Hemos enviado un correo de verificación a ${_emailController.text.trim()}.'),
+            content: Text(
+              '¡Cuenta creada! Hemos enviado un correo de verificación a ${_emailController.text.trim()}.',
+            ),
             backgroundColor: OhtliColors.stormyTeal,
           ),
         );
@@ -117,11 +118,12 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
       if (e.code == 'email-already-in-use') {
         errorMessage = 'El correo electrónico ya está registrado.';
       } else if (e.code == 'weak-password') {
-        errorMessage = 'La contraseña es muy débil. Intenta con una más fuerte.';
+        errorMessage =
+            'La contraseña es muy débil. Intenta con una más fuerte.';
       } else if (e.code == 'invalid-email') {
         errorMessage = 'El formato del correo electrónico no es válido.';
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -150,45 +152,28 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
     setState(() => _isLoading = true);
     try {
       final googleProvider = GoogleAuthProvider();
-      final credential = await FirebaseAuth.instance.signInWithPopup(googleProvider);
-      
-      // Initialize/verify user document in Cloud Firestore
+      final credential = await FirebaseAuth.instance.signInWithPopup(
+        googleProvider,
+      );
+
+      // Initialize/verify user document in Cloud Firestore with restore support
       final user = credential.user;
       if (user != null) {
         try {
-          final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          final docSnap = await docRef.get();
-          if (!docSnap.exists) {
-            await docRef.set({
-              'uid': user.uid,
-              'displayName': user.displayName ?? '',
-              'email': user.email ?? '',
-              'phone': user.phoneNumber ?? '',
-              'photoURL': user.photoURL ?? '',
-              'addresses': [],
-              'privacy_share': true,
-              'privacy_notifications': true,
-              'privacy_public': false,
-              'createdAt': FieldValue.serverTimestamp(),
-              'updatedAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
-            print("Successfully initialized Firestore user document upon Google Sign In (mobile).");
-          } else {
-            // Document exists, make sure core fields are updated if empty
-            await docRef.set({
-              'uid': user.uid,
-              'updatedAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
-          }
+          await UserProfileHelper.syncAndRestoreProfile(user);
         } catch (fsError) {
-          print("Error checking/initializing Firestore user document upon Google Sign In (mobile): $fsError");
+          print(
+            "Error checking/initializing Firestore user document upon Google Sign In (mobile): $fsError",
+          );
         }
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('¡Sesión iniciada con Google como ${credential.user?.displayName ?? "viajero"}!'),
+            content: Text(
+              '¡Sesión iniciada con Google como ${credential.user?.displayName ?? "viajero"}!',
+            ),
             backgroundColor: OhtliColors.stormyTeal,
           ),
         );
@@ -234,7 +219,10 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
             top: 24,
             left: 16,
             child: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
+              icon: Icon(
+                Icons.arrow_back_rounded,
+                color: OhtliColors.onyx,
+              ),
               onPressed: widget.onBack,
             ),
           ),
@@ -270,14 +258,17 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                       if (_isLoading)
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 20),
-                          child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+                          child: CircularProgressIndicator(
+                            color: OhtliColors.stormyTeal,
+                          ),
                         )
                       else ...[
                         buildCustomTextField(
                           controller: _nombresController,
                           hintText: 'Nombres',
                           validator: (val) {
-                            if (val == null || val.trim().isEmpty) return 'Ingresa tus nombres';
+                            if (val == null || val.trim().isEmpty)
+                              return 'Ingresa tus nombres';
                             return null;
                           },
                         ),
@@ -287,7 +278,8 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                           controller: _apellidosController,
                           hintText: 'Apellidos',
                           validator: (val) {
-                            if (val == null || val.trim().isEmpty) return 'Ingresa tus apellidos';
+                            if (val == null || val.trim().isEmpty)
+                              return 'Ingresa tus apellidos';
                             return null;
                           },
                         ),
@@ -298,8 +290,11 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                           hintText: 'Correo Electronico',
                           keyboardType: TextInputType.emailAddress,
                           validator: (val) {
-                            if (val == null || val.isEmpty) return 'Ingresa tu correo';
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val)) {
+                            if (val == null || val.isEmpty)
+                              return 'Ingresa tu correo';
+                            if (!RegExp(
+                              r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                            ).hasMatch(val)) {
                               return 'Correo no válido';
                             }
                             return null;
@@ -313,15 +308,21 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                           obscureText: _obscurePassword,
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                              _obscurePassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
                               color: OhtliColors.stormyTeal.withOpacity(0.7),
                               size: 20,
                             ),
-                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                           validator: (val) {
-                            if (val == null || val.isEmpty) return 'Ingresa tu contraseña';
-                            if (val.length < 6) return 'Debe tener al menos 6 caracteres';
+                            if (val == null || val.isEmpty)
+                              return 'Ingresa tu contraseña';
+                            if (val.length < 6)
+                              return 'Debe tener al menos 6 caracteres';
                             return null;
                           },
                         ),
@@ -346,22 +347,30 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                           obscureText: _obscureConfirmPassword,
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                              _obscureConfirmPassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
                               color: OhtliColors.stormyTeal.withOpacity(0.7),
                               size: 20,
                             ),
-                            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                            onPressed: () => setState(
+                              () => _obscureConfirmPassword =
+                                  !_obscureConfirmPassword,
+                            ),
                           ),
                           validator: (val) {
-                            if (val == null || val.isEmpty) return 'Confirma tu contraseña';
+                            if (val == null || val.isEmpty)
+                              return 'Confirma tu contraseña';
                             return null;
                           },
                         ),
                         const SizedBox(height: 24),
 
                         MouseRegion(
-                          onEnter: (_) => setState(() => _isSubmitHovering = true),
-                          onExit: (_) => setState(() => _isSubmitHovering = false),
+                          onEnter: (_) =>
+                              setState(() => _isSubmitHovering = true),
+                          onExit: (_) =>
+                              setState(() => _isSubmitHovering = false),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             width: double.infinity,
@@ -371,7 +380,8 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                               boxShadow: _isSubmitHovering
                                   ? [
                                       BoxShadow(
-                                        color: OhtliColors.stormyTeal.withOpacity(0.2),
+                                        color: OhtliColors.stormyTeal
+                                            .withOpacity(0.2),
                                         blurRadius: 8,
                                         offset: const Offset(0, 3),
                                       ),
@@ -402,9 +412,16 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
 
                         Row(
                           children: [
-                            Expanded(child: Container(height: 1, color: OhtliColors.onyx.withOpacity(0.12))),
+                            Expanded(
+                              child: Container(
+                                height: 1,
+                                color: OhtliColors.onyx.withOpacity(0.12),
+                              ),
+                            ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Text(
                                 'ó',
                                 style: GoogleFonts.inter(
@@ -413,14 +430,21 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                                 ),
                               ),
                             ),
-                            Expanded(child: Container(height: 1, color: OhtliColors.onyx.withOpacity(0.12))),
+                            Expanded(
+                              child: Container(
+                                height: 1,
+                                color: OhtliColors.onyx.withOpacity(0.12),
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 20),
 
                         MouseRegion(
-                          onEnter: (_) => setState(() => _isGoogleHovering = true),
-                          onExit: (_) => setState(() => _isGoogleHovering = false),
+                          onEnter: (_) =>
+                              setState(() => _isGoogleHovering = true),
+                          onExit: (_) =>
+                              setState(() => _isGoogleHovering = false),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             width: double.infinity,
@@ -428,7 +452,9 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(30),
-                              border: Border.all(color: OhtliColors.onyx.withOpacity(0.12)),
+                              border: Border.all(
+                                color: OhtliColors.onyx.withOpacity(0.12),
+                              ),
                               boxShadow: _isGoogleHovering
                                   ? [
                                       BoxShadow(
@@ -449,7 +475,8 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                                     'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg',
                                     width: 18,
                                     height: 18,
-                                    placeholderBuilder: (context) => const Icon(Icons.g_mobiledata),
+                                    placeholderBuilder: (context) =>
+                                        const Icon(Icons.g_mobiledata),
                                   ),
                                   const SizedBox(width: 12),
                                   Text(
@@ -481,7 +508,8 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                                   color: OhtliColors.xoconostle,
                                   fontWeight: FontWeight.w600,
                                 ),
-                                recognizer: TapGestureRecognizer()..onTap = widget.onLoginClick,
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = widget.onLoginClick,
                               ),
                             ],
                           ),

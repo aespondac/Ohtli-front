@@ -6,6 +6,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../widgets/user_profile_helper.dart';
 
 class DesktopLoginPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -43,9 +45,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       if (kIsWeb) {
         await FirebaseAuth.instance.setPersistence(
@@ -56,7 +58,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -82,9 +84,10 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
       } else if (e.code == 'too-many-requests') {
         errorMessage = 'Demasiados intentos fallidos. Intenta más tarde.';
       } else if (e.code == 'invalid-credential') {
-        errorMessage = 'Credenciales inválidas. Verifica tu correo y contraseña.';
+        errorMessage =
+            'Credenciales inválidas. Verifica tu correo y contraseña.';
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -124,8 +127,22 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
         );
       }
       final googleProvider = GoogleAuthProvider();
-      final credential = await FirebaseAuth.instance.signInWithPopup(googleProvider);
-      
+      final credential = await FirebaseAuth.instance.signInWithPopup(
+        googleProvider,
+      );
+
+      // Initialize/verify user document in Cloud Firestore with restore support
+      final user = credential.user;
+      if (user != null) {
+        try {
+          await UserProfileHelper.syncAndRestoreProfile(user);
+        } catch (fsError) {
+          print(
+            "Error checking/initializing Firestore user document upon Google Sign In: $fsError",
+          );
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -195,16 +212,17 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                 ),
                 // Overlay oscuro dramático
                 Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withOpacity(0.45),
-                  ),
+                  child: Container(color: Colors.black.withOpacity(0.45)),
                 ),
                 // Botón discreto superior para volver a Home
                 Positioned(
                   top: 24,
                   left: 24,
                   child: IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: Colors.white,
+                    ),
                     onPressed: widget.onBack,
                     tooltip: 'Volver',
                   ),
@@ -241,7 +259,10 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
               color: OhtliColors.cloudDancer,
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 40),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 60,
+                    vertical: 40,
+                  ),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 380),
                     child: Form(
@@ -255,22 +276,29 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                             'assets/logo.svg',
                             width: 250,
                             fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: OhtliColors.stormyTeal, width: 1.5),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                'Ohtli',
-                                style: GoogleFonts.inter(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  color: OhtliColors.stormyTeal,
-                                  letterSpacing: 1.5,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: OhtliColors.stormyTeal,
+                                      width: 1.5,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Text(
+                                    'Ohtli',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                      color: OhtliColors.stormyTeal,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
                           ),
                           const SizedBox(height: 8),
 
@@ -289,7 +317,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                           if (_isLoading)
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 20),
-                              child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+                              child: CircularProgressIndicator(
+                                color: OhtliColors.stormyTeal,
+                              ),
                             )
                           else ...[
                             // INPUT CORREO ELECTRÓNICO
@@ -298,8 +328,11 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                               hintText: 'Correo electrónico',
                               keyboardType: TextInputType.emailAddress,
                               validator: (val) {
-                                if (val == null || val.isEmpty) return 'Ingresa tu correo';
-                                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val)) {
+                                if (val == null || val.isEmpty)
+                                  return 'Ingresa tu correo';
+                                if (!RegExp(
+                                  r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                                ).hasMatch(val)) {
                                   return 'Correo no válido';
                                 }
                                 return null;
@@ -314,14 +347,21 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                               obscureText: _obscurePassword,
                               suffixIcon: IconButton(
                                 icon: Icon(
-                                  _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                                  color: OhtliColors.stormyTeal.withOpacity(0.7),
+                                  _obscurePassword
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                  color: OhtliColors.stormyTeal.withOpacity(
+                                    0.7,
+                                  ),
                                   size: 20,
                                 ),
-                                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                onPressed: () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                ),
                               ),
                               validator: (val) {
-                                if (val == null || val.isEmpty) return 'Ingresa tu contraseña';
+                                if (val == null || val.isEmpty)
+                                  return 'Ingresa tu contraseña';
                                 return null;
                               },
                             ),
@@ -343,10 +383,14 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                         activeColor: OhtliColors.stormyTeal,
                                         checkColor: Colors.white,
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(4),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
                                         ),
                                         side: BorderSide(
-                                          color: OhtliColors.onyx.withOpacity(0.4),
+                                          color: OhtliColors.onyx.withOpacity(
+                                            0.4,
+                                          ),
                                           width: 1.2,
                                         ),
                                         onChanged: (val) {
@@ -360,7 +404,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                     Text(
                                       'Recordar sesión',
                                       style: GoogleFonts.inter(
-                                        color: OhtliColors.onyx.withOpacity(0.7),
+                                        color: OhtliColors.onyx.withOpacity(
+                                          0.7,
+                                        ),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w400,
                                       ),
@@ -384,7 +430,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                           color: OhtliColors.xoconostle,
                                           fontWeight: FontWeight.w600,
                                         ),
-                                        recognizer: TapGestureRecognizer()..onTap = widget.onForgotPasswordClick,
+                                        recognizer: TapGestureRecognizer()
+                                          ..onTap =
+                                              widget.onForgotPasswordClick,
                                       ),
                                     ],
                                   ),
@@ -395,8 +443,10 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
 
                             // BOTÓN INICIAR SESIÓN
                             MouseRegion(
-                              onEnter: (_) => setState(() => _isSubmitHovering = true),
-                              onExit: (_) => setState(() => _isSubmitHovering = false),
+                              onEnter: (_) =>
+                                  setState(() => _isSubmitHovering = true),
+                              onExit: (_) =>
+                                  setState(() => _isSubmitHovering = false),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 200),
                                 width: double.infinity,
@@ -406,7 +456,8 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                   boxShadow: _isSubmitHovering
                                       ? [
                                           BoxShadow(
-                                            color: OhtliColors.stormyTeal.withOpacity(0.25),
+                                            color: OhtliColors.stormyTeal
+                                                .withOpacity(0.25),
                                             blurRadius: 10,
                                             offset: const Offset(0, 4),
                                           ),
@@ -446,7 +497,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                   ),
                                 ),
                                 Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
                                   child: Text(
                                     'ó',
                                     style: GoogleFonts.inter(
@@ -468,8 +521,10 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
 
                             // BOTÓN GOOGLE
                             MouseRegion(
-                              onEnter: (_) => setState(() => _isGoogleHovering = true),
-                              onExit: (_) => setState(() => _isGoogleHovering = false),
+                              onEnter: (_) =>
+                                  setState(() => _isGoogleHovering = true),
+                              onExit: (_) =>
+                                  setState(() => _isGoogleHovering = false),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 200),
                                 width: double.infinity,
@@ -484,7 +539,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                   boxShadow: _isGoogleHovering
                                       ? [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(0.05),
+                                            color: Colors.black.withOpacity(
+                                              0.05,
+                                            ),
                                             blurRadius: 8,
                                             offset: const Offset(0, 3),
                                           ),
@@ -495,15 +552,22 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                   onTap: _handleGoogleSignIn,
                                   borderRadius: BorderRadius.circular(30),
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         SvgPicture.network(
                                           'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg',
                                           width: 18,
                                           height: 18,
-                                          placeholderBuilder: (context) => const Icon(Icons.g_mobiledata, size: 20),
+                                          placeholderBuilder: (context) =>
+                                              const Icon(
+                                                Icons.g_mobiledata,
+                                                size: 20,
+                                              ),
                                         ),
                                         const SizedBox(width: 12),
                                         Text(
@@ -511,7 +575,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                           style: GoogleFonts.inter(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w400,
-                                            color: OhtliColors.onyx.withOpacity(0.8),
+                                            color: OhtliColors.onyx.withOpacity(
+                                              0.8,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -537,7 +603,8 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                       color: OhtliColors.xoconostle,
                                       fontWeight: FontWeight.w600,
                                     ),
-                                    recognizer: TapGestureRecognizer()..onTap = widget.onRegisterClick,
+                                    recognizer: TapGestureRecognizer()
+                                      ..onTap = widget.onRegisterClick,
                                   ),
                                 ],
                               ),

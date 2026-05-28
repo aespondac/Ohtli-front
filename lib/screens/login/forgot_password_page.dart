@@ -110,7 +110,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             top: 24,
             left: 16,
             child: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
+              icon: Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
               onPressed: widget.onBack,
               tooltip: 'Volver al Inicio',
             ),

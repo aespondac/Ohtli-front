@@ -789,7 +789,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
     return Card(
       elevation: 0,
-      color: const Color(0xFFDCD8CF),
+      color: OhtliColors.inputBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),

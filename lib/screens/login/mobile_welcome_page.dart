@@ -45,7 +45,7 @@ class MobileWelcomePage extends StatelessWidget {
                 'assets/icon_isologo.svg',
                 width: 52,
                 height: 52,
-                colorFilter: const ColorFilter.mode(
+                colorFilter: ColorFilter.mode(
                   OhtliColors.cloudDancer,
                   BlendMode.srcIn,
                 ),

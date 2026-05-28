@@ -18,13 +18,7 @@ import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../construction_page.dart'; // Reuse RouteBackgroundPainter
 
-enum AccountSection {
-  dashboard,
-  personalInfo,
-  security,
-  addresses,
-  privacy,
-}
+enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
 
 class AccountManagementPage extends StatefulWidget {
   final VoidCallback onBackToHome;
@@ -65,10 +59,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
   // Addresses state
   List<Map<String, dynamic>> _addresses = [];
+  List<Map<String, dynamic>> get _activeAddresses {
+    return _addresses.where((addr) => addr['isDeleted'] != true).toList();
+  }
+
   bool _isEditingAddress = false;
   int? _editingAddressIndex;
   final _addressFormKey = GlobalKey<FormState>();
-
 
   // Privacy state
   bool _shareTravelData = true;
@@ -89,7 +86,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   void initState() {
     super.initState();
     final user = FirebaseAuth.instance.currentUser;
-    
+
     // Split display name
     String firstName = '';
     String lastName = '';
@@ -135,7 +132,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
     final script = html.ScriptElement()
       ..id = 'google-maps-places-script'
-      ..src = 'https://maps.googleapis.com/maps/api/js?key=$activeKey&libraries=places&language=es&region=MX'
+      ..src =
+          'https://maps.googleapis.com/maps/api/js?key=$activeKey&libraries=places&language=es&region=MX'
       ..async = true;
     html.document.head!.append(script);
   }
@@ -152,7 +150,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       _localPhotoURL = user.photoURL;
     }
 
-    final localPhone = html.window.localStorage['ohtli_phone_${user.uid}'] ?? '';
+    final localPhone =
+        html.window.localStorage['ohtli_phone_${user.uid}'] ?? '';
     _phoneController.text = localPhone;
 
     final jsonStr = html.window.localStorage['ohtli_addresses_${user.uid}'];
@@ -166,195 +165,236 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     }
 
     // 2. Subscribe to real-time updates from Cloud Firestore
-    _userDataSubscription = FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots().listen((doc) {
-      if (!doc.exists) {
-        if (!_isInitialSyncDone) {
-          print("User document does not exist in Firestore. Creating it with local caches...");
-          final Map<String, dynamic> initialData = {
-            'privacy_share': _shareTravelData,
-            'privacy_notifications': _receiveNotifications,
-            'privacy_public': _publicProfile,
-          };
+    _userDataSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!doc.exists) {
+              if (!_isInitialSyncDone) {
+                print(
+                  "User document does not exist in Firestore. Creating it with local caches...",
+                );
+                final Map<String, dynamic> initialData = {
+                  'privacy_share': _shareTravelData,
+                  'privacy_notifications': _receiveNotifications,
+                  'privacy_public': _publicProfile,
+                };
 
-          if (localPic != null && localPic.isNotEmpty) {
-            if (localPic.startsWith('data:image') || localPic.startsWith('data:')) {
-              _uploadLocalPhotoToFirestore(user.uid, localPic);
-            } else {
-              initialData['photoURL'] = localPic;
+                if (localPic != null && localPic.isNotEmpty) {
+                  if (localPic.startsWith('data:image') ||
+                      localPic.startsWith('data:')) {
+                    _uploadLocalPhotoToFirestore(user.uid, localPic);
+                  } else {
+                    initialData['photoURL'] = localPic;
+                  }
+                }
+                if (localPhone.isNotEmpty) {
+                  initialData['phone'] = localPhone;
+                }
+                if (_addresses.isNotEmpty) {
+                  initialData['addresses'] = _addresses;
+                }
+
+                FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .set(initialData, SetOptions(merge: true))
+                    .then((_) {
+                      print(
+                        "Successfully initialized user cloud document with local caches.",
+                      );
+                    })
+                    .catchError((e) {
+                      print("Error initializing user cloud document: $e");
+                    });
+                _isInitialSyncDone = true;
+              }
+              return;
             }
-          }
-          if (localPhone.isNotEmpty) {
-            initialData['phone'] = localPhone;
-          }
-          if (_addresses.isNotEmpty) {
-            initialData['addresses'] = _addresses;
-          }
 
-          FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-            initialData,
-            SetOptions(merge: true),
-          ).then((_) {
-            print("Successfully initialized user cloud document with local caches.");
-          }).catchError((e) {
-            print("Error initializing user cloud document: $e");
-          });
-          _isInitialSyncDone = true;
-        }
-        return;
-      }
+            final data = doc.data();
+            if (data != null) {
+              bool needUpload = false;
+              final Map<String, dynamic> uploadData = {};
 
-      final data = doc.data();
-      if (data != null) {
-        bool needUpload = false;
-        final Map<String, dynamic> uploadData = {};
+              // A. Sync Photo
+              if (data.containsKey('photoURL')) {
+                final String? remotePhoto = data['photoURL'] as String?;
+                if (remotePhoto != null && remotePhoto.isNotEmpty) {
+                  if (mounted) {
+                    setState(() {
+                      _localPhotoURL = remotePhoto;
+                    });
+                    html.window.localStorage['ohtli_profile_pic_${user.uid}'] =
+                        remotePhoto;
+                  }
+                } else if (localPic != null && localPic.isNotEmpty) {
+                  if (localPic.startsWith('data:image') ||
+                      localPic.startsWith('data:')) {
+                    _uploadLocalPhotoToFirestore(user.uid, localPic);
+                  } else {
+                    uploadData['photoURL'] = localPic;
+                    needUpload = true;
+                  }
+                }
+              } else if (localPic != null && localPic.isNotEmpty) {
+                if (localPic.startsWith('data:image') ||
+                    localPic.startsWith('data:')) {
+                  _uploadLocalPhotoToFirestore(user.uid, localPic);
+                } else {
+                  uploadData['photoURL'] = localPic;
+                  needUpload = true;
+                }
+              }
 
-        // A. Sync Photo
-        if (data.containsKey('photoURL')) {
-          final String? remotePhoto = data['photoURL'] as String?;
-          if (remotePhoto != null && remotePhoto.isNotEmpty) {
-            if (mounted) {
-              setState(() {
-                _localPhotoURL = remotePhoto;
-              });
-              html.window.localStorage['ohtli_profile_pic_${user.uid}'] = remotePhoto;
+              // B. Sync Phone
+              if (data.containsKey('phone')) {
+                final String? remotePhone = data['phone'] as String?;
+                if (remotePhone != null && remotePhone.isNotEmpty) {
+                  if (mounted) {
+                    setState(() {
+                      _phoneController.text = remotePhone;
+                    });
+                    html.window.localStorage['ohtli_phone_${user.uid}'] =
+                        remotePhone;
+                  }
+                } else if (localPhone.isNotEmpty) {
+                  uploadData['phone'] = localPhone;
+                  needUpload = true;
+                }
+              } else if (localPhone.isNotEmpty) {
+                uploadData['phone'] = localPhone;
+                needUpload = true;
+              }
+
+              // C. Sync Privacy Settings
+              if (data.containsKey('privacy_share')) {
+                final bool? remoteShare = data['privacy_share'] as bool?;
+                if (remoteShare != null) {
+                  if (mounted) {
+                    setState(() {
+                      _shareTravelData = remoteShare;
+                    });
+                    html
+                            .window
+                            .localStorage['ohtli_privacy_share_${user.uid}'] =
+                        remoteShare.toString();
+                  }
+                }
+              } else {
+                uploadData['privacy_share'] = _shareTravelData;
+                needUpload = true;
+              }
+
+              if (data.containsKey('privacy_notifications')) {
+                final bool? remoteNotifications =
+                    data['privacy_notifications'] as bool?;
+                if (remoteNotifications != null) {
+                  if (mounted) {
+                    setState(() {
+                      _receiveNotifications = remoteNotifications;
+                    });
+                    html
+                            .window
+                            .localStorage['ohtli_privacy_notifications_${user.uid}'] =
+                        remoteNotifications.toString();
+                  }
+                }
+              } else {
+                uploadData['privacy_notifications'] = _receiveNotifications;
+                needUpload = true;
+              }
+
+              if (data.containsKey('privacy_public')) {
+                final bool? remotePublic = data['privacy_public'] as bool?;
+                if (remotePublic != null) {
+                  if (mounted) {
+                    setState(() {
+                      _publicProfile = remotePublic;
+                    });
+                    html
+                            .window
+                            .localStorage['ohtli_privacy_public_${user.uid}'] =
+                        remotePublic.toString();
+                  }
+                }
+              } else {
+                uploadData['privacy_public'] = _publicProfile;
+                needUpload = true;
+              }
+
+              // D. Sync / Reconcile Addresses
+              List<Map<String, dynamic>> cloudList = [];
+              if (data.containsKey('addresses')) {
+                final List<dynamic>? remoteList =
+                    data['addresses'] as List<dynamic>?;
+                if (remoteList != null) {
+                  cloudList = remoteList
+                      .map((e) => Map<String, dynamic>.from(e))
+                      .toList();
+                }
+              }
+
+              if (!_isInitialSyncDone) {
+                // Reconcile offline additions and deletions only once on first load
+                final deletedIds = _getDeletedAddressIds(user.uid);
+                final reconciled = _reconcileAddresses(
+                  _addresses,
+                  cloudList,
+                  deletedIds,
+                );
+
+                if (!_areAddressListsEqual(_addresses, reconciled)) {
+                  if (mounted) {
+                    setState(() {
+                      _addresses = reconciled;
+                    });
+                    html.window.localStorage['ohtli_addresses_${user.uid}'] =
+                        json.encode(_addresses);
+                  }
+                }
+
+                if (!_areAddressListsEqual(cloudList, reconciled)) {
+                  uploadData['addresses'] = reconciled;
+                  needUpload = true;
+                }
+
+                html
+                    .window
+                    .localStorage['ohtli_deleted_addresses_${user.uid}'] = json
+                    .encode([]);
+                _isInitialSyncDone = true;
+              } else {
+                // Subsequent stream updates: accept the cloud as the absolute source of truth
+                // to guarantee that creations, edits, and deletions on any other device reflect instantly.
+                if (!_areAddressListsEqual(_addresses, cloudList)) {
+                  if (mounted) {
+                    setState(() {
+                      _addresses = cloudList;
+                    });
+                    html.window.localStorage['ohtli_addresses_${user.uid}'] =
+                        json.encode(_addresses);
+                  }
+                }
+              }
+
+              if (needUpload && uploadData.isNotEmpty) {
+                FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .set(uploadData, SetOptions(merge: true))
+                    .catchError((e) {
+                      print("Error syncing local caches to Firestore: $e");
+                    });
+              }
             }
-          } else if (localPic != null && localPic.isNotEmpty) {
-            if (localPic.startsWith('data:image') || localPic.startsWith('data:')) {
-              _uploadLocalPhotoToFirestore(user.uid, localPic);
-            } else {
-              uploadData['photoURL'] = localPic;
-              needUpload = true;
-            }
-          }
-        } else if (localPic != null && localPic.isNotEmpty) {
-          if (localPic.startsWith('data:image') || localPic.startsWith('data:')) {
-            _uploadLocalPhotoToFirestore(user.uid, localPic);
-          } else {
-            uploadData['photoURL'] = localPic;
-            needUpload = true;
-          }
-        }
-
-        // B. Sync Phone
-        if (data.containsKey('phone')) {
-          final String? remotePhone = data['phone'] as String?;
-          if (remotePhone != null && remotePhone.isNotEmpty) {
-            if (mounted) {
-              setState(() {
-                _phoneController.text = remotePhone;
-              });
-              html.window.localStorage['ohtli_phone_${user.uid}'] = remotePhone;
-            }
-          } else if (localPhone.isNotEmpty) {
-            uploadData['phone'] = localPhone;
-            needUpload = true;
-          }
-        } else if (localPhone.isNotEmpty) {
-          uploadData['phone'] = localPhone;
-          needUpload = true;
-        }
-
-        // C. Sync Privacy Settings
-        if (data.containsKey('privacy_share')) {
-          final bool? remoteShare = data['privacy_share'] as bool?;
-          if (remoteShare != null) {
-            if (mounted) {
-              setState(() {
-                _shareTravelData = remoteShare;
-              });
-              html.window.localStorage['ohtli_privacy_share_${user.uid}'] = remoteShare.toString();
-            }
-          }
-        } else {
-          uploadData['privacy_share'] = _shareTravelData;
-          needUpload = true;
-        }
-
-        if (data.containsKey('privacy_notifications')) {
-          final bool? remoteNotifications = data['privacy_notifications'] as bool?;
-          if (remoteNotifications != null) {
-            if (mounted) {
-              setState(() {
-                _receiveNotifications = remoteNotifications;
-              });
-              html.window.localStorage['ohtli_privacy_notifications_${user.uid}'] = remoteNotifications.toString();
-            }
-          }
-        } else {
-          uploadData['privacy_notifications'] = _receiveNotifications;
-          needUpload = true;
-        }
-
-        if (data.containsKey('privacy_public')) {
-          final bool? remotePublic = data['privacy_public'] as bool?;
-          if (remotePublic != null) {
-            if (mounted) {
-              setState(() {
-                _publicProfile = remotePublic;
-              });
-              html.window.localStorage['ohtli_privacy_public_${user.uid}'] = remotePublic.toString();
-            }
-          }
-        } else {
-          uploadData['privacy_public'] = _publicProfile;
-          needUpload = true;
-        }
-
-        // D. Sync / Reconcile Addresses
-        List<Map<String, dynamic>> cloudList = [];
-        if (data.containsKey('addresses')) {
-          final List<dynamic>? remoteList = data['addresses'] as List<dynamic>?;
-          if (remoteList != null) {
-            cloudList = remoteList.map((e) => Map<String, dynamic>.from(e)).toList();
-          }
-        }
-
-        if (!_isInitialSyncDone) {
-          // Reconcile offline additions and deletions only once on first load
-          final deletedIds = _getDeletedAddressIds(user.uid);
-          final reconciled = _reconcileAddresses(_addresses, cloudList, deletedIds);
-
-          if (!_areAddressListsEqual(_addresses, reconciled)) {
-            if (mounted) {
-              setState(() {
-                _addresses = reconciled;
-              });
-              html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(_addresses);
-            }
-          }
-
-          if (!_areAddressListsEqual(cloudList, reconciled)) {
-            uploadData['addresses'] = reconciled;
-            needUpload = true;
-          }
-
-          html.window.localStorage['ohtli_deleted_addresses_${user.uid}'] = json.encode([]);
-          _isInitialSyncDone = true;
-        } else {
-          // Subsequent stream updates: accept the cloud as the absolute source of truth
-          // to guarantee that creations, edits, and deletions on any other device reflect instantly.
-          if (!_areAddressListsEqual(_addresses, cloudList)) {
-            if (mounted) {
-              setState(() {
-                _addresses = cloudList;
-              });
-              html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(_addresses);
-            }
-          }
-        }
-
-        if (needUpload && uploadData.isNotEmpty) {
-          FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-            uploadData,
-            SetOptions(merge: true),
-          ).catchError((e) {
-            print("Error syncing local caches to Firestore: $e");
-          });
-        }
-      }
-    }, onError: (e) {
-      print("Error listening to user data Firestore stream: $e");
-    });
+          },
+          onError: (e) {
+            print("Error listening to user data Firestore stream: $e");
+          },
+        );
   }
 
   void _uploadLocalPhotoToFirestore(String uid, String base64String) async {
@@ -370,11 +410,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         SettableMetadata(contentType: 'image/jpeg'),
       );
       final bucket = FirebaseStorage.instance.app.options.storageBucket;
-      final String downloadUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F$uid%2Fprofile.jpg?alt=media";
-      
+      final String downloadUrl =
+          "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F$uid%2Fprofile.jpg?alt=media";
+
       // Update localStorage with the verified bucket URL
       html.window.localStorage['ohtli_profile_pic_$uid'] = downloadUrl;
-      
+
       // Update UI state if still active
       if (mounted) {
         setState(() {
@@ -387,10 +428,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         'photoURL': downloadUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      print("Successfully migrated local photo to Firebase Storage and synced URL to Firestore.");
+      print(
+        "Successfully migrated local photo to Firebase Storage and synced URL to Firestore.",
+      );
     } catch (e) {
       // Storage failed or not enabled. Keep base64 ONLY locally (no cost in Firestore!)
-      print("Storage migration failed. Kept photo exclusively local to avoid Firestore base64 costs: $e");
+      print(
+        "Storage migration failed. Kept photo exclusively local to avoid Firestore base64 costs: $e",
+      );
     }
   }
 
@@ -410,9 +455,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   Future<void> _saveAddresses() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    
+
     // 1. Write to LocalStorage for instant local persist
-    html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(_addresses);
+    html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(
+      _addresses,
+    );
 
     // 2. Write to Cloud Firestore to sync across all devices — await to detect errors
     try {
@@ -433,7 +480,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           addr.remove('isOffline');
         }
       });
-      html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(_addresses);
+      html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(
+        _addresses,
+      );
     } catch (e) {
       print("Error saving addresses to Firestore: $e");
       if (mounted) {
@@ -480,7 +529,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   void _trackAddressDeletion(String uid, String addrId) {
     final deleted = _getDeletedAddressIds(uid);
     deleted.add(addrId);
-    html.window.localStorage['ohtli_deleted_addresses_$uid'] = json.encode(deleted.toList());
+    html.window.localStorage['ohtli_deleted_addresses_$uid'] = json.encode(
+      deleted.toList(),
+    );
   }
 
   List<Map<String, dynamic>> _reconcileAddresses(
@@ -488,55 +539,80 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     List<Map<String, dynamic>> cloudList,
     Set<String> deletedIds,
   ) {
-    final List<Map<String, dynamic>> merged = [];
-    
-    final Map<String, Map<String, dynamic>> cloudMap = {};
-    for (final addr in cloudList) {
-      final id = _getAddressId(addr);
-      cloudMap[id] = addr;
-    }
-    
-    final Map<String, Map<String, dynamic>> localMap = {};
-    for (final addr in localList) {
-      final id = _getAddressId(addr);
-      localMap[id] = addr;
+    final List<Map<String, dynamic>> reconciled = [];
+    final Map<String, Map<String, dynamic>> mergedMap = {};
+
+    // Helper to check if deletion is older than 7 days (1 week)
+    bool isDeletionExpired(Map<String, dynamic> addr) {
+      if (addr['isDeleted'] != true) return false;
+      final deletedAt = addr['deletedAt'];
+      if (deletedAt == null) return true;
+      final int deletedTime = deletedAt is int
+          ? deletedAt
+          : (int.tryParse(deletedAt.toString()) ?? 0);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+      return (now - deletedTime) >= oneWeekMs;
     }
 
-    // Process local list
-    for (final localAddr in localList) {
-      final id = _getAddressId(localAddr);
-      if (cloudMap.containsKey(id)) {
-        // If present in both, prefer the cloud data as the latest truth
-        merged.add(cloudMap[id]!);
+    // Combine lists, preferring the fresher record based on the updatedAt timestamp
+    void processAddress(Map<String, dynamic> addr) {
+      final id = _getAddressId(addr);
+
+      // If the address has been marked deleted for over 7 days, completely purge it!
+      if (isDeletionExpired(addr)) {
+        print("Purging expired deleted address: $id");
+        mergedMap.remove(id);
+        return;
+      }
+
+      if (mergedMap.containsKey(id)) {
+        final existing = mergedMap[id]!;
+        final int existingUpdate = existing['updatedAt'] is int
+            ? existing['updatedAt']
+            : (int.tryParse(existing['updatedAt'].toString()) ?? 0);
+        final int incomingUpdate = addr['updatedAt'] is int
+            ? addr['updatedAt']
+            : (int.tryParse(addr['updatedAt'].toString()) ?? 0);
+
+        if (incomingUpdate > existingUpdate) {
+          mergedMap[id] = addr;
+        }
       } else {
-        // Local-only. Keep it ONLY if it is explicitly marked as a pending offline change!
-        // Otherwise, it was deleted in the cloud on another device, so discard it.
-        if (localAddr['isOffline'] == true) {
-          merged.add(localAddr);
-        } else {
-          print("Discarding stale cached address deleted in cloud: $id");
+        // Discard local-only stale cached items if deleted in the cloud (and not marked isOffline)
+        final isLocalOnly = !cloudList.any((e) => _getAddressId(e) == id);
+        if (isLocalOnly &&
+            addr['isDeleted'] != true &&
+            addr['isOffline'] != true) {
+          print("Discarding stale cached address: $id");
+          return;
         }
+        mergedMap[id] = addr;
       }
     }
 
-    // Process cloud list (check for additions from other devices or deletions)
-    for (final cloudAddr in cloudList) {
-      final id = _getAddressId(cloudAddr);
-      if (!localMap.containsKey(id)) {
-        if (deletedIds.contains(id)) {
-          // Address was deleted locally while offline, exclude from merged to delete in cloud
-          print("Excluding locally deleted address: $id");
-        } else {
-          // Address was added on another device, keep it!
-          merged.add(cloudAddr);
-        }
+    // Process local and cloud items to resolve conflicts
+    for (final addr in localList) {
+      processAddress(addr);
+    }
+    for (final addr in cloudList) {
+      processAddress(addr);
+    }
+
+    // Export merged active & active-deleted entries
+    for (final addr in mergedMap.values) {
+      if (!isDeletionExpired(addr)) {
+        reconciled.add(addr);
       }
     }
 
-    return merged;
+    return reconciled;
   }
 
-  bool _areAddressListsEqual(List<Map<String, dynamic>> listA, List<Map<String, dynamic>> listB) {
+  bool _areAddressListsEqual(
+    List<Map<String, dynamic>> listA,
+    List<Map<String, dynamic>> listB,
+  ) {
     if (listA.length != listB.length) return false;
     for (int i = 0; i < listA.length; i++) {
       final a = listA[i];
@@ -562,22 +638,29 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   void _loadPrivacySettings() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    _shareTravelData = html.window.localStorage['ohtli_privacy_share_${user.uid}'] != 'false';
-    _receiveNotifications = html.window.localStorage['ohtli_privacy_notifications_${user.uid}'] != 'false';
-    _publicProfile = html.window.localStorage['ohtli_privacy_public_${user.uid}'] == 'true';
+    _shareTravelData =
+        html.window.localStorage['ohtli_privacy_share_${user.uid}'] != 'false';
+    _receiveNotifications =
+        html.window.localStorage['ohtli_privacy_notifications_${user.uid}'] !=
+        'false';
+    _publicProfile =
+        html.window.localStorage['ohtli_privacy_public_${user.uid}'] == 'true';
   }
 
   void _savePrivacySetting(String key, bool value) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    html.window.localStorage['ohtli_privacy_${key}_${user.uid}'] = value.toString();
+    html.window.localStorage['ohtli_privacy_${key}_${user.uid}'] = value
+        .toString();
 
     // Also sync to Cloud Firestore!
-    FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-      'privacy_$key': value,
-    }, SetOptions(merge: true)).catchError((e) {
-      print("Error saving privacy setting to Firestore: $e");
-    });
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .set({'privacy_$key': value}, SetOptions(merge: true))
+        .catchError((e) {
+          print("Error saving privacy setting to Firestore: $e");
+        });
   }
 
   // Photo Upload Handler (avoiding Firebase URL size limit)
@@ -621,7 +704,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               final user = FirebaseAuth.instance.currentUser;
                               if (user != null) {
                                 // Keep base64 in localStorage for instant local display
-                                html.window.localStorage['ohtli_profile_pic_${user.uid}'] = base64String;
+                                html
+                                        .window
+                                        .localStorage['ohtli_profile_pic_${user.uid}'] =
+                                    base64String;
 
                                 // Upload to Firebase Storage instead of Firestore to avoid 1MiB document limit
                                 String? downloadUrl;
@@ -638,10 +724,17 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                     Uint8List.fromList(imageBytes),
                                     SettableMetadata(contentType: 'image/jpeg'),
                                   );
-                                  final bucket = FirebaseStorage.instance.app.options.storageBucket;
-                                  downloadUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${user.uid}%2Fprofile.jpg?alt=media";
+                                  final bucket = FirebaseStorage
+                                      .instance
+                                      .app
+                                      .options
+                                      .storageBucket;
+                                  downloadUrl =
+                                      "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${user.uid}%2Fprofile.jpg?alt=media";
                                 } catch (storageError) {
-                                  print("Firebase Storage upload error: $storageError");
+                                  print(
+                                    "Firebase Storage upload error: $storageError",
+                                  );
                                 }
 
                                 if (downloadUrl != null) {
@@ -652,10 +745,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                         .doc(user.uid)
                                         .set({
                                           'photoURL': downloadUrl,
-                                          'updatedAt': FieldValue.serverTimestamp(),
+                                          'updatedAt':
+                                              FieldValue.serverTimestamp(),
                                         }, SetOptions(merge: true));
                                   } catch (fsError) {
-                                    print("Error saving profile photo URL to Firestore: $fsError");
+                                    print(
+                                      "Error saving profile photo URL to Firestore: $fsError",
+                                    );
                                   }
 
                                   // Update Firebase Auth profile with the real download URL
@@ -663,7 +759,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                     await user.updatePhotoURL(downloadUrl);
                                     await user.reload();
                                   } catch (authError) {
-                                    print("Firebase Auth profile sync bypassed: $authError");
+                                    print(
+                                      "Firebase Auth profile sync bypassed: $authError",
+                                    );
                                   }
 
                                   if (mounted) {
@@ -672,7 +770,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                       SnackBar(
                                         content: Text(
                                           '¡Foto de perfil sincronizada en la nube exitosamente!',
-                                          style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                                          style: GoogleFonts.inter(
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                         backgroundColor: OhtliColors.stormyTeal,
                                       ),
@@ -686,7 +786,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                       SnackBar(
                                         content: Text(
                                           'Foto de perfil guardada localmente (sin sincronización en la nube para ahorrar datos).',
-                                          style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                                          style: GoogleFonts.inter(
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                         backgroundColor: OhtliColors.cantera,
                                       ),
@@ -698,7 +800,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('Error al guardar la imagen: ${err.toString()}'),
+                                    content: Text(
+                                      'Error al guardar la imagen: ${err.toString()}',
+                                    ),
                                     backgroundColor: OhtliColors.xoconostle,
                                   ),
                                 );
@@ -740,33 +844,40 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   Future<void> _savePersonalInfo() async {
     if (!_personalFormKey.currentState!.validate()) return;
     setState(() => _isSavingProfile = true);
-    
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final newName = "${_firstNameController.text.trim()} ${_lastNameController.text.trim()}".trim();
+        final newName =
+            "${_firstNameController.text.trim()} ${_lastNameController.text.trim()}"
+                .trim();
         final phoneText = _phoneController.text.trim();
-        final currentPhone = html.window.localStorage['ohtli_phone_${user.uid}'] ?? '';
+        final currentPhone =
+            html.window.localStorage['ohtli_phone_${user.uid}'] ?? '';
 
         // Check if anything actually changed to avoid unnecessary operations
-        final nameChanged = newName.isNotEmpty && newName != (user.displayName ?? '');
+        final nameChanged =
+            newName.isNotEmpty && newName != (user.displayName ?? '');
         final phoneChanged = phoneText != currentPhone;
 
         if (nameChanged) {
           await user.updateDisplayName(newName);
         }
-        
+
         // Save phone to LocalStorage
         html.window.localStorage['ohtli_phone_${user.uid}'] = phoneText;
 
         // Also persist name, email, and phone to Cloud Firestore for robust cross-device sync
         try {
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-            'displayName': newName,
-            'email': user.email ?? '',
-            'phone': phoneText,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+                'displayName': newName,
+                'email': user.email ?? '',
+                'phone': phoneText,
+                'updatedAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
           print("Successfully synced profile changes to Firestore.");
         } catch (fsError) {
           print("Firestore error syncing user profile details: $fsError");
@@ -813,7 +924,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   // Handle security/password update with reauthentication
   Future<void> _changePassword() async {
     if (!_securityFormKey.currentState!.validate()) return;
-    
+
     final currentPassword = _currentPasswordController.text;
     final newPassword = _newPasswordController.text;
     final confirmPassword = _confirmPasswordController.text;
@@ -852,7 +963,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               backgroundColor: OhtliColors.stormyTeal,
             ),
           );
-          
+
           _currentPasswordController.clear();
           _newPasswordController.clear();
           _confirmPasswordController.clear();
@@ -863,7 +974,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         }
       }
     } catch (e) {
-      String errorMessage = 'Error al actualizar contraseña. Verifica tu contraseña actual.';
+      String errorMessage =
+          'Error al actualizar contraseña. Verifica tu contraseña actual.';
       if (e is FirebaseAuthException) {
         if (e.code == 'wrong-password') {
           errorMessage = 'La contraseña actual es incorrecta.';
@@ -910,14 +1022,24 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: OhtliColors.cloudDancer,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               title: Row(
                 children: [
-                  const Icon(Icons.delete_forever_rounded, color: OhtliColors.xoconostle, size: 24),
+                  const Icon(
+                    Icons.delete_forever_rounded,
+                    color: OhtliColors.xoconostle,
+                    size: 24,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     '¿Eliminar cuenta?',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: OhtliColors.onyx, fontSize: 18),
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.bold,
+                      color: OhtliColors.onyx,
+                      fontSize: 18,
+                    ),
                   ),
                 ],
               ),
@@ -929,85 +1051,160 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   children: [
                     Text(
                       'Esta acción es irreversible y eliminará todos tus datos en Ohtli permanentemente. Firebase requiere volver a verificar tu identidad antes de continuar.',
-                      style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withOpacity(0.7), height: 1.4),
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: OhtliColors.onyx.withOpacity(0.7),
+                        height: 1.4,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     if (isGoogleUser) ...[
                       Text(
                         'Iniciaste sesión con Google. Presiona el botón de abajo para re-autenticarte de forma segura.',
-                        style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w500, color: OhtliColors.onyx),
+                        style: GoogleFonts.inter(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          color: OhtliColors.onyx,
+                        ),
                       ),
                       const SizedBox(height: 16),
                     ] else ...[
                       TextFormField(
                         controller: deletePasswordController,
                         obscureText: true,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                        validator: (value) => value == null || value.isEmpty ? 'Ingresa tu contraseña actual' : null,
+                        style: GoogleFonts.inter(
+                          color: OhtliColors.onyx,
+                          fontSize: 14,
+                        ),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Ingresa tu contraseña actual'
+                            : null,
                         decoration: InputDecoration(
                           labelText: 'Contraseña Actual',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                          prefixIcon: const Icon(Icons.lock_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
+                          labelStyle: GoogleFonts.inter(
+                            color: OhtliColors.onyx.withOpacity(0.5),
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.lock_outline_rounded,
+                            color: OhtliColors.stormyTeal,
+                            size: 20,
+                          ),
                           filled: true,
                           fillColor: OhtliColors.cantera.withOpacity(0.3),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
                     ],
                     if (isDeleting)
                       const Center(
-                        child: CircularProgressIndicator(color: OhtliColors.xoconostle),
+                        child: CircularProgressIndicator(
+                          color: OhtliColors.xoconostle,
+                        ),
                       ),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: isDeleting ? null : () => Navigator.of(context).pop(),
-                  child: Text('Cancelar', style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6))),
+                  onPressed: isDeleting
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancelar',
+                    style: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.6),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: isDeleting
                       ? null
                       : () async {
-                          if (!isGoogleUser && !deleteFormKey.currentState!.validate()) return;
-                          
+                          if (!isGoogleUser &&
+                              !deleteFormKey.currentState!.validate())
+                            return;
+
                           setDialogState(() => isDeleting = true);
-                          
+
                           try {
                             if (isGoogleUser) {
                               // Google re-authentication
                               final googleProvider = GoogleAuthProvider();
-                              await user.reauthenticateWithPopup(googleProvider);
+                              await user.reauthenticateWithPopup(
+                                googleProvider,
+                              );
                             } else {
                               // Email re-authentication
                               final credential = EmailAuthProvider.credential(
                                 email: user.email!,
                                 password: deletePasswordController.text,
                               );
-                              await user.reauthenticateWithCredential(credential);
+                              await user.reauthenticateWithCredential(
+                                credential,
+                              );
                             }
-                            
+
                             // Delete local storage keys securely
-                            html.window.localStorage.remove('ohtli_profile_pic_${user.uid}');
-                            html.window.localStorage.remove('ohtli_phone_${user.uid}');
-                            html.window.localStorage.remove('ohtli_addresses_${user.uid}');
-                            html.window.localStorage.remove('ohtli_privacy_share_${user.uid}');
-                            html.window.localStorage.remove('ohtli_privacy_notifications_${user.uid}');
-                            html.window.localStorage.remove('ohtli_privacy_public_${user.uid}');
-                            
+                            html.window.localStorage.remove(
+                              'ohtli_profile_pic_${user.uid}',
+                            );
+                            html.window.localStorage.remove(
+                              'ohtli_phone_${user.uid}',
+                            );
+                            html.window.localStorage.remove(
+                              'ohtli_addresses_${user.uid}',
+                            );
+                            html.window.localStorage.remove(
+                              'ohtli_privacy_share_${user.uid}',
+                            );
+                            html.window.localStorage.remove(
+                              'ohtli_privacy_notifications_${user.uid}',
+                            );
+                            html.window.localStorage.remove(
+                              'ohtli_privacy_public_${user.uid}',
+                            );
+
+                            // Flag Firestore document as deleted (to be deleted permanently in 30 days)
+                            try {
+                              await FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(user.uid)
+                                  .set({
+                                    'isDeleted': true,
+                                    'deletedAt': FieldValue.serverTimestamp(),
+                                    'scheduledDeletionAt': Timestamp.fromDate(
+                                      DateTime.now().add(
+                                        const Duration(days: 30),
+                                      ),
+                                    ),
+                                    'updatedAt': FieldValue.serverTimestamp(),
+                                  }, SetOptions(merge: true));
+                              print(
+                                "Successfully marked Firestore user document as deleted for 30 days.",
+                              );
+                            } catch (fsError) {
+                              print(
+                                "Error marking user as deleted in Firestore: $fsError",
+                              );
+                            }
+
                             // Delete the user from Firebase
                             await user.delete();
-                            
+
                             if (mounted) {
                               Navigator.of(context).pop(); // Close dialog
                               ScaffoldMessenger.of(parentContext).showSnackBar(
                                 SnackBar(
                                   content: Text(
                                     'Tu cuenta ha sido eliminada permanentemente. Esperamos volver a verte.',
-                                    style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                   backgroundColor: OhtliColors.xoconostle,
                                   duration: const Duration(seconds: 4),
@@ -1016,15 +1213,17 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               widget.onLogout();
                             }
                           } catch (e) {
-                            String err = 'Error al re-autenticar o eliminar la cuenta. Inténtalo de nuevo.';
+                            String err =
+                                'Error al re-autenticar o eliminar la cuenta. Inténtalo de nuevo.';
                             if (e is FirebaseAuthException) {
                               if (e.code == 'wrong-password') {
                                 err = 'La contraseña ingresada es incorrecta.';
                               } else if (e.code == 'user-mismatch') {
-                                err = 'La cuenta de re-autenticación no coincide con la cuenta actual.';
+                                err =
+                                    'La cuenta de re-autenticación no coincide con la cuenta actual.';
                               }
                             }
-                            
+
                             if (mounted) {
                               ScaffoldMessenger.of(parentContext).showSnackBar(
                                 SnackBar(
@@ -1043,10 +1242,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     backgroundColor: OhtliColors.xoconostle,
                     foregroundColor: Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: Text(
-                    isGoogleUser ? 'Re-autenticar y Eliminar' : 'Confirmar y Eliminar',
+                    isGoogleUser
+                        ? 'Re-autenticar y Eliminar'
+                        : 'Confirmar y Eliminar',
                     style: GoogleFonts.inter(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -1080,7 +1283,16 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             ),
           );
         } catch (e) {
-          avatarContent = Center(child: Text(initials, style: GoogleFonts.inter(color: Colors.white, fontSize: radius * 0.7, fontWeight: FontWeight.w600)));
+          avatarContent = Center(
+            child: Text(
+              initials,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: radius * 0.7,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          );
         }
       } else {
         avatarContent = ClipOval(
@@ -1090,7 +1302,16 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             height: radius * 2,
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
-              return Center(child: Text(initials, style: GoogleFonts.inter(color: Colors.white, fontSize: radius * 0.7, fontWeight: FontWeight.w600)));
+              return Center(
+                child: Text(
+                  initials,
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: radius * 0.7,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              );
             },
           ),
         );
@@ -1130,11 +1351,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             height: containerSize,
             child: Stack(
               children: [
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  child: mainAvatar,
-                ),
+                Positioned(top: 0, left: 0, child: mainAvatar),
                 Positioned(
                   bottom: 0,
                   right: 0,
@@ -1143,7 +1360,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
-                      border: Border.all(color: OhtliColors.stormyTeal, width: 2),
+                      border: Border.all(
+                        color: OhtliColors.stormyTeal,
+                        width: 2,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.15),
@@ -1170,10 +1390,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       return GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: mainAvatar,
-        ),
+        child: MouseRegion(cursor: SystemMouseCursors.click, child: mainAvatar),
       );
     }
 
@@ -1182,34 +1399,42 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final localPic = html.window.localStorage['ohtli_profile_pic_${user.uid}'];
-      if (localPic != null && localPic.isNotEmpty) {
-        _localPhotoURL = localPic;
-      }
-    }
+    return ListenableBuilder(
+      listenable: OhtliSettings.instance,
+      builder: (context, _) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final localPic =
+              html.window.localStorage['ohtli_profile_pic_${user.uid}'];
+          if (localPic != null && localPic.isNotEmpty) {
+            _localPhotoURL = localPic;
+          }
+        }
 
-    final displayName = user?.displayName ?? user?.email ?? 'Viajero';
-    final initials = displayName
-        .split(' ')
-        .where((w) => w.isNotEmpty)
-        .take(2)
-        .map((w) => w[0].toUpperCase())
-        .join();
+        final displayName = user?.displayName ?? user?.email ?? 'Viajero';
+        final initials = displayName
+            .split(' ')
+            .where((w) => w.isNotEmpty)
+            .take(2)
+            .map((w) => w[0].toUpperCase())
+            .join();
 
-    final screenSize = MediaQuery.of(context).size;
-    final isMobile = screenSize.width < 800;
+        final screenSize = MediaQuery.of(context).size;
+        final isMobile = screenSize.width < 800;
 
-    const colorSidebar = Color(0xFFE4E1DA);
-    final sidebarWidth = _sidebarCollapsed ? 64.0 : 200.0;
+        final colorSidebar = OhtliSettings.instance.isDarkMode
+            ? const Color(0xFF1E1E22)
+            : const Color(0xFFE4E1DA);
+        final sidebarWidth = _sidebarCollapsed ? 64.0 : 200.0;
 
     // Body content with background lines
     Widget mainBody = Stack(
       children: [
         Positioned.fill(
           child: CustomPaint(
-            painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.4)),
+            painter: RouteBackgroundPainter(
+              OhtliColors.cantera.withOpacity(0.4),
+            ),
           ),
         ),
         SafeArea(
@@ -1220,7 +1445,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 child: Center(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 800),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       transitionBuilder: (child, anim) {
@@ -1235,7 +1463,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           ),
                         );
                       },
-                      child: _buildActiveContent(user, displayName, initials, isMobile),
+                      child: _buildActiveContent(
+                        user,
+                        displayName,
+                        initials,
+                        isMobile,
+                      ),
                     ),
                   ),
                 ),
@@ -1247,10 +1480,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     );
 
     if (isMobile) {
-      return Scaffold(
-        backgroundColor: OhtliColors.cloudDancer,
-        body: mainBody,
-      );
+      return Scaffold(backgroundColor: OhtliColors.cloudDancer, body: mainBody);
     }
 
     // Desktop: Row with persistent sidebar on the left and main configuration screen on the right
@@ -1263,9 +1493,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeInOut,
             width: sidebarWidth,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: colorSidebar,
-              border: Border(
+              border: const Border(
                 right: BorderSide(color: Color(0xFFD1CDC4), width: 1),
               ),
             ),
@@ -1274,59 +1504,67 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               children: [
                 // Top: Isologo or Logo (clickable to return home)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
                   child: Row(
                     children: [
-                      if (_sidebarCollapsed) ...
-                        [
-                          Expanded(
-                            child: Center(
-                              child: GestureDetector(
-                                onTap: widget.onBackToHome,
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.click,
-                                  child: SvgPicture.asset(
-                                    'assets/icon_isologo.svg',
-                                    height: 26,
-                                    fit: BoxFit.contain,
-                                    colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ]
-                      else ...
-                        [
-                          Expanded(
+                      if (_sidebarCollapsed) ...[
+                        Expanded(
+                          child: Center(
                             child: GestureDetector(
                               onTap: widget.onBackToHome,
                               child: MouseRegion(
                                 cursor: SystemMouseCursors.click,
                                 child: SvgPicture.asset(
-                                  'assets/logo.svg',
-                                  height: 22,
+                                  'assets/icon_isologo.svg',
+                                  height: 26,
                                   fit: BoxFit.contain,
-                                  alignment: Alignment.centerLeft,
-                                  colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
+                                  colorFilter: const ColorFilter.mode(
+                                    OhtliColors.stormyTeal,
+                                    BlendMode.srcIn,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          InkWell(
-                            onTap: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: const Icon(
-                                Icons.keyboard_arrow_left_rounded,
-                                size: 18,
-                                color: OhtliColors.stormyTeal,
+                        ),
+                      ] else ...[
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: widget.onBackToHome,
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: SvgPicture.asset(
+                                'assets/logo.svg',
+                                height: 22,
+                                fit: BoxFit.contain,
+                                alignment: Alignment.centerLeft,
+                                colorFilter: const ColorFilter.mode(
+                                  OhtliColors.stormyTeal,
+                                  BlendMode.srcIn,
+                                ),
                               ),
                             ),
                           ),
-                        ],
+                        ),
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => setState(
+                            () => _sidebarCollapsed = !_sidebarCollapsed,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: const Icon(
+                              Icons.keyboard_arrow_left_rounded,
+                              size: 18,
+                              color: OhtliColors.stormyTeal,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1334,7 +1572,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 if (_sidebarCollapsed)
                   Center(
                     child: InkWell(
-                      onTap: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
+                      onTap: () => setState(
+                        () => _sidebarCollapsed = !_sidebarCollapsed,
+                      ),
                       borderRadius: BorderRadius.circular(8),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1352,7 +1592,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 // Bottom: Avatar + Name + Logout (clickable avatar/name returns to configuration dashboard)
                 const Divider(height: 1, color: Color(0xFFD1CDC4)),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
                   child: Row(
                     children: [
                       _buildAvatarWidget(
@@ -1367,53 +1610,54 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           }
                         },
                       ),
-                      if (!_sidebarCollapsed) ...
-                        [
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                if (_currentSection != AccountSection.dashboard) {
-                                  setState(() {
-                                    _currentSection = AccountSection.dashboard;
-                                  });
-                                }
-                              },
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.click,
-                                child: Text(
-                                  displayName.split(' ').first,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                    color: OhtliColors.onyx.withOpacity(0.8),
-                                  ),
+                      if (!_sidebarCollapsed) ...[
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              if (_currentSection != AccountSection.dashboard) {
+                                setState(() {
+                                  _currentSection = AccountSection.dashboard;
+                                });
+                              }
+                            },
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: Text(
+                                displayName.split(' ').first,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.caprasimo(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w400,
+                                  color: OhtliColors.stormyTeal,
+                                  letterSpacing: 0.3,
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringLogout = true),
-                            onExit: (_) => setState(() => _isHoveringLogout = false),
-                            child: InkWell(
-                              onTap: widget.onLogout,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Icon(
-                                  Icons.logout_rounded,
-                                  size: 17,
-                                  color: _isHoveringLogout
-                                      ? OhtliColors.xoconostle
-                                      : OhtliColors.stormyTeal,
-                                ),
+                        ),
+                        const SizedBox(width: 4),
+                        MouseRegion(
+                          onEnter: (_) =>
+                              setState(() => _isHoveringLogout = true),
+                          onExit: (_) =>
+                              setState(() => _isHoveringLogout = false),
+                          child: InkWell(
+                            onTap: widget.onLogout,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.logout_rounded,
+                                size: 17,
+                                color: _isHoveringLogout
+                                    ? OhtliColors.xoconostle
+                                    : OhtliColors.stormyTeal,
                               ),
                             ),
                           ),
-                        ]
-                      else
+                        ),
+                      ] else
                         const SizedBox.shrink(),
                     ],
                   ),
@@ -1423,11 +1667,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           ),
 
           // Main configuration page body
-          Expanded(
-            child: mainBody,
-          ),
+          Expanded(child: mainBody),
         ],
       ),
+    );
+      },
     );
   }
 
@@ -1451,9 +1695,15 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   widget.onBackToHome();
                 }
               },
-              icon: const Icon(Icons.arrow_back_rounded, color: OhtliColors.stormyTeal, size: 20),
+              icon: const Icon(
+                Icons.arrow_back_rounded,
+                color: OhtliColors.stormyTeal,
+                size: 20,
+              ),
               label: Text(
-                _currentSection == AccountSection.dashboard ? 'Volver al Inicio' : 'Atrás',
+                _currentSection == AccountSection.dashboard
+                    ? 'Volver al Inicio'
+                    : 'Atrás',
                 style: GoogleFonts.inter(
                   color: OhtliColors.stormyTeal,
                   fontWeight: FontWeight.w500,
@@ -1461,9 +1711,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 ),
               ),
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 backgroundColor: OhtliColors.cantera.withOpacity(0.3),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
@@ -1502,6 +1757,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         return 'Direcciones';
       case AccountSection.privacy:
         return 'Privacidad';
+      case AccountSection.preferences:
+        return 'Preferencias y Accesibilidad';
       default:
         return '';
     }
@@ -1524,6 +1781,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         return _buildAddressesView();
       case AccountSection.privacy:
         return _buildPrivacyView();
+      case AccountSection.preferences:
+        return _buildPreferencesView();
     }
   }
 
@@ -1571,63 +1830,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               color: OhtliColors.onyx.withOpacity(0.5),
             ),
           ),
-          const SizedBox(height: 10),
-
-          // User ID and Cloud Sync Status Badge
-          if (user != null)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.cantera.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: OhtliColors.cantera.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.fingerprint_rounded, size: 12, color: OhtliColors.stormyTeal),
-                      const SizedBox(width: 4),
-                      Text(
-                        'ID: ${user.uid.substring(0, 8)}...',
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: OhtliColors.onyx.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDEF7EC),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFBCF0DA)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.cloud_done_rounded, size: 12, color: Color(0xFF03543F)),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Nube Sincronizada',
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF03543F),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
           // Grid for Desktop or ListTile list for Mobile
           if (isMobile)
@@ -1643,7 +1846,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               width: 200,
               child: OutlinedButton.icon(
                 onPressed: widget.onLogout,
-                icon: const Icon(Icons.logout_rounded, size: 18, color: OhtliColors.xoconostle),
+                icon: const Icon(
+                  Icons.logout_rounded,
+                  size: 18,
+                  color: OhtliColors.xoconostle,
+                ),
                 label: Text(
                   'Cerrar sesión',
                   style: GoogleFonts.inter(
@@ -1653,9 +1860,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: OhtliColors.xoconostle, width: 1.5),
+                  side: const BorderSide(
+                    color: OhtliColors.xoconostle,
+                    width: 1.5,
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                   backgroundColor: Colors.transparent,
                 ),
               ),
@@ -1680,25 +1892,38 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             title: 'Información Personal',
             description: 'Datos personales y de contacto proporcionados.',
             icon: Icons.person_outline_rounded,
-            onTap: () => setState(() => _currentSection = AccountSection.personalInfo),
+            onTap: () =>
+                setState(() => _currentSection = AccountSection.personalInfo),
           ),
           _DashboardCard(
             title: 'Seguridad',
             description: 'Gestiona la seguridad y contraseña de tu cuenta.',
             icon: Icons.security_rounded,
-            onTap: () => setState(() => _currentSection = AccountSection.security),
+            onTap: () =>
+                setState(() => _currentSection = AccountSection.security),
           ),
           _DashboardCard(
             title: 'Direcciones',
             description: 'Direcciones guardadas para facturación y envíos.',
             icon: Icons.location_on_outlined,
-            onTap: () => setState(() => _currentSection = AccountSection.addresses),
+            onTap: () =>
+                setState(() => _currentSection = AccountSection.addresses),
           ),
           _DashboardCard(
             title: 'Privacidad',
-            description: 'Control sobre tus preferencias y el uso de tus datos.',
+            description:
+                'Control sobre tus preferencias y el uso de tus datos.',
             icon: Icons.privacy_tip_outlined,
-            onTap: () => setState(() => _currentSection = AccountSection.privacy),
+            onTap: () =>
+                setState(() => _currentSection = AccountSection.privacy),
+          ),
+          _DashboardCard(
+            title: 'Preferencias y Accesibilidad',
+            description:
+                'Ajusta el tema visual, colores y tamaño de la letra.',
+            icon: Icons.accessibility_new_rounded,
+            onTap: () =>
+                setState(() => _currentSection = AccountSection.preferences),
           ),
         ],
       ),
@@ -1712,25 +1937,34 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         _buildMobileListTile(
           title: 'Información Personal',
           icon: Icons.person_outline_rounded,
-          onTap: () => setState(() => _currentSection = AccountSection.personalInfo),
+          onTap: () =>
+              setState(() => _currentSection = AccountSection.personalInfo),
         ),
         const SizedBox(height: 12),
         _buildMobileListTile(
           title: 'Seguridad',
           icon: Icons.security_rounded,
-          onTap: () => setState(() => _currentSection = AccountSection.security),
+          onTap: () =>
+              setState(() => _currentSection = AccountSection.security),
         ),
         const SizedBox(height: 12),
         _buildMobileListTile(
           title: 'Direcciones',
           icon: Icons.location_on_outlined,
-          onTap: () => setState(() => _currentSection = AccountSection.addresses),
+          onTap: () =>
+              setState(() => _currentSection = AccountSection.addresses),
         ),
         const SizedBox(height: 12),
         _buildMobileListTile(
           title: 'Privacidad',
           icon: Icons.privacy_tip_outlined,
           onTap: () => setState(() => _currentSection = AccountSection.privacy),
+        ),
+        const SizedBox(height: 12),
+        _buildMobileListTile(
+          title: 'Preferencias y Accesibilidad',
+          icon: Icons.accessibility_new_rounded,
+          onTap: () => setState(() => _currentSection = AccountSection.preferences),
         ),
       ],
     );
@@ -1742,7 +1976,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: const Color(0xFFDCD8CF),
+      color: OhtliColors.inputBg,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -1763,7 +1997,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: OhtliColors.stormyTeal, size: 20),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: OhtliColors.stormyTeal,
+                size: 20,
+              ),
             ],
           ),
         ),
@@ -1775,7 +2013,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   Widget _buildPersonalInfoForm(User? user) {
     return Card(
       elevation: 0,
-      color: const Color(0xFFDCD8CF),
+      color: OhtliColors.inputBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -1799,18 +2037,35 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 TextFormField(
                   initialValue: user?.email ?? '',
                   readOnly: true,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6), fontSize: 14),
+                  style: GoogleFonts.inter(
+                    color: OhtliColors.onyx.withOpacity(0.6),
+                    fontSize: 14,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'Correo Electrónico (No editable)',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                    prefixIcon: const Icon(Icons.email_outlined, color: OhtliColors.stormyTeal, size: 20),
+                    labelStyle: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.email_outlined,
+                      color: OhtliColors.stormyTeal,
+                      size: 20,
+                    ),
                     suffixIcon: Tooltip(
-                      message: 'El correo electrónico es el identificador principal.',
-                      child: Icon(Icons.info_outline_rounded, color: OhtliColors.onyx.withOpacity(0.4), size: 18),
+                      message:
+                          'El correo electrónico es el identificador principal.',
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        color: OhtliColors.onyx.withOpacity(0.4),
+                        size: 18,
+                      ),
                     ),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer.withOpacity(0.5),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1818,15 +2073,29 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 // Nombres
                 TextFormField(
                   controller: _firstNameController,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                  validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa tus nombres' : null,
+                  style: GoogleFonts.inter(
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Ingresa tus nombres'
+                      : null,
                   decoration: InputDecoration(
                     labelText: 'Nombres',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                    prefixIcon: const Icon(Icons.person_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
+                    labelStyle: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.person_outline_rounded,
+                      color: OhtliColors.stormyTeal,
+                      size: 20,
+                    ),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1834,15 +2103,29 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 // Apellidos
                 TextFormField(
                   controller: _lastNameController,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                  validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa tus apellidos' : null,
+                  style: GoogleFonts.inter(
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Ingresa tus apellidos'
+                      : null,
                   decoration: InputDecoration(
                     labelText: 'Apellidos',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                    prefixIcon: const Icon(Icons.person_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
+                    labelStyle: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.person_outline_rounded,
+                      color: OhtliColors.stormyTeal,
+                      size: 20,
+                    ),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1851,14 +2134,26 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 TextFormField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
+                  style: GoogleFonts.inter(
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'Número Telefónico',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                    prefixIcon: const Icon(Icons.phone_outlined, color: OhtliColors.stormyTeal, size: 20),
+                    labelStyle: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.phone_outlined,
+                      color: OhtliColors.stormyTeal,
+                      size: 20,
+                    ),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 28),
@@ -1868,8 +2163,15 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: () => setState(() => _currentSection = AccountSection.dashboard),
-                        child: Text('Cancelar', style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6))),
+                        onPressed: () => setState(
+                          () => _currentSection = AccountSection.dashboard,
+                        ),
+                        child: Text(
+                          'Cancelar',
+                          style: GoogleFonts.inter(
+                            color: OhtliColors.onyx.withOpacity(0.6),
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1879,13 +2181,27 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: OhtliColors.stormyTeal,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           elevation: 0,
                         ),
                         child: _isSavingProfile
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : Text('Guardar', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                'Guardar',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
                   ],
@@ -1902,7 +2218,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   Widget _buildSecurityForm() {
     return Card(
       elevation: 0,
-      color: const Color(0xFFDCD8CF),
+      color: OhtliColors.inputBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -1934,19 +2250,39 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 TextFormField(
                   controller: _currentPasswordController,
                   obscureText: _obscureCurrent,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                  validator: (value) => value == null || value.isEmpty ? 'Ingresa tu contraseña actual' : null,
+                  style: GoogleFonts.inter(
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
+                  validator: (value) => value == null || value.isEmpty
+                      ? 'Ingresa tu contraseña actual'
+                      : null,
                   decoration: InputDecoration(
                     labelText: 'Contraseña Actual',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
+                    labelStyle: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.lock_outline_rounded,
+                      color: OhtliColors.stormyTeal,
+                      size: 20,
+                    ),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureCurrent ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 18),
-                      onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
+                      icon: Icon(
+                        _obscureCurrent
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        size: 18,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureCurrent = !_obscureCurrent),
                     ),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1955,23 +2291,43 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 TextFormField(
                   controller: _newPasswordController,
                   obscureText: _obscureNew,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
+                  style: GoogleFonts.inter(
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) return 'Ingresa la nueva contraseña';
-                    if (value.length < 6) return 'Debe tener al menos 6 caracteres';
+                    if (value == null || value.isEmpty)
+                      return 'Ingresa la nueva contraseña';
+                    if (value.length < 6)
+                      return 'Debe tener al menos 6 caracteres';
                     return null;
                   },
                   decoration: InputDecoration(
                     labelText: 'Nueva Contraseña',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                    prefixIcon: const Icon(Icons.lock_rounded, color: OhtliColors.stormyTeal, size: 20),
+                    labelStyle: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.lock_rounded,
+                      color: OhtliColors.stormyTeal,
+                      size: 20,
+                    ),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureNew ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 18),
-                      onPressed: () => setState(() => _obscureNew = !_obscureNew),
+                      icon: Icon(
+                        _obscureNew
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        size: 18,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureNew = !_obscureNew),
                     ),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1980,19 +2336,39 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirm,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                  validator: (value) => value == null || value.isEmpty ? 'Confirma la nueva contraseña' : null,
+                  style: GoogleFonts.inter(
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
+                  validator: (value) => value == null || value.isEmpty
+                      ? 'Confirma la nueva contraseña'
+                      : null,
                   decoration: InputDecoration(
                     labelText: 'Confirmar Nueva Contraseña',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
-                    prefixIcon: const Icon(Icons.lock_rounded, color: OhtliColors.stormyTeal, size: 20),
+                    labelStyle: GoogleFonts.inter(
+                      color: OhtliColors.onyx.withOpacity(0.5),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.lock_rounded,
+                      color: OhtliColors.stormyTeal,
+                      size: 20,
+                    ),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureConfirm ? Icons.visibility_rounded : Icons.visibility_off_rounded, size: 18),
-                      onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        size: 18,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 28),
@@ -2002,8 +2378,15 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: () => setState(() => _currentSection = AccountSection.dashboard),
-                        child: Text('Cancelar', style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6))),
+                        onPressed: () => setState(
+                          () => _currentSection = AccountSection.dashboard,
+                        ),
+                        child: Text(
+                          'Cancelar',
+                          style: GoogleFonts.inter(
+                            color: OhtliColors.onyx.withOpacity(0.6),
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -2013,13 +2396,27 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: OhtliColors.stormyTeal,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           elevation: 0,
                         ),
                         child: _isUpdatingPassword
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : Text('Actualizar', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                'Actualizar',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
                   ],
@@ -2034,12 +2431,18 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
   IconData _getCategoryIcon(String? category) {
     switch (category?.trim().toLowerCase()) {
-      case 'hogar': return Icons.home_rounded;
-      case 'hotel': return Icons.hotel_rounded;
-      case 'renta en app': return Icons.vpn_key_rounded;
-      case 'familiar': return Icons.family_restroom_rounded;
-      case 'amigos': return Icons.group_rounded;
-      default: return Icons.location_on_rounded;
+      case 'hogar':
+        return Icons.home_rounded;
+      case 'hotel':
+        return Icons.hotel_rounded;
+      case 'renta en app':
+        return Icons.vpn_key_rounded;
+      case 'familiar':
+        return Icons.family_restroom_rounded;
+      case 'amigos':
+        return Icons.group_rounded;
+      default:
+        return Icons.location_on_rounded;
     }
   }
 
@@ -2053,8 +2456,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         }
         return Card(
           elevation: 0,
-          color: const Color(0xFFDCD8CF),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          color: OhtliColors.inputBg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: const Padding(
             padding: EdgeInsets.all(40),
             child: Center(
@@ -2065,20 +2470,29 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       }
 
       return address_picker.AddressPickerWidget(
-        initialAddress: _editingAddressIndex == null ? null : _addresses[_editingAddressIndex!],
-        existingNames: _addresses
+        initialAddress: _editingAddressIndex == null
+            ? null
+            : _addresses[_editingAddressIndex!],
+        existingNames: _activeAddresses
             .asMap()
             .entries
-            .where((entry) => _editingAddressIndex == null || entry.key != _editingAddressIndex)
+            .where(
+              (entry) =>
+                  _editingAddressIndex == null ||
+                  entry.key != _editingAddressIndex,
+            )
             .map((entry) => entry.value['customName'] as String? ?? '')
             .where((name) => name.isNotEmpty)
             .toList(),
         onSave: (addressData) {
           setState(() {
+            addressData['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
             if (_editingAddressIndex == null) {
-              final String id = 'addr_${DateTime.now().millisecondsSinceEpoch}_${addressData['street'].hashCode}';
+              final String id =
+                  'addr_${DateTime.now().millisecondsSinceEpoch}_${addressData['street'].hashCode}';
               addressData['id'] = id;
-              addressData['isOffline'] = true; // Mark as pending offline addition
+              addressData['isOffline'] =
+                  true; // Mark as pending offline addition
               _addresses.add(addressData);
             } else {
               final oldAddress = _addresses[_editingAddressIndex!];
@@ -2112,7 +2526,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
     return Card(
       elevation: 0,
-      color: const Color(0xFFDCD8CF),
+      color: OhtliColors.inputBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -2138,13 +2552,21 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     });
                   },
                   icon: const Icon(Icons.add, size: 16),
-                  label: Text('Agregar', style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
+                  label: Text(
+                    'Agregar',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: OhtliColors.stormyTeal,
                     foregroundColor: Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                   ),
                 ),
               ],
@@ -2152,12 +2574,16 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             const SizedBox(height: 20),
 
             Expanded(
-              child: _addresses.isEmpty
+              child: _activeAddresses.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.location_off_outlined, color: OhtliColors.onyx.withOpacity(0.2), size: 48),
+                          Icon(
+                            Icons.location_off_outlined,
+                            color: OhtliColors.onyx.withOpacity(0.2),
+                            size: 48,
+                          ),
                           const SizedBox(height: 12),
                           Text(
                             'No tienes direcciones guardadas.',
@@ -2178,14 +2604,20 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ),
                     )
                   : ListView.builder(
-                      itemCount: _addresses.length,
+                      itemCount: _activeAddresses.length,
                       itemBuilder: (context, index) {
-                        final addr = _addresses[index];
-                        final addressStr = "${addr['street'] ?? ''}, ${addr['suburb'] ?? ''}, C.P. ${addr['zip'] ?? ''}, ${addr['city'] ?? ''}, ${addr['state'] ?? ''}, ${addr['country'] ?? ''}";
-                        
-                        final hasCustomName = addr['customName'] != null && (addr['customName'] as String).trim().isNotEmpty;
-                        final displayTitle = hasCustomName ? addr['customName'] as String : addr['street'] ?? 'Dirección';
-                        
+                        final activeAddrs = _activeAddresses;
+                        final addr = activeAddrs[index];
+                        final addressStr =
+                            "${addr['street'] ?? ''}, ${addr['suburb'] ?? ''}, C.P. ${addr['zip'] ?? ''}, ${addr['city'] ?? ''}, ${addr['state'] ?? ''}, ${addr['country'] ?? ''}";
+
+                        final hasCustomName =
+                            addr['customName'] != null &&
+                            (addr['customName'] as String).trim().isNotEmpty;
+                        final displayTitle = hasCustomName
+                            ? addr['customName'] as String
+                            : addr['street'] ?? 'Dirección';
+
                         final category = addr['category'] as String? ?? 'Otro';
                         final icon = _getCategoryIcon(category);
 
@@ -2193,31 +2625,49 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           color: OhtliColors.cloudDancer,
                           elevation: 0,
                           margin: const EdgeInsets.only(bottom: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             leading: Container(
                               padding: const EdgeInsets.all(10),
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Color(0xFFDCD8CF),
+                                color: OhtliColors.inputBg,
                               ),
-                              child: Icon(icon, color: OhtliColors.stormyTeal, size: 20),
+                              child: Icon(
+                                icon,
+                                color: OhtliColors.stormyTeal,
+                                size: 20,
+                              ),
                             ),
                             title: Row(
                               children: [
                                 Expanded(
                                   child: Text(
                                     displayTitle,
-                                    style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx, fontSize: 14.5),
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                      color: OhtliColors.onyx,
+                                      fontSize: 14.5,
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: OhtliColors.stormyTeal.withOpacity(0.09),
+                                    color: OhtliColors.stormyTeal.withOpacity(
+                                      0.09,
+                                    ),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Text(
@@ -2234,41 +2684,82 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                             subtitle: Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(
-                                hasCustomName ? "${addr['street'] ?? ''}\n$addressStr" : addressStr,
-                                style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withOpacity(0.6), height: 1.3),
+                                hasCustomName
+                                    ? "${addr['street'] ?? ''}\n$addressStr"
+                                    : addressStr,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: OhtliColors.onyx.withOpacity(0.6),
+                                  height: 1.3,
+                                ),
                               ),
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit_rounded, color: OhtliColors.stormyTeal, size: 18),
+                                  icon: const Icon(
+                                    Icons.edit_rounded,
+                                    color: OhtliColors.stormyTeal,
+                                    size: 18,
+                                  ),
                                   onPressed: () {
-                                    setState(() {
-                                      _isEditingAddress = true;
-                                      _editingAddressIndex = index;
-                                    });
+                                    final mainIndex = _addresses.indexWhere(
+                                      (e) =>
+                                          _getAddressId(e) ==
+                                          _getAddressId(addr),
+                                    );
+                                    if (mainIndex >= 0) {
+                                      setState(() {
+                                        _isEditingAddress = true;
+                                        _editingAddressIndex = mainIndex;
+                                      });
+                                    }
                                   },
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline_rounded, color: OhtliColors.xoconostle, size: 18),
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: OhtliColors.xoconostle,
+                                    size: 18,
+                                  ),
                                   onPressed: () {
-                                    final user = FirebaseAuth.instance.currentUser;
-                                    if (user != null) {
-                                      final addr = _addresses[index];
-                                      final addrId = _getAddressId(addr);
-                                      _trackAddressDeletion(user.uid, addrId);
-                                    }
-                                    setState(() {
-                                      _addresses.removeAt(index);
-                                      _saveAddresses();
-                                    });
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Dirección eliminada correctamente.', style: GoogleFonts.inter()),
-                                        backgroundColor: OhtliColors.stormyTeal,
-                                      ),
+                                    final mainIndex = _addresses.indexWhere(
+                                      (e) =>
+                                          _getAddressId(e) ==
+                                          _getAddressId(addr),
                                     );
+                                    if (mainIndex >= 0) {
+                                      final user =
+                                          FirebaseAuth.instance.currentUser;
+                                      if (user != null) {
+                                        _trackAddressDeletion(
+                                          user.uid,
+                                          _getAddressId(addr),
+                                        );
+                                      }
+                                      setState(() {
+                                        final target = _addresses[mainIndex];
+                                        target['isDeleted'] = true;
+                                        target['deletedAt'] = DateTime.now()
+                                            .millisecondsSinceEpoch;
+                                        target['updatedAt'] = DateTime.now()
+                                            .millisecondsSinceEpoch;
+                                        _saveAddresses();
+                                      });
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Dirección eliminada correctamente.',
+                                            style: GoogleFonts.inter(),
+                                          ),
+                                          backgroundColor:
+                                              OhtliColors.stormyTeal,
+                                        ),
+                                      );
+                                    }
                                   },
                                 ),
                               ],
@@ -2290,7 +2781,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   Widget _buildPrivacyView() {
     return Card(
       elevation: 0,
-      color: const Color(0xFFDCD8CF),
+      color: OhtliColors.inputBg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -2322,11 +2813,18 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   'Compartir datos de viaje',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx, fontSize: 14),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
                 ),
                 subtitle: Text(
                   'Permite a Ohtli utilizar tu historial para sugerirte mejores rutas en base a tendencias de viaje.',
-                  style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withOpacity(0.55)),
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: OhtliColors.onyx.withOpacity(0.55),
+                  ),
                 ),
                 value: _shareTravelData,
                 onChanged: (val) {
@@ -2344,11 +2842,18 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   'Recibir notificaciones',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx, fontSize: 14),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
                 ),
                 subtitle: Text(
                   'Notificar sobre el estado de tu cuenta, actualizaciones de viaje y alertas del clima en CDMX.',
-                  style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withOpacity(0.55)),
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: OhtliColors.onyx.withOpacity(0.55),
+                  ),
                 ),
                 value: _receiveNotifications,
                 onChanged: (val) {
@@ -2366,11 +2871,18 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   'Perfil público',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx, fontSize: 14),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: OhtliColors.onyx,
+                    fontSize: 14,
+                  ),
                 ),
                 subtitle: Text(
                   'Permite que otros viajeros en Ohtli puedan buscar tu nombre y ver tus insignias de viaje alcanzadas.',
-                  style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withOpacity(0.55)),
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: OhtliColors.onyx.withOpacity(0.55),
+                  ),
                 ),
                 value: _publicProfile,
                 onChanged: (val) {
@@ -2388,14 +2900,21 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 decoration: BoxDecoration(
                   color: OhtliColors.xoconostle.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: OhtliColors.xoconostle.withOpacity(0.3), width: 1.2),
+                  border: Border.all(
+                    color: OhtliColors.xoconostle.withOpacity(0.3),
+                    width: 1.2,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, color: OhtliColors.xoconostle, size: 20),
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: OhtliColors.xoconostle,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Zona de Peligro',
@@ -2422,15 +2941,24 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       height: 38,
                       child: TextButton.icon(
                         onPressed: () => _showDeleteAccountDialog(context),
-                        icon: const Icon(Icons.delete_forever_rounded, size: 18, color: Colors.white),
+                        icon: const Icon(
+                          Icons.delete_forever_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
                         label: Text(
                           'Eliminar mi cuenta permanentemente',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 12.5),
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12.5,
+                          ),
                         ),
                         style: TextButton.styleFrom(
                           backgroundColor: OhtliColors.xoconostle,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                       ),
                     ),
@@ -2444,19 +2972,305 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => setState(() => _currentSection = AccountSection.dashboard),
+                  onPressed: () => setState(
+                    () => _currentSection = AccountSection.dashboard,
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: OhtliColors.stormyTeal,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
-                  child: Text('Confirmar y Volver', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'Confirmar y Volver',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreferencesView() {
+    return ListenableBuilder(
+      listenable: OhtliSettings.instance,
+      builder: (context, _) {
+        final settings = OhtliSettings.instance;
+
+        return Card(
+          elevation: 0,
+          color: OhtliColors.inputBg,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Preferencias y Accesibilidad',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: OhtliColors.onyx,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Card for Visual Theme
+                  Text(
+                    'Apariencia (Tema)',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: OhtliColors.onyx,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildThemeCard(
+                          title: 'Claro',
+                          icon: Icons.light_mode_rounded,
+                          isSelected: settings.themeMode == OhtliThemeMode.light,
+                          onTap: () => settings.themeMode = OhtliThemeMode.light,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildThemeCard(
+                          title: 'Oscuro',
+                          icon: Icons.dark_mode_rounded,
+                          isSelected: settings.themeMode == OhtliThemeMode.dark,
+                          onTap: () => settings.themeMode = OhtliThemeMode.dark,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildThemeCard(
+                          title: 'Sistema',
+                          icon: Icons.settings_brightness_rounded,
+                          isSelected: settings.themeMode == OhtliThemeMode.system,
+                          onTap: () => settings.themeMode = OhtliThemeMode.system,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+
+                  // Card for Font Size
+                  Text(
+                    'Tamaño de la Letra',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: OhtliColors.onyx,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ajusta el tamaño del texto para una lectura más cómoda.',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: OhtliColors.onyx.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Column(
+                    children: [
+                      _buildFontSizeTile(
+                        title: 'Pequeño (85%)',
+                        description: 'Ideal para ver más contenido en pantalla.',
+                        isSelected: settings.fontSize == OhtliFontSize.small,
+                        onTap: () => settings.fontSize = OhtliFontSize.small,
+                        sampleStyle: GoogleFonts.inter(fontSize: 11),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildFontSizeTile(
+                        title: 'Medio (100% - Por defecto)',
+                        description: 'Diseño original del sistema.',
+                        isSelected: settings.fontSize == OhtliFontSize.medium,
+                        onTap: () => settings.fontSize = OhtliFontSize.medium,
+                        sampleStyle: GoogleFonts.inter(fontSize: 13),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildFontSizeTile(
+                        title: 'Grande (115%)',
+                        description: 'Mayor visibilidad de los títulos y textos.',
+                        isSelected: settings.fontSize == OhtliFontSize.large,
+                        onTap: () => settings.fontSize = OhtliFontSize.large,
+                        sampleStyle: GoogleFonts.inter(fontSize: 15),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildFontSizeTile(
+                        title: 'Muy Grande (130%)',
+                        description: 'Máxima accesibilidad de lectura.',
+                        isSelected: settings.fontSize == OhtliFontSize.extraLarge,
+                        onTap: () => settings.fontSize = OhtliFontSize.extraLarge,
+                        sampleStyle: GoogleFonts.inter(fontSize: 17),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Confirm and Back Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => setState(
+                        () => _currentSection = AccountSection.dashboard,
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(
+                        'Confirmar y Volver',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildThemeCard({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? OhtliColors.stormyTeal.withOpacity(0.12)
+              : OhtliColors.inputBg.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? OhtliColors.stormyTeal
+                : OhtliColors.cantera.withOpacity(0.4),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 26,
+              color: isSelected
+                  ? OhtliColors.stormyTeal
+                  : OhtliColors.onyx.withOpacity(0.7),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: GoogleFonts.inter(
+                fontSize: 13.5,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? OhtliColors.stormyTeal : OhtliColors.onyx,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFontSizeTile({
+    required String title,
+    required String description,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required TextStyle sampleStyle,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? OhtliColors.stormyTeal.withOpacity(0.08)
+              : OhtliColors.inputBg.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? OhtliColors.stormyTeal
+                : OhtliColors.cantera.withOpacity(0.3),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Radio<bool>(
+              value: true,
+              groupValue: isSelected ? true : false,
+              activeColor: OhtliColors.stormyTeal,
+              onChanged: (_) => onTap(),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      fontSize: 14.5,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: OhtliColors.onyx,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      color: OhtliColors.onyx.withOpacity(0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: OhtliColors.cloudDancer,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: OhtliColors.cantera.withOpacity(0.3)),
+              ),
+              child: Text(
+                'Aa',
+                style: sampleStyle.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: OhtliColors.onyx,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -2499,7 +3313,7 @@ class _DashboardCardState extends State<_DashboardCard> {
           height: 140,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFFDCD8CF),
+            color: OhtliColors.inputBg,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
@@ -2509,7 +3323,8 @@ class _DashboardCardState extends State<_DashboardCard> {
               ),
             ],
           ),
-          transform: Matrix4.identity()..translate(0.0, _isHovered ? -4.0 : 0.0, 0.0),
+          transform: Matrix4.identity()
+            ..translate(0.0, _isHovered ? -4.0 : 0.0, 0.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
