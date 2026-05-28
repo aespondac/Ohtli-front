@@ -78,6 +78,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   // Synchronous loader state for AddressPickerWidget (to avoid browser loading locks)
   bool _isAddressPickerLoaded = true;
   bool _isLoadingAddressPicker = false;
+  StreamSubscription<DocumentSnapshot>? _userDataSubscription;
+  bool _isInitialSyncDone = false;
 
   Future<void> _loadAddressPicker() async {
     // No-op: library is imported synchronously
@@ -163,123 +165,155 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       }
     }
 
-    // 2. Fetch from Cloud Firestore to sync and show latest data (1 unified read)
-    FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((doc) {
-      if (doc.exists) {
-        final data = doc.data();
-        if (data != null) {
-          bool needUpload = false;
-          final Map<String, dynamic> uploadData = {};
+    // 2. Subscribe to real-time updates from Cloud Firestore
+    _userDataSubscription = FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots().listen((doc) {
+      if (!doc.exists) {
+        if (!_isInitialSyncDone) {
+          print("User document does not exist in Firestore. Creating it with local caches...");
+          final Map<String, dynamic> initialData = {
+            'privacy_share': _shareTravelData,
+            'privacy_notifications': _receiveNotifications,
+            'privacy_public': _publicProfile,
+          };
 
-          // A. Sync Photo
-          if (data.containsKey('photoURL')) {
-            final String? remotePhoto = data['photoURL'] as String?;
-            if (remotePhoto != null && remotePhoto.isNotEmpty) {
-              if (mounted) {
-                setState(() {
-                  _localPhotoURL = remotePhoto;
-                });
-                html.window.localStorage['ohtli_profile_pic_${user.uid}'] = remotePhoto;
-              }
-            } else if (localPic != null && localPic.isNotEmpty) {
-              if (localPic.startsWith('data:image') || localPic.startsWith('data:')) {
-                // If it is base64 in local cache, upload to Storage in background (never base64 to Firestore!)
-                _uploadLocalPhotoToFirestore(user.uid, localPic);
-              } else {
-                // Already a URL, safe to sync directly
-                uploadData['photoURL'] = localPic;
-                needUpload = true;
-              }
+          if (localPic != null && localPic.isNotEmpty) {
+            if (localPic.startsWith('data:image') || localPic.startsWith('data:')) {
+              _uploadLocalPhotoToFirestore(user.uid, localPic);
+            } else {
+              initialData['photoURL'] = localPic;
+            }
+          }
+          if (localPhone.isNotEmpty) {
+            initialData['phone'] = localPhone;
+          }
+          if (_addresses.isNotEmpty) {
+            initialData['addresses'] = _addresses;
+          }
+
+          FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+            initialData,
+            SetOptions(merge: true),
+          ).then((_) {
+            print("Successfully initialized user cloud document with local caches.");
+          }).catchError((e) {
+            print("Error initializing user cloud document: $e");
+          });
+          _isInitialSyncDone = true;
+        }
+        return;
+      }
+
+      final data = doc.data();
+      if (data != null) {
+        bool needUpload = false;
+        final Map<String, dynamic> uploadData = {};
+
+        // A. Sync Photo
+        if (data.containsKey('photoURL')) {
+          final String? remotePhoto = data['photoURL'] as String?;
+          if (remotePhoto != null && remotePhoto.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                _localPhotoURL = remotePhoto;
+              });
+              html.window.localStorage['ohtli_profile_pic_${user.uid}'] = remotePhoto;
             }
           } else if (localPic != null && localPic.isNotEmpty) {
             if (localPic.startsWith('data:image') || localPic.startsWith('data:')) {
-              // If it is base64 in local cache, upload to Storage in background (never base64 to Firestore!)
               _uploadLocalPhotoToFirestore(user.uid, localPic);
             } else {
-              // Already a URL, safe to sync directly
               uploadData['photoURL'] = localPic;
               needUpload = true;
             }
           }
+        } else if (localPic != null && localPic.isNotEmpty) {
+          if (localPic.startsWith('data:image') || localPic.startsWith('data:')) {
+            _uploadLocalPhotoToFirestore(user.uid, localPic);
+          } else {
+            uploadData['photoURL'] = localPic;
+            needUpload = true;
+          }
+        }
 
-          // B. Sync Phone
-          if (data.containsKey('phone')) {
-            final String? remotePhone = data['phone'] as String?;
-            if (remotePhone != null && remotePhone.isNotEmpty) {
-              if (mounted) {
-                setState(() {
-                  _phoneController.text = remotePhone;
-                });
-                html.window.localStorage['ohtli_phone_${user.uid}'] = remotePhone;
-              }
-            } else if (localPhone.isNotEmpty) {
-              uploadData['phone'] = localPhone;
-              needUpload = true;
+        // B. Sync Phone
+        if (data.containsKey('phone')) {
+          final String? remotePhone = data['phone'] as String?;
+          if (remotePhone != null && remotePhone.isNotEmpty) {
+            if (mounted) {
+              setState(() {
+                _phoneController.text = remotePhone;
+              });
+              html.window.localStorage['ohtli_phone_${user.uid}'] = remotePhone;
             }
           } else if (localPhone.isNotEmpty) {
             uploadData['phone'] = localPhone;
             needUpload = true;
           }
+        } else if (localPhone.isNotEmpty) {
+          uploadData['phone'] = localPhone;
+          needUpload = true;
+        }
 
-          // C. Sync Privacy Settings
-          if (data.containsKey('privacy_share')) {
-            final bool? remoteShare = data['privacy_share'] as bool?;
-            if (remoteShare != null) {
-              if (mounted) {
-                setState(() {
-                  _shareTravelData = remoteShare;
-                });
-                html.window.localStorage['ohtli_privacy_share_${user.uid}'] = remoteShare.toString();
-              }
-            }
-          } else {
-            uploadData['privacy_share'] = _shareTravelData;
-            needUpload = true;
-          }
-
-          if (data.containsKey('privacy_notifications')) {
-            final bool? remoteNotifications = data['privacy_notifications'] as bool?;
-            if (remoteNotifications != null) {
-              if (mounted) {
-                setState(() {
-                  _receiveNotifications = remoteNotifications;
-                });
-                html.window.localStorage['ohtli_privacy_notifications_${user.uid}'] = remoteNotifications.toString();
-              }
-            }
-          } else {
-            uploadData['privacy_notifications'] = _receiveNotifications;
-            needUpload = true;
-          }
-
-          if (data.containsKey('privacy_public')) {
-            final bool? remotePublic = data['privacy_public'] as bool?;
-            if (remotePublic != null) {
-              if (mounted) {
-                setState(() {
-                  _publicProfile = remotePublic;
-                });
-                html.window.localStorage['ohtli_privacy_public_${user.uid}'] = remotePublic.toString();
-              }
-            }
-          } else {
-            uploadData['privacy_public'] = _publicProfile;
-            needUpload = true;
-          }
-
-          // D. Reconcile Addresses
-          List<Map<String, dynamic>> cloudList = [];
-          if (data.containsKey('addresses')) {
-            final List<dynamic>? remoteList = data['addresses'] as List<dynamic>?;
-            if (remoteList != null) {
-              cloudList = remoteList.map((e) => Map<String, dynamic>.from(e)).toList();
+        // C. Sync Privacy Settings
+        if (data.containsKey('privacy_share')) {
+          final bool? remoteShare = data['privacy_share'] as bool?;
+          if (remoteShare != null) {
+            if (mounted) {
+              setState(() {
+                _shareTravelData = remoteShare;
+              });
+              html.window.localStorage['ohtli_privacy_share_${user.uid}'] = remoteShare.toString();
             }
           }
+        } else {
+          uploadData['privacy_share'] = _shareTravelData;
+          needUpload = true;
+        }
 
+        if (data.containsKey('privacy_notifications')) {
+          final bool? remoteNotifications = data['privacy_notifications'] as bool?;
+          if (remoteNotifications != null) {
+            if (mounted) {
+              setState(() {
+                _receiveNotifications = remoteNotifications;
+              });
+              html.window.localStorage['ohtli_privacy_notifications_${user.uid}'] = remoteNotifications.toString();
+            }
+          }
+        } else {
+          uploadData['privacy_notifications'] = _receiveNotifications;
+          needUpload = true;
+        }
+
+        if (data.containsKey('privacy_public')) {
+          final bool? remotePublic = data['privacy_public'] as bool?;
+          if (remotePublic != null) {
+            if (mounted) {
+              setState(() {
+                _publicProfile = remotePublic;
+              });
+              html.window.localStorage['ohtli_privacy_public_${user.uid}'] = remotePublic.toString();
+            }
+          }
+        } else {
+          uploadData['privacy_public'] = _publicProfile;
+          needUpload = true;
+        }
+
+        // D. Sync / Reconcile Addresses
+        List<Map<String, dynamic>> cloudList = [];
+        if (data.containsKey('addresses')) {
+          final List<dynamic>? remoteList = data['addresses'] as List<dynamic>?;
+          if (remoteList != null) {
+            cloudList = remoteList.map((e) => Map<String, dynamic>.from(e)).toList();
+          }
+        }
+
+        if (!_isInitialSyncDone) {
+          // Reconcile offline additions and deletions only once on first load
           final deletedIds = _getDeletedAddressIds(user.uid);
           final reconciled = _reconcileAddresses(_addresses, cloudList, deletedIds);
 
-          // Only update UI if address lists are actually different
           if (!_areAddressListsEqual(_addresses, reconciled)) {
             if (mounted) {
               setState(() {
@@ -289,55 +323,37 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             }
           }
 
-          // If the cloud has stale data compared to reconciled data (e.g. offline edits/deletions), upload them
           if (!_areAddressListsEqual(cloudList, reconciled)) {
             uploadData['addresses'] = reconciled;
             needUpload = true;
           }
 
-          // Clear local tombstones of deleted address IDs since they are now reconciled
           html.window.localStorage['ohtli_deleted_addresses_${user.uid}'] = json.encode([]);
-
-          // Trigger upload of missing local elements to Firestore
-          if (needUpload && uploadData.isNotEmpty) {
-            FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-              uploadData,
-              SetOptions(merge: true),
-            ).catchError((e) {
-              print("Error syncing local caches to Firestore: $e");
-            });
+          _isInitialSyncDone = true;
+        } else {
+          // Subsequent stream updates: accept the cloud as the absolute source of truth
+          // to guarantee that creations, edits, and deletions on any other device reflect instantly.
+          if (!_areAddressListsEqual(_addresses, cloudList)) {
+            if (mounted) {
+              setState(() {
+                _addresses = cloudList;
+              });
+              html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(_addresses);
+            }
           }
         }
-      } else {
-        // Document does not exist in Firestore! Create it with all local data!
-        print("User document does not exist in Firestore. Creating it with local caches...");
-        final Map<String, dynamic> initialData = {
-          'privacy_share': _shareTravelData,
-          'privacy_notifications': _receiveNotifications,
-          'privacy_public': _publicProfile,
-        };
 
-        if (localPic != null && localPic.isNotEmpty) {
-          initialData['photoURL'] = localPic;
+        if (needUpload && uploadData.isNotEmpty) {
+          FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+            uploadData,
+            SetOptions(merge: true),
+          ).catchError((e) {
+            print("Error syncing local caches to Firestore: $e");
+          });
         }
-        if (localPhone.isNotEmpty) {
-          initialData['phone'] = localPhone;
-        }
-        if (_addresses.isNotEmpty) {
-          initialData['addresses'] = _addresses;
-        }
-
-        FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-          initialData,
-          SetOptions(merge: true),
-        ).then((_) {
-          print("Successfully initialized user cloud document with local caches.");
-        }).catchError((e) {
-          print("Error initializing user cloud document: $e");
-        });
       }
-    }).catchError((e) {
-      print("Error fetching user data from Firestore: $e");
+    }, onError: (e) {
+      print("Error listening to user data Firestore stream: $e");
     });
   }
 
@@ -380,6 +396,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
   @override
   void dispose() {
+    _userDataSubscription?.cancel();
     _firstNameController.dispose();
     _lastNameController.dispose();
     _phoneController.dispose();
@@ -2029,6 +2046,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
       return address_picker.AddressPickerWidget(
         initialAddress: _editingAddressIndex == null ? null : _addresses[_editingAddressIndex!],
+        existingNames: _addresses
+            .asMap()
+            .entries
+            .where((entry) => _editingAddressIndex == null || entry.key != _editingAddressIndex)
+            .map((entry) => entry.value['customName'] as String? ?? '')
+            .where((name) => name.isNotEmpty)
+            .toList(),
         onSave: (addressData) {
           setState(() {
             if (_editingAddressIndex == null) {
@@ -2037,7 +2061,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               _addresses.add(addressData);
             } else {
               final oldAddress = _addresses[_editingAddressIndex!];
-              addressData['id'] = oldAddress['id'] ?? 'addr_${DateTime.now().millisecondsSinceEpoch}_${addressData['street'].hashCode}';
+              addressData['id'] = oldAddress['id'] ?? _getAddressId(oldAddress);
               _addresses[_editingAddressIndex!] = addressData;
             }
             _saveAddresses();

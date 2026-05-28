@@ -20,12 +20,14 @@ class AddressPickerWidget extends StatefulWidget {
   final Map<String, dynamic>? initialAddress;
   final ValueChanged<Map<String, dynamic>> onSave;
   final VoidCallback onCancel;
+  final List<String> existingNames;
 
   const AddressPickerWidget({
     super.key,
     this.initialAddress,
     required this.onSave,
     required this.onCancel,
+    this.existingNames = const [],
   });
 
   @override
@@ -220,7 +222,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
             if (lat != null && lng != null && (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted)) {
               setState(() {
-                _cdmxBoundaryError = "📍 El pin del mapa está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
+                _cdmxBoundaryError = "El pin del mapa está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
                 _streetController.text = '';
                 _suburbController.text = '';
                 _zipController.text = '';
@@ -624,7 +626,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
                 if (lat != null && lng != null && (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted)) {
                   setState(() {
-                    _cdmxBoundaryError = "📍 La dirección seleccionada está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
+                    _cdmxBoundaryError = "La dirección seleccionada está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
                     _streetController.text = '';
                     _suburbController.text = '';
                     _zipController.text = '';
@@ -809,10 +811,17 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                 ),
                 const SizedBox(height: 20),
 
-                // Nombre Personalizado
                 TextFormField(
                   controller: _customNameController,
                   style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return null;
+                    final trimmed = value.trim().toLowerCase();
+                    if (widget.existingNames.map((e) => e.toLowerCase()).contains(trimmed)) {
+                      return 'Ya existe una dirección con este nombre';
+                    }
+                    return null;
+                  },
                   decoration: InputDecoration(
                     labelText: 'Nombre Personalizado (ej. Mi Casa, Oficina)',
                     labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
@@ -1116,7 +1125,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
                           if (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted) {
                             setState(() {
-                              _cdmxBoundaryError = "📍 Por favor selecciona una dirección o mueve el pin dentro de la Ciudad de México.";
+                              _cdmxBoundaryError = "Por favor selecciona una dirección o mueve el pin dentro de la Ciudad de México.";
                             });
                             return;
                           }
