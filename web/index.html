@@ -80,6 +80,29 @@
   </div>
   
   <script>
+    // Limpieza forzada de Service Workers y Caché local para evitar bloqueos de PWA/caché en dominios personalizados
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+          console.log("Service Worker desregistrado para forzar actualización.");
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        for (let name of names) {
+          caches.delete(name);
+          console.log("Caché PWA eliminada: " + name);
+        }
+      });
+    }
+
+    // Forzar renderizado HTML para solucionar CORS de imágenes de Firebase Storage en navegadores móviles/web (Flutter 3.22+)
+    window.flutterConfiguration = {
+      renderer: "html"
+    };
+
     // Escuchar el evento oficial del motor de Flutter cuando renderiza el primer frame
     document.addEventListener("flutter-first-frame", function() {
       var loadingEl = document.getElementById('loading-indicator');
