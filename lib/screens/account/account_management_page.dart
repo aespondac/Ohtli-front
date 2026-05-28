@@ -416,9 +416,24 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
     // 2. Write to Cloud Firestore to sync across all devices — await to detect errors
     try {
+      // Strip 'isOffline' before writing to Firestore
+      final List<Map<String, dynamic>> uploadList = _addresses.map((e) {
+        final Map<String, dynamic> copy = Map<String, dynamic>.from(e);
+        copy.remove('isOffline');
+        return copy;
+      }).toList();
+
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'addresses': _addresses,
+        'addresses': uploadList,
       }, SetOptions(merge: true));
+
+      // Successfully wrote to Firestore! Clean 'isOffline' locally too
+      setState(() {
+        for (final addr in _addresses) {
+          addr.remove('isOffline');
+        }
+      });
+      html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(_addresses);
     } catch (e) {
       print("Error saving addresses to Firestore: $e");
       if (mounted) {
@@ -494,8 +509,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         // If present in both, prefer the cloud data as the latest truth
         merged.add(cloudMap[id]!);
       } else {
-        // Local-only addition (added while offline), keep it to upload it
-        merged.add(localAddr);
+        // Local-only. Keep it ONLY if it is explicitly marked as a pending offline change!
+        // Otherwise, it was deleted in the cloud on another device, so discard it.
+        if (localAddr['isOffline'] == true) {
+          merged.add(localAddr);
+        } else {
+          print("Discarding stale cached address deleted in cloud: $id");
+        }
       }
     }
 
@@ -2058,10 +2078,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             if (_editingAddressIndex == null) {
               final String id = 'addr_${DateTime.now().millisecondsSinceEpoch}_${addressData['street'].hashCode}';
               addressData['id'] = id;
+              addressData['isOffline'] = true; // Mark as pending offline addition
               _addresses.add(addressData);
             } else {
               final oldAddress = _addresses[_editingAddressIndex!];
               addressData['id'] = oldAddress['id'] ?? _getAddressId(oldAddress);
+              addressData['isOffline'] = true; // Mark as pending offline edit
               _addresses[_editingAddressIndex!] = addressData;
             }
             _saveAddresses();
