@@ -183,9 +183,23 @@ class _HomePageState extends State<HomePage> {
     return mainAvatar;
   }
 
+  Widget _buildItemIcon(dynamic iconData, Color color) {
+    if (iconData is IconData) {
+      return Icon(iconData, color: color, size: 20);
+    } else if (iconData is String) {
+      return SvgPicture.asset(
+        iconData,
+        width: 20,
+        height: 20,
+        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   Widget _buildSidebarItem({
-    required IconData icon,
-    required IconData activeIcon,
+    required dynamic icon,
+    required dynamic activeIcon,
     required String label,
     required int index,
     required bool isHovered,
@@ -213,11 +227,7 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         mainAxisAlignment: isCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
-          Icon(
-            isActive ? activeIcon : icon,
-            color: itemColor,
-            size: 20,
-          ),
+          _buildItemIcon(isActive ? activeIcon : icon, itemColor),
           if (!isCollapsed) ...[
             const SizedBox(width: 12),
             Expanded(
@@ -286,7 +296,9 @@ class _HomePageState extends State<HomePage> {
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 800;
 
-    const colorSidebar = Color(0xFFE4E1DA);
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final colorSidebar = isDark ? const Color(0xFF1E1E22) : const Color(0xFFE4E1DA);
+    final colorBorder = isDark ? const Color(0xFF2C2C32) : const Color(0xFFD1CDC4);
 
     if (isMobile) {
       return Scaffold(
@@ -322,16 +334,32 @@ class _HomePageState extends State<HomePage> {
           onTap: (index) => setState(() => _currentIndex = index),
           backgroundColor: colorSidebar,
           selectedItemColor: OhtliColors.stormyTeal,
-          unselectedItemColor: OhtliColors.onyx.withOpacity(0.4),
+          unselectedItemColor: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
           selectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 11),
           unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 11),
-          items: const [
+          items: [
             BottomNavigationBarItem(
-              icon: Icon(Icons.explore_outlined),
-              activeIcon: Icon(Icons.explore_rounded),
+              icon: SvgPicture.asset(
+                'assets/icon_isologo.svg',
+                width: 20,
+                height: 20,
+                colorFilter: ColorFilter.mode(
+                  isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
+                  BlendMode.srcIn,
+                ),
+              ),
+              activeIcon: SvgPicture.asset(
+                'assets/icon_isologo.svg',
+                width: 20,
+                height: 20,
+                colorFilter: ColorFilter.mode(
+                  OhtliColors.stormyTeal,
+                  BlendMode.srcIn,
+                ),
+              ),
               label: 'Inicio',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.map_outlined),
               activeIcon: Icon(Icons.map_rounded),
               label: 'Mis Viajes',
@@ -353,10 +381,10 @@ class _HomePageState extends State<HomePage> {
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeInOut,
             width: sidebarWidth,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: colorSidebar,
               border: Border(
-                right: BorderSide(color: Color(0xFFD1CDC4), width: 1),
+                right: BorderSide(color: colorBorder, width: 1),
               ),
             ),
             child: Column(
@@ -428,8 +456,8 @@ class _HomePageState extends State<HomePage> {
 
                 const SizedBox(height: 16),
                 _buildSidebarItem(
-                  icon: Icons.explore_outlined,
-                  activeIcon: Icons.explore_rounded,
+                  icon: 'assets/icon_isologo.svg',
+                  activeIcon: 'assets/icon_isologo.svg',
                   label: 'Inicio',
                   index: 0,
                   isHovered: _isHoveringInicio,
@@ -446,7 +474,7 @@ class _HomePageState extends State<HomePage> {
                 const Spacer(),
 
                 // Bottom: Avatar + Name + Logout (clickable avatar opens panel)
-                const Divider(height: 1, color: Color(0xFFD1CDC4)),
+                Divider(height: 1, color: colorBorder),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   child: Row(

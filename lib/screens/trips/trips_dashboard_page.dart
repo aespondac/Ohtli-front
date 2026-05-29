@@ -1,6 +1,11 @@
+import 'dart:convert';
+import 'dart:html' as html;
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/colors.dart';
 import '../../models/trip_model.dart';
@@ -19,25 +24,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   final TripService _tripService = TripService();
   final String? _userId = FirebaseAuth.instance.currentUser?.uid;
 
-  // Curated Unsplash images of Mexico City to offer as high-quality cover defaults
-  final List<Map<String, String>> _curatedCovers = [
-    {
-      'name': 'Bellas Artes',
-      'url': 'https://images.unsplash.com/photo-1585464297241-9342febb879f?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      'name': 'El Ángel',
-      'url': 'https://images.unsplash.com/photo-1512813583145-baaa340ef29f?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      'name': 'Chapultepec',
-      'url': 'https://images.unsplash.com/photo-1599839575945-a9e5af0c3fa5?w=600&auto=format&fit=crop&q=80',
-    },
-    {
-      'name': 'Paseo de la Reforma',
-      'url': 'https://images.unsplash.com/photo-1518156677180-95a2893f3e9f?w=600&auto=format&fit=crop&q=80',
-    },
-  ];
+
 
   void _showCreateTripDialog(BuildContext context) {
     if (_userId == null) return;
@@ -45,9 +32,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     final formKey = GlobalKey<FormState>();
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
-    String selectedVisibility = 'private'; // default
-    String selectedStatus = 'draft'; // default to Plan (borrador)
-    String selectedCoverUrl = _curatedCovers[0]['url']!; // default to first cover
+    String? selectedCoverBase64;
+    bool isSaving = false;
 
     showDialog(
       context: context,
@@ -55,8 +41,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final isDark = OhtliSettings.instance.isDarkMode;
-
             return AlertDialog(
               backgroundColor: OhtliColors.cloudDancer,
               shape: RoundedRectangleBorder(
@@ -73,11 +57,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       color: OhtliColors.onyx,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    color: OhtliColors.onyx.withOpacity(0.6),
-                  ),
+                  if (!isSaving)
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      color: OhtliColors.onyx.withOpacity(0.6),
+                    ),
                 ],
               ),
               content: SizedBox(
@@ -93,6 +78,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                         TextFormField(
                           controller: titleController,
                           maxLength: 50,
+                          enabled: !isSaving,
                           style: GoogleFonts.inter(color: OhtliColors.onyx),
                           decoration: InputDecoration(
                             labelText: 'Título del viaje *',
@@ -124,6 +110,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           controller: descriptionController,
                           maxLength: 150,
                           maxLines: 2,
+                          enabled: !isSaving,
                           style: GoogleFonts.inter(color: OhtliColors.onyx),
                           decoration: InputDecoration(
                             labelText: 'Descripción corta',
@@ -146,7 +133,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
                         // Cover Selector Title
                         Text(
-                          'Selecciona una portada para tu camino:',
+                          'Portada del viaje',
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -155,158 +142,100 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                         ),
                         const SizedBox(height: 8),
 
-                        // Grid/Row of Curated Covers
-                        SizedBox(
-                          height: 75,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _curatedCovers.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 8),
-                            itemBuilder: (context, index) {
-                              final item = _curatedCovers[index];
-                              final isSelected = selectedCoverUrl == item['url'];
-                              return GestureDetector(
-                                onTap: () => setDialogState(() => selectedCoverUrl = item['url']!),
-                                child: Container(
-                                  width: 100,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? OhtliColors.stormyTeal
-                                          : OhtliColors.cantera.withOpacity(0.4),
-                                      width: isSelected ? 3 : 1,
-                                    ),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
+                        // Custom Cover Image Uploader Dropzone
+                        GestureDetector(
+                          onTap: isSaving
+                              ? null
+                              : () {
+                                  if (kIsWeb) {
+                                    final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
+                                    uploadInput.click();
+                                    uploadInput.onChange.listen((e) {
+                                      final files = uploadInput.files;
+                                      if (files != null && files.isNotEmpty) {
+                                        final file = files[0];
+                                        final reader = html.FileReader();
+                                        reader.onLoadEnd.listen((e) {
+                                          final dynamic result = reader.result;
+                                          if (result is String && result.isNotEmpty) {
+                                            setDialogState(() {
+                                              selectedCoverBase64 = result;
+                                            });
+                                          }
+                                        });
+                                        reader.readAsDataUrl(file);
+                                      }
+                                    });
+                                  } else {
+                                    _showComingSoonToast(
+                                      context,
+                                      'La selección de portadas locales en dispositivos nativos se habilitará en la siguiente fase.',
+                                    );
+                                  }
+                                },
+                          child: Container(
+                            width: double.infinity,
+                            height: 180,
+                            decoration: BoxDecoration(
+                              color: OhtliColors.inputBg.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: OhtliColors.cantera.withOpacity(0.6),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: selectedCoverBase64 != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(18),
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        Image.network(
-                                          item['url']!,
+                                        Image.memory(
+                                          base64Decode(selectedCoverBase64!.split(',').last),
                                           fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => Container(
-                                            color: OhtliColors.cantera,
-                                            child: const Icon(Icons.broken_image_rounded, size: 16),
-                                          ),
                                         ),
-                                        Container(
-                                          color: Colors.black.withOpacity(isSelected ? 0.1 : 0.3),
-                                        ),
-                                        Center(
-                                          child: Text(
-                                            item['name']!,
-                                            textAlign: TextAlign.center,
-                                            style: GoogleFonts.inter(
-                                              color: Colors.white,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              shadows: [
-                                                const Shadow(
-                                                  blurRadius: 4,
-                                                  color: Colors.black54,
-                                                  offset: Offset(0, 1),
-                                                ),
-                                              ],
+                                        Positioned(
+                                          right: 12,
+                                          bottom: 12,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withOpacity(0.6),
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              'Cambiar portada',
+                                              style: GoogleFonts.inter(
+                                                color: Colors.white,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
+                                  )
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.add_photo_alternate_outlined,
+                                        color: OhtliColors.onyx.withOpacity(0.4),
+                                        size: 36,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Sube una imagen de portada',
+                                        style: GoogleFonts.inter(
+                                          color: OhtliColors.onyx.withOpacity(0.5),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              );
-                            },
                           ),
-                        ),
-                        const SizedBox(height: 18),
-
-                        // Visibility & Status Row
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Visibilidad:',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: OhtliColors.onyx.withOpacity(0.7),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  DropdownButtonFormField<String>(
-                                    value: selectedVisibility,
-                                    dropdownColor: isDark ? const Color(0xFF25252A) : Colors.white,
-                                    decoration: InputDecoration(
-                                      filled: true,
-                                      fillColor: OhtliColors.inputBg,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                    ),
-                                    items: [
-                                      DropdownMenuItem(
-                                        value: 'private',
-                                        child: Text('Privado', style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx)),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'public',
-                                        child: Text('Público', style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx)),
-                                      ),
-                                    ],
-                                    onChanged: (val) => setDialogState(() => selectedVisibility = val ?? 'private'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Guardar como:',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: OhtliColors.onyx.withOpacity(0.7),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  DropdownButtonFormField<String>(
-                                    value: selectedStatus,
-                                    dropdownColor: isDark ? const Color(0xFF25252A) : Colors.white,
-                                    decoration: InputDecoration(
-                                      filled: true,
-                                      fillColor: OhtliColors.inputBg,
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide.none,
-                                      ),
-                                    ),
-                                    items: [
-                                      DropdownMenuItem(
-                                        value: 'draft',
-                                        child: Text('Plan (Borrador)', style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx)),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: 'published',
-                                        child: Text('Publicado', style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx)),
-                                      ),
-                                    ],
-                                    onChanged: (val) => setDialogState(() => selectedStatus = val ?? 'draft'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
@@ -314,89 +243,127 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 ),
               ),
               actionsPadding: const EdgeInsets.only(right: 24, bottom: 24),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text(
-                    'Cancelar',
-                    style: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.6),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (formKey.currentState!.validate()) {
-                      // Show loading on original screen
-                      Navigator.of(dialogContext).pop();
-                      
-                      final tripId = const Uuid().v4();
-                      final now = DateTime.now();
-                      
-                      final newTrip = Trip(
-                        id: tripId,
-                        userId: _userId,
-                        title: titleController.text.trim(),
-                        description: descriptionController.text.trim(),
-                        coverUrl: selectedCoverUrl,
-                        status: selectedStatus,
-                        visibility: selectedVisibility,
-                        createdAt: now,
-                        updatedAt: now,
-                      );
+              actions: isSaving
+                  ? [
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: 16),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
+                          ),
+                        ),
+                      )
+                    ]
+                  : [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: Text(
+                          'Cancelar',
+                          style: GoogleFonts.inter(
+                            color: OhtliColors.onyx.withOpacity(0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          if (formKey.currentState!.validate()) {
+                            setDialogState(() {
+                              isSaving = true;
+                            });
 
-                      try {
-                        await _tripService.createTrip(_userId, newTrip);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                selectedStatus == 'draft' 
-                                    ? 'Plan creado con éxito' 
-                                    : 'Viaje publicado con éxito',
-                                style: GoogleFonts.inter(color: Colors.white),
-                              ),
-                              backgroundColor: OhtliColors.stormyTeal,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Error al guardar el viaje: $e',
-                                style: GoogleFonts.inter(color: Colors.white),
-                              ),
-                              backgroundColor: OhtliColors.xoconostle,
-                            ),
-                          );
-                        }
-                      }
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.stormyTeal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Text(
-                    'Guardar',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
+                            final tripId = const Uuid().v4();
+                            final now = DateTime.now();
+                            String finalCoverUrl = "";
+
+                            // 1. Upload Cover to Storage if provided
+                            if (selectedCoverBase64 != null) {
+                              try {
+                                final rawBase64 = selectedCoverBase64!.contains(',')
+                                    ? selectedCoverBase64!.split(',').last
+                                    : selectedCoverBase64!;
+                                final imageBytes = base64Decode(rawBase64);
+                                final storageRef = FirebaseStorage.instance
+                                    .ref('users/$_userId/trips/$tripId/cover.jpg');
+                                await storageRef.putData(
+                                  Uint8List.fromList(imageBytes),
+                                  SettableMetadata(contentType: 'image/jpeg'),
+                                );
+                                final bucket = FirebaseStorage.instance.app.options.storageBucket;
+                                finalCoverUrl =
+                                    "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F$_userId%2Ftrips%2F$tripId%2Fcover.jpg?alt=media";
+                              } catch (e) {
+                                print("Error uploading cover to Storage: $e");
+                              }
+                            }
+
+                            // 2. Create Trip document as a private draft
+                            final newTrip = Trip(
+                              id: tripId,
+                              userId: _userId,
+                              title: titleController.text.trim(),
+                              description: descriptionController.text.trim(),
+                              coverUrl: finalCoverUrl,
+                              status: 'draft', // Regla de negocio: inicia como borrador
+                              visibility: 'private', // Regla de negocio: inicia como privado
+                              createdAt: now,
+                              updatedAt: now,
+                            );
+
+                            try {
+                              await _tripService.createTrip(_userId, newTrip);
+                              Navigator.of(dialogContext).pop();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Plan creado con éxito',
+                                      style: GoogleFonts.inter(color: Colors.white),
+                                    ),
+                                    backgroundColor: OhtliColors.stormyTeal,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              setDialogState(() {
+                                isSaving = false;
+                              });
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Error al guardar el viaje: $e',
+                                      style: GoogleFonts.inter(color: Colors.white),
+                                    ),
+                                    backgroundColor: OhtliColors.xoconostle,
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OhtliColors.stormyTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Guardar',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
             );
           },
         );
