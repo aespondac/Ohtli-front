@@ -450,10 +450,14 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                             width: double.infinity,
                             height: 48,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: OhtliSettings.instance.isDarkMode
+                                  ? const Color(0xFF1E1E22)
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(30),
                               border: Border.all(
-                                color: OhtliColors.onyx.withOpacity(0.12),
+                                color: OhtliSettings.instance.isDarkMode
+                                    ? const Color(0xFF2C2C32)
+                                    : OhtliColors.onyx.withOpacity(0.12),
                               ),
                               boxShadow: _isGoogleHovering
                                   ? [
