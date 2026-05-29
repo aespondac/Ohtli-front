@@ -3,6 +3,7 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -32,6 +33,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     final formKey = GlobalKey<FormState>();
     final titleController = TextEditingController();
     final descriptionController = TextEditingController();
+    final travelDateController = TextEditingController();
+    DateTime? selectedTravelDate;
     String? selectedCoverBase64;
     bool isSaving = false;
 
@@ -128,6 +131,65 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                               borderSide: const BorderSide(color: OhtliColors.stormyTeal, width: 1.5),
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Travel Date Field
+                        TextFormField(
+                          controller: travelDateController,
+                          readOnly: true,
+                          enabled: !isSaving,
+                          style: GoogleFonts.inter(color: OhtliColors.onyx),
+                          decoration: InputDecoration(
+                            labelText: 'Fecha del viaje',
+                            labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6)),
+                            hintText: 'Selecciona la fecha de tu viaje',
+                            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.3)),
+                            filled: true,
+                            fillColor: OhtliColors.inputBg,
+                            prefixIcon: const Icon(Icons.calendar_today_rounded, color: OhtliColors.stormyTeal, size: 20),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(color: OhtliColors.stormyTeal, width: 1.5),
+                            ),
+                          ),
+                          onTap: () async {
+                            final DateTime? picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedTravelDate ?? DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                              builder: (context, child) {
+                                final isDark = OhtliSettings.instance.isDarkMode;
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme: ColorScheme.light(
+                                      primary: OhtliColors.stormyTeal,
+                                      onPrimary: Colors.white,
+                                      onSurface: OhtliColors.onyx,
+                                      surface: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                                    ),
+                                    dialogBackgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                selectedTravelDate = picked;
+                                final months = [
+                                  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                                  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+                                ];
+                                travelDateController.text = '${picked.day} de ${months[picked.month - 1]} de ${picked.year}';
+                              });
+                            }
+                          },
                         ),
                         const SizedBox(height: 16),
 
@@ -309,6 +371,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                               visibility: 'private', // Regla de negocio: inicia como privado
                               createdAt: now,
                               updatedAt: now,
+                              travelDate: selectedTravelDate,
                             );
 
                             try {
@@ -633,10 +696,16 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     width: 1.5,
                   ),
                 ),
-                child: const Icon(
-                  Icons.explore_outlined,
-                  color: OhtliColors.stormyTeal,
-                  size: 40,
+                child: Center(
+                  child: SvgPicture.asset(
+                    'assets/icon_isologo.svg',
+                    width: 40,
+                    height: 40,
+                    colorFilter: const ColorFilter.mode(
+                      OhtliColors.stormyTeal,
+                      BlendMode.srcIn,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 24),

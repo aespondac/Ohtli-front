@@ -10,6 +10,7 @@ class Trip {
   final String visibility; // 'public', 'private'
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? travelDate;
 
   Trip({
     required this.id,
@@ -21,6 +22,7 @@ class Trip {
     required this.visibility,
     required this.createdAt,
     required this.updatedAt,
+    this.travelDate,
   });
 
   factory Trip.fromMap(Map<String, dynamic> data, String documentId) {
@@ -34,6 +36,7 @@ class Trip {
       visibility: data['visibility'] ?? 'private',
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      travelDate: data['travelDate'] != null ? (data['travelDate'] as Timestamp).toDate() : null,
     );
   }
 
@@ -47,6 +50,7 @@ class Trip {
       'visibility': visibility,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'travelDate': travelDate != null ? Timestamp.fromDate(travelDate!) : null,
     };
   }
 }

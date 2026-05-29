@@ -301,10 +301,16 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
             width: 1.5,
           ),
         ),
-        child: Icon(
-          Icons.explore_outlined,
-          color: primaryColor,
-          size: 48,
+        child: Center(
+          child: SvgPicture.asset(
+            'assets/icon_isologo.svg',
+            width: 48,
+            height: 48,
+            colorFilter: ColorFilter.mode(
+              primaryColor,
+              BlendMode.srcIn,
+            ),
+          ),
         ),
       ),
     );

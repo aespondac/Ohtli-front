@@ -274,12 +274,29 @@ class TripCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      _formatSpanishDate(trip.createdAt),
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: OhtliColors.onyx.withOpacity(0.4),
-                        fontWeight: FontWeight.w500,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Creado: ${_formatSpanishDate(trip.createdAt)}',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: OhtliColors.onyx.withOpacity(0.4),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: OhtliColors.onyx.withOpacity(0.65),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     PopupMenuButton<String>(
