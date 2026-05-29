@@ -1,0 +1,82 @@
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Setup Java Environment (Required for Flutter/Android toolchains if needed, but good practice)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. Setup Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 4. Resolve dependencies
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 5. Extract Firebase Config from GitHub Secret
+      - name: Extract Firebase Config
+        id: config_extractor
+        run: |
+          if [ -z "${{ secrets.FIREBASE_CONFIG_JSON }}" ]; then
+            echo "ERROR: FIREBASE_CONFIG_JSON secret is empty or missing!"
+            exit 1
+          fi
+          
+          # Write the config JSON to a temporary file
+          echo '${{ secrets.FIREBASE_CONFIG_JSON }}' > firebase_config.json
+          
+          # Parse and load into GitHub Environment variables using Node.js
+          node -e "
+            const fs = require('fs');
+            try {
+              const config = JSON.parse(fs.readFileSync('firebase_config.json', 'utf8'));
+              for (const [key, val] of Object.entries(config)) {
+                const envName = key.toUpperCase();
+                fs.appendFileSync(process.env.GITHUB_ENV, \`\${envName}=\${val}\n\`);
+                console.log(\`Successfully loaded variable: \${envName}\`);
+              }
+            } catch (e) {
+              console.error('Failed to parse FIREBASE_CONFIG_JSON:', e);
+              process.exit(1);
+            }
+          "
+
+      # 6. Build the Web bundle embedding environment keys
+      - name: Build Web Application
+        run: |
+          flutter build web --release \
+            --dart-define=apiKey="${{ env.APIKEY }}" \
+            --dart-define=mapsApiKey="${{ env.MAPSAPIKEY }}" \
+            --dart-define=authDomain="${{ env.AUTHDOMAIN }}" \
+            --dart-define=projectId="${{ env.PROJECTID }}" \
+            --dart-define=storageBucket="${{ env.STORAGEBUCKET }}" \
+            --dart-define=messagingSenderId="${{ env.MESSAGINGSENDERID }}" \
+            --dart-define=appId="${{ env.APPID }}" \
+            --dart-define=measurementId="${{ env.MEASUREMENTID }}"
+
+      # 7. Deploy to Firebase Hosting Live Channel
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_OTHLI_497404 }}"
+          channelId: live
+          projectId: othli-497404
