@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/colors.dart';
 import 'construction_page.dart'; // Reuse RouteBackgroundPainter
+import 'trips/trips_dashboard_page.dart';
 
 class HomePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -30,6 +31,9 @@ class _HomePageState extends State<HomePage> {
   bool _isHoveringLogout = false;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _localPhotoURL;
+  int _currentIndex = 0;
+  bool _isHoveringInicio = false;
+  bool _isHoveringMisViajes = false;
 
   @override
   void initState() {
@@ -179,6 +183,88 @@ class _HomePageState extends State<HomePage> {
     return mainAvatar;
   }
 
+  Widget _buildSidebarItem({
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+    required int index,
+    required bool isHovered,
+    required ValueChanged<bool> onHover,
+  }) {
+    final bool isActive = _currentIndex == index;
+    final bool isCollapsed = _sidebarCollapsed;
+
+    Color itemColor = isActive
+        ? OhtliColors.stormyTeal
+        : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withOpacity(0.7));
+
+    Widget content = Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCollapsed ? 0 : 12,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: isActive
+            ? OhtliColors.cloudDancer.withOpacity(0.8)
+            : (isHovered ? Colors.white.withOpacity(0.3) : Colors.transparent),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: isCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
+        children: [
+          Icon(
+            isActive ? activeIcon : icon,
+            color: itemColor,
+            size: 20,
+          ),
+          if (!isCollapsed) ...[
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                  color: itemColor,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (isCollapsed) {
+      content = Tooltip(
+        message: label,
+        decoration: BoxDecoration(
+          color: OhtliColors.onyx.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        textStyle: GoogleFonts.inter(color: Colors.white, fontSize: 11),
+        child: content,
+      );
+    }
+
+    return MouseRegion(
+      onEnter: (_) => onHover(true),
+      onExit: (_) => onHover(false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() => _currentIndex = index),
+        child: content,
+      ),
+    );
+  }
+
+  Widget _buildBody(bool isMobile) {
+    if (_currentIndex == 1) {
+      return const TripsDashboardPage();
+    }
+    return _buildMainContent(isMobile);
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -230,7 +316,28 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        body: _buildMainContent(isMobile),
+        body: _buildBody(isMobile),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) => setState(() => _currentIndex = index),
+          backgroundColor: colorSidebar,
+          selectedItemColor: OhtliColors.stormyTeal,
+          unselectedItemColor: OhtliColors.onyx.withOpacity(0.4),
+          selectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 11),
+          unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 11),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.explore_outlined),
+              activeIcon: Icon(Icons.explore_rounded),
+              label: 'Inicio',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.map_outlined),
+              activeIcon: Icon(Icons.map_rounded),
+              label: 'Mis Viajes',
+            ),
+          ],
+        ),
       );
     }
 
@@ -319,6 +426,23 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
 
+                const SizedBox(height: 16),
+                _buildSidebarItem(
+                  icon: Icons.explore_outlined,
+                  activeIcon: Icons.explore_rounded,
+                  label: 'Inicio',
+                  index: 0,
+                  isHovered: _isHoveringInicio,
+                  onHover: (hovered) => setState(() => _isHoveringInicio = hovered),
+                ),
+                _buildSidebarItem(
+                  icon: Icons.map_outlined,
+                  activeIcon: Icons.map_rounded,
+                  label: 'Mis Viajes',
+                  index: 1,
+                  isHovered: _isHoveringMisViajes,
+                  onHover: (hovered) => setState(() => _isHoveringMisViajes = hovered),
+                ),
                 const Spacer(),
 
                 // Bottom: Avatar + Name + Logout (clickable avatar opens panel)
@@ -384,7 +508,7 @@ class _HomePageState extends State<HomePage> {
 
           // ========= MAIN CONTENT =========
           Expanded(
-            child: _buildMainContent(isMobile),
+            child: _buildBody(isMobile),
           ),
         ],
       ),
