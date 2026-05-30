@@ -777,19 +777,34 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       );
     }
 
+    final double width = MediaQuery.of(context).size.width;
+    
+    // Calculate the width of a single card
+    final double cardWidth = (width - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
+    
+    // Calculate aspect ratio dynamically to prevent vertical text overflows:
+    // - If it's a mobile 1-column layout, we want a compact horizontal card of fixed height (125px).
+    // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 148px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
+    final double cardHeight = crossAxisCount == 1 
+        ? 125.0 
+        : (cardWidth * 9 / 16) + 148.0;
+    
+    final double computedAspectRatio = cardWidth / cardHeight;
+
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(padding, 20, padding, 100),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         mainAxisSpacing: 24,
         crossAxisSpacing: 24,
-        childAspectRatio: 16 / 14.5, // Sleek, modern, and compact height-to-width ratio
+        childAspectRatio: computedAspectRatio,
       ),
       itemCount: trips.length,
       itemBuilder: (context, index) {
         final trip = trips[index];
         return TripCard(
           trip: trip,
+          isHorizontal: crossAxisCount == 1,
           onEdit: () => _showComingSoonToast(
             context,
             'La edición interactiva del plan de viaje estará disponible próximamente en el Issue #11.',

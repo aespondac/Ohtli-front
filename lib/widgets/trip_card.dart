@@ -11,12 +11,14 @@ class TripCard extends StatelessWidget {
   final Trip trip;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final bool isHorizontal;
 
   const TripCard({
     super.key,
     required this.trip,
     required this.onDelete,
     required this.onEdit,
+    this.isHorizontal = false,
   });
 
   String _formatSpanishDate(DateTime date) {
@@ -114,70 +116,72 @@ class TripCard extends StatelessWidget {
     );
   }
 
-  Widget _buildCoverImage() {
+  Widget _buildCoverImage({required bool isHorizontal}) {
     final bool hasCover = trip.coverUrl.isNotEmpty;
 
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (hasCover)
-              CachedNetworkImage(
-                imageUrl: trip.coverUrl,
-                fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 300),
-                placeholder: (context, url) => Container(
-                  color: OhtliColors.cantera.withOpacity(0.3),
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
-                    ),
-                  ),
-                ),
-                errorWidget: (context, url, error) => _buildCoverFallback(),
-              )
-            else
-              _buildCoverFallback(),
-            
-            // Visibility Badge
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      trip.visibility == 'public'
-                          ? Icons.public_rounded
-                          : Icons.lock_outline_rounded,
-                      color: Colors.white,
-                      size: 13,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      trip.visibility == 'public' ? 'Público' : 'Privado',
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+    final border = isHorizontal
+        ? const BorderRadius.horizontal(left: Radius.circular(24))
+        : const BorderRadius.vertical(top: Radius.circular(24));
+
+    Widget imageWidget = hasCover
+        ? CachedNetworkImage(
+            imageUrl: trip.coverUrl,
+            fit: BoxFit.cover,
+            fadeInDuration: const Duration(milliseconds: 300),
+            placeholder: (context, url) => Container(
+              color: OhtliColors.cantera.withOpacity(0.3),
+              child: const Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
                 ),
               ),
             ),
-          ],
-        ),
+            errorWidget: (context, url, error) => _buildCoverFallback(),
+          )
+        : _buildCoverFallback();
+
+    return ClipRRect(
+      borderRadius: border,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          imageWidget,
+          
+          // Visibility Badge
+          Positioned(
+            top: 10,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    trip.visibility == 'public'
+                        ? Icons.public_rounded
+                        : Icons.lock_outline_rounded,
+                    color: Colors.white,
+                    size: 11,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    trip.visibility == 'public' ? 'Público' : 'Privado',
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -219,10 +223,7 @@ class TripCard extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bool isDark = OhtliSettings.instance.isDarkMode;
-    
+  Widget _buildVerticalLayout(BuildContext context, bool isDark) {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
@@ -242,7 +243,10 @@ class TripCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildCoverImage(),
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: _buildCoverImage(isHorizontal: false),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             child: Column(
@@ -383,5 +387,188 @@ class TripCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildHorizontalLayout(BuildContext context, bool isDark) {
+    return Container(
+      height: 125,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withOpacity(0.4),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: OhtliColors.onyx.withOpacity(isDark ? 0.2 : 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Image on the left (aspect ratio 16/9, matching container height)
+          SizedBox(
+            width: 130,
+            height: 125,
+            child: _buildCoverImage(isHorizontal: true),
+          ),
+          
+          // Details on the right
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        trip.title,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: OhtliColors.onyx,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        trip.description.isNotEmpty 
+                            ? trip.description 
+                            : 'Sin descripción del viaje.',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: OhtliColors.onyx.withOpacity(0.6),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Creado: ${_formatSpanishDate(trip.createdAt)}',
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                color: OhtliColors.onyx.withOpacity(0.4),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: OhtliColors.onyx.withOpacity(0.65),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(
+                          Icons.more_vert_rounded,
+                          size: 18,
+                        ),
+                        iconColor: OhtliColors.stormyTeal,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        color: isDark ? const Color(0xFF25252A) : Colors.white,
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            onEdit();
+                          } else if (value == 'share') {
+                            _handleShare(context);
+                          } else if (value == 'delete') {
+                            _showDeleteConfirmation(context);
+                          }
+                        },
+                        itemBuilder: (BuildContext context) => [
+                          PopupMenuItem<String>(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit_outlined, size: 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Editar',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: OhtliColors.onyx,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'share',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.share_outlined, size: 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Compartir',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: OhtliColors.onyx,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(height: 1),
+                          PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 16,
+                                  color: OhtliColors.xoconostle,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Eliminar',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: OhtliColors.xoconostle,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    return isHorizontal
+        ? _buildHorizontalLayout(context, isDark)
+        : _buildVerticalLayout(context, isDark);
   }
 }
