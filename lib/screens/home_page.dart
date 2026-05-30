@@ -9,17 +9,20 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/colors.dart';
+import '../widgets/ohtli_sidebar.dart';
 import 'construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'trips/trips_dashboard_page.dart';
 
 class HomePage extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback onNavigateToAccount;
+  final int initialIndex;
 
   const HomePage({
     super.key,
     required this.onLogout,
     required this.onNavigateToAccount,
+    this.initialIndex = 0,
   });
 
   @override
@@ -27,17 +30,14 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  bool _sidebarCollapsed = false;
-  bool _isHoveringLogout = false;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _localPhotoURL;
   int _currentIndex = 0;
-  bool _isHoveringInicio = false;
-  bool _isHoveringMisViajes = false;
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex;
     _syncProfilePic();
   }
 
@@ -183,91 +183,6 @@ class _HomePageState extends State<HomePage> {
     return mainAvatar;
   }
 
-  Widget _buildItemIcon(dynamic iconData, Color color) {
-    if (iconData is IconData) {
-      return Icon(iconData, color: color, size: 20);
-    } else if (iconData is String) {
-      return SvgPicture.asset(
-        iconData,
-        width: 20,
-        height: 20,
-        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-      );
-    }
-    return const SizedBox.shrink();
-  }
-
-  Widget _buildSidebarItem({
-    required dynamic icon,
-    required dynamic activeIcon,
-    required String label,
-    required int index,
-    required bool isHovered,
-    required ValueChanged<bool> onHover,
-  }) {
-    final bool isActive = _currentIndex == index;
-    final bool isCollapsed = _sidebarCollapsed;
-
-    Color itemColor = isActive
-        ? OhtliColors.stormyTeal
-        : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withOpacity(0.7));
-
-    Widget content = Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      padding: EdgeInsets.symmetric(
-        horizontal: isCollapsed ? 0 : 12,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        color: isActive
-            ? OhtliColors.cloudDancer.withOpacity(0.8)
-            : (isHovered ? Colors.white.withOpacity(0.3) : Colors.transparent),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisAlignment: isCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
-        children: [
-          _buildItemIcon(isActive ? activeIcon : icon, itemColor),
-          if (!isCollapsed) ...[
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                  color: itemColor,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-
-    if (isCollapsed) {
-      content = Tooltip(
-        message: label,
-        decoration: BoxDecoration(
-          color: OhtliColors.onyx.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        textStyle: GoogleFonts.inter(color: Colors.white, fontSize: 11),
-        child: content,
-      );
-    }
-
-    return MouseRegion(
-      onEnter: (_) => onHover(true),
-      onExit: (_) => onHover(false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => setState(() => _currentIndex = index),
-        child: content,
-      ),
-    );
-  }
-
   Widget _buildBody(bool isMobile) {
     if (_currentIndex == 1) {
       return const TripsDashboardPage();
@@ -369,169 +284,17 @@ class _HomePageState extends State<HomePage> {
       );
     }
 
-    final sidebarWidth = _sidebarCollapsed ? 64.0 : 200.0;
-
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: OhtliColors.cloudDancer,
       body: Row(
         children: [
           // ========= SIDEBAR =========
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            width: sidebarWidth,
-            decoration: BoxDecoration(
-              color: colorSidebar,
-              border: Border(
-                right: BorderSide(color: colorBorder, width: 1),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top: Isologo (collapsed) or Logo + collapse button
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                  child: Row(
-                    children: [
-                      if (_sidebarCollapsed) ...
-                        [
-                          Expanded(
-                            child: Center(
-                              child: SvgPicture.asset(
-                                'assets/icon_isologo.svg',
-                                height: 26,
-                                fit: BoxFit.contain,
-                                colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-                              ),
-                            ),
-                          ),
-                        ]
-                      else ...
-                        [
-                          Expanded(
-                            child: SvgPicture.asset(
-                              'assets/logo.svg',
-                              height: 22,
-                              fit: BoxFit.contain,
-                              alignment: Alignment.centerLeft,
-                              colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          InkWell(
-                            onTap: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: const Icon(
-                                Icons.keyboard_arrow_left_rounded,
-                                size: 18,
-                                color: OhtliColors.stormyTeal,
-                              ),
-                            ),
-                          ),
-                        ],
-                    ],
-                  ),
-                ),
-
-                // Expand button when collapsed (centered below isologo)
-                if (_sidebarCollapsed)
-                  Center(
-                    child: InkWell(
-                      onTap: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: const Icon(
-                          Icons.keyboard_arrow_right_rounded,
-                          size: 18,
-                          color: OhtliColors.stormyTeal,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                const SizedBox(height: 16),
-                _buildSidebarItem(
-                  icon: 'assets/icon_isologo.svg',
-                  activeIcon: 'assets/icon_isologo.svg',
-                  label: 'Inicio',
-                  index: 0,
-                  isHovered: _isHoveringInicio,
-                  onHover: (hovered) => setState(() => _isHoveringInicio = hovered),
-                ),
-                _buildSidebarItem(
-                  icon: Icons.map_outlined,
-                  activeIcon: Icons.map_rounded,
-                  label: 'Mis Viajes',
-                  index: 1,
-                  isHovered: _isHoveringMisViajes,
-                  onHover: (hovered) => setState(() => _isHoveringMisViajes = hovered),
-                ),
-                const Spacer(),
-
-                // Bottom: Avatar + Name + Logout (clickable avatar opens panel)
-                Divider(height: 1, color: colorBorder),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  child: Row(
-                    children: [
-                      _buildAvatarWidget(
-                        radius: 16,
-                        initials: initials,
-                        photoURL: _localPhotoURL,
-                        onTap: widget.onNavigateToAccount,
-                      ),
-                      if (!_sidebarCollapsed) ...
-                        [
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: widget.onNavigateToAccount,
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.click,
-                                child: Text(
-                                  displayName.split(' ').first,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                    color: OhtliColors.onyx.withOpacity(0.8),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringLogout = true),
-                            onExit: (_) => setState(() => _isHoveringLogout = false),
-                            child: InkWell(
-                              onTap: _handleLogout,
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Icon(
-                                  Icons.logout_rounded,
-                                  size: 17,
-                                  color: _isHoveringLogout
-                                      ? OhtliColors.xoconostle
-                                      : OhtliColors.stormyTeal,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ]
-                      else
-                        const SizedBox.shrink(),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          OhtliSidebar(
+            currentIndex: _currentIndex,
+            onTabSelected: (index) => setState(() => _currentIndex = index),
+            onNavigateToAccount: widget.onNavigateToAccount,
+            onLogout: _handleLogout,
           ),
 
           // ========= MAIN CONTENT =========

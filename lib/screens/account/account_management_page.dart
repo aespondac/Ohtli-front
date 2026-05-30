@@ -14,6 +14,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../theme/colors.dart';
+import '../../widgets/ohtli_sidebar.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../construction_page.dart'; // Reuse RouteBackgroundPainter
@@ -21,7 +22,7 @@ import '../construction_page.dart'; // Reuse RouteBackgroundPainter
 enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
 
 class AccountManagementPage extends StatefulWidget {
-  final VoidCallback onBackToHome;
+  final void Function(int index) onBackToHome;
   final VoidCallback onLogout;
 
   const AccountManagementPage({
@@ -38,8 +39,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   AccountSection _currentSection = AccountSection.dashboard;
   String? _localPhotoURL;
   bool _isSavingProfile = false;
-  bool _sidebarCollapsed = false;
-  bool _isHoveringLogout = false;
 
   // Personal Info form controllers
   final _personalFormKey = GlobalKey<FormState>();
@@ -1489,181 +1488,20 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       body: Row(
         children: [
           // ========= PERSISTENT SIDEBAR =========
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            width: sidebarWidth,
-            decoration: BoxDecoration(
-              color: colorSidebar,
-              border: const Border(
-                right: BorderSide(color: Color(0xFFD1CDC4), width: 1),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top: Isologo or Logo (clickable to return home)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                  child: Row(
-                    children: [
-                      if (_sidebarCollapsed) ...[
-                        Expanded(
-                          child: Center(
-                            child: GestureDetector(
-                              onTap: widget.onBackToHome,
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.click,
-                                child: SvgPicture.asset(
-                                  'assets/icon_isologo.svg',
-                                  height: 26,
-                                  fit: BoxFit.contain,
-                                  colorFilter: const ColorFilter.mode(
-                                    OhtliColors.stormyTeal,
-                                    BlendMode.srcIn,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ] else ...[
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: widget.onBackToHome,
-                            child: MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: SvgPicture.asset(
-                                'assets/logo.svg',
-                                height: 22,
-                                fit: BoxFit.contain,
-                                alignment: Alignment.centerLeft,
-                                colorFilter: const ColorFilter.mode(
-                                  OhtliColors.stormyTeal,
-                                  BlendMode.srcIn,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () => setState(
-                            () => _sidebarCollapsed = !_sidebarCollapsed,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: const Icon(
-                              Icons.keyboard_arrow_left_rounded,
-                              size: 18,
-                              color: OhtliColors.stormyTeal,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                if (_sidebarCollapsed)
-                  Center(
-                    child: InkWell(
-                      onTap: () => setState(
-                        () => _sidebarCollapsed = !_sidebarCollapsed,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: const Icon(
-                          Icons.keyboard_arrow_right_rounded,
-                          size: 18,
-                          color: OhtliColors.stormyTeal,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                const Spacer(),
-
-                // Bottom: Avatar + Name + Logout (clickable avatar/name returns to configuration dashboard)
-                const Divider(height: 1, color: Color(0xFFD1CDC4)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      _buildAvatarWidget(
-                        radius: 16,
-                        initials: initials,
-                        photoURL: _localPhotoURL,
-                        onTap: () {
-                          if (_currentSection != AccountSection.dashboard) {
-                            setState(() {
-                              _currentSection = AccountSection.dashboard;
-                            });
-                          }
-                        },
-                      ),
-                      if (!_sidebarCollapsed) ...[
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              if (_currentSection != AccountSection.dashboard) {
-                                setState(() {
-                                  _currentSection = AccountSection.dashboard;
-                                });
-                              }
-                            },
-                            child: MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: Text(
-                                displayName.split(' ').first,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.caprasimo(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w400,
-                                  color: OhtliColors.stormyTeal,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        MouseRegion(
-                          onEnter: (_) =>
-                              setState(() => _isHoveringLogout = true),
-                          onExit: (_) =>
-                              setState(() => _isHoveringLogout = false),
-                          child: InkWell(
-                            onTap: widget.onLogout,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: Icon(
-                                Icons.logout_rounded,
-                                size: 17,
-                                color: _isHoveringLogout
-                                    ? OhtliColors.xoconostle
-                                    : OhtliColors.stormyTeal,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ] else
-                        const SizedBox.shrink(),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          // ========= SIDEBAR =========
+          OhtliSidebar(
+            currentIndex: 2, // Highlight avatar/account
+            onTabSelected: (index) {
+              widget.onBackToHome(index);
+            },
+            onNavigateToAccount: () {
+              if (_currentSection != AccountSection.dashboard) {
+                setState(() {
+                  _currentSection = AccountSection.dashboard;
+                });
+              }
+            },
+            onLogout: widget.onLogout,
           ),
 
           // Main configuration page body
@@ -1692,7 +1530,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     _isEditingAddress = false;
                   });
                 } else {
-                  widget.onBackToHome();
+                  widget.onBackToHome(0);
                 }
               },
               icon: const Icon(

@@ -171,6 +171,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   late StreamSubscription<User?> _authSubscription;
   String _oobCode = '';
   String _authMode = '';
+  int _homeInitialIndex = 0;
 
   bool _isOnline = true;
   bool _showBanner = false;
@@ -309,12 +310,23 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.home) {
       activeView = HomePage(
+        initialIndex: _homeInitialIndex,
         onLogout: () => _navigateTo(OhtliScreen.underConstruction),
-        onNavigateToAccount: () => _navigateTo(OhtliScreen.accountManagement),
+        onNavigateToAccount: () {
+          setState(() {
+            _homeInitialIndex = 0; // standard reset
+            _currentScreen = OhtliScreen.accountManagement;
+          });
+        },
       );
     } else if (_currentScreen == OhtliScreen.accountManagement) {
       activeView = AccountManagementPage(
-        onBackToHome: () => _navigateTo(OhtliScreen.home),
+        onBackToHome: (index) {
+          setState(() {
+            _homeInitialIndex = index;
+            _currentScreen = OhtliScreen.home;
+          });
+        },
         onLogout: () async {
           try {
             await FirebaseAuth.instance.signOut();
