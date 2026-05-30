@@ -784,10 +784,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     
     // Calculate aspect ratio dynamically to prevent vertical text overflows:
     // - If it's a mobile 1-column layout, we want a compact horizontal card of fixed height (125px).
-    // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 148px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
+    // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 160px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 148.0;
+        : (cardWidth * 9 / 16) + 160.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 

@@ -68,6 +68,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   bool _receiveNotifications = true;
   bool _publicProfile = false;
 
+  // Preferences state tracking
+  OhtliThemeMode? _initialThemeMode;
+  OhtliFontSize? _initialFontSize;
+
   // Synchronous loader state for AddressPickerWidget (to avoid browser loading locks)
   final bool _isAddressPickerLoaded = true;
   final bool _isLoadingAddressPicker = false;
@@ -2565,6 +2569,30 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       },
                     ),
             ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => setState(
+                  () => _currentSection = AccountSection.dashboard,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(
+                  'Volver',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -2626,7 +2654,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 onChanged: (val) {
                   setState(() {
                     _shareTravelData = val;
-                    _savePrivacySetting('share', val);
                   });
                 },
               ),
@@ -2655,7 +2682,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 onChanged: (val) {
                   setState(() {
                     _receiveNotifications = val;
-                    _savePrivacySetting('notifications', val);
                   });
                 },
               ),
@@ -2684,7 +2710,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 onChanged: (val) {
                   setState(() {
                     _publicProfile = val;
-                    _savePrivacySetting('public', val);
                   });
                 },
               ),
@@ -2724,7 +2749,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Al eliminar tu cuenta se borrarán irreversiblemente tus fotos, direcciones y datos locales de viaje de los servidores de Ohtli.',
+                       'Al eliminar tu cuenta se borrarán irreversiblemente tus fotos, direcciones y datos locales de viaje de los servidores de Ohtli.',
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         color: OhtliColors.onyx.withValues(alpha: 0.65),
@@ -2764,27 +2789,64 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
               const SizedBox(height: 32),
 
-              // Confirm and Back Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => setState(
-                    () => _currentSection = AccountSection.dashboard,
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.stormyTeal,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+              // Volver and Guardar Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _loadPrivacySettings();
+                          _currentSection = AccountSection.dashboard;
+                        });
+                      },
+                      child: Text(
+                        'Volver',
+                        style: GoogleFonts.inter(
+                          color: OhtliColors.onyx.withValues(alpha: 0.6),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
-                  child: Text(
-                    'Confirmar y Volver',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        _savePrivacySetting('share', _shareTravelData);
+                        _savePrivacySetting('notifications', _receiveNotifications);
+                        _savePrivacySetting('public', _publicProfile);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Preferencias de privacidad guardadas.',
+                              style: GoogleFonts.inter(),
+                            ),
+                            backgroundColor: OhtliColors.stormyTeal,
+                          ),
+                        );
+                        setState(() {
+                          _currentSection = AccountSection.dashboard;
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        'Guardar',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
@@ -2798,6 +2860,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       listenable: OhtliSettings.instance,
       builder: (context, _) {
         final settings = OhtliSettings.instance;
+
+        // Capture initial values upon entering this screen to support Cancelar/Volver revert behavior
+        if (_initialThemeMode == null) {
+          _initialThemeMode = settings.themeMode;
+          _initialFontSize = settings.fontSize;
+        }
 
         return Card(
           elevation: 0,
@@ -2916,27 +2984,70 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   ),
                   const SizedBox(height: 32),
 
-                  // Confirm and Back Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => setState(
-                        () => _currentSection = AccountSection.dashboard,
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                  // Volver and Guardar Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () {
+                            if (_initialThemeMode != null) {
+                              settings.themeMode = _initialThemeMode!;
+                            }
+                            if (_initialFontSize != null) {
+                              settings.fontSize = _initialFontSize!;
+                            }
+                            _initialThemeMode = null;
+                            _initialFontSize = null;
+                            setState(() {
+                              _currentSection = AccountSection.dashboard;
+                            });
+                          },
+                          child: Text(
+                            'Volver',
+                            style: GoogleFonts.inter(
+                              color: OhtliColors.onyx.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
-                      child: Text(
-                        'Confirmar y Volver',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            _initialThemeMode = null;
+                            _initialFontSize = null;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Preferencias y accesibilidad guardadas.',
+                                  style: GoogleFonts.inter(),
+                                ),
+                                backgroundColor: OhtliColors.stormyTeal,
+                              ),
+                            );
+                            setState(() {
+                              _currentSection = AccountSection.dashboard;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: OhtliColors.stormyTeal,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            'Guardar',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),

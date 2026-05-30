@@ -247,141 +247,154 @@ class TripCard extends StatelessWidget {
             aspectRatio: 16 / 9,
             child: _buildCoverImage(isHorizontal: false),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  trip.title,
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        trip.title,
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: OhtliColors.onyx,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        trip.description.isNotEmpty 
+                            ? trip.description 
+                            : 'Sin descripción del viaje.',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: OhtliColors.onyx.withValues(alpha: 0.6),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  trip.description.isNotEmpty 
-                      ? trip.description 
-                      : 'Sin descripción del viaje.',
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: OhtliColors.onyx.withValues(alpha: 0.6),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Creado: ${_formatSpanishDate(trip.createdAt)}',
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              color: OhtliColors.onyx.withValues(alpha: 0.4),
-                              fontWeight: FontWeight.w500,
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Creado: ${_formatSpanishDate(trip.createdAt)}',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: OhtliColors.onyx.withValues(alpha: 0.4),
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: OhtliColors.onyx.withValues(alpha: 0.65),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        icon: const Icon(
+                          Icons.more_vert_rounded,
+                          size: 20,
+                        ),
+                        iconColor: OhtliColors.stormyTeal,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        color: isDark ? const Color(0xFF25252A) : Colors.white,
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            onEdit();
+                          } else if (value == 'share') {
+                            _handleShare(context);
+                          } else if (value == 'delete') {
+                            _showDeleteConfirmation(context);
+                          }
+                        },
+                        itemBuilder: (BuildContext context) => [
+                          PopupMenuItem<String>(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit_outlined, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Editar',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: OhtliColors.onyx,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: OhtliColors.onyx.withValues(alpha: 0.65),
-                              fontWeight: FontWeight.w600,
+                          PopupMenuItem<String>(
+                            value: 'share',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.share_outlined, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Compartir',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: OhtliColors.onyx,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(height: 1),
+                          PopupMenuItem<String>(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 18,
+                                  color: OhtliColors.xoconostle,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Eliminar',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: OhtliColors.xoconostle,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    PopupMenuButton<String>(
-                      icon: const Icon(
-                        Icons.more_vert_rounded,
-                        size: 20,
-                      ),
-                      iconColor: OhtliColors.stormyTeal,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      color: isDark ? const Color(0xFF25252A) : Colors.white,
-                      onSelected: (value) {
-                        if (value == 'edit') {
-                          onEdit();
-                        } else if (value == 'share') {
-                          _handleShare(context);
-                        } else if (value == 'delete') {
-                          _showDeleteConfirmation(context);
-                        }
-                      },
-                      itemBuilder: (BuildContext context) => [
-                        PopupMenuItem<String>(
-                          value: 'edit',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.edit_outlined, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Editar',
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  color: OhtliColors.onyx,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'share',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.share_outlined, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Compartir',
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  color: OhtliColors.onyx,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(height: 1),
-                        PopupMenuItem<String>(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.delete_outline_rounded,
-                                size: 18,
-                                color: OhtliColors.xoconostle,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Eliminar',
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  color: OhtliColors.xoconostle,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
