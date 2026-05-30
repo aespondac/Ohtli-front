@@ -26,7 +26,7 @@ class TripService {
 
   Future<void> updateTrip(String userId, Trip trip) async {
     final ref = _tripsRef(userId).doc(trip.id);
-    await ref.update(trip.toMap());
+    await ref.set(trip.toMap(), SetOptions(merge: true));
   }
 
   Future<void> updateTripContent(String userId, String tripId, TripContent content) async {
