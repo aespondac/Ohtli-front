@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:html' as html;
 import 'dart:async';
 import 'dart:convert';
@@ -280,13 +281,33 @@ class _TripEditorPageState extends State<TripEditorPage> {
     });
 
     final now = DateTime.now();
+    String finalCoverUrl = _coverUrl;
+
+    // 1. Upload Cover to Storage if it's a base64 local draft
+    if (_coverUrl.startsWith('data:')) {
+      try {
+        final String base64Data = _coverUrl.split(',').last;
+        final Uint8List bytes = base64Decode(base64Data);
+        final storageRef = FirebaseStorage.instance
+            .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/cover.jpg');
+        await storageRef.putData(
+          bytes,
+          SettableMetadata(contentType: 'image/jpeg'),
+        );
+        final bucket = FirebaseStorage.instance.app.options.storageBucket;
+        finalCoverUrl =
+            "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fcover.jpg?alt=media";
+      } catch (e) {
+        print("Error uploading cover to Storage: $e");
+      }
+    }
 
     final updatedTrip = Trip(
       id: widget.trip.id,
       userId: widget.trip.userId,
       title: _titleController.text,
       description: _descriptionController.text,
-      coverUrl: _coverUrl,
+      coverUrl: finalCoverUrl,
       status: _status,
       visibility: _visibility,
       createdAt: widget.trip.createdAt,
@@ -304,6 +325,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
       if (mounted) {
         setState(() {
+          _coverUrl = finalCoverUrl; // Keep local state in sync with network URL
           _isSavingCloud = false;
           _lastSavedCloudTime = now;
         });
@@ -386,20 +408,43 @@ class _TripEditorPageState extends State<TripEditorPage> {
     List<String>? secondaryPhotos,
   }) {
     final current = _sections[index] as PlaceSection;
+    
+    String finalMainPhoto = mainPhoto ?? current.mainPhotoUrl;
+    List<String> finalSecondary = List<String>.from(secondaryPhotos ?? current.secondaryPhotoUrls);
+    
+    // Auto-promote secondary photos if main photo is empty
+    if (finalMainPhoto.isEmpty) {
+      if (finalSecondary.isNotEmpty && finalSecondary[0].isNotEmpty) {
+        finalMainPhoto = finalSecondary[0];
+        finalSecondary[0] = '';
+      } else if (finalSecondary.length > 1 && finalSecondary[1].isNotEmpty) {
+        finalMainPhoto = finalSecondary[1];
+        finalSecondary[1] = '';
+      }
+    }
+    
+    // Clean trailing empty strings to keep list neat
+    while (finalSecondary.isNotEmpty && finalSecondary.last.isEmpty) {
+      finalSecondary.removeLast();
+    }
+
     final newSection = PlaceSection(
       id: current.id,
       title: title ?? current.title,
       description: description ?? current.description,
       rating: rating ?? current.rating,
-      mainPhotoUrl: mainPhoto ?? current.mainPhotoUrl,
-      secondaryPhotoUrls: secondaryPhotos ?? current.secondaryPhotoUrls,
+      mainPhotoUrl: finalMainPhoto,
+      secondaryPhotoUrls: finalSecondary,
     );
+    
     if (current.title != newSection.title ||
         current.description != newSection.description ||
         current.rating != newSection.rating ||
         current.mainPhotoUrl != newSection.mainPhotoUrl ||
         !listEquals(current.secondaryPhotoUrls, newSection.secondaryPhotoUrls)) {
-      _sections[index] = newSection;
+      setState(() {
+        _sections[index] = newSection;
+      });
       _onDataChanged();
     }
   }
@@ -439,7 +484,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
       markdownText: markdown ?? current.markdownText,
     );
     if (current.markdownText != newSection.markdownText) {
-      _sections[index] = newSection;
+      setState(() {
+        _sections[index] = newSection;
+      });
       _onDataChanged();
     }
   }
@@ -455,7 +502,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (current.markdownText != newSection.markdownText ||
         current.imageUrl != newSection.imageUrl ||
         current.layout != newSection.layout) {
-      _sections[index] = newSection;
+      setState(() {
+        _sections[index] = newSection;
+      });
       _onDataChanged();
     }
   }
@@ -473,6 +522,23 @@ class _TripEditorPageState extends State<TripEditorPage> {
     controller.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: selection.start + wrapper.length + selectedText.length + wrapper.length),
+    );
+    _onDataChanged();
+  }
+
+  void _injectTable(TextEditingController controller) {
+    final text = controller.text;
+    final selection = controller.selection;
+    const tableTemplate = '\n| Columna 1 | Columna 2 |\n|---|---|\n| Celda 1 | Celda 2 |\n';
+    
+    if (!selection.isValid) {
+      controller.text = text + tableTemplate;
+      return;
+    }
+    final newText = text.replaceRange(selection.start, selection.end, tableTemplate);
+    controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: selection.start + tableTemplate.length),
     );
     _onDataChanged();
   }
@@ -500,7 +566,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   barrierDismissible: false,
                   builder: (context) => OhtliImageCropperDialog(
                     imageBytes: bytes,
-                    isCircle: false, // 16:9 Aspect Ratio
+                    isCircle: false,
+                    aspectRatio: 3 / 4, // 3:4 Aspect Ratio for Place & Text/Image
                     onCropped: (String base64String) {
                       final String finalPhotoUrl = 'data:image/png;base64,$base64String';
                       if (type == 'place_main') {
@@ -1073,42 +1140,51 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
           ),
           const SizedBox(height: 12),
-          // 3 Photo slots (Principal and 2 Secondary slots)
+          // 3 Photo slots (Principal and 2 Secondary slots with 3:4 aspect ratio)
           Row(
             children: [
               // Photo 1 (Principal)
               Expanded(
-                child: _buildPlacePhotoSlot(
-                  blockIndex: index,
-                  photoUrl: section.mainPhotoUrl,
-                  label: 'Principal',
-                  onTap: () => _uploadImageForBlock(index, 'place_main'),
-                  onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
-                  isDark: isDark,
+                child: AspectRatio(
+                  aspectRatio: 3 / 4,
+                  child: _buildPlacePhotoSlot(
+                    blockIndex: index,
+                    photoUrl: section.mainPhotoUrl,
+                    label: 'Principal',
+                    onTap: () => _uploadImageForBlock(index, 'place_main'),
+                    onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
+                    isDark: isDark,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               // Photo 2 (Secundaria 1)
               Expanded(
-                child: _buildPlacePhotoSlot(
-                  blockIndex: index,
-                  photoUrl: section.secondaryPhotoUrls.isNotEmpty ? section.secondaryPhotoUrls[0] : '',
-                  label: 'Foto 2',
-                  onTap: () => _uploadImageForBlock(index, 'place_sec_0'),
-                  onDelete: () => _deletePlaceSecondaryPhoto(index, 0),
-                  isDark: isDark,
+                child: AspectRatio(
+                  aspectRatio: 3 / 4,
+                  child: _buildPlacePhotoSlot(
+                    blockIndex: index,
+                    photoUrl: section.secondaryPhotoUrls.isNotEmpty ? section.secondaryPhotoUrls[0] : '',
+                    label: 'Foto 2',
+                    onTap: () => _uploadImageForBlock(index, 'place_sec_0'),
+                    onDelete: () => _deletePlaceSecondaryPhoto(index, 0),
+                    isDark: isDark,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               // Photo 3 (Secundaria 2)
               Expanded(
-                child: _buildPlacePhotoSlot(
-                  blockIndex: index,
-                  photoUrl: section.secondaryPhotoUrls.length > 1 ? section.secondaryPhotoUrls[1] : '',
-                  label: 'Foto 3',
-                  onTap: () => _uploadImageForBlock(index, 'place_sec_1'),
-                  onDelete: () => _deletePlaceSecondaryPhoto(index, 1),
-                  isDark: isDark,
+                child: AspectRatio(
+                  aspectRatio: 3 / 4,
+                  child: _buildPlacePhotoSlot(
+                    blockIndex: index,
+                    photoUrl: section.secondaryPhotoUrls.length > 1 ? section.secondaryPhotoUrls[1] : '',
+                    label: 'Foto 3',
+                    onTap: () => _uploadImageForBlock(index, 'place_sec_1'),
+                    onDelete: () => _deletePlaceSecondaryPhoto(index, 1),
+                    isDark: isDark,
+                  ),
                 ),
               ),
             ],
@@ -1122,7 +1198,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final controller = _blockControllers.putIfAbsent(
         section.id,
         () {
-          final c = TextEditingController(text: section.markdownText);
+          final c = MarkdownRichTextController(text: section.markdownText, context: context);
           c.addListener(() {
             _updateTextBlock(index, markdown: c.text);
           });
@@ -1158,7 +1234,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final controller = _blockControllers.putIfAbsent(
         section.id,
         () {
-          final c = TextEditingController(text: section.markdownText);
+          final c = MarkdownRichTextController(text: section.markdownText, context: context);
           c.addListener(() {
             _updateTextImageBlock(index, markdown: c.text);
           });
@@ -1198,53 +1274,60 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           ),
           const SizedBox(height: 12),
-          // Upload Image for block
+          // Upload Image for block (3:4 Aspect Ratio)
           GestureDetector(
             onTap: () => _uploadImageForBlock(index, 'text_image'),
-            child: Container(
-              width: double.infinity,
-              height: 140,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-                  width: 1,
-                ),
-                image: section.imageUrl.isNotEmpty
-                    ? DecorationImage(
-                        image: _getImageProvider(section.imageUrl),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-              ),
-              child: section.imageUrl.isEmpty
-                  ? Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.add_photo_alternate_outlined, size: 20, color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Sube una imagen lateral',
-                            style: GoogleFonts.inter(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : Container(
-                      alignment: Alignment.topRight,
-                      padding: const EdgeInsets.all(8),
-                      child: IconButton(
-                        icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 20),
-                        style: IconButton.styleFrom(backgroundColor: Colors.black.withValues(alpha: 0.4)),
-                        onPressed: () => _updateTextImageBlock(index, photo: ''),
-                      ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 120,
+                height: 160,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+                      width: 1,
                     ),
+                    image: section.imageUrl.isNotEmpty
+                        ? DecorationImage(
+                            image: _getImageProvider(section.imageUrl),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: section.imageUrl.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_outlined, size: 20, color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Subir (3:4)',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Container(
+                          alignment: Alignment.topRight,
+                          padding: const EdgeInsets.all(4),
+                          child: IconButton(
+                            icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 18),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            style: IconButton.styleFrom(backgroundColor: Colors.black.withValues(alpha: 0.4)),
+                            onPressed: () => _updateTextImageBlock(index, photo: ''),
+                          ),
+                        ),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -1361,7 +1444,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
     return GestureDetector(
       onTap: hasPhoto ? null : onTap,
       child: Container(
-        height: 100,
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
@@ -1445,6 +1527,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
             tooltip: 'Lista (-)',
             onTap: () => _injectMarkdown(controller, '- '),
           ),
+          _buildToolbarButton(
+            icon: Icons.table_chart_rounded,
+            tooltip: 'Tabla (|)',
+            onTap: () => _injectTable(controller),
+          ),
         ],
       ),
     );
@@ -1499,5 +1586,135 @@ class _TripEditorPageState extends State<TripEditorPage> {
         ),
       ),
     );
+  }
+}
+
+class MarkdownRichTextController extends TextEditingController {
+  final BuildContext context;
+
+  MarkdownRichTextController({super.text, required this.context});
+
+  List<InlineSpan> _parseInline(String text, TextStyle defaultStyle, Color syntaxColor) {
+    final List<InlineSpan> spans = [];
+    
+    // RegExp for inline bold (**), italic (*), and underline (_)
+    final regExp = RegExp(r'(\*\*(.*?)\*\*)|(\*(.*?)\*)|(\_(.*?)\_)');
+    final matches = regExp.allMatches(text);
+    
+    int lastEnd = 0;
+    for (final match in matches) {
+      if (match.start > lastEnd) {
+        spans.add(TextSpan(text: text.substring(lastEnd, match.start), style: defaultStyle));
+      }
+      
+      final String matchText = match.group(0)!;
+      if (matchText.startsWith('**') && matchText.endsWith('**')) {
+        // Bold
+        final innerText = match.group(2) ?? '';
+        spans.add(TextSpan(text: '**', style: defaultStyle.copyWith(color: syntaxColor)));
+        spans.add(TextSpan(text: innerText, style: defaultStyle.copyWith(fontWeight: FontWeight.bold)));
+        spans.add(TextSpan(text: '**', style: defaultStyle.copyWith(color: syntaxColor)));
+      } else if (matchText.startsWith('*') && matchText.endsWith('*')) {
+        // Italic
+        final innerText = match.group(4) ?? '';
+        spans.add(TextSpan(text: '*', style: defaultStyle.copyWith(color: syntaxColor)));
+        spans.add(TextSpan(text: innerText, style: defaultStyle.copyWith(fontStyle: FontStyle.italic)));
+        spans.add(TextSpan(text: '*', style: defaultStyle.copyWith(color: syntaxColor)));
+      } else if (matchText.startsWith('_') && matchText.endsWith('_')) {
+        // Underline
+        final innerText = match.group(6) ?? '';
+        spans.add(TextSpan(text: '_', style: defaultStyle.copyWith(color: syntaxColor)));
+        spans.add(TextSpan(text: innerText, style: defaultStyle.copyWith(decoration: TextDecoration.underline)));
+        spans.add(TextSpan(text: '_', style: defaultStyle.copyWith(color: syntaxColor)));
+      }
+      
+      lastEnd = match.end;
+    }
+    
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastEnd), style: defaultStyle));
+    }
+    
+    return spans;
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final defaultStyle = style ?? GoogleFonts.inter(color: OhtliColors.onyx);
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final Color syntaxColor = isDark 
+        ? OhtliColors.onyx.withValues(alpha: 0.12) 
+        : OhtliColors.onyx.withValues(alpha: 0.18);
+    final Color accentColor = OhtliColors.stormyTeal;
+
+    final List<InlineSpan> spans = [];
+    final lines = text.split('\n');
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final isLastLine = i == lines.length - 1;
+      
+      // 1. Markdown Table Check
+      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+        final tableStyle = GoogleFonts.robotoMono(
+          color: OhtliColors.onyx,
+          fontSize: (defaultStyle.fontSize ?? 13) * 0.95,
+          fontWeight: FontWeight.w500,
+        );
+        
+        int lastPipe = 0;
+        for (int c = 0; c < line.length; c++) {
+          if (line[c] == '|') {
+            if (c > lastPipe) {
+              spans.add(TextSpan(
+                text: line.substring(lastPipe, c),
+                style: tableStyle,
+              ));
+            }
+            spans.add(TextSpan(
+              text: '|',
+              style: tableStyle.copyWith(color: accentColor, fontWeight: FontWeight.bold),
+            ));
+            lastPipe = c + 1;
+          }
+        }
+        if (lastPipe < line.length) {
+          spans.add(TextSpan(
+            text: line.substring(lastPipe),
+            style: tableStyle,
+          ));
+        }
+      } 
+      // 2. Markdown Bullet List Check
+      else if (line.trimLeft().startsWith('- ') || line.trimLeft().startsWith('* ')) {
+        final leadingSpaces = line.length - line.trimLeft().length;
+        final listMarker = line.trimLeft().startsWith('- ') ? '- ' : '* ';
+        
+        if (leadingSpaces > 0) {
+          spans.add(TextSpan(text: line.substring(0, leadingSpaces), style: defaultStyle));
+        }
+        spans.add(TextSpan(
+          text: listMarker,
+          style: defaultStyle.copyWith(color: accentColor, fontWeight: FontWeight.bold),
+        ));
+        
+        final remainingText = line.trimLeft().substring(2);
+        spans.addAll(_parseInline(remainingText, defaultStyle, syntaxColor));
+      } 
+      // 3. Normal text line
+      else {
+        spans.addAll(_parseInline(line, defaultStyle, syntaxColor));
+      }
+
+      if (!isLastLine) {
+        spans.add(TextSpan(text: '\n', style: defaultStyle));
+      }
+    }
+
+    return TextSpan(children: spans, style: defaultStyle);
   }
 }

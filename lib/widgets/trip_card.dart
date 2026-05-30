@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:convert';
 import '../theme/colors.dart';
 import '../models/trip_model.dart';
 
@@ -123,23 +124,38 @@ class TripCard extends StatelessWidget {
         ? const BorderRadius.horizontal(left: Radius.circular(24))
         : const BorderRadius.vertical(top: Radius.circular(24));
 
-    Widget imageWidget = hasCover
-        ? CachedNetworkImage(
-            imageUrl: trip.coverUrl,
+    Widget imageWidget;
+    if (hasCover) {
+      if (trip.coverUrl.startsWith('data:image') || trip.coverUrl.startsWith('data:')) {
+        try {
+          final String base64Data = trip.coverUrl.split(',').last;
+          imageWidget = Image.memory(
+            base64Decode(base64Data),
             fit: BoxFit.cover,
-            fadeInDuration: const Duration(milliseconds: 300),
-            placeholder: (context, url) => Container(
-              color: OhtliColors.cantera.withValues(alpha: 0.3),
-              child: const Center(
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
-                ),
+          );
+        } catch (e) {
+          imageWidget = _buildCoverFallback();
+        }
+      } else {
+        imageWidget = CachedNetworkImage(
+          imageUrl: trip.coverUrl,
+          fit: BoxFit.cover,
+          fadeInDuration: const Duration(milliseconds: 300),
+          placeholder: (context, url) => Container(
+            color: OhtliColors.cantera.withValues(alpha: 0.3),
+            child: const Center(
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
               ),
             ),
-            errorWidget: (context, url, error) => _buildCoverFallback(),
-          )
-        : _buildCoverFallback();
+          ),
+          errorWidget: (context, url, error) => _buildCoverFallback(),
+        );
+      }
+    } else {
+      imageWidget = _buildCoverFallback();
+    }
 
     return ClipRRect(
       borderRadius: border,

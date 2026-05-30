@@ -10,12 +10,14 @@ class OhtliImageCropperDialog extends StatefulWidget {
   final Uint8List imageBytes;
   final Function(String) onCropped;
   final bool isCircle;
+  final double aspectRatio;
 
   const OhtliImageCropperDialog({
     super.key,
     required this.imageBytes,
     required this.onCropped,
     this.isCircle = true,
+    this.aspectRatio = 16 / 9,
   });
 
   @override
@@ -81,8 +83,14 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
     // Reduce cropper viewport dynamically for smaller mobile screens to avoid overflow
     final double cropperSize = (dialogWidth - 48).clamp(200.0, 250.0);
 
-    final double cropperWidth = widget.isCircle ? cropperSize : (dialogWidth - 40);
-    final double cropperHeight = widget.isCircle ? cropperSize : (cropperWidth * 9 / 16);
+    final double cropperWidth = widget.isCircle
+        ? cropperSize
+        : widget.aspectRatio < 1.0
+            ? (cropperSize * widget.aspectRatio)
+            : (dialogWidth - 40);
+    final double cropperHeight = widget.isCircle
+        ? cropperSize
+        : (cropperWidth / widget.aspectRatio);
 
     return Dialog(
       backgroundColor: OhtliColors.cloudDancer,
@@ -95,7 +103,11 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                widget.isCircle ? 'Recortar foto de perfil' : 'Recortar portada de viaje',
+                widget.isCircle
+                    ? 'Recortar foto de perfil'
+                    : widget.aspectRatio == 3 / 4
+                        ? 'Recortar imagen (3:4)'
+                        : 'Recortar portada de viaje',
                 style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -106,7 +118,9 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
               Text(
                 widget.isCircle
                     ? 'Arrastra y haz zoom para ajustar tu foto dentro del círculo.'
-                    : 'Arrastra y haz zoom para elegir la parte visible de tu portada (16:9).',
+                    : widget.aspectRatio == 3 / 4
+                        ? 'Arrastra y haz zoom para ajustar tu imagen (3:4).'
+                        : 'Arrastra y haz zoom para elegir la parte visible de tu portada (16:9).',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 11,
