@@ -243,8 +243,41 @@ class _TripEditorPageState extends State<TripEditorPage> {
     _saveToLocalCache();
   }
 
+  void _syncAllTables() {
+    for (int index = 0; index < _sections.length; index++) {
+      final section = _sections[index];
+      if (section is TextSection) {
+        final tableData = parseTableMarkdown(section.markdownText);
+        if (tableData != null) {
+          final int numCols = tableData.headers.length;
+          final int numRows = tableData.rows.length;
+
+          final List<String> updatedHeaders = [];
+          for (int c = 0; c < numCols; c++) {
+            final ctrl = _blockControllers['${section.id}_h_$c'];
+            updatedHeaders.add(ctrl?.text ?? tableData.headers[c]);
+          }
+
+          final List<List<String>> updatedRows = [];
+          for (int r = 0; r < numRows; r++) {
+            final List<String> rowCells = [];
+            for (int c = 0; c < numCols; c++) {
+              final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
+              rowCells.add(ctrl?.text ?? tableData.rows[r][c]);
+            }
+            updatedRows.add(rowCells);
+          }
+
+          final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
+          _sections[index] = TextSection(id: section.id, markdownText: newMarkdown);
+        }
+      }
+    }
+  }
+
   void _saveToLocalCache() {
     if (!kIsWeb) return;
+    _syncAllTables();
 
     try {
       final now = DateTime.now();
@@ -280,6 +313,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   Future<void> _saveToCloudFirestore() async {
     if (_isSavingCloud) return;
+    _syncAllTables();
 
     setState(() {
       _isSavingCloud = true;
@@ -618,22 +652,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
     _onDataChanged();
   }
 
-  void _injectTable(TextEditingController controller) {
-    final text = controller.text;
-    final selection = controller.selection;
-    const tableTemplate = '\n| Columna 1 | Columna 2 |\n|---|---|\n| Celda 1 | Celda 2 |\n';
-    
-    if (!selection.isValid) {
-      controller.text = text + tableTemplate;
-      return;
-    }
-    final newText = text.replaceRange(selection.start, selection.end, tableTemplate);
-    controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: selection.start + tableTemplate.length),
-    );
-    _onDataChanged();
-  }
 
   void _uploadImageForBlock(int index, String type) {
     if (!kIsWeb) return;
@@ -807,6 +825,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // Exit checking
   Future<bool> _onWillPop() async {
     _debounceTimer?.cancel();
+    _syncAllTables();
     await _saveToCloudFirestore();
     return true;
   }
@@ -1559,7 +1578,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       alertIcon = Icons.warning_amber_rounded;
       alertName = "Advertencia";
     } else if (alert.type == AlertType.tip) {
-      alertColor = const Color(0xFF10B981); // Emerald Green
+      alertColor = OhtliColors.cempasuchil; // Cempasúchil Marigold Orange
       alertIcon = Icons.lightbulb_outline_rounded;
       alertName = "Consejo / Tip";
     }
@@ -1612,7 +1631,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     chipColor = OhtliColors.xoconostle;
                     chipLabel = "Alerta";
                   } else if (type == AlertType.tip) {
-                    chipColor = const Color(0xFF10B981);
+                    chipColor = OhtliColors.cempasuchil; // Cempasúchil Orange
                     chipLabel = "Tip";
                   }
                   
@@ -1671,75 +1690,124 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final int numCols = table.headers.length;
     final int numRows = table.rows.length;
 
-    TextEditingController getCellController(String key, String initialText, VoidCallback onChanged) {
+    TextEditingController getCellController(String key, String initialText) {
       return _blockControllers.putIfAbsent(key, () {
         final c = TextEditingController(text: initialText);
-        c.addListener(onChanged);
+        c.addListener(_onDataChanged); // Trigger local/cloud auto-save silently without rebuilds
         return c;
       });
     }
 
-    void updateTableMarkdown() {
-      final List<String> updatedHeaders = [];
+    void addColumn() {
+      final List<String> currentHeaders = [];
       for (int c = 0; c < numCols; c++) {
         final ctrl = _blockControllers['${section.id}_h_$c'];
-        updatedHeaders.add(ctrl?.text ?? table.headers[c]);
+        currentHeaders.add(ctrl?.text ?? table.headers[c]);
       }
+      currentHeaders.add('Columna ${numCols + 1}');
 
-      final List<List<String>> updatedRows = [];
+      final List<List<String>> currentRows = [];
       for (int r = 0; r < numRows; r++) {
         final List<String> rowCells = [];
         for (int c = 0; c < numCols; c++) {
           final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
           rowCells.add(ctrl?.text ?? table.rows[r][c]);
         }
-        updatedRows.add(rowCells);
+        rowCells.add(''); // Add cell for the new column
+        currentRows.add(rowCells);
       }
 
-      final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
-      _updateTextBlock(index, markdown: newMarkdown);
-    }
+      _blockControllers.keys
+          .where((k) => k.startsWith(section.id))
+          .toList()
+          .forEach((k) => _blockControllers.remove(k)?.dispose());
 
-    void addColumn() {
-      final List<String> updatedHeaders = List<String>.from(table.headers)..add('Columna ${numCols + 1}');
-      final List<List<String>> updatedRows = table.rows.map((row) => List<String>.from(row)..add('')).toList();
-      
-      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
-      
-      final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
+      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
     void deleteColumn(int colIdx) {
       if (numCols <= 1) return;
-      final List<String> updatedHeaders = List<String>.from(table.headers)..removeAt(colIdx);
-      final List<List<String>> updatedRows = table.rows.map((row) {
-        final r = List<String>.from(row);
-        r.removeAt(colIdx);
-        return r;
-      }).toList();
-      
-      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
-      
-      final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
+      final List<String> currentHeaders = [];
+      for (int c = 0; c < numCols; c++) {
+        final ctrl = _blockControllers['${section.id}_h_$c'];
+        currentHeaders.add(ctrl?.text ?? table.headers[c]);
+      }
+      currentHeaders.removeAt(colIdx);
+
+      final List<List<String>> currentRows = [];
+      for (int r = 0; r < numRows; r++) {
+        final List<String> rowCells = [];
+        for (int c = 0; c < numCols; c++) {
+          final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
+          rowCells.add(ctrl?.text ?? table.rows[r][c]);
+        }
+        rowCells.removeAt(colIdx);
+        currentRows.add(rowCells);
+      }
+
+      _blockControllers.keys
+          .where((k) => k.startsWith(section.id))
+          .toList()
+          .forEach((k) => _blockControllers.remove(k)?.dispose());
+
+      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
     void addRow() {
-      final List<List<String>> updatedRows = List<List<String>>.from(table.rows)..add(List<String>.filled(numCols, ''));
-      
-      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
-      
-      final newMarkdown = serializeTableMarkdown(TableData(headers: table.headers, rows: updatedRows));
+      final List<String> currentHeaders = [];
+      for (int c = 0; c < numCols; c++) {
+        final ctrl = _blockControllers['${section.id}_h_$c'];
+        currentHeaders.add(ctrl?.text ?? table.headers[c]);
+      }
+
+      final List<List<String>> currentRows = [];
+      for (int r = 0; r < numRows; r++) {
+        final List<String> rowCells = [];
+        for (int c = 0; c < numCols; c++) {
+          final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
+          rowCells.add(ctrl?.text ?? table.rows[r][c]);
+        }
+        currentRows.add(rowCells);
+      }
+      currentRows.add(List<String>.filled(numCols, ''));
+
+      _blockControllers.keys
+          .where((k) => k.startsWith(section.id))
+          .toList()
+          .forEach((k) => _blockControllers.remove(k)?.dispose());
+
+      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
     void deleteRow(int rowIdx) {
-      final List<List<String>> updatedRows = List<List<String>>.from(table.rows)..removeAt(rowIdx);
-      
-      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
-      
-      final newMarkdown = serializeTableMarkdown(TableData(headers: table.headers, rows: updatedRows));
+      final List<String> currentHeaders = [];
+      for (int c = 0; c < numCols; c++) {
+        final ctrl = _blockControllers['${section.id}_h_$c'];
+        currentHeaders.add(ctrl?.text ?? table.headers[c]);
+      }
+
+      final List<List<String>> currentRows = [];
+      for (int r = 0; r < numRows; r++) {
+        final List<String> rowCells = [];
+        for (int c = 0; c < numCols; c++) {
+          final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
+          rowCells.add(ctrl?.text ?? table.rows[r][c]);
+        }
+        currentRows.add(rowCells);
+      }
+      if (rowIdx < currentRows.length) {
+        currentRows.removeAt(rowIdx);
+      }
+
+      _blockControllers.keys
+          .where((k) => k.startsWith(section.id))
+          .toList()
+          .forEach((k) => _blockControllers.remove(k)?.dispose());
+
+      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
@@ -1761,7 +1829,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     final ctrl = getCellController(
                       '${section.id}_h_$colIdx',
                       table.headers[colIdx],
-                      updateTableMarkdown,
                     );
                     return Container(
                       width: 140,
@@ -1824,7 +1891,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         final ctrl = getCellController(
                           '${section.id}_cell_${rowIdx}_$colIdx',
                           cellVal,
-                          updateTableMarkdown,
                         );
                         return Container(
                           width: 140,
@@ -1977,11 +2043,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
             icon: Icons.format_list_bulleted_rounded,
             tooltip: 'Lista (-)',
             onTap: () => _injectMarkdown(controller, '- '),
-          ),
-          _buildToolbarButton(
-            icon: Icons.table_chart_rounded,
-            tooltip: 'Tabla (|)',
-            onTap: () => _injectTable(controller),
           ),
         ],
       ),

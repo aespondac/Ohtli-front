@@ -93,6 +93,7 @@ class OhtliColors {
   static const Color stormyTeal = Color(0xFF2C666E);
   static const Color xoconostle = Color(0xFF6C3953);
   static const Color cantera = Color(0xFFD1CDC4);
+  static const Color cempasuchil = Color(0xFFE2711D);
 
   static Color get cloudDancer {
     return OhtliSettings.instance.isDarkMode
