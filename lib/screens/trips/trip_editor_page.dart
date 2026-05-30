@@ -35,6 +35,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // Persistent TextEditingControllers for text inputs to avoid cursor jumps
   final Map<String, TextEditingController> _blockControllers = {};
 
+  // Image provider cache to prevent flickering
+  final Map<String, ImageProvider> _imageProvidersCache = {};
+
   // Local changes tracking
   DateTime? _lastSavedCloudTime;
 
@@ -226,11 +229,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   // Image provider helper that handles local base64 drafts as well as cloud network images
   ImageProvider _getImageProvider(String url) {
-    if (url.startsWith('data:image') || url.startsWith('data:')) {
-      final String base64Data = url.split(',').last;
-      return MemoryImage(base64Decode(base64Data));
-    }
-    return NetworkImage(url);
+    return _imageProvidersCache.putIfAbsent(url, () {
+      if (url.startsWith('data:image') || url.startsWith('data:')) {
+        final String base64Data = url.split(',').last;
+        return MemoryImage(base64Decode(base64Data));
+      }
+      return NetworkImage(url);
+    });
   }
 
   // Local caching & debounced auto-save triggers
@@ -302,6 +307,77 @@ class _TripEditorPageState extends State<TripEditorPage> {
       }
     }
 
+    final List<TripSection> updatedSections = [];
+    final bucket = FirebaseStorage.instance.app.options.storageBucket;
+
+    for (var section in _sections) {
+      if (section is PlaceSection) {
+        String finalMain = section.mainPhotoUrl;
+        if (finalMain.startsWith('data:')) {
+          try {
+            final String base64Data = finalMain.split(',').last;
+            final Uint8List bytes = base64Decode(base64Data);
+            final storageRef = FirebaseStorage.instance
+                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/${section.id}_main.jpg');
+            await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+            finalMain = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F${section.id}_main.jpg?alt=media";
+          } catch (e) {
+            print("Error uploading section main photo: $e");
+          }
+        }
+
+        final List<String> finalSec = [];
+        for (int i = 0; i < section.secondaryPhotoUrls.length; i++) {
+          String secUrl = section.secondaryPhotoUrls[i];
+          if (secUrl.startsWith('data:')) {
+            try {
+              final String base64Data = secUrl.split(',').last;
+              final Uint8List bytes = base64Decode(base64Data);
+              final storageRef = FirebaseStorage.instance
+                  .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/${section.id}_sec_$i.jpg');
+              await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+              secUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F${section.id}_sec_$i.jpg?alt=media";
+            } catch (e) {
+              print("Error uploading section secondary photo $i: $e");
+            }
+          }
+          finalSec.add(secUrl);
+        }
+
+        updatedSections.add(PlaceSection(
+          id: section.id,
+          title: section.title,
+          description: section.description,
+          rating: section.rating,
+          mainPhotoUrl: finalMain,
+          secondaryPhotoUrls: finalSec,
+        ));
+      } else if (section is TextImageSection) {
+        String finalImg = section.imageUrl;
+        if (finalImg.startsWith('data:')) {
+          try {
+            final String base64Data = finalImg.split(',').last;
+            final Uint8List bytes = base64Decode(base64Data);
+            final storageRef = FirebaseStorage.instance
+                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/${section.id}_image.jpg');
+            await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+            finalImg = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F${section.id}_image.jpg?alt=media";
+          } catch (e) {
+            print("Error uploading section text_image photo: $e");
+          }
+        }
+
+        updatedSections.add(TextImageSection(
+          id: section.id,
+          markdownText: section.markdownText,
+          imageUrl: finalImg,
+          layout: section.layout,
+        ));
+      } else {
+        updatedSections.add(section);
+      }
+    }
+
     final updatedTrip = Trip(
       id: widget.trip.id,
       userId: widget.trip.userId,
@@ -315,7 +391,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       travelDate: widget.trip.travelDate,
     );
 
-    final updatedContent = TripContent(sections: _sections);
+    final updatedContent = TripContent(sections: updatedSections);
 
     try {
       await Future.wait([
@@ -325,6 +401,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
       if (mounted) {
         setState(() {
+          _sections = updatedSections;
           _coverUrl = finalCoverUrl; // Keep local state in sync with network URL
           _isSavingCloud = false;
           _lastSavedCloudTime = now;
@@ -364,6 +441,16 @@ class _TripEditorPageState extends State<TripEditorPage> {
           markdownText: '',
           imageUrl: '',
           layout: 'left',
+        ));
+      } else if (type == 'table') {
+        _sections.add(TextSection(
+          id: id,
+          markdownText: '| Columna 1 | Columna 2 |\n|---|---|\n| Celda 1 | Celda 2 |',
+        ));
+      } else if (type == 'notes') {
+        _sections.add(TextSection(
+          id: id,
+          markdownText: '> [!NOTE]\n> Escribe tu nota aquí',
         ));
       }
       _onDataChanged();
@@ -412,20 +499,25 @@ class _TripEditorPageState extends State<TripEditorPage> {
     String finalMainPhoto = mainPhoto ?? current.mainPhotoUrl;
     List<String> finalSecondary = List<String>.from(secondaryPhotos ?? current.secondaryPhotoUrls);
     
-    // Auto-promote secondary photos if main photo is empty
-    if (finalMainPhoto.isEmpty) {
-      if (finalSecondary.isNotEmpty && finalSecondary[0].isNotEmpty) {
-        finalMainPhoto = finalSecondary[0];
-        finalSecondary[0] = '';
-      } else if (finalSecondary.length > 1 && finalSecondary[1].isNotEmpty) {
-        finalMainPhoto = finalSecondary[1];
-        finalSecondary[1] = '';
-      }
+    // Collect all valid/non-empty photos in order
+    final List<String> allPhotos = [];
+    if (finalMainPhoto.isNotEmpty) allPhotos.add(finalMainPhoto);
+    for (var photo in finalSecondary) {
+      if (photo.isNotEmpty) allPhotos.add(photo);
     }
     
-    // Clean trailing empty strings to keep list neat
-    while (finalSecondary.isNotEmpty && finalSecondary.last.isEmpty) {
-      finalSecondary.removeLast();
+    // Distribute them back: first goes to main, next go to secondary
+    if (allPhotos.isNotEmpty) {
+      finalMainPhoto = allPhotos[0];
+      finalSecondary = allPhotos.sublist(1);
+    } else {
+      finalMainPhoto = '';
+      finalSecondary = [];
+    }
+    
+    // Ensure secondary list is padded to at least 2 elements so indexing works for secondary slot 0 and 1
+    while (finalSecondary.length < 2) {
+      finalSecondary.add('');
     }
 
     final newSection = PlaceSection(
@@ -569,7 +661,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     isCircle: false,
                     aspectRatio: 3 / 4, // 3:4 Aspect Ratio for Place & Text/Image
                     onCropped: (String base64String) {
-                      final String finalPhotoUrl = 'data:image/png;base64,$base64String';
+                      final String finalPhotoUrl = base64String;
                       if (type == 'place_main') {
                         _updatePlaceBlock(index, mainPhoto: finalPhotoUrl);
                       } else if (type == 'place_sec_0') {
@@ -621,7 +713,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     isCircle: false, // 16:9 Aspect Ratio
                     onCropped: (String base64String) {
                       setState(() {
-                        _coverUrl = 'data:image/png;base64,$base64String';
+                        _coverUrl = base64String;
                         _onDataChanged();
                       });
                     },
@@ -939,30 +1031,40 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.start,
                 children: [
-                  Expanded(
-                    child: _buildAddBlockButton(
-                      label: 'Lugar',
-                      icon: Icons.location_on_rounded,
-                      onTap: () => _addBlock('place'),
-                    ),
+                  _buildAddBlockButton(
+                    label: 'Lugar',
+                    icon: Icons.location_on_rounded,
+                    onTap: () => _addBlock('place'),
+                    width: 105,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildAddBlockButton(
-                      label: 'Texto',
-                      icon: Icons.notes_rounded,
-                      onTap: () => _addBlock('text'),
-                    ),
+                  _buildAddBlockButton(
+                    label: 'Texto',
+                    icon: Icons.notes_rounded,
+                    onTap: () => _addBlock('text'),
+                    width: 105,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildAddBlockButton(
-                      label: 'Texto/Imagen',
-                      icon: Icons.photo_library_rounded,
-                      onTap: () => _addBlock('text_image'),
-                    ),
+                  _buildAddBlockButton(
+                    label: 'Texto/Imagen',
+                    icon: Icons.photo_library_rounded,
+                    onTap: () => _addBlock('text_image'),
+                    width: 125,
+                  ),
+                  _buildAddBlockButton(
+                    label: 'Tabla',
+                    icon: Icons.table_chart_rounded,
+                    onTap: () => _addBlock('table'),
+                    width: 105,
+                  ),
+                  _buildAddBlockButton(
+                    label: 'Notas',
+                    icon: Icons.info_outline_rounded,
+                    onTap: () => _addBlock('notes'),
+                    width: 105,
                   ),
                 ],
               ),
@@ -1061,9 +1163,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ],
         ),
         body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: mainContent,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 800),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: mainContent,
+              ),
+            ),
           ),
         ),
       ),
@@ -1192,41 +1299,54 @@ class _TripEditorPageState extends State<TripEditorPage> {
         ],
       );
     } else if (section is TextSection) {
-      typeLabel = "Nota / Historia";
-      typeIcon = Icons.notes_rounded;
-      
-      final controller = _blockControllers.putIfAbsent(
-        section.id,
-        () {
-          final c = MarkdownRichTextController(text: section.markdownText, context: context);
-          c.addListener(() {
-            _updateTextBlock(index, markdown: c.text);
-          });
-          return c;
-        },
-      );
+      final alertData = parseAlertMarkdown(section.markdownText);
+      final tableData = parseTableMarkdown(section.markdownText);
 
-      blockContent = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildMarkdownToolbar(controller, isDark),
-          TextFormField(
-            controller: controller,
-            maxLines: 4,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: OhtliColors.onyx,
-              height: 1.4,
+      if (alertData != null) {
+        typeLabel = "Nota del Plan / Alerta";
+        typeIcon = Icons.info_outline_rounded;
+        blockContent = _buildAlertBlockEditor(index, section, alertData, isDark);
+      } else if (tableData != null) {
+        typeLabel = "Tabla Comparativa";
+        typeIcon = Icons.table_chart_rounded;
+        blockContent = _buildTableBlockEditor(index, section, tableData, isDark);
+      } else {
+        typeLabel = "Nota / Historia";
+        typeIcon = Icons.notes_rounded;
+        
+        final controller = _blockControllers.putIfAbsent(
+          section.id,
+          () {
+            final c = MarkdownRichTextController(text: section.markdownText, context: context);
+            c.addListener(() {
+              _updateTextBlock(index, markdown: c.text);
+            });
+            return c;
+          },
+        );
+
+        blockContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildMarkdownToolbar(controller, isDark),
+            TextFormField(
+              controller: controller,
+              maxLines: 4,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: OhtliColors.onyx,
+                height: 1.4,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Escribe tu anécdota, historia o consejo aquí...',
+                hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
-            decoration: InputDecoration(
-              hintText: 'Escribe tu anécdota, historia o consejo aquí...',
-              hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
-        ],
-      );
+          ],
+        );
+      }
     } else if (section is TextImageSection) {
       typeLabel = "Nota con Imagen";
       typeIcon = Icons.photo_library_rounded;
@@ -1429,6 +1549,337 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
+  Widget _buildAlertBlockEditor(int index, TextSection section, AlertData alert, bool isDark) {
+    Color alertColor = OhtliColors.stormyTeal;
+    IconData alertIcon = Icons.info_outline_rounded;
+    String alertName = "Nota / Info";
+    
+    if (alert.type == AlertType.warning) {
+      alertColor = OhtliColors.xoconostle;
+      alertIcon = Icons.warning_amber_rounded;
+      alertName = "Advertencia";
+    } else if (alert.type == AlertType.tip) {
+      alertColor = const Color(0xFF10B981); // Emerald Green
+      alertIcon = Icons.lightbulb_outline_rounded;
+      alertName = "Consejo / Tip";
+    }
+
+    final controller = _blockControllers.putIfAbsent(
+      '${section.id}_alert',
+      () {
+        final c = TextEditingController(text: alert.content);
+        c.addListener(() {
+          final newMarkdown = serializeAlertMarkdown(alert.type, c.text);
+          _updateTextBlock(index, markdown: newMarkdown);
+        });
+        return c;
+      },
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF25252A) : alertColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border(
+          left: BorderSide(color: alertColor, width: 4),
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(alertIcon, color: alertColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                alertName,
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: alertColor,
+                ),
+              ),
+              const Spacer(),
+              // Choice chips to toggle types
+              Wrap(
+                spacing: 6,
+                children: AlertType.values.map((type) {
+                  final bool isSelected = alert.type == type;
+                  Color chipColor = OhtliColors.stormyTeal;
+                  String chipLabel = "Info";
+                  if (type == AlertType.warning) {
+                    chipColor = OhtliColors.xoconostle;
+                    chipLabel = "Alerta";
+                  } else if (type == AlertType.tip) {
+                    chipColor = const Color(0xFF10B981);
+                    chipLabel = "Tip";
+                  }
+                  
+                  return ChoiceChip(
+                    label: Text(
+                      chipLabel,
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : chipColor,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: chipColor,
+                    backgroundColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: isSelected ? Colors.transparent : chipColor.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    onSelected: (val) {
+                      if (val) {
+                        final newMarkdown = serializeAlertMarkdown(type, controller.text);
+                        _updateTextBlock(index, markdown: newMarkdown);
+                      }
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: controller,
+            maxLines: 3,
+            style: GoogleFonts.inter(
+              fontSize: 13.5,
+              color: OhtliColors.onyx,
+              height: 1.4,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Escribe tu nota, advertencia o tip aquí...',
+              hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableBlockEditor(int index, TextSection section, TableData table, bool isDark) {
+    final int numCols = table.headers.length;
+    final int numRows = table.rows.length;
+
+    TextEditingController getCellController(String key, String initialText, VoidCallback onChanged) {
+      return _blockControllers.putIfAbsent(key, () {
+        final c = TextEditingController(text: initialText);
+        c.addListener(onChanged);
+        return c;
+      });
+    }
+
+    void updateTableMarkdown() {
+      final List<String> updatedHeaders = [];
+      for (int c = 0; c < numCols; c++) {
+        final ctrl = _blockControllers['${section.id}_h_$c'];
+        updatedHeaders.add(ctrl?.text ?? table.headers[c]);
+      }
+
+      final List<List<String>> updatedRows = [];
+      for (int r = 0; r < numRows; r++) {
+        final List<String> rowCells = [];
+        for (int c = 0; c < numCols; c++) {
+          final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
+          rowCells.add(ctrl?.text ?? table.rows[r][c]);
+        }
+        updatedRows.add(rowCells);
+      }
+
+      final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
+      _updateTextBlock(index, markdown: newMarkdown);
+    }
+
+    void addColumn() {
+      final List<String> updatedHeaders = List<String>.from(table.headers)..add('Columna ${numCols + 1}');
+      final List<List<String>> updatedRows = table.rows.map((row) => List<String>.from(row)..add('')).toList();
+      
+      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
+      
+      final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
+      _updateTextBlock(index, markdown: newMarkdown);
+    }
+
+    void deleteColumn(int colIdx) {
+      if (numCols <= 1) return;
+      final List<String> updatedHeaders = List<String>.from(table.headers)..removeAt(colIdx);
+      final List<List<String>> updatedRows = table.rows.map((row) {
+        final r = List<String>.from(row);
+        r.removeAt(colIdx);
+        return r;
+      }).toList();
+      
+      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
+      
+      final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
+      _updateTextBlock(index, markdown: newMarkdown);
+    }
+
+    void addRow() {
+      final List<List<String>> updatedRows = List<List<String>>.from(table.rows)..add(List<String>.filled(numCols, ''));
+      
+      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
+      
+      final newMarkdown = serializeTableMarkdown(TableData(headers: table.headers, rows: updatedRows));
+      _updateTextBlock(index, markdown: newMarkdown);
+    }
+
+    void deleteRow(int rowIdx) {
+      final List<List<String>> updatedRows = List<List<String>>.from(table.rows)..removeAt(rowIdx);
+      
+      _blockControllers.keys.where((k) => k.startsWith(section.id)).toList().forEach((k) => _blockControllers.remove(k)?.dispose());
+      
+      final newMarkdown = serializeTableMarkdown(TableData(headers: table.headers, rows: updatedRows));
+      _updateTextBlock(index, markdown: newMarkdown);
+    }
+
+    final Color headerBg = isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.2);
+    final Color cellBorder = isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Column Headers Row
+              Row(
+                children: [
+                  ...List.generate(numCols, (colIdx) {
+                    final ctrl = getCellController(
+                      '${section.id}_h_$colIdx',
+                      table.headers[colIdx],
+                      updateTableMarkdown,
+                    );
+                    return Container(
+                      width: 140,
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: headerBg,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextFormField(
+                            controller: ctrl,
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: OhtliColors.onyx,
+                            ),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(vertical: 4),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (numCols > 1)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: InkWell(
+                                onTap: () => deleteColumn(colIdx),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  size: 14,
+                                  color: OhtliColors.xoconostle.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: OhtliColors.stormyTeal),
+                    onPressed: addColumn,
+                    tooltip: 'Añadir Columna',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Rows
+              ...List.generate(numRows, (rowIdx) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      ...List.generate(numCols, (colIdx) {
+                        final cellVal = table.rows[rowIdx][colIdx];
+                        final ctrl = getCellController(
+                          '${section.id}_cell_${rowIdx}_$colIdx',
+                          cellVal,
+                          updateTableMarkdown,
+                        );
+                        return Container(
+                          width: 140,
+                          margin: const EdgeInsets.only(right: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: cellBorder),
+                          ),
+                          child: TextFormField(
+                            controller: ctrl,
+                            style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(vertical: 4),
+                            ),
+                          ),
+                        );
+                      }),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline_rounded, color: OhtliColors.xoconostle),
+                        onPressed: () => deleteRow(rowIdx),
+                        tooltip: 'Eliminar Fila',
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        ElevatedButton.icon(
+          onPressed: addRow,
+          icon: const Icon(Icons.add_rounded, size: 16),
+          label: Text(
+            'Añadir Fila',
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.1),
+            foregroundColor: OhtliColors.stormyTeal,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.3)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+        ),
+      ],
+    );
+  }
+
   // Builder helper for Place Photo slots
   Widget _buildPlacePhotoSlot({
     required int blockIndex,
@@ -1551,37 +2002,40 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
-  Widget _buildAddBlockButton({required String label, required IconData icon, required VoidCallback onTap}) {
+  Widget _buildAddBlockButton({required String label, required IconData icon, required VoidCallback onTap, double? width}) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
-    return Material(
-      color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: OhtliColors.stormyTeal.withValues(alpha: 0.3),
-              width: 1.2,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: OhtliColors.stormyTeal, size: 20),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: OhtliColors.stormyTeal,
-                ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: OhtliColors.stormyTeal.withValues(alpha: 0.3),
+                width: 1.2,
               ),
-            ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: OhtliColors.stormyTeal, size: 20),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: OhtliColors.stormyTeal,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1594,13 +2048,18 @@ class MarkdownRichTextController extends TextEditingController {
 
   MarkdownRichTextController({super.text, required this.context});
 
-  List<InlineSpan> _parseInline(String text, TextStyle defaultStyle, Color syntaxColor) {
+  List<InlineSpan> _parseInline(String text, TextStyle defaultStyle, Color syntaxColor, int globalOffset) {
     final List<InlineSpan> spans = [];
     
     // RegExp for inline bold (**), italic (*), and underline (_)
     final regExp = RegExp(r'(\*\*(.*?)\*\*)|(\*(.*?)\*)|(\_(.*?)\_)');
     final matches = regExp.allMatches(text);
     
+    // Get cursor selection
+    final cursorStart = selection.start;
+    final cursorEnd = selection.end;
+    final bool hasSelection = selection.isValid;
+
     int lastEnd = 0;
     for (final match in matches) {
       if (match.start > lastEnd) {
@@ -1608,24 +2067,59 @@ class MarkdownRichTextController extends TextEditingController {
       }
       
       final String matchText = match.group(0)!;
+      final int startInText = globalOffset + match.start;
+      final int endInText = globalOffset + match.end;
+
+      // Hiding utility style: checks if cursor touches/is editing the marker
+      TextStyle hideStyle(int mStart, int mEnd) {
+        final bool isEditingMarker = hasSelection && (
+          (cursorStart >= mStart && cursorStart <= mEnd) ||
+          (cursorEnd >= mStart && cursorEnd <= mEnd)
+        );
+        if (isEditingMarker) {
+          return defaultStyle.copyWith(color: syntaxColor);
+        } else {
+          return defaultStyle.copyWith(
+            color: Colors.transparent,
+            fontSize: 0.01,
+            letterSpacing: -3.0,
+          );
+        }
+      }
+
       if (matchText.startsWith('**') && matchText.endsWith('**')) {
         // Bold
         final innerText = match.group(2) ?? '';
-        spans.add(TextSpan(text: '**', style: defaultStyle.copyWith(color: syntaxColor)));
+        final leftMarkerStart = startInText;
+        final leftMarkerEnd = startInText + 2;
+        final rightMarkerStart = endInText - 2;
+        final rightMarkerEnd = endInText;
+
+        spans.add(TextSpan(text: '**', style: hideStyle(leftMarkerStart, leftMarkerEnd)));
         spans.add(TextSpan(text: innerText, style: defaultStyle.copyWith(fontWeight: FontWeight.bold)));
-        spans.add(TextSpan(text: '**', style: defaultStyle.copyWith(color: syntaxColor)));
+        spans.add(TextSpan(text: '**', style: hideStyle(rightMarkerStart, rightMarkerEnd)));
       } else if (matchText.startsWith('*') && matchText.endsWith('*')) {
         // Italic
         final innerText = match.group(4) ?? '';
-        spans.add(TextSpan(text: '*', style: defaultStyle.copyWith(color: syntaxColor)));
+        final leftMarkerStart = startInText;
+        final leftMarkerEnd = startInText + 1;
+        final rightMarkerStart = endInText - 1;
+        final rightMarkerEnd = endInText;
+
+        spans.add(TextSpan(text: '*', style: hideStyle(leftMarkerStart, leftMarkerEnd)));
         spans.add(TextSpan(text: innerText, style: defaultStyle.copyWith(fontStyle: FontStyle.italic)));
-        spans.add(TextSpan(text: '*', style: defaultStyle.copyWith(color: syntaxColor)));
+        spans.add(TextSpan(text: '*', style: hideStyle(rightMarkerStart, rightMarkerEnd)));
       } else if (matchText.startsWith('_') && matchText.endsWith('_')) {
         // Underline
         final innerText = match.group(6) ?? '';
-        spans.add(TextSpan(text: '_', style: defaultStyle.copyWith(color: syntaxColor)));
+        final leftMarkerStart = startInText;
+        final leftMarkerEnd = startInText + 1;
+        final rightMarkerStart = endInText - 1;
+        final rightMarkerEnd = endInText;
+
+        spans.add(TextSpan(text: '_', style: hideStyle(leftMarkerStart, leftMarkerEnd)));
         spans.add(TextSpan(text: innerText, style: defaultStyle.copyWith(decoration: TextDecoration.underline)));
-        spans.add(TextSpan(text: '_', style: defaultStyle.copyWith(color: syntaxColor)));
+        spans.add(TextSpan(text: '_', style: hideStyle(rightMarkerStart, rightMarkerEnd)));
       }
       
       lastEnd = match.end;
@@ -1653,6 +2147,7 @@ class MarkdownRichTextController extends TextEditingController {
 
     final List<InlineSpan> spans = [];
     final lines = text.split('\n');
+    int globalOffset = 0;
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -1703,18 +2198,144 @@ class MarkdownRichTextController extends TextEditingController {
         ));
         
         final remainingText = line.trimLeft().substring(2);
-        spans.addAll(_parseInline(remainingText, defaultStyle, syntaxColor));
+        spans.addAll(_parseInline(remainingText, defaultStyle, syntaxColor, globalOffset + leadingSpaces + 2));
       } 
       // 3. Normal text line
       else {
-        spans.addAll(_parseInline(line, defaultStyle, syntaxColor));
+        spans.addAll(_parseInline(line, defaultStyle, syntaxColor, globalOffset));
       }
 
       if (!isLastLine) {
         spans.add(TextSpan(text: '\n', style: defaultStyle));
       }
+      globalOffset += line.length + 1; // +1 for the '\n'
     }
 
     return TextSpan(children: spans, style: defaultStyle);
   }
+}
+
+// Markdown Alerta/Nota Helpers
+enum AlertType { note, warning, tip }
+
+class AlertData {
+  final AlertType type;
+  final String content;
+
+  AlertData({required this.type, required this.content});
+}
+
+AlertData? parseAlertMarkdown(String markdown) {
+  final trimmed = markdown.trim();
+  if (!trimmed.startsWith('> [!')) return null;
+
+  AlertType type = AlertType.note;
+  if (trimmed.contains('[!WARNING]')) {
+    type = AlertType.warning;
+  } else if (trimmed.contains('[!TIP]')) {
+    type = AlertType.tip;
+  }
+
+  final lines = markdown.split('\n');
+  final List<String> contentLines = [];
+  for (var line in lines) {
+    final trimmedLine = line.trim();
+    if (trimmedLine.startsWith('> [!')) continue;
+    if (trimmedLine.startsWith('>')) {
+      var contentLine = trimmedLine.substring(1);
+      if (contentLine.startsWith(' ')) {
+        contentLine = contentLine.substring(1);
+      }
+      contentLines.add(contentLine);
+    } else if (trimmedLine.isNotEmpty) {
+      contentLines.add(trimmedLine);
+    }
+  }
+
+  return AlertData(
+    type: type,
+    content: contentLines.join('\n').trim(),
+  );
+}
+
+String serializeAlertMarkdown(AlertType type, String content) {
+  final String typeStr = type == AlertType.warning 
+      ? 'WARNING' 
+      : (type == AlertType.tip ? 'TIP' : 'NOTE');
+  
+  final lines = content.split('\n');
+  final buffer = StringBuffer();
+  buffer.writeln('> [!$typeStr]');
+  for (var line in lines) {
+    buffer.writeln('> $line');
+  }
+  return buffer.toString().trim();
+}
+
+// Markdown Table Helpers
+class TableData {
+  final List<String> headers;
+  final List<List<String>> rows;
+
+  TableData({required this.headers, required this.rows});
+}
+
+TableData? parseTableMarkdown(String markdown) {
+  final lines = markdown.trim().split('\n')
+      .map((l) => l.trim())
+      .where((l) => l.isNotEmpty)
+      .toList();
+
+  if (lines.length < 2) return null;
+
+  if (!lines[0].startsWith('|') || !lines[0].endsWith('|')) return null;
+  if (!lines[1].startsWith('|') || !lines[1].endsWith('|')) return null;
+  if (!lines[1].contains('---') && !lines[1].contains('-')) return null;
+
+  List<String> splitRow(String row) {
+    final parts = row.split('|');
+    if (parts.length > 2) {
+      final sub = parts.sublist(1, parts.length - 1);
+      return sub.map((s) => s.trim()).toList();
+    }
+    return [];
+  }
+
+  final headers = splitRow(lines[0]);
+  if (headers.isEmpty) return null;
+
+  final List<List<String>> rows = [];
+  for (int i = 2; i < lines.length; i++) {
+    if (lines[i].startsWith('|') && lines[i].endsWith('|')) {
+      final rowParts = splitRow(lines[i]);
+      while (rowParts.length < headers.length) {
+        rowParts.add('');
+      }
+      rows.add(rowParts.sublist(0, headers.length));
+    }
+  }
+
+  return TableData(headers: headers, rows: rows);
+}
+
+String serializeTableMarkdown(TableData table) {
+  final buffer = StringBuffer();
+  
+  buffer.write('| ');
+  buffer.write(table.headers.join(' | '));
+  buffer.writeln(' |');
+  
+  buffer.write('|');
+  for (int i = 0; i < table.headers.length; i++) {
+    buffer.write('---|');
+  }
+  buffer.writeln();
+  
+  for (final row in table.rows) {
+    buffer.write('| ');
+    buffer.write(row.join(' | '));
+    buffer.writeln(' |');
+  }
+  
+  return buffer.toString().trim();
 }

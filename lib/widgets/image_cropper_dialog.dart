@@ -49,8 +49,21 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
       // Delay slightly to allow Flutter's paint cycle to flush
       await Future.delayed(const Duration(milliseconds: 150));
 
+      // Dynamically adjust export quality (pixelRatio) depending on the image's purpose:
+      // - Cover Image (not circle and not 3:4): Best quality (pixelRatio: 2.8)
+      // - Place photos / block images (3:4): Compressed/lightweight (pixelRatio: 0.65)
+      // - Profile Photo (circle): Medium quality (pixelRatio: 1.2)
+      double pixelRatio = 1.0;
+      if (widget.isCircle) {
+        pixelRatio = 1.2;
+      } else if (widget.aspectRatio == 3 / 4) {
+        pixelRatio = 0.65; // Highly compressed for blocks to avoid Firestore document limit issues
+      } else {
+        pixelRatio = 2.8; // High-res for visual crispness of Cover image
+      }
+
       final boundary = _boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      final ui.Image image = await boundary.toImage(pixelRatio: 1.5); // 1.5x optimized for low size/cost
+      final ui.Image image = await boundary.toImage(pixelRatio: pixelRatio);
       final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData != null) {
         final Uint8List croppedBytes = byteData.buffer.asUint8List();
