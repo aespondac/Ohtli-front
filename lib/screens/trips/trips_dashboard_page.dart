@@ -12,6 +12,7 @@ import '../../theme/colors.dart';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../widgets/trip_card.dart';
+import '../../widgets/image_cropper_dialog.dart';
 import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 
 class TripsDashboardPage extends StatefulWidget {
@@ -220,9 +221,31 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                         reader.onLoadEnd.listen((e) {
                                           final dynamic result = reader.result;
                                           if (result is String && result.isNotEmpty) {
-                                            setDialogState(() {
-                                              selectedCoverBase64 = result;
-                                            });
+                                            try {
+                                              final String base64Data = result.split(',').last;
+                                              final Uint8List bytes = base64Decode(base64Data);
+                                              if (bytes.isNotEmpty) {
+                                                Future.delayed(const Duration(milliseconds: 200), () {
+                                                  if (context.mounted) {
+                                                    showDialog(
+                                                      context: context,
+                                                      barrierDismissible: false,
+                                                      builder: (context) => OhtliImageCropperDialog(
+                                                        imageBytes: bytes,
+                                                        isCircle: false,
+                                                        onCropped: (String base64String) {
+                                                          setDialogState(() {
+                                                            selectedCoverBase64 = base64String;
+                                                          });
+                                                        },
+                                                      ),
+                                                    );
+                                                  }
+                                                });
+                                              }
+                                            } catch (err) {
+                                              print("Error decoding or cropping image: $err");
+                                            }
                                           }
                                         });
                                         reader.readAsDataUrl(file);
@@ -504,7 +527,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     }
 
     final double width = MediaQuery.of(context).size.width;
-    final int crossAxisCount = width > 1200 ? 3 : (width > 700 ? 2 : 1);
+    final int crossAxisCount = width > 1200 ? 4 : (width > 800 ? 3 : (width > 550 ? 2 : 1));
     final double padding = width > 800 ? 32.0 : 16.0;
 
     return DefaultTabController(
@@ -760,7 +783,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         crossAxisCount: crossAxisCount,
         mainAxisSpacing: 24,
         crossAxisSpacing: 24,
-        childAspectRatio: 16 / 15.5, // Perfect height-to-width ratio for our card design
+        childAspectRatio: 16 / 14.5, // Sleek, modern, and compact height-to-width ratio
       ),
       itemCount: trips.length,
       itemBuilder: (context, index) {

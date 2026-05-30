@@ -9,11 +9,13 @@ import '../theme/colors.dart';
 class OhtliImageCropperDialog extends StatefulWidget {
   final Uint8List imageBytes;
   final Function(String) onCropped;
+  final bool isCircle;
 
   const OhtliImageCropperDialog({
     super.key,
     required this.imageBytes,
     required this.onCropped,
+    this.isCircle = true,
   });
 
   @override
@@ -26,12 +28,12 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
   double _zoom = 1.0;
   bool _isSaving = false;
 
-  void _onZoomChanged(double value) {
+  void _onZoomChanged(double value, double cropperWidth, double cropperHeight) {
     setState(() {
       _zoom = value;
       // Calculate translations to keep zoom centered
-      final double x = -((value - 1.0) * 125.0);
-      final double y = -((value - 1.0) * 125.0);
+      final double x = -((value - 1.0) * (cropperWidth / 2));
+      final double y = -((value - 1.0) * (cropperHeight / 2));
       
       final Matrix4 translation = Matrix4.translationValues(x, y, 0.0);
       final Matrix4 scaling = Matrix4.diagonal3Values(value, value, 1.0);
@@ -79,6 +81,9 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
     // Reduce cropper viewport dynamically for smaller mobile screens to avoid overflow
     final double cropperSize = (dialogWidth - 48).clamp(200.0, 250.0);
 
+    final double cropperWidth = widget.isCircle ? cropperSize : (dialogWidth - 40);
+    final double cropperHeight = widget.isCircle ? cropperSize : (cropperWidth * 9 / 16);
+
     return Dialog(
       backgroundColor: OhtliColors.cloudDancer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -90,7 +95,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Recortar foto de perfil',
+                widget.isCircle ? 'Recortar foto de perfil' : 'Recortar portada de viaje',
                 style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -99,7 +104,9 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Arrastra y haz zoom para ajustar tu foto dentro del círculo.',
+                widget.isCircle
+                    ? 'Arrastra y haz zoom para ajustar tu foto dentro del círculo.'
+                    : 'Arrastra y haz zoom para elegir la parte visible de tu portada (16:9).',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 11,
@@ -112,10 +119,13 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
               // Viewport de recorte con la máscara
               Center(
                 child: Container(
-                  width: cropperSize,
-                  height: cropperSize,
+                  width: cropperWidth,
+                  height: cropperHeight,
                   decoration: BoxDecoration(
-                    border: Border.all(color: OhtliColors.cantera),
+                    border: Border.all(
+                      color: widget.isCircle ? OhtliColors.cantera : OhtliColors.stormyTeal,
+                      width: widget.isCircle ? 1.0 : 1.5,
+                    ),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: ClipRRect(
@@ -140,21 +150,22 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
                               child: Image.memory(
                                 widget.imageBytes,
                                 fit: BoxFit.cover,
-                                width: cropperSize,
-                                height: cropperSize,
+                                width: cropperWidth,
+                                height: cropperHeight,
                               ),
                             ),
                           ),
                         ),
 
-                        // Máscara oscura circular superpuesta
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: CustomPaint(
-                              painter: CircularCropMaskPainter(),
+                        // Máscara oscura circular superpuesta (solo para círculos)
+                        if (widget.isCircle)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: CircularCropMaskPainter(),
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -173,7 +184,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
                       max: 4.0,
                       activeColor: OhtliColors.stormyTeal,
                       inactiveColor: OhtliColors.cantera,
-                      onChanged: _onZoomChanged,
+                      onChanged: (val) => _onZoomChanged(val, cropperWidth, cropperHeight),
                     ),
                   ),
                   Icon(Icons.zoom_in, size: 16, color: OhtliColors.onyx.withOpacity(0.5)),
