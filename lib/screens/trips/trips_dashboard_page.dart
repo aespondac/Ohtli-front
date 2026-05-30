@@ -15,6 +15,7 @@ import '../../services/trip_service.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../construction_page.dart'; // To reuse RouteBackgroundPainter
+import 'trip_editor_page.dart';
 
 class TripsDashboardPage extends StatefulWidget {
   const TripsDashboardPage({super.key});
@@ -805,10 +806,14 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         return TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
-          onEdit: () => _showComingSoonToast(
-            context,
-            'La edición interactiva del plan de viaje estará disponible próximamente en el Issue #11.',
-          ),
+          onEdit: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TripEditorPage(trip: trip),
+              ),
+            );
+          },
           onDelete: () => _deleteTrip(trip),
         );
       },
