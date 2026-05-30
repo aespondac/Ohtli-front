@@ -132,7 +132,7 @@ class OhtliApp extends StatelessWidget {
           builder: (context, child) {
             return MediaQuery(
               data: MediaQuery.of(context).copyWith(
-                textScaleFactor: settings.textScaleFactor,
+                textScaler: TextScaler.linear(settings.textScaleFactor),
               ),
               child: child!,
             );

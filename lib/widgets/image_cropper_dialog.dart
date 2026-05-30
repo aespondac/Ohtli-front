@@ -110,7 +110,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 11,
-                  color: OhtliColors.onyx.withOpacity(0.6),
+                  color: OhtliColors.onyx.withValues(alpha: 0.6),
                   height: 1.3,
                 ),
               ),
@@ -176,7 +176,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
               // Control de Zoom Slider
               Row(
                 children: [
-                  Icon(Icons.zoom_out, size: 16, color: OhtliColors.onyx.withOpacity(0.5)),
+                  Icon(Icons.zoom_out, size: 16, color: OhtliColors.onyx.withValues(alpha: 0.5)),
                   Expanded(
                     child: Slider(
                       value: _zoom,
@@ -187,7 +187,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
                       onChanged: (val) => _onZoomChanged(val, cropperWidth, cropperHeight),
                     ),
                   ),
-                  Icon(Icons.zoom_in, size: 16, color: OhtliColors.onyx.withOpacity(0.5)),
+                  Icon(Icons.zoom_in, size: 16, color: OhtliColors.onyx.withValues(alpha: 0.5)),
                 ],
               ),
               const SizedBox(height: 16),
@@ -199,7 +199,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
                     child: TextButton(
                       onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
                       style: TextButton.styleFrom(
-                        foregroundColor: OhtliColors.onyx.withOpacity(0.6),
+                        foregroundColor: OhtliColors.onyx.withValues(alpha: 0.6),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       child: Text(
@@ -246,7 +246,7 @@ class CircularCropMaskPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.black.withOpacity(0.5)
+      ..color = Colors.black.withValues(alpha: 0.5)
       ..style = PaintingStyle.fill;
 
     // Crear un Path para toda la caja y restarle el círculo del centro
@@ -264,7 +264,7 @@ class CircularCropMaskPainter extends CustomPainter {
 
     // Dibujar un borde blanco sutil para delimitar el círculo de corte
     final borderPaint = Paint()
-      ..color = Colors.white.withOpacity(0.8)
+      ..color = Colors.white.withValues(alpha: 0.8)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
     canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width / 2, borderPaint);

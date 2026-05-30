@@ -75,7 +75,7 @@ class TripCard extends StatelessWidget {
           content: Text(
             'Esta acción no se puede deshacer. Se eliminarán permanentemente el viaje "${trip.title}", todos sus planes y las fotos asociadas.',
             style: GoogleFonts.inter(
-              color: OhtliColors.onyx.withOpacity(0.8),
+              color: OhtliColors.onyx.withValues(alpha: 0.8),
             ),
           ),
           actionsPadding: const EdgeInsets.only(right: 16, bottom: 16),
@@ -85,7 +85,7 @@ class TripCard extends StatelessWidget {
               child: Text(
                 'Cancelar',
                 style: GoogleFonts.inter(
-                  color: OhtliColors.onyx.withOpacity(0.6),
+                  color: OhtliColors.onyx.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -129,7 +129,7 @@ class TripCard extends StatelessWidget {
             fit: BoxFit.cover,
             fadeInDuration: const Duration(milliseconds: 300),
             placeholder: (context, url) => Container(
-              color: OhtliColors.cantera.withOpacity(0.3),
+              color: OhtliColors.cantera.withValues(alpha: 0.3),
               child: const Center(
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
@@ -155,7 +155,7 @@ class TripCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.4),
+                color: Colors.black.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -193,8 +193,8 @@ class TripCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            OhtliColors.stormyTeal.withOpacity(0.8),
-            OhtliColors.xoconostle.withOpacity(0.7),
+            OhtliColors.stormyTeal.withValues(alpha: 0.8),
+            OhtliColors.xoconostle.withValues(alpha: 0.7),
           ],
         ),
       ),
@@ -229,12 +229,12 @@ class TripCard extends StatelessWidget {
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withOpacity(0.4),
+          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: OhtliColors.onyx.withOpacity(isDark ? 0.2 : 0.04),
+            color: OhtliColors.onyx.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
@@ -269,7 +269,7 @@ class TripCard extends StatelessWidget {
                       : 'Sin descripción del viaje.',
                   style: GoogleFonts.inter(
                     fontSize: 13,
-                    color: OhtliColors.onyx.withOpacity(0.6),
+                    color: OhtliColors.onyx.withValues(alpha: 0.6),
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -287,7 +287,7 @@ class TripCard extends StatelessWidget {
                             'Creado: ${_formatSpanishDate(trip.createdAt)}',
                             style: GoogleFonts.inter(
                               fontSize: 10,
-                              color: OhtliColors.onyx.withOpacity(0.4),
+                              color: OhtliColors.onyx.withValues(alpha: 0.4),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -296,7 +296,7 @@ class TripCard extends StatelessWidget {
                             'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
                             style: GoogleFonts.inter(
                               fontSize: 11,
-                              color: OhtliColors.onyx.withOpacity(0.65),
+                              color: OhtliColors.onyx.withValues(alpha: 0.65),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -396,12 +396,12 @@ class TripCard extends StatelessWidget {
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withOpacity(0.4),
+          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: OhtliColors.onyx.withOpacity(isDark ? 0.2 : 0.04),
+            color: OhtliColors.onyx.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
@@ -444,7 +444,7 @@ class TripCard extends StatelessWidget {
                             : 'Sin descripción del viaje.',
                         style: GoogleFonts.inter(
                           fontSize: 11,
-                          color: OhtliColors.onyx.withOpacity(0.6),
+                          color: OhtliColors.onyx.withValues(alpha: 0.6),
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -462,7 +462,7 @@ class TripCard extends StatelessWidget {
                               'Creado: ${_formatSpanishDate(trip.createdAt)}',
                               style: GoogleFonts.inter(
                                 fontSize: 9,
-                                color: OhtliColors.onyx.withOpacity(0.4),
+                                color: OhtliColors.onyx.withValues(alpha: 0.4),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -470,7 +470,7 @@ class TripCard extends StatelessWidget {
                               'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
                               style: GoogleFonts.inter(
                                 fontSize: 10,
-                                color: OhtliColors.onyx.withOpacity(0.65),
+                                color: OhtliColors.onyx.withValues(alpha: 0.65),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),

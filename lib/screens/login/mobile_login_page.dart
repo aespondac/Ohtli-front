@@ -6,7 +6,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/user_profile_helper.dart';
 
 class MobileLoginPage extends StatefulWidget {
@@ -244,7 +243,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w300,
-                          color: OhtliColors.onyx.withOpacity(0.6),
+                          color: OhtliColors.onyx.withValues(alpha: 0.6),
                         ),
                       ),
                       const SizedBox(height: 36),
@@ -263,8 +262,9 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                           hintText: 'Correo electrónico',
                           keyboardType: TextInputType.emailAddress,
                           validator: (val) {
-                            if (val == null || val.isEmpty)
+                            if (val == null || val.isEmpty) {
                               return 'Ingresa tu correo';
+                            }
                             if (!RegExp(
                               r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
                             ).hasMatch(val)) {
@@ -285,7 +285,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                               _obscurePassword
                                   ? Icons.visibility
                                   : Icons.visibility_off,
-                              color: OhtliColors.stormyTeal.withOpacity(0.7),
+                              color: OhtliColors.stormyTeal.withValues(alpha: 0.7),
                               size: 20,
                             ),
                             onPressed: () => setState(
@@ -293,8 +293,9 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                             ),
                           ),
                           validator: (val) {
-                            if (val == null || val.isEmpty)
+                            if (val == null || val.isEmpty) {
                               return 'Ingresa tu contraseña';
+                            }
                             return null;
                           },
                         ),
@@ -319,7 +320,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     side: BorderSide(
-                                      color: OhtliColors.onyx.withOpacity(0.4),
+                                      color: OhtliColors.onyx.withValues(alpha: 0.4),
                                       width: 1.2,
                                     ),
                                     onChanged: (val) {
@@ -333,7 +334,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                 Text(
                                   'Recordar sesión',
                                   style: GoogleFonts.inter(
-                                    color: OhtliColors.onyx.withOpacity(0.7),
+                                    color: OhtliColors.onyx.withValues(alpha: 0.7),
                                     fontSize: 11,
                                     fontWeight: FontWeight.w400,
                                   ),
@@ -346,7 +347,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                               text: TextSpan(
                                 text: '¿Olvidaste tus credenciales? ',
                                 style: GoogleFonts.inter(
-                                  color: OhtliColors.onyx.withOpacity(0.6),
+                                  color: OhtliColors.onyx.withValues(alpha: 0.6),
                                   fontSize: 11,
                                   fontWeight: FontWeight.w400,
                                 ),
@@ -383,7 +384,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                   ? [
                                       BoxShadow(
                                         color: OhtliColors.stormyTeal
-                                            .withOpacity(0.2),
+                                            .withValues(alpha: 0.2),
                                         blurRadius: 8,
                                         offset: const Offset(0, 3),
                                       ),
@@ -418,7 +419,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                             Expanded(
                               child: Container(
                                 height: 1,
-                                color: OhtliColors.onyx.withOpacity(0.12),
+                                color: OhtliColors.onyx.withValues(alpha: 0.12),
                               ),
                             ),
                             Padding(
@@ -429,7 +430,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                 'ó',
                                 style: GoogleFonts.inter(
                                   fontSize: 13,
-                                  color: OhtliColors.onyx.withOpacity(0.4),
+                                  color: OhtliColors.onyx.withValues(alpha: 0.4),
                                   fontWeight: FontWeight.w300,
                                 ),
                               ),
@@ -437,7 +438,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                             Expanded(
                               child: Container(
                                 height: 1,
-                                color: OhtliColors.onyx.withOpacity(0.12),
+                                color: OhtliColors.onyx.withValues(alpha: 0.12),
                               ),
                             ),
                           ],
@@ -462,13 +463,13 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                               border: Border.all(
                                 color: OhtliSettings.instance.isDarkMode
                                     ? const Color(0xFF2C2C32)
-                                    : OhtliColors.onyx.withOpacity(0.12),
+                                    : OhtliColors.onyx.withValues(alpha: 0.12),
                                 width: 1,
                               ),
                               boxShadow: _isGoogleHovering
                                   ? [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.05),
+                                        color: Colors.black.withValues(alpha: 0.05),
                                         blurRadius: 8,
                                         offset: const Offset(0, 3),
                                       ),
@@ -501,8 +502,8 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                                       style: GoogleFonts.inter(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w400,
-                                        color: OhtliColors.onyx.withOpacity(
-                                          0.8,
+                                        color: OhtliColors.onyx.withValues(
+                                          alpha: 0.8,
                                         ),
                                       ),
                                     ),
@@ -519,7 +520,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                           text: TextSpan(
                             text: '¿Primera vez? ',
                             style: GoogleFonts.inter(
-                              color: OhtliColors.onyx.withOpacity(0.6),
+                              color: OhtliColors.onyx.withValues(alpha: 0.6),
                               fontSize: 12,
                             ),
                             children: [

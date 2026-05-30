@@ -3,7 +3,6 @@ import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/user_profile_helper.dart';
@@ -228,7 +227,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                   ),
                 ),
                 Positioned.fill(
-                  child: Container(color: Colors.black.withOpacity(0.45)),
+                  child: Container(color: Colors.black.withValues(alpha: 0.45)),
                 ),
                 Positioned(
                   top: 24,
@@ -297,7 +296,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                             style: GoogleFonts.inter(
                               fontSize: 24,
                               fontWeight: FontWeight.w400,
-                              color: OhtliColors.onyx.withOpacity(0.7),
+                              color: OhtliColors.onyx.withValues(alpha: 0.7),
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -315,8 +314,9 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                               controller: _nombresController,
                               hintText: 'Nombres',
                               validator: (val) {
-                                if (val == null || val.trim().isEmpty)
+                                if (val == null || val.trim().isEmpty) {
                                   return 'Ingresa tus nombres';
+                                }
                                 return null;
                               },
                             ),
@@ -326,8 +326,9 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                               controller: _apellidosController,
                               hintText: 'Apellidos',
                               validator: (val) {
-                                if (val == null || val.trim().isEmpty)
+                                if (val == null || val.trim().isEmpty) {
                                   return 'Ingresa tus apellidos';
+                                }
                                 return null;
                               },
                             ),
@@ -338,8 +339,9 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                               hintText: 'Correo Electronico',
                               keyboardType: TextInputType.emailAddress,
                               validator: (val) {
-                                if (val == null || val.isEmpty)
+                                if (val == null || val.isEmpty) {
                                   return 'Ingresa tu correo';
+                                }
                                 if (!RegExp(
                                   r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
                                 ).hasMatch(val)) {
@@ -359,8 +361,8 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                   _obscurePassword
                                       ? Icons.visibility
                                       : Icons.visibility_off,
-                                  color: OhtliColors.stormyTeal.withOpacity(
-                                    0.7,
+                                  color: OhtliColors.stormyTeal.withValues(
+                                    alpha: 0.7,
                                   ),
                                   size: 20,
                                 ),
@@ -369,10 +371,12 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                 ),
                               ),
                               validator: (val) {
-                                if (val == null || val.isEmpty)
+                                if (val == null || val.isEmpty) {
                                   return 'Ingresa tu contraseña';
-                                if (val.length < 6)
+                                }
+                                if (val.length < 6) {
                                   return 'Debe tener al menos 6 caracteres';
+                                }
                                 return null;
                               },
                             ),
@@ -386,7 +390,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                 r'Una contraseña segura debe incluir: Letras mayúsculas y minúsculas (por ejemplo, A, a, B, b) Números (por ejemplo, 1, 2, 3) Caracteres especiales (por ejemplo, !, @, #, $, %)',
                                 style: GoogleFonts.inter(
                                   fontSize: 10,
-                                  color: OhtliColors.onyx.withOpacity(0.55),
+                                  color: OhtliColors.onyx.withValues(alpha: 0.55),
                                   height: 1.4,
                                 ),
                               ),
@@ -402,8 +406,8 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                   _obscureConfirmPassword
                                       ? Icons.visibility
                                       : Icons.visibility_off,
-                                  color: OhtliColors.stormyTeal.withOpacity(
-                                    0.7,
+                                  color: OhtliColors.stormyTeal.withValues(
+                                    alpha: 0.7,
                                   ),
                                   size: 20,
                                 ),
@@ -413,8 +417,9 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                 ),
                               ),
                               validator: (val) {
-                                if (val == null || val.isEmpty)
+                                if (val == null || val.isEmpty) {
                                   return 'Confirma tu contraseña';
+                                }
                                 return null;
                               },
                             ),
@@ -435,7 +440,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                       ? [
                                           BoxShadow(
                                             color: OhtliColors.stormyTeal
-                                                .withOpacity(0.25),
+                                                .withValues(alpha: 0.25),
                                             blurRadius: 10,
                                             offset: const Offset(0, 4),
                                           ),
@@ -469,7 +474,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                 Expanded(
                                   child: Container(
                                     height: 1,
-                                    color: OhtliColors.onyx.withOpacity(0.12),
+                                    color: OhtliColors.onyx.withValues(alpha: 0.12),
                                   ),
                                 ),
                                 Padding(
@@ -480,14 +485,14 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                     'ó',
                                     style: GoogleFonts.inter(
                                       fontSize: 13,
-                                      color: OhtliColors.onyx.withOpacity(0.4),
+                                      color: OhtliColors.onyx.withValues(alpha: 0.4),
                                     ),
                                   ),
                                 ),
                                 Expanded(
                                   child: Container(
                                     height: 1,
-                                    color: OhtliColors.onyx.withOpacity(0.12),
+                                    color: OhtliColors.onyx.withValues(alpha: 0.12),
                                   ),
                                 ),
                               ],
@@ -511,13 +516,13 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                   border: Border.all(
                                     color: OhtliSettings.instance.isDarkMode
                                         ? const Color(0xFF2C2C32)
-                                        : OhtliColors.onyx.withOpacity(0.12),
+                                        : OhtliColors.onyx.withValues(alpha: 0.12),
                                   ),
                                   boxShadow: _isGoogleHovering
                                       ? [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.05,
+                                            color: Colors.black.withValues(
+                                              alpha: 0.05,
                                             ),
                                             blurRadius: 8,
                                             offset: const Offset(0, 3),
@@ -544,8 +549,8 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                         style: GoogleFonts.inter(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w400,
-                                          color: OhtliColors.onyx.withOpacity(
-                                            0.8,
+                                          color: OhtliColors.onyx.withValues(
+                                            alpha: 0.8,
                                           ),
                                         ),
                                       ),
@@ -560,7 +565,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                               text: TextSpan(
                                 text: '¿Ya tienes cuenta? ',
                                 style: GoogleFonts.inter(
-                                  color: OhtliColors.onyx.withOpacity(0.6),
+                                  color: OhtliColors.onyx.withValues(alpha: 0.6),
                                   fontSize: 13,
                                 ),
                                 children: [

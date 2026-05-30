@@ -25,7 +25,7 @@ Widget buildCustomTextField({
       hintStyle: GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w400,
-        color: OhtliColors.onyx.withOpacity(0.45),
+        color: OhtliColors.onyx.withValues(alpha: 0.45),
       ),
       errorStyle: GoogleFonts.inter(
         color: OhtliColors.xoconostle,

@@ -6,7 +6,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/user_profile_helper.dart';
 
 class DesktopLoginPage extends StatefulWidget {
@@ -212,7 +211,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                 ),
                 // Overlay oscuro dramático
                 Positioned.fill(
-                  child: Container(color: Colors.black.withOpacity(0.45)),
+                  child: Container(color: Colors.black.withValues(alpha: 0.45)),
                 ),
                 // Botón discreto superior para volver a Home
                 Positioned(
@@ -308,7 +307,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                             style: GoogleFonts.inter(
                               fontSize: 15,
                               fontWeight: FontWeight.w300,
-                              color: OhtliColors.onyx.withOpacity(0.6),
+                              color: OhtliColors.onyx.withValues(alpha: 0.6),
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -328,8 +327,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                               hintText: 'Correo electrónico',
                               keyboardType: TextInputType.emailAddress,
                               validator: (val) {
-                                if (val == null || val.isEmpty)
+                                if (val == null || val.isEmpty) {
                                   return 'Ingresa tu correo';
+                                }
                                 if (!RegExp(
                                   r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
                                 ).hasMatch(val)) {
@@ -350,8 +350,8 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                   _obscurePassword
                                       ? Icons.visibility
                                       : Icons.visibility_off,
-                                  color: OhtliColors.stormyTeal.withOpacity(
-                                    0.7,
+                                  color: OhtliColors.stormyTeal.withValues(
+                                    alpha: 0.7,
                                   ),
                                   size: 20,
                                 ),
@@ -360,8 +360,9 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                 ),
                               ),
                               validator: (val) {
-                                if (val == null || val.isEmpty)
+                                if (val == null || val.isEmpty) {
                                   return 'Ingresa tu contraseña';
+                                }
                                 return null;
                               },
                             ),
@@ -388,8 +389,8 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                           ),
                                         ),
                                         side: BorderSide(
-                                          color: OhtliColors.onyx.withOpacity(
-                                            0.4,
+                                          color: OhtliColors.onyx.withValues(
+                                            alpha: 0.4,
                                           ),
                                           width: 1.2,
                                         ),
@@ -404,8 +405,8 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                     Text(
                                       'Recordar sesión',
                                       style: GoogleFonts.inter(
-                                        color: OhtliColors.onyx.withOpacity(
-                                          0.7,
+                                        color: OhtliColors.onyx.withValues(
+                                          alpha: 0.7,
                                         ),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w400,
@@ -419,7 +420,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                   text: TextSpan(
                                     text: '¿Olvidaste tus credenciales? ',
                                     style: GoogleFonts.inter(
-                                      color: OhtliColors.onyx.withOpacity(0.6),
+                                      color: OhtliColors.onyx.withValues(alpha: 0.6),
                                       fontSize: 11,
                                       fontWeight: FontWeight.w400,
                                     ),
@@ -457,7 +458,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                       ? [
                                           BoxShadow(
                                             color: OhtliColors.stormyTeal
-                                                .withOpacity(0.25),
+                                                .withValues(alpha: 0.25),
                                             blurRadius: 10,
                                             offset: const Offset(0, 4),
                                           ),
@@ -493,7 +494,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                 Expanded(
                                   child: Container(
                                     height: 1,
-                                    color: OhtliColors.onyx.withOpacity(0.12),
+                                    color: OhtliColors.onyx.withValues(alpha: 0.12),
                                   ),
                                 ),
                                 Padding(
@@ -504,7 +505,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                     'ó',
                                     style: GoogleFonts.inter(
                                       fontSize: 13,
-                                      color: OhtliColors.onyx.withOpacity(0.4),
+                                      color: OhtliColors.onyx.withValues(alpha: 0.4),
                                       fontWeight: FontWeight.w300,
                                     ),
                                   ),
@@ -512,7 +513,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                 Expanded(
                                   child: Container(
                                     height: 1,
-                                    color: OhtliColors.onyx.withOpacity(0.12),
+                                    color: OhtliColors.onyx.withValues(alpha: 0.12),
                                   ),
                                 ),
                               ],
@@ -537,14 +538,14 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                   border: Border.all(
                                     color: OhtliSettings.instance.isDarkMode
                                         ? const Color(0xFF2C2C32)
-                                        : OhtliColors.onyx.withOpacity(0.12),
+                                        : OhtliColors.onyx.withValues(alpha: 0.12),
                                     width: 1,
                                   ),
                                   boxShadow: _isGoogleHovering
                                       ? [
                                           BoxShadow(
-                                            color: Colors.black.withOpacity(
-                                              0.05,
+                                            color: Colors.black.withValues(
+                                              alpha: 0.05,
                                             ),
                                             blurRadius: 8,
                                             offset: const Offset(0, 3),
@@ -579,8 +580,8 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                                           style: GoogleFonts.inter(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w400,
-                                            color: OhtliColors.onyx.withOpacity(
-                                              0.8,
+                                            color: OhtliColors.onyx.withValues(
+                                              alpha: 0.8,
                                             ),
                                           ),
                                         ),
@@ -597,7 +598,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                               text: TextSpan(
                                 text: '¿Primera vez? ',
                                 style: GoogleFonts.inter(
-                                  color: OhtliColors.onyx.withOpacity(0.6),
+                                  color: OhtliColors.onyx.withValues(alpha: 0.6),
                                   fontSize: 13,
                                 ),
                                 children: [

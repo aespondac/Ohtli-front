@@ -1,11 +1,8 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:typed_data';
-import 'dart:js' as js;
-import 'dart:js' show allowInterop;
-import 'dart:js_util' show promiseToFuture;
-import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -72,8 +69,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   bool _publicProfile = false;
 
   // Synchronous loader state for AddressPickerWidget (to avoid browser loading locks)
-  bool _isAddressPickerLoaded = true;
-  bool _isLoadingAddressPicker = false;
+  final bool _isAddressPickerLoaded = true;
+  final bool _isLoadingAddressPicker = false;
   StreamSubscription<DocumentSnapshot>? _userDataSubscription;
   bool _isInitialSyncDone = false;
 
@@ -1052,7 +1049,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       'Esta acción es irreversible y eliminará todos tus datos en Ohtli permanentemente. Firebase requiere volver a verificar tu identidad antes de continuar.',
                       style: GoogleFonts.inter(
                         fontSize: 13,
-                        color: OhtliColors.onyx.withOpacity(0.7),
+                        color: OhtliColors.onyx.withValues(alpha: 0.7),
                         height: 1.4,
                       ),
                     ),
@@ -1081,7 +1078,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         decoration: InputDecoration(
                           labelText: 'Contraseña Actual',
                           labelStyle: GoogleFonts.inter(
-                            color: OhtliColors.onyx.withOpacity(0.5),
+                            color: OhtliColors.onyx.withValues(alpha: 0.5),
                           ),
                           prefixIcon: const Icon(
                             Icons.lock_outline_rounded,
@@ -1089,7 +1086,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                             size: 20,
                           ),
                           filled: true,
-                          fillColor: OhtliColors.cantera.withOpacity(0.3),
+                          fillColor: OhtliColors.cantera.withValues(alpha: 0.3),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -1115,7 +1112,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   child: Text(
                     'Cancelar',
                     style: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.6),
+                      color: OhtliColors.onyx.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -1125,8 +1122,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ? null
                       : () async {
                           if (!isGoogleUser &&
-                              !deleteFormKey.currentState!.validate())
+                              !deleteFormKey.currentState!.validate()) {
                             return;
+                          }
 
                           setDialogState(() => isDeleting = true);
 
@@ -1365,7 +1363,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.15),
+                          color: Colors.black.withValues(alpha: 0.15),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -1426,7 +1424,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         Positioned.fill(
           child: CustomPaint(
             painter: RouteBackgroundPainter(
-              OhtliColors.cantera.withOpacity(0.4),
+              OhtliColors.cantera.withValues(alpha: 0.4),
             ),
           ),
         ),
@@ -1493,6 +1491,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 setState(() {
                   _currentSection = AccountSection.dashboard;
                 });
+              } else {
+                widget.onBackToHome(0); // Act as toggle!
               }
             },
             onLogout: widget.onLogout,
@@ -1508,93 +1508,55 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   }
 
   Widget _buildAppBar(bool isMobile) {
+    if (!isMobile) {
+      return const SizedBox(height: 24); // Clean top spacing on desktop
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName ?? user?.email ?? 'Viajero';
+    final initials = displayName
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Back/Return Button
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: TextButton.icon(
-              onPressed: () {
-                if (_currentSection != AccountSection.dashboard) {
-                  setState(() {
-                    _currentSection = AccountSection.dashboard;
-                    _isEditingAddress = false;
-                  });
-                } else {
-                  widget.onBackToHome(0);
-                }
-              },
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: OhtliColors.stormyTeal,
-                size: 20,
-              ),
-              label: Text(
-                _currentSection == AccountSection.dashboard
-                    ? 'Volver al Inicio'
-                    : 'Atrás',
-                style: GoogleFonts.inter(
-                  color: OhtliColors.stormyTeal,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-              ),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                backgroundColor: OhtliColors.cantera.withOpacity(0.3),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+          // Left: Ohtli Logo SVG
+          SizedBox(
+            height: 32,
+            child: SvgPicture.asset(
+              'assets/icon_isologo.svg',
+              fit: BoxFit.contain,
+              colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
             ),
           ),
 
-          // Action section title or branding
-          if (_currentSection != AccountSection.dashboard)
-            Text(
-              _getSectionTitle(_currentSection),
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: OhtliColors.onyx,
-              ),
-            )
-          else
-            Text(
-              'Mi Cuenta',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: OhtliColors.onyx.withOpacity(0.5),
-              ),
-            ),
+          // Right: Toggle Avatar Button
+          _buildAvatarWidget(
+            radius: 18,
+            initials: initials,
+            photoURL: _localPhotoURL,
+            onTap: () {
+              if (_currentSection != AccountSection.dashboard) {
+                setState(() {
+                  _currentSection = AccountSection.dashboard;
+                  _isEditingAddress = false;
+                });
+              } else {
+                widget.onBackToHome(0); // Toggles back to main view (home page)
+              }
+            },
+          ),
         ],
       ),
     );
   }
 
-  String _getSectionTitle(AccountSection section) {
-    switch (section) {
-      case AccountSection.personalInfo:
-        return 'Información Personal';
-      case AccountSection.security:
-        return 'Seguridad';
-      case AccountSection.addresses:
-        return 'Direcciones';
-      case AccountSection.privacy:
-        return 'Privacidad';
-      case AccountSection.preferences:
-        return 'Preferencias y Accesibilidad';
-      default:
-        return '';
-    }
-  }
 
   Widget _buildActiveContent(
     User? user,
@@ -1659,7 +1621,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             style: GoogleFonts.inter(
               fontSize: 13,
               fontWeight: FontWeight.w300,
-              color: OhtliColors.onyx.withOpacity(0.5),
+              color: OhtliColors.onyx.withValues(alpha: 0.5),
             ),
           ),
           const SizedBox(height: 24),
@@ -1870,13 +1832,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   initialValue: user?.email ?? '',
                   readOnly: true,
                   style: GoogleFonts.inter(
-                    color: OhtliColors.onyx.withOpacity(0.6),
+                    color: OhtliColors.onyx.withValues(alpha: 0.6),
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
                     labelText: 'Correo Electrónico (No editable)',
                     labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.5),
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
                     prefixIcon: const Icon(
                       Icons.email_outlined,
@@ -1888,12 +1850,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           'El correo electrónico es el identificador principal.',
                       child: Icon(
                         Icons.info_outline_rounded,
-                        color: OhtliColors.onyx.withOpacity(0.4),
+                        color: OhtliColors.onyx.withValues(alpha: 0.4),
                         size: 18,
                       ),
                     ),
                     filled: true,
-                    fillColor: OhtliColors.cloudDancer.withOpacity(0.5),
+                    fillColor: OhtliColors.cloudDancer.withValues(alpha: 0.5),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
@@ -1915,7 +1877,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   decoration: InputDecoration(
                     labelText: 'Nombres',
                     labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.5),
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
                     prefixIcon: const Icon(
                       Icons.person_outline_rounded,
@@ -1945,7 +1907,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   decoration: InputDecoration(
                     labelText: 'Apellidos',
                     labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.5),
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
                     prefixIcon: const Icon(
                       Icons.person_outline_rounded,
@@ -1973,7 +1935,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   decoration: InputDecoration(
                     labelText: 'Número Telefónico',
                     labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.5),
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
                     prefixIcon: const Icon(
                       Icons.phone_outlined,
@@ -2001,7 +1963,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         child: Text(
                           'Cancelar',
                           style: GoogleFonts.inter(
-                            color: OhtliColors.onyx.withOpacity(0.6),
+                            color: OhtliColors.onyx.withValues(alpha: 0.6),
                           ),
                         ),
                       ),
@@ -2073,7 +2035,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   'Por seguridad, requerimos verificar tu contraseña actual antes de actualizarla.',
                   style: GoogleFonts.inter(
                     fontSize: 12.5,
-                    color: OhtliColors.onyx.withOpacity(0.55),
+                    color: OhtliColors.onyx.withValues(alpha: 0.55),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -2092,7 +2054,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   decoration: InputDecoration(
                     labelText: 'Contraseña Actual',
                     labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.5),
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
                     prefixIcon: const Icon(
                       Icons.lock_outline_rounded,
@@ -2128,16 +2090,18 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     fontSize: 14,
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return 'Ingresa la nueva contraseña';
-                    if (value.length < 6)
+                    }
+                    if (value.length < 6) {
                       return 'Debe tener al menos 6 caracteres';
+                    }
                     return null;
                   },
                   decoration: InputDecoration(
                     labelText: 'Nueva Contraseña',
                     labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.5),
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
                     prefixIcon: const Icon(
                       Icons.lock_rounded,
@@ -2178,7 +2142,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   decoration: InputDecoration(
                     labelText: 'Confirmar Nueva Contraseña',
                     labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withOpacity(0.5),
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
                     prefixIcon: const Icon(
                       Icons.lock_rounded,
@@ -2216,7 +2180,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         child: Text(
                           'Cancelar',
                           style: GoogleFonts.inter(
-                            color: OhtliColors.onyx.withOpacity(0.6),
+                            color: OhtliColors.onyx.withValues(alpha: 0.6),
                           ),
                         ),
                       ),
@@ -2413,14 +2377,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         children: [
                           Icon(
                             Icons.location_off_outlined,
-                            color: OhtliColors.onyx.withOpacity(0.2),
+                            color: OhtliColors.onyx.withValues(alpha: 0.2),
                             size: 48,
                           ),
                           const SizedBox(height: 12),
                           Text(
                             'No tienes direcciones guardadas.',
                             style: GoogleFonts.inter(
-                              color: OhtliColors.onyx.withOpacity(0.5),
+                              color: OhtliColors.onyx.withValues(alpha: 0.5),
                               fontSize: 14,
                             ),
                           ),
@@ -2428,7 +2392,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           Text(
                             '¡Agrega una para tus futuros viajes!',
                             style: GoogleFonts.inter(
-                              color: OhtliColors.onyx.withOpacity(0.4),
+                              color: OhtliColors.onyx.withValues(alpha: 0.4),
                               fontSize: 12,
                             ),
                           ),
@@ -2497,8 +2461,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                     vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: OhtliColors.stormyTeal.withOpacity(
-                                      0.09,
+                                    color: OhtliColors.stormyTeal.withValues(
+                                      alpha: 0.09,
                                     ),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
@@ -2521,7 +2485,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                     : addressStr,
                                 style: GoogleFonts.inter(
                                   fontSize: 12,
-                                  color: OhtliColors.onyx.withOpacity(0.6),
+                                  color: OhtliColors.onyx.withValues(alpha: 0.6),
                                   height: 1.3,
                                 ),
                               ),
@@ -2634,14 +2598,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 'Configura cómo Ohtli interactúa y comparte tus datos de viaje.',
                 style: GoogleFonts.inter(
                   fontSize: 12.5,
-                  color: OhtliColors.onyx.withOpacity(0.55),
+                  color: OhtliColors.onyx.withValues(alpha: 0.55),
                 ),
               ),
               const SizedBox(height: 24),
 
               // Switch 1: Compartir datos
               SwitchListTile(
-                activeColor: OhtliColors.stormyTeal,
+                activeThumbColor: OhtliColors.stormyTeal,
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   'Compartir datos de viaje',
@@ -2655,7 +2619,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   'Permite a Ohtli utilizar tu historial para sugerirte mejores rutas en base a tendencias de viaje.',
                   style: GoogleFonts.inter(
                     fontSize: 12,
-                    color: OhtliColors.onyx.withOpacity(0.55),
+                    color: OhtliColors.onyx.withValues(alpha: 0.55),
                   ),
                 ),
                 value: _shareTravelData,
@@ -2670,7 +2634,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
               // Switch 2: Notificaciones
               SwitchListTile(
-                activeColor: OhtliColors.stormyTeal,
+                activeThumbColor: OhtliColors.stormyTeal,
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   'Recibir notificaciones',
@@ -2684,7 +2648,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   'Notificar sobre el estado de tu cuenta, actualizaciones de viaje y alertas del clima en CDMX.',
                   style: GoogleFonts.inter(
                     fontSize: 12,
-                    color: OhtliColors.onyx.withOpacity(0.55),
+                    color: OhtliColors.onyx.withValues(alpha: 0.55),
                   ),
                 ),
                 value: _receiveNotifications,
@@ -2699,7 +2663,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
               // Switch 3: Perfil público
               SwitchListTile(
-                activeColor: OhtliColors.stormyTeal,
+                activeThumbColor: OhtliColors.stormyTeal,
                 contentPadding: EdgeInsets.zero,
                 title: Text(
                   'Perfil público',
@@ -2713,7 +2677,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   'Permite que otros viajeros en Ohtli puedan buscar tu nombre y ver tus insignias de viaje alcanzadas.',
                   style: GoogleFonts.inter(
                     fontSize: 12,
-                    color: OhtliColors.onyx.withOpacity(0.55),
+                    color: OhtliColors.onyx.withValues(alpha: 0.55),
                   ),
                 ),
                 value: _publicProfile,
@@ -2730,10 +2694,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: OhtliColors.xoconostle.withOpacity(0.06),
+                  color: OhtliColors.xoconostle.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: OhtliColors.xoconostle.withOpacity(0.3),
+                    color: OhtliColors.xoconostle.withValues(alpha: 0.3),
                     width: 1.2,
                   ),
                 ),
@@ -2763,7 +2727,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       'Al eliminar tu cuenta se borrarán irreversiblemente tus fotos, direcciones y datos locales de viaje de los servidores de Ohtli.',
                       style: GoogleFonts.inter(
                         fontSize: 12,
-                        color: OhtliColors.onyx.withOpacity(0.65),
+                        color: OhtliColors.onyx.withValues(alpha: 0.65),
                         height: 1.4,
                       ),
                     ),
@@ -2911,7 +2875,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     'Ajusta el tamaño del texto para una lectura más cómoda.',
                     style: GoogleFonts.inter(
                       fontSize: 12,
-                      color: OhtliColors.onyx.withOpacity(0.6),
+                      color: OhtliColors.onyx.withValues(alpha: 0.6),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -2996,13 +2960,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
         decoration: BoxDecoration(
           color: isSelected
-              ? OhtliColors.stormyTeal.withOpacity(0.12)
-              : OhtliColors.inputBg.withOpacity(0.3),
+              ? OhtliColors.stormyTeal.withValues(alpha: 0.12)
+              : OhtliColors.inputBg.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? OhtliColors.stormyTeal
-                : OhtliColors.cantera.withOpacity(0.4),
+                : OhtliColors.cantera.withValues(alpha: 0.4),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -3013,7 +2977,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               size: 26,
               color: isSelected
                   ? OhtliColors.stormyTeal
-                  : OhtliColors.onyx.withOpacity(0.7),
+                  : OhtliColors.onyx.withValues(alpha: 0.7),
             ),
             const SizedBox(height: 8),
             Text(
@@ -3044,13 +3008,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
-              ? OhtliColors.stormyTeal.withOpacity(0.08)
-              : OhtliColors.inputBg.withOpacity(0.15),
+              ? OhtliColors.stormyTeal.withValues(alpha: 0.08)
+              : OhtliColors.inputBg.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? OhtliColors.stormyTeal
-                : OhtliColors.cantera.withOpacity(0.3),
+                : OhtliColors.cantera.withValues(alpha: 0.3),
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -3080,7 +3044,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     description,
                     style: GoogleFonts.inter(
                       fontSize: 11.5,
-                      color: OhtliColors.onyx.withOpacity(0.55),
+                      color: OhtliColors.onyx.withValues(alpha: 0.55),
                     ),
                   ),
                 ],
@@ -3092,7 +3056,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               decoration: BoxDecoration(
                 color: OhtliColors.cloudDancer,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: OhtliColors.cantera.withOpacity(0.3)),
+                border: Border.all(color: OhtliColors.cantera.withValues(alpha: 0.3)),
               ),
               child: Text(
                 'Aa',
@@ -3149,7 +3113,7 @@ class _DashboardCardState extends State<_DashboardCard> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(_isHovered ? 0.12 : 0.05),
+                color: Colors.black.withValues(alpha: _isHovered ? 0.12 : 0.05),
                 blurRadius: _isHovered ? 14 : 6,
                 offset: Offset(0, _isHovered ? 6 : 2),
               ),
@@ -3184,7 +3148,7 @@ class _DashboardCardState extends State<_DashboardCard> {
                   style: GoogleFonts.inter(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w400,
-                    color: OhtliColors.onyx.withOpacity(0.6),
+                    color: OhtliColors.onyx.withValues(alpha: 0.6),
                     height: 1.3,
                   ),
                 ),

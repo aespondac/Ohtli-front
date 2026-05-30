@@ -31,7 +31,7 @@ class MobileWelcomePage extends StatelessWidget {
           // Overlay oscuro
           Positioned.fill(
             child: Container(
-              color: Colors.black.withOpacity(0.45),
+              color: Colors.black.withValues(alpha: 0.45),
             ),
           ),
           

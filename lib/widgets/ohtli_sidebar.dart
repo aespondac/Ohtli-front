@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
+
 import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
@@ -197,7 +199,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
 
     Color itemColor = isActive
         ? OhtliColors.stormyTeal
-        : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withOpacity(0.7));
+        : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withValues(alpha: 0.7));
 
     Widget content = Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -207,8 +209,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
       ),
       decoration: BoxDecoration(
         color: isActive
-            ? OhtliColors.cloudDancer.withOpacity(0.8)
-            : (isHovered ? Colors.white.withOpacity(0.3) : Colors.transparent),
+            ? OhtliColors.cloudDancer.withValues(alpha: 0.8)
+            : (isHovered ? Colors.white.withValues(alpha: 0.3) : Colors.transparent),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -236,7 +238,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
       content = Tooltip(
         message: label,
         decoration: BoxDecoration(
-          color: OhtliColors.onyx.withOpacity(0.8),
+          color: OhtliColors.onyx.withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(8),
         ),
         textStyle: GoogleFonts.inter(color: Colors.white, fontSize: 11),
@@ -362,7 +364,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
           _buildSidebarItem(
             icon: 'assets/icon_isologo.svg',
             activeIcon: 'assets/icon_isologo.svg',
-            label: 'Inicio',
+            label: 'Explorar',
             index: 0,
             isHovered: _isHoveringInicio,
             onHover: (hovered) => setState(() => _isHoveringInicio = hovered),
@@ -402,7 +404,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w400,
-                            color: OhtliColors.onyx.withOpacity(0.8),
+                            color: OhtliColors.onyx.withValues(alpha: 0.8),
                           ),
                         ),
                       ),
@@ -422,7 +424,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
                           size: 17,
                           color: _isHoveringLogout
                               ? OhtliColors.xoconostle
-                              : OhtliColors.onyx.withOpacity(0.5),
+                              : OhtliColors.onyx.withValues(alpha: 0.5),
                         ),
                       ),
                     ),

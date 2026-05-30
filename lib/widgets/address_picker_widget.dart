@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, undefined_function, uri_does_not_exist, deprecated_member_use
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
@@ -681,7 +683,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
         border: Border.all(color: OhtliColors.cantera, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -709,11 +711,11 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: OhtliColors.cloudDancer.withOpacity(0.9),
+                  color: OhtliColors.cloudDancer.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
+                      color: Colors.black.withValues(alpha: 0.06),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -749,14 +751,14 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
       avatar: Icon(
         icon,
         size: 16,
-        color: isSelected ? Colors.white : OhtliColors.onyx.withOpacity(0.7),
+        color: isSelected ? Colors.white : OhtliColors.onyx.withValues(alpha: 0.7),
       ),
       label: Text(
         categoryName,
         style: GoogleFonts.inter(
           fontSize: 12,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-          color: isSelected ? Colors.white : OhtliColors.onyx.withOpacity(0.8),
+          color: isSelected ? Colors.white : OhtliColors.onyx.withValues(alpha: 0.8),
         ),
       ),
       selected: isSelected,
@@ -774,7 +776,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cantera.withOpacity(0.5),
+          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cantera.withValues(alpha: 0.5),
           width: 1,
         ),
       ),
@@ -824,7 +826,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   },
                   decoration: InputDecoration(
                     labelText: 'Nombre Personalizado (ej. Mi Casa, Oficina)',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
+                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
                     prefixIcon: const Icon(Icons.bookmark_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
@@ -839,7 +841,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   style: GoogleFonts.inter(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx.withOpacity(0.7),
+                    color: OhtliColors.onyx.withValues(alpha: 0.7),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -860,9 +862,9 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: OhtliColors.xoconostle.withOpacity(0.08),
+                      color: OhtliColors.xoconostle.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: OhtliColors.xoconostle.withOpacity(0.25), width: 1.5),
+                      border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.25), width: 1.5),
                     ),
                     child: Row(
                       children: [
@@ -893,7 +895,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa la calle y número' : null,
                   decoration: InputDecoration(
                     labelText: 'Calle y Número',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
+                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
                     prefixIcon: const Icon(Icons.home_outlined, color: OhtliColors.stormyTeal, size: 20),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
@@ -906,9 +908,9 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: OhtliColors.xoconostle.withOpacity(0.08),
+                      color: OhtliColors.xoconostle.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: OhtliColors.xoconostle.withOpacity(0.25), width: 1.5),
+                      border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.25), width: 1.5),
                     ),
                     child: Row(
                       children: [
@@ -940,7 +942,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -983,7 +985,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa la colonia o delegación' : null,
                   decoration: InputDecoration(
                     labelText: 'Colonia / Zona',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
+                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
                     prefixIcon: const Icon(Icons.map_outlined, color: OhtliColors.stormyTeal, size: 20),
                     filled: true,
                     fillColor: OhtliColors.cloudDancer,
@@ -1004,7 +1006,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                         validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
                         decoration: InputDecoration(
                           labelText: 'Código Postal',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
+                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
                           prefixIcon: const Icon(Icons.markunread_mailbox_outlined, color: OhtliColors.stormyTeal, size: 20),
                           filled: true,
                           fillColor: OhtliColors.cloudDancer,
@@ -1021,7 +1023,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                         validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
                         decoration: InputDecoration(
                           labelText: 'Ciudad / Delegación',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.5)),
+                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
                           filled: true,
                           fillColor: OhtliColors.cloudDancer,
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
@@ -1039,14 +1041,14 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                       child: TextFormField(
                         controller: _stateController,
                         readOnly: true,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.55), fontSize: 14),
+                        style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.55), fontSize: 14),
                         validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
                         decoration: InputDecoration(
                           labelText: 'Estado (CDMX)',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.4)),
+                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.4)),
                           prefixIcon: const Icon(Icons.map_outlined, color: OhtliColors.stormyTeal, size: 20),
                           filled: true,
-                          fillColor: OhtliColors.cloudDancer.withOpacity(0.6),
+                          fillColor: OhtliColors.cloudDancer.withValues(alpha: 0.6),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                         ),
                       ),
@@ -1056,14 +1058,14 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                       child: TextFormField(
                         controller: _countryController,
                         readOnly: true,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.55), fontSize: 14),
+                        style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.55), fontSize: 14),
                         validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
                         decoration: InputDecoration(
                           labelText: 'País (México)',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.4)),
+                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.4)),
                           prefixIcon: const Icon(Icons.public_rounded, color: OhtliColors.stormyTeal, size: 20),
                           filled: true,
-                          fillColor: OhtliColors.cloudDancer.withOpacity(0.6),
+                          fillColor: OhtliColors.cloudDancer.withValues(alpha: 0.6),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                         ),
                       ),
@@ -1095,7 +1097,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                         onPressed: widget.onCancel,
                         child: Text(
                           'Cancelar',
-                          style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6)),
+                          style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6)),
                         ),
                       ),
                     ),

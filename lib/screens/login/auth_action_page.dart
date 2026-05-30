@@ -145,7 +145,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
           // CDMX Decorative lines
           Positioned.fill(
             child: CustomPaint(
-              painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.95)),
+              painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
             ),
           ),
 
@@ -158,16 +158,16 @@ class _AuthActionPageState extends State<AuthActionPage> {
                 child: Container(
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
-                    color: OhtliColors.cloudDancer.withOpacity(0.9),
+                    color: OhtliColors.cloudDancer.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
                     ],
-                    border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
+                    border: Border.all(color: OhtliColors.cantera.withValues(alpha: 0.5)),
                   ),
                   child: _buildContent(),
                 ),
@@ -192,7 +192,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
             style: GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.w400,
-              color: OhtliColors.onyx.withOpacity(0.8),
+              color: OhtliColors.onyx.withValues(alpha: 0.8),
             ),
           ),
         ],
@@ -234,7 +234,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
             style: GoogleFonts.inter(
               fontSize: 13,
               fontWeight: FontWeight.w300,
-              color: OhtliColors.onyx.withOpacity(0.6),
+              color: OhtliColors.onyx.withValues(alpha: 0.6),
               height: 1.5,
             ),
           ),
@@ -295,7 +295,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
             style: GoogleFonts.inter(
               fontSize: 13,
               fontWeight: FontWeight.w300,
-              color: OhtliColors.onyx.withOpacity(0.6),
+              color: OhtliColors.onyx.withValues(alpha: 0.6),
               height: 1.5,
             ),
           ),
@@ -356,7 +356,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
             style: GoogleFonts.inter(
               fontSize: 13,
               fontWeight: FontWeight.w300,
-              color: OhtliColors.onyx.withOpacity(0.6),
+              color: OhtliColors.onyx.withValues(alpha: 0.6),
               height: 1.5,
             ),
           ),
@@ -410,7 +410,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
             style: GoogleFonts.inter(
               fontSize: 18,
               fontWeight: FontWeight.w500,
-              color: OhtliColors.onyx.withOpacity(0.8),
+              color: OhtliColors.onyx.withValues(alpha: 0.8),
             ),
           ),
           const SizedBox(height: 8),
@@ -420,7 +420,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
             style: GoogleFonts.inter(
               fontSize: 12,
               fontWeight: FontWeight.w300,
-              color: OhtliColors.onyx.withOpacity(0.5),
+              color: OhtliColors.onyx.withValues(alpha: 0.5),
               height: 1.4,
             ),
           ),
@@ -465,7 +465,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
                   boxShadow: _isSubmitHovering
                       ? [
                           BoxShadow(
-                            color: OhtliColors.stormyTeal.withOpacity(0.2),
+                            color: OhtliColors.stormyTeal.withValues(alpha: 0.2),
                             blurRadius: 8,
                             offset: const Offset(0, 3),
                           ),

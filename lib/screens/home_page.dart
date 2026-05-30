@@ -1,7 +1,8 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -213,7 +214,6 @@ class _HomePageState extends State<HomePage> {
 
     final bool isDark = OhtliSettings.instance.isDarkMode;
     final colorSidebar = isDark ? const Color(0xFF1E1E22) : const Color(0xFFE4E1DA);
-    final colorBorder = isDark ? const Color(0xFF2C2C32) : const Color(0xFFD1CDC4);
 
     if (isMobile) {
       return Scaffold(
@@ -249,7 +249,7 @@ class _HomePageState extends State<HomePage> {
           onTap: (index) => setState(() => _currentIndex = index),
           backgroundColor: colorSidebar,
           selectedItemColor: OhtliColors.stormyTeal,
-          unselectedItemColor: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
+          unselectedItemColor: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
           selectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 11),
           unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 11),
           items: [
@@ -259,7 +259,7 @@ class _HomePageState extends State<HomePage> {
                 width: 20,
                 height: 20,
                 colorFilter: ColorFilter.mode(
-                  isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
+                  isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
                   BlendMode.srcIn,
                 ),
               ),
@@ -272,7 +272,7 @@ class _HomePageState extends State<HomePage> {
                   BlendMode.srcIn,
                 ),
               ),
-              label: 'Inicio',
+              label: 'Explorar',
             ),
             const BottomNavigationBarItem(
               icon: Icon(Icons.map_outlined),
@@ -313,7 +313,7 @@ class _HomePageState extends State<HomePage> {
       children: [
         Positioned.fill(
           child: CustomPaint(
-            painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.95)),
+            painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
           ),
         ),
         Center(
@@ -353,7 +353,7 @@ class _HomePageState extends State<HomePage> {
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w300,
-                  color: OhtliColors.onyx.withOpacity(0.4),
+                  color: OhtliColors.onyx.withValues(alpha: 0.4),
                   letterSpacing: 3.0,
                 ),
               ),
@@ -371,7 +371,7 @@ class _HomePageState extends State<HomePage> {
                 fontSize: 11,
                 fontWeight: FontWeight.w300,
                 letterSpacing: 4.0,
-                color: OhtliColors.onyx.withOpacity(0.4),
+                color: OhtliColors.onyx.withValues(alpha: 0.4),
               ),
             ),
           ),

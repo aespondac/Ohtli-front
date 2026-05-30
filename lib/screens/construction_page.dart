@@ -76,7 +76,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
             // Líneas de mapa decorativas
             Positioned.fill(
               child: CustomPaint(
-                painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.95)),
+                painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
               ),
             ),
 
@@ -135,7 +135,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
                     fontSize: 11,
                     fontWeight: FontWeight.w300,
                     letterSpacing: 4.0,
-                    color: OhtliColors.onyx.withOpacity(0.4),
+                    color: OhtliColors.onyx.withValues(alpha: 0.4),
                   ),
                 ),
               ),
@@ -230,7 +230,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
             fontSize: 14,
             height: 1.6,
             fontWeight: FontWeight.w300,
-            color: OhtliColors.onyx.withOpacity(0.75),
+            color: OhtliColors.onyx.withValues(alpha: 0.75),
           ),
         ),
         const SizedBox(height: 40),
@@ -246,7 +246,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
               boxShadow: _isHoveringEnter
                   ? [
                       BoxShadow(
-                        color: OhtliColors.stormyTeal.withOpacity(0.2),
+                        color: OhtliColors.stormyTeal.withValues(alpha: 0.2),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -287,7 +287,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: primaryColor.withOpacity(0.2),
+          color: primaryColor.withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -295,7 +295,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: primaryColor.withOpacity(0.06),
+          color: primaryColor.withValues(alpha: 0.06),
           border: Border.all(
             color: primaryColor,
             width: 1.5,

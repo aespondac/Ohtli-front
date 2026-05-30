@@ -1,6 +1,7 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
+
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -65,7 +66,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     IconButton(
                       icon: const Icon(Icons.close_rounded),
                       onPressed: () => Navigator.of(dialogContext).pop(),
-                      color: OhtliColors.onyx.withOpacity(0.6),
+                      color: OhtliColors.onyx.withValues(alpha: 0.6),
                     ),
                 ],
               ),
@@ -86,9 +87,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           style: GoogleFonts.inter(color: OhtliColors.onyx),
                           decoration: InputDecoration(
                             labelText: 'Título del viaje *',
-                            labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6)),
+                            labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6)),
                             hintText: 'Ej. Fin de semana en Coyoacán',
-                            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.3)),
+                            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
                             filled: true,
                             fillColor: OhtliColors.inputBg,
                             border: OutlineInputBorder(
@@ -118,9 +119,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           style: GoogleFonts.inter(color: OhtliColors.onyx),
                           decoration: InputDecoration(
                             labelText: 'Descripción corta',
-                            labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6)),
+                            labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6)),
                             hintText: 'Ej. Museos, cafés y paseos por el centro histórico.',
-                            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.3)),
+                            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
                             filled: true,
                             fillColor: OhtliColors.inputBg,
                             border: OutlineInputBorder(
@@ -143,9 +144,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           style: GoogleFonts.inter(color: OhtliColors.onyx),
                           decoration: InputDecoration(
                             labelText: 'Fecha del viaje',
-                            labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.6)),
+                            labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6)),
                             hintText: 'Selecciona la fecha de tu viaje',
-                            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.3)),
+                            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
                             filled: true,
                             fillColor: OhtliColors.inputBg,
                             prefixIcon: const Icon(Icons.calendar_today_rounded, color: OhtliColors.stormyTeal, size: 20),
@@ -173,8 +174,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                       onPrimary: Colors.white,
                                       onSurface: OhtliColors.onyx,
                                       surface: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                                    ),
-                                    dialogBackgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                                    ), dialogTheme: DialogThemeData(backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white),
                                   ),
                                   child: child!,
                                 );
@@ -200,7 +200,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: OhtliColors.onyx.withOpacity(0.8),
+                            color: OhtliColors.onyx.withValues(alpha: 0.8),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -262,10 +262,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                             width: double.infinity,
                             height: 180,
                             decoration: BoxDecoration(
-                              color: OhtliColors.inputBg.withOpacity(0.5),
+                              color: OhtliColors.inputBg.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: OhtliColors.cantera.withOpacity(0.6),
+                                color: OhtliColors.cantera.withValues(alpha: 0.6),
                                 width: 1.5,
                               ),
                             ),
@@ -285,7 +285,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                             decoration: BoxDecoration(
-                                              color: Colors.black.withOpacity(0.6),
+                                              color: Colors.black.withValues(alpha: 0.6),
                                               borderRadius: BorderRadius.circular(12),
                                             ),
                                             child: Text(
@@ -306,14 +306,14 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                     children: [
                                       Icon(
                                         Icons.add_photo_alternate_outlined,
-                                        color: OhtliColors.onyx.withOpacity(0.4),
+                                        color: OhtliColors.onyx.withValues(alpha: 0.4),
                                         size: 36,
                                       ),
                                       const SizedBox(height: 8),
                                       Text(
                                         'Sube una imagen de portada',
                                         style: GoogleFonts.inter(
-                                          color: OhtliColors.onyx.withOpacity(0.5),
+                                          color: OhtliColors.onyx.withValues(alpha: 0.5),
                                           fontSize: 12,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -346,7 +346,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                         child: Text(
                           'Cancelar',
                           style: GoogleFonts.inter(
-                            color: OhtliColors.onyx.withOpacity(0.6),
+                            color: OhtliColors.onyx.withValues(alpha: 0.6),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -560,7 +560,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       'Organiza y comparte tus caminos',
                       style: GoogleFonts.inter(
                         fontSize: 12,
-                        color: OhtliColors.onyx.withOpacity(0.5),
+                        color: OhtliColors.onyx.withValues(alpha: 0.5),
                         fontWeight: FontWeight.w400,
                       ),
                     ),
@@ -599,7 +599,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 indicatorColor: OhtliColors.stormyTeal,
                 indicatorWeight: 3,
                 labelColor: OhtliColors.stormyTeal,
-                unselectedLabelColor: OhtliColors.onyx.withOpacity(0.5),
+                unselectedLabelColor: OhtliColors.onyx.withValues(alpha: 0.5),
                 labelStyle: GoogleFonts.inter(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -621,7 +621,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             // Map dotted line background
             Positioned.fill(
               child: CustomPaint(
-                painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.3)),
+                painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.3)),
               ),
             ),
 
@@ -713,9 +713,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: OhtliColors.stormyTeal.withOpacity(0.06),
+                  color: OhtliColors.stormyTeal.withValues(alpha: 0.06),
                   border: Border.all(
-                    color: OhtliColors.stormyTeal.withOpacity(0.15),
+                    color: OhtliColors.stormyTeal.withValues(alpha: 0.15),
                     width: 1.5,
                   ),
                 ),
@@ -750,7 +750,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     height: 1.5,
-                    color: OhtliColors.onyx.withOpacity(0.5),
+                    color: OhtliColors.onyx.withValues(alpha: 0.5),
                   ),
                 ),
               ),
