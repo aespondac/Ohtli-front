@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:html' as html;
@@ -640,15 +641,86 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final text = controller.text;
     final selection = controller.selection;
     if (!selection.isValid) {
-      controller.text = text + wrapper;
+      final newText = text + wrapper;
+      controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: newText.length),
+      );
+      _onDataChanged();
       return;
     }
+
+    final start = selection.start;
+    final end = selection.end;
     final selectedText = selection.textInside(text);
-    final newText = text.replaceRange(selection.start, selection.end, '$wrapper$selectedText$wrapper');
-    controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: selection.start + wrapper.length + selectedText.length + wrapper.length),
-    );
+
+    // List item toggle
+    if (wrapper == '- ') {
+      if (selectedText.startsWith('- ')) {
+        final unwrappedText = selectedText.substring(2);
+        final newText = text.replaceRange(start, end, unwrappedText);
+        controller.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection(
+            baseOffset: start,
+            extentOffset: start + unwrappedText.length,
+          ),
+        );
+      } else {
+        final newText = text.replaceRange(start, end, '- $selectedText');
+        controller.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection(
+            baseOffset: start,
+            extentOffset: start + 2 + selectedText.length,
+          ),
+        );
+      }
+      _onDataChanged();
+      return;
+    }
+
+    final len = wrapper.length;
+
+    // Case 1: Selection itself is wrapped: e.g. **bold**
+    if (selectedText.length >= len * 2 &&
+        selectedText.startsWith(wrapper) &&
+        selectedText.endsWith(wrapper)) {
+      final unwrappedText = selectedText.substring(len, selectedText.length - len);
+      final newText = text.replaceRange(start, end, unwrappedText);
+      controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: start,
+          extentOffset: start + unwrappedText.length,
+        ),
+      );
+    }
+    // Case 2: Surrounding text is wrapped: e.g. **|bold|** (cursor selection is "bold", outside matches wrapper)
+    else if (start >= len &&
+        end + len <= text.length &&
+        text.substring(start - len, start) == wrapper &&
+        text.substring(end, end + len) == wrapper) {
+      final newText = text.replaceRange(start - len, end + len, selectedText);
+      controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: start - len,
+          extentOffset: start - len + selectedText.length,
+        ),
+      );
+    }
+    // Case 3: Wrap text: e.g. bold -> **bold**
+    else {
+      final newText = text.replaceRange(start, end, '$wrapper$selectedText$wrapper');
+      controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: start + len,
+          extentOffset: start + len + selectedText.length,
+        ),
+      );
+    }
     _onDataChanged();
   }
 
@@ -1348,19 +1420,29 @@ class _TripEditorPageState extends State<TripEditorPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildMarkdownToolbar(controller, isDark),
-            TextFormField(
-              controller: controller,
-              maxLines: 4,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: OhtliColors.onyx,
-                height: 1.4,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Escribe tu anécdota, historia o consejo aquí...',
-                hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
+            CallbackShortcuts(
+              bindings: <ShortcutActivator, VoidCallback>{
+                const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**'),
+                const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**'),
+                const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*'),
+                const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*'),
+                const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_'),
+                const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_'),
+              },
+              child: TextFormField(
+                controller: controller,
+                maxLines: 4,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: OhtliColors.onyx,
+                  height: 1.4,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Escribe tu anécdota, historia o consejo aquí...',
+                  hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
             ),
           ],
@@ -1471,19 +1553,29 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ),
           const SizedBox(height: 12),
           _buildMarkdownToolbar(controller, isDark),
-          TextFormField(
-            controller: controller,
-            maxLines: 3,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: OhtliColors.onyx,
-              height: 1.4,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Añade tu descripción lateral...',
-              hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+          CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**'),
+              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**'),
+              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*'),
+              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*'),
+              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_'),
+              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_'),
+            },
+            child: TextFormField(
+              controller: controller,
+              maxLines: 3,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: OhtliColors.onyx,
+                height: 1.4,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Añade tu descripción lateral...',
+                hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
         ],
@@ -1666,19 +1758,29 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           ),
           const SizedBox(height: 12),
-          TextFormField(
-            controller: controller,
-            maxLines: 3,
-            style: GoogleFonts.inter(
-              fontSize: 13.5,
-              color: OhtliColors.onyx,
-              height: 1.4,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Escribe tu nota, advertencia o tip aquí...',
-              hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+          CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**'),
+              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**'),
+              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*'),
+              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*'),
+              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_'),
+              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_'),
+            },
+            child: TextFormField(
+              controller: controller,
+              maxLines: 3,
+              style: GoogleFonts.inter(
+                fontSize: 13.5,
+                color: OhtliColors.onyx,
+                height: 1.4,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Escribe tu nota, advertencia o tip aquí...',
+                hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
         ],
@@ -1842,19 +1944,29 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          TextFormField(
-                            controller: ctrl,
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              color: OhtliColors.onyx,
+                          CallbackShortcuts(
+                            bindings: <ShortcutActivator, VoidCallback>{
+                              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**'),
+                              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**'),
+                              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*'),
+                              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*'),
+                              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_'),
+                              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_'),
+                            },
+                            child: TextFormField(
+                              controller: ctrl,
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: OhtliColors.onyx,
+                              ),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(vertical: 4),
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(vertical: 4),
-                            ),
-                            textAlign: TextAlign.center,
                           ),
                           if (numCols > 1)
                             Align(
@@ -1900,13 +2012,23 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: cellBorder),
                           ),
-                          child: TextFormField(
-                            controller: ctrl,
-                            style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(vertical: 4),
+                           child: CallbackShortcuts(
+                            bindings: <ShortcutActivator, VoidCallback>{
+                              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**'),
+                              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**'),
+                              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*'),
+                              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*'),
+                              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_'),
+                              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_'),
+                            },
+                            child: TextFormField(
+                              controller: ctrl,
+                              style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(vertical: 4),
+                              ),
                             ),
                           ),
                         );
