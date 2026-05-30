@@ -31,6 +31,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
   
   Timer? _debounceTimer;
   
+  // Persistent TextEditingControllers for text inputs to avoid cursor jumps
+  final Map<String, TextEditingController> _blockControllers = {};
+
   // Local changes tracking
   DateTime? _lastSavedCloudTime;
 
@@ -51,6 +54,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
     _debounceTimer?.cancel();
     _titleController.dispose();
     _descriptionController.dispose();
+    for (var controller in _blockControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -180,6 +186,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
       }
       if (cache['content'] != null) {
         _sections = TripContent.fromMap(cache['content']).sections;
+        // Update all text controllers to match restored text
+        for (var section in _sections) {
+          if (section is TextSection && _blockControllers.containsKey(section.id)) {
+            _blockControllers[section.id]!.text = section.markdownText;
+          } else if (section is TextImageSection && _blockControllers.containsKey(section.id)) {
+            _blockControllers[section.id]!.text = section.markdownText;
+          }
+        }
       }
     });
 
@@ -207,6 +221,15 @@ class _TripEditorPageState extends State<TripEditorPage> {
         backgroundColor: OhtliColors.xoconostle,
       ),
     );
+  }
+
+  // Image provider helper that handles local base64 drafts as well as cloud network images
+  ImageProvider _getImageProvider(String url) {
+    if (url.startsWith('data:image') || url.startsWith('data:')) {
+      final String base64Data = url.split(',').last;
+      return MemoryImage(base64Decode(base64Data));
+    }
+    return NetworkImage(url);
   }
 
   // Local caching & debounced auto-save triggers
@@ -347,49 +370,111 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   void _deleteBlock(int index) {
     setState(() {
+      final sec = _sections[index];
+      _blockControllers.remove(sec.id);
       _sections.removeAt(index);
       _onDataChanged();
     });
   }
 
   // Mutator Helpers
-  void _updatePlaceBlock(int index, {String? title, String? description, int? rating, String? photo}) {
+  void _updatePlaceBlock(int index, {
+    String? title,
+    String? description,
+    int? rating,
+    String? mainPhoto,
+    List<String>? secondaryPhotos,
+  }) {
     final current = _sections[index] as PlaceSection;
-    setState(() {
-      _sections[index] = PlaceSection(
-        id: current.id,
-        title: title ?? current.title,
-        description: description ?? current.description,
-        rating: rating ?? current.rating,
-        mainPhotoUrl: photo ?? current.mainPhotoUrl,
-        secondaryPhotoUrls: current.secondaryPhotoUrls,
-      );
+    final newSection = PlaceSection(
+      id: current.id,
+      title: title ?? current.title,
+      description: description ?? current.description,
+      rating: rating ?? current.rating,
+      mainPhotoUrl: mainPhoto ?? current.mainPhotoUrl,
+      secondaryPhotoUrls: secondaryPhotos ?? current.secondaryPhotoUrls,
+    );
+    if (current.title != newSection.title ||
+        current.description != newSection.description ||
+        current.rating != newSection.rating ||
+        current.mainPhotoUrl != newSection.mainPhotoUrl ||
+        !listEquals(current.secondaryPhotoUrls, newSection.secondaryPhotoUrls)) {
+      _sections[index] = newSection;
       _onDataChanged();
-    });
+    }
+  }
+
+  void _updatePlaceSecondaryPhoto(int blockIndex, int slotIndex, String base64Photo) {
+    final current = _sections[blockIndex] as PlaceSection;
+    final List<String> currentSecondary = List<String>.from(current.secondaryPhotoUrls);
+    
+    // Pad the list with empty strings to guarantee slotIndex exists
+    while (currentSecondary.length <= slotIndex) {
+      currentSecondary.add('');
+    }
+    
+    currentSecondary[slotIndex] = base64Photo;
+    _updatePlaceBlock(blockIndex, secondaryPhotos: currentSecondary);
+  }
+
+  void _deletePlaceSecondaryPhoto(int blockIndex, int slotIndex) {
+    final current = _sections[blockIndex] as PlaceSection;
+    final List<String> currentSecondary = List<String>.from(current.secondaryPhotoUrls);
+    if (slotIndex < currentSecondary.length) {
+      currentSecondary[slotIndex] = '';
+      
+      // Trim trailing empty entries to keep the array compact
+      while (currentSecondary.isNotEmpty && currentSecondary.last.isEmpty) {
+        currentSecondary.removeLast();
+      }
+      
+      _updatePlaceBlock(blockIndex, secondaryPhotos: currentSecondary);
+    }
   }
 
   void _updateTextBlock(int index, {String? markdown}) {
     final current = _sections[index] as TextSection;
-    setState(() {
-      _sections[index] = TextSection(
-        id: current.id,
-        markdownText: markdown ?? current.markdownText,
-      );
+    final newSection = TextSection(
+      id: current.id,
+      markdownText: markdown ?? current.markdownText,
+    );
+    if (current.markdownText != newSection.markdownText) {
+      _sections[index] = newSection;
       _onDataChanged();
-    });
+    }
   }
 
   void _updateTextImageBlock(int index, {String? markdown, String? photo, String? layout}) {
     final current = _sections[index] as TextImageSection;
-    setState(() {
-      _sections[index] = TextImageSection(
-        id: current.id,
-        markdownText: markdown ?? current.markdownText,
-        imageUrl: photo ?? current.imageUrl,
-        layout: layout ?? current.layout,
-      );
+    final newSection = TextImageSection(
+      id: current.id,
+      markdownText: markdown ?? current.markdownText,
+      imageUrl: photo ?? current.imageUrl,
+      layout: layout ?? current.layout,
+    );
+    if (current.markdownText != newSection.markdownText ||
+        current.imageUrl != newSection.imageUrl ||
+        current.layout != newSection.layout) {
+      _sections[index] = newSection;
       _onDataChanged();
-    });
+    }
+  }
+
+  // Markdown tool injector helper
+  void _injectMarkdown(TextEditingController controller, String wrapper) {
+    final text = controller.text;
+    final selection = controller.selection;
+    if (!selection.isValid) {
+      controller.text = text + wrapper;
+      return;
+    }
+    final selectedText = selection.textInside(text);
+    final newText = text.replaceRange(selection.start, selection.end, '$wrapper$selectedText$wrapper');
+    controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: selection.start + wrapper.length + selectedText.length + wrapper.length),
+    );
+    _onDataChanged();
   }
 
   void _uploadImageForBlock(int index, String type) {
@@ -418,8 +503,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     isCircle: false, // 16:9 Aspect Ratio
                     onCropped: (String base64String) {
                       final String finalPhotoUrl = 'data:image/png;base64,$base64String';
-                      if (type == 'place') {
-                        _updatePlaceBlock(index, photo: finalPhotoUrl);
+                      if (type == 'place_main') {
+                        _updatePlaceBlock(index, mainPhoto: finalPhotoUrl);
+                      } else if (type == 'place_sec_0') {
+                        _updatePlaceSecondaryPhoto(index, 0, finalPhotoUrl);
+                      } else if (type == 'place_sec_1') {
+                        _updatePlaceSecondaryPhoto(index, 1, finalPhotoUrl);
                       } else if (type == 'text_image') {
                         _updateTextImageBlock(index, photo: finalPhotoUrl);
                       }
@@ -602,7 +691,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     ),
                     image: _coverUrl.isNotEmpty
                         ? DecorationImage(
-                            image: NetworkImage(_coverUrl),
+                            image: _getImageProvider(_coverUrl),
                             fit: BoxFit.cover,
                           )
                         : null,
@@ -984,71 +1073,99 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
           ),
           const SizedBox(height: 12),
-          // Main Photo upload field
-          GestureDetector(
-            onTap: () => _uploadImageForBlock(index, 'place'),
-            child: Container(
-              width: double.infinity,
-              height: 120,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-                  width: 1,
+          // 3 Photo slots (Principal and 2 Secondary slots)
+          Row(
+            children: [
+              // Photo 1 (Principal)
+              Expanded(
+                child: _buildPlacePhotoSlot(
+                  blockIndex: index,
+                  photoUrl: section.mainPhotoUrl,
+                  label: 'Principal',
+                  onTap: () => _uploadImageForBlock(index, 'place_main'),
+                  onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
+                  isDark: isDark,
                 ),
-                image: section.mainPhotoUrl.isNotEmpty
-                    ? DecorationImage(
-                        image: NetworkImage(section.mainPhotoUrl),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
               ),
-              child: section.mainPhotoUrl.isEmpty
-                  ? Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.add_photo_alternate_outlined, size: 20, color: OhtliColors.stormyTeal),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Sube una foto del lugar',
-                            style: GoogleFonts.inter(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: OhtliColors.stormyTeal,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : null,
-            ),
+              const SizedBox(width: 8),
+              // Photo 2 (Secundaria 1)
+              Expanded(
+                child: _buildPlacePhotoSlot(
+                  blockIndex: index,
+                  photoUrl: section.secondaryPhotoUrls.isNotEmpty ? section.secondaryPhotoUrls[0] : '',
+                  label: 'Foto 2',
+                  onTap: () => _uploadImageForBlock(index, 'place_sec_0'),
+                  onDelete: () => _deletePlaceSecondaryPhoto(index, 0),
+                  isDark: isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Photo 3 (Secundaria 2)
+              Expanded(
+                child: _buildPlacePhotoSlot(
+                  blockIndex: index,
+                  photoUrl: section.secondaryPhotoUrls.length > 1 ? section.secondaryPhotoUrls[1] : '',
+                  label: 'Foto 3',
+                  onTap: () => _uploadImageForBlock(index, 'place_sec_1'),
+                  onDelete: () => _deletePlaceSecondaryPhoto(index, 1),
+                  isDark: isDark,
+                ),
+              ),
+            ],
           ),
         ],
       );
     } else if (section is TextSection) {
       typeLabel = "Nota / Historia";
       typeIcon = Icons.notes_rounded;
-      blockContent = TextFormField(
-        initialValue: section.markdownText,
-        onChanged: (val) => _updateTextBlock(index, markdown: val),
-        maxLines: 4,
-        style: GoogleFonts.inter(
-          fontSize: 13,
-          color: OhtliColors.onyx,
-          height: 1.4,
-        ),
-        decoration: InputDecoration(
-          hintText: 'Escribe tu anécdota, historia o consejo aquí...',
-          hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
-        ),
+      
+      final controller = _blockControllers.putIfAbsent(
+        section.id,
+        () {
+          final c = TextEditingController(text: section.markdownText);
+          c.addListener(() {
+            _updateTextBlock(index, markdown: c.text);
+          });
+          return c;
+        },
+      );
+
+      blockContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildMarkdownToolbar(controller, isDark),
+          TextFormField(
+            controller: controller,
+            maxLines: 4,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: OhtliColors.onyx,
+              height: 1.4,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Escribe tu anécdota, historia o consejo aquí...',
+              hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ],
       );
     } else if (section is TextImageSection) {
       typeLabel = "Nota con Imagen";
       typeIcon = Icons.photo_library_rounded;
+
+      final controller = _blockControllers.putIfAbsent(
+        section.id,
+        () {
+          final c = TextEditingController(text: section.markdownText);
+          c.addListener(() {
+            _updateTextImageBlock(index, markdown: c.text);
+          });
+          return c;
+        },
+      );
+
       blockContent = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1086,7 +1203,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             onTap: () => _uploadImageForBlock(index, 'text_image'),
             child: Container(
               width: double.infinity,
-              height: 120,
+              height: 140,
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
@@ -1096,7 +1213,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 ),
                 image: section.imageUrl.isNotEmpty
                     ? DecorationImage(
-                        image: NetworkImage(section.imageUrl),
+                        image: _getImageProvider(section.imageUrl),
                         fit: BoxFit.cover,
                       )
                     : null,
@@ -1106,26 +1223,34 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.add_photo_alternate_outlined, size: 20, color: OhtliColors.stormyTeal),
+                          Icon(Icons.add_photo_alternate_outlined, size: 20, color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal),
                           const SizedBox(width: 8),
                           Text(
                             'Sube una imagen lateral',
                             style: GoogleFonts.inter(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w600,
-                              color: OhtliColors.stormyTeal,
+                              color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal,
                             ),
                           ),
                         ],
                       ),
                     )
-                  : null,
+                  : Container(
+                      alignment: Alignment.topRight,
+                      padding: const EdgeInsets.all(8),
+                      child: IconButton(
+                        icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 20),
+                        style: IconButton.styleFrom(backgroundColor: Colors.black.withValues(alpha: 0.4)),
+                        onPressed: () => _updateTextImageBlock(index, photo: ''),
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 12),
+          _buildMarkdownToolbar(controller, isDark),
           TextFormField(
-            initialValue: section.markdownText,
-            onChanged: (val) => _updateTextImageBlock(index, markdown: val),
+            controller: controller,
             maxLines: 3,
             style: GoogleFonts.inter(
               fontSize: 13,
@@ -1217,6 +1342,124 @@ class _TripEditorPageState extends State<TripEditorPage> {
             child: blockContent,
           ),
         ],
+      ),
+    );
+  }
+
+  // Builder helper for Place Photo slots
+  Widget _buildPlacePhotoSlot({
+    required int blockIndex,
+    required String photoUrl,
+    required String label,
+    required VoidCallback onTap,
+    required VoidCallback onDelete,
+    required bool isDark,
+  }) {
+    final bool hasPhoto = photoUrl.isNotEmpty;
+    final Color placeholderColor = isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal;
+    
+    return GestureDetector(
+      onTap: hasPhoto ? null : onTap,
+      child: Container(
+        height: 100,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+            width: 1,
+          ),
+          image: hasPhoto
+              ? DecorationImage(
+                  image: _getImageProvider(photoUrl),
+                  fit: BoxFit.cover,
+                )
+              : null,
+        ),
+        child: !hasPhoto
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.add_photo_alternate_outlined, size: 18, color: placeholderColor),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: placeholderColor,
+                    ),
+                  ),
+                ],
+              )
+            : Container(
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.all(6),
+                child: IconButton(
+                  icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black.withValues(alpha: 0.4),
+                  ),
+                  onPressed: onDelete,
+                ),
+              ),
+      ),
+    );
+  }
+
+  // Builder helper for Markdown Toolbar
+  Widget _buildMarkdownToolbar(TextEditingController controller, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildToolbarButton(
+            icon: Icons.format_bold_rounded,
+            tooltip: 'Negrita (**)',
+            onTap: () => _injectMarkdown(controller, '**'),
+          ),
+          _buildToolbarButton(
+            icon: Icons.format_italic_rounded,
+            tooltip: 'Cursiva (*)',
+            onTap: () => _injectMarkdown(controller, '*'),
+          ),
+          _buildToolbarButton(
+            icon: Icons.format_underlined_rounded,
+            tooltip: 'Subrayado (_)',
+            onTap: () => _injectMarkdown(controller, '_'),
+          ),
+          _buildToolbarButton(
+            icon: Icons.format_list_bulleted_rounded,
+            tooltip: 'Lista (-)',
+            onTap: () => _injectMarkdown(controller, '- '),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolbarButton({required IconData icon, required String tooltip, required VoidCallback onTap}) {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    return Tooltip(
+      message: tooltip,
+      textStyle: GoogleFonts.inter(fontSize: 11, color: Colors.white),
+      child: IconButton(
+        icon: Icon(icon, size: 16, color: isDark ? OhtliColors.onyx.withValues(alpha: 0.7) : OhtliColors.stormyTeal),
+        padding: const EdgeInsets.all(6),
+        constraints: const BoxConstraints(),
+        onPressed: onTap,
       ),
     );
   }
