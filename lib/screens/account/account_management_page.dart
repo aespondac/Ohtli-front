@@ -1420,12 +1420,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
         final screenSize = MediaQuery.of(context).size;
         final isMobile = screenSize.width < 800;
-
-        final colorSidebar = OhtliSettings.instance.isDarkMode
-            ? const Color(0xFF1E1E22)
-            : const Color(0xFFE4E1DA);
-        final sidebarWidth = _sidebarCollapsed ? 64.0 : 200.0;
-
     // Body content with background lines
     Widget mainBody = Stack(
       children: [
