@@ -33,6 +33,9 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
 
   bool _isHoveringInicio = false;
   bool _isHoveringMisViajes = false;
+  bool _isHoveringPerfil = false;
+  bool _isHoveringLogros = false;
+  bool _isHoveringLugares = false;
   bool _isHoveringLogout = false;
   String? _localPhotoURL;
 
@@ -251,7 +254,13 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
       onExit: (_) => onHover(false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => widget.onTabSelected(index),
+        onTap: () {
+          if (index == 2) {
+            widget.onNavigateToAccount();
+          } else {
+            widget.onTabSelected(index);
+          }
+        },
         child: content,
       ),
     );
@@ -376,6 +385,30 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
             index: 1,
             isHovered: _isHoveringMisViajes,
             onHover: (hovered) => setState(() => _isHoveringMisViajes = hovered),
+          ),
+          _buildSidebarItem(
+            icon: Icons.person_outline_rounded,
+            activeIcon: Icons.person_rounded,
+            label: 'Perfil',
+            index: 2,
+            isHovered: _isHoveringPerfil,
+            onHover: (hovered) => setState(() => _isHoveringPerfil = hovered),
+          ),
+          _buildSidebarItem(
+            icon: Icons.emoji_events_outlined,
+            activeIcon: Icons.emoji_events_rounded,
+            label: 'Logros',
+            index: 3,
+            isHovered: _isHoveringLogros,
+            onHover: (hovered) => setState(() => _isHoveringLogros = hovered),
+          ),
+          _buildSidebarItem(
+            icon: Icons.place_outlined,
+            activeIcon: Icons.place_rounded,
+            label: 'Lugares',
+            index: 4,
+            isHovered: _isHoveringLugares,
+            onHover: (hovered) => setState(() => _isHoveringLugares = hovered),
           ),
           const Spacer(),
 

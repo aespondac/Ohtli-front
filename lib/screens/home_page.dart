@@ -188,6 +188,9 @@ class _HomePageState extends State<HomePage> {
     if (_currentIndex == 1) {
       return const TripsDashboardPage();
     }
+    if (_currentIndex == 3 || _currentIndex == 4) {
+      return ConstructionPage(onLoginClick: () {});
+    }
     return _buildMainContent(isMobile);
   }
 

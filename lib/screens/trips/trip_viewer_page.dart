@@ -12,6 +12,7 @@ import '../../widgets/ohtli_markdown_renderer.dart';
 import '../../services/markdown_helpers.dart';
 import '../../widgets/ohtli_sidebar.dart';
 import '../home_page.dart';
+import '../account/account_management_page.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -439,14 +440,40 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       Navigator.pushReplacementNamed(context, '/login');
                     },
                     onNavigateToAccount: () {
-                      Navigator.pushNamed(context, '/account');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AccountManagementPage(
+                            onBackToHome: (idx) {
+                              Navigator.pop(context);
+                            },
+                            onLogout: () async {
+                              await FirebaseAuth.instance.signOut();
+                              Navigator.pushReplacementNamed(context, '/login');
+                            },
+                          ),
+                        ),
+                      );
                     },
                   ),
                 ),
               );
             },
             onNavigateToAccount: () {
-              Navigator.pushNamed(context, '/account');
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AccountManagementPage(
+                    onBackToHome: (idx) {
+                      Navigator.pop(context);
+                    },
+                    onLogout: () async {
+                      await FirebaseAuth.instance.signOut();
+                      Navigator.pushReplacementNamed(context, '/login');
+                    },
+                  ),
+                ),
+              );
             },
             onLogout: () async {
               await FirebaseAuth.instance.signOut();
