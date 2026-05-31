@@ -260,13 +260,18 @@ class _TripEditorPageState extends State<TripEditorPage> {
       if (section is TextSection) {
         final tableData = parseTableMarkdown(section.markdownText);
         if (tableData != null) {
-          final int numCols = tableData.headers.length;
+          final int numCols = tableData.columns.length;
           final int numRows = tableData.rows.length;
 
-          final List<String> updatedHeaders = [];
+          final List<TableColumn> updatedColumns = [];
           for (int c = 0; c < numCols; c++) {
             final ctrl = _blockControllers['${section.id}_h_$c'];
-            updatedHeaders.add(ctrl?.text ?? tableData.headers[c]);
+            final currentCol = tableData.columns[c];
+            updatedColumns.add(TableColumn(
+              name: ctrl?.text ?? currentCol.name,
+              type: currentCol.type,
+              currency: currentCol.currency,
+            ));
           }
 
           final List<List<String>> updatedRows = [];
@@ -279,7 +284,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             updatedRows.add(rowCells);
           }
 
-          final newMarkdown = serializeTableMarkdown(TableData(headers: updatedHeaders, rows: updatedRows));
+          final newMarkdown = serializeTableMarkdown(TableData(columns: updatedColumns, rows: updatedRows));
           _sections[index] = TextSection(id: section.id, markdownText: newMarkdown);
         }
       }
@@ -538,6 +543,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
     int? rating,
     String? mainPhoto,
     List<String>? secondaryPhotos,
+    double? cost,
+    String? currency,
   }) {
     final current = _sections[index] as PlaceSection;
     
@@ -572,12 +579,16 @@ class _TripEditorPageState extends State<TripEditorPage> {
       rating: rating ?? current.rating,
       mainPhotoUrl: finalMainPhoto,
       secondaryPhotoUrls: finalSecondary,
+      cost: cost ?? current.cost,
+      currency: currency ?? current.currency,
     );
     
     if (current.title != newSection.title ||
         current.description != newSection.description ||
         current.rating != newSection.rating ||
         current.mainPhotoUrl != newSection.mainPhotoUrl ||
+        current.cost != newSection.cost ||
+        current.currency != newSection.currency ||
         !listEquals(current.secondaryPhotoUrls, newSection.secondaryPhotoUrls)) {
       setState(() {
         _sections[index] = newSection;
@@ -1370,6 +1381,18 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (section is PlaceSection) {
       typeLabel = "Lugar Visitado";
       typeIcon = Icons.location_on_rounded;
+      
+      final titleController = _blockControllers.putIfAbsent(
+        '${section.id}_title',
+        () {
+          final c = TextEditingController(text: section.title);
+          c.addListener(() {
+            _updatePlaceBlock(index, title: c.text);
+          });
+          return c;
+        },
+      );
+
       final controller = _blockControllers.putIfAbsent(
         '${section.id}_desc',
         () {
@@ -1382,15 +1405,53 @@ class _TripEditorPageState extends State<TripEditorPage> {
       );
       final focusNode = _getFocusNode('${section.id}_desc');
 
-      blockContent = Column(
+      final costController = _blockControllers.putIfAbsent(
+        '${section.id}_cost',
+        () {
+          final c = TextEditingController(text: section.cost > 0 ? section.cost.toString() : '');
+          c.addListener(() {
+            final double? parsed = double.tryParse(c.text);
+            _updatePlaceBlock(index, cost: parsed ?? 0.0);
+          });
+          return c;
+        },
+      );
+
+      final List<Map<String, dynamic>> slots = [
+        {
+          'url': section.mainPhotoUrl,
+          'label': 'Principal',
+          'type': 'place_main',
+          'onTap': () => _uploadImageForBlock(index, 'place_main'),
+          'onDelete': () => _updatePlaceBlock(index, mainPhoto: ''),
+        },
+        {
+          'url': section.secondaryPhotoUrls.isNotEmpty ? section.secondaryPhotoUrls[0] : '',
+          'label': 'Foto 2',
+          'type': 'place_sec_0',
+          'onTap': () => _uploadImageForBlock(index, 'place_sec_0'),
+          'onDelete': () => _deletePlaceSecondaryPhoto(index, 0),
+        },
+        {
+          'url': section.secondaryPhotoUrls.length > 1 ? section.secondaryPhotoUrls[1] : '',
+          'label': 'Foto 3',
+          'type': 'place_sec_1',
+          'onTap': () => _uploadImageForBlock(index, 'place_sec_1'),
+          'onDelete': () => _deletePlaceSecondaryPhoto(index, 1),
+        },
+      ];
+
+      final uploadedSlots = slots.where((s) => (s['url'] as String).isNotEmpty).toList();
+      final emptySlots = slots.where((s) => (s['url'] as String).isEmpty).toList();
+
+      final Widget rightColumnWidget = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
                 child: TextFormField(
-                  initialValue: section.title,
-                  onChanged: (val) => _updatePlaceBlock(index, title: val),
+                  controller: titleController,
                   style: GoogleFonts.inter(
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
@@ -1427,84 +1488,202 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           ),
           const SizedBox(height: 12),
-          _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
-          CallbackShortcuts(
-            bindings: <ShortcutActivator, VoidCallback>{
-              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-            },
-            child: TextFormField(
-              controller: controller,
-              focusNode: focusNode,
-              maxLines: 2,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: OhtliColors.onyx.withValues(alpha: 0.7),
+          // Description Box wrapping toolbar and text field
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15),
+                width: 1,
               ),
-              decoration: InputDecoration(
-                hintText: 'Escribe una breve reseña de este lugar...',
-                hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                border: InputBorder.none,
-              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
+                const SizedBox(height: 4),
+                CallbackShortcuts(
+                  bindings: <ShortcutActivator, VoidCallback>{
+                    const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+                  },
+                  child: TextFormField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    maxLines: 2,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: OhtliColors.onyx,
+                      height: 1.4,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Escribe una breve reseña de este lugar...',
+                      hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),
-          // 3 Photo slots (Principal and 2 Secondary slots with 3:4 aspect ratio)
-          Row(
-            children: [
-              // Photo 1 (Principal)
-              Expanded(
-                child: AspectRatio(
-                  aspectRatio: 3 / 4,
+          // Empty slots row/wrap
+          if (emptySlots.isNotEmpty) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: emptySlots.map((slot) {
+                // If it is 'Principal' and uploadedSlots is empty, it is shown in Left Column, so do not duplicate!
+                if (slot['type'] == 'place_main' && uploadedSlots.isEmpty) {
+                  return const SizedBox();
+                }
+                return SizedBox(
+                  width: 100,
+                  height: 133,
                   child: _buildPlacePhotoSlot(
                     blockIndex: index,
-                    photoUrl: section.mainPhotoUrl,
-                    label: 'Principal',
-                    onTap: () => _uploadImageForBlock(index, 'place_main'),
-                    onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
+                    photoUrl: '',
+                    label: slot['label'] as String,
+                    onTap: slot['onTap'] as VoidCallback,
+                    onDelete: slot['onDelete'] as VoidCallback,
                     isDark: isDark,
                   ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+          // Yellow Cost Block
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF332711) : const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark ? const Color(0xFFFBBF24).withValues(alpha: 0.3) : const Color(0xFFFDE68A),
+                  width: 1,
                 ),
               ),
-              const SizedBox(width: 8),
-              // Photo 2 (Secundaria 1)
-              Expanded(
-                child: AspectRatio(
-                  aspectRatio: 3 / 4,
-                  child: _buildPlacePhotoSlot(
-                    blockIndex: index,
-                    photoUrl: section.secondaryPhotoUrls.isNotEmpty ? section.secondaryPhotoUrls[0] : '',
-                    label: 'Foto 2',
-                    onTap: () => _uploadImageForBlock(index, 'place_sec_0'),
-                    onDelete: () => _deletePlaceSecondaryPhoto(index, 0),
-                    isDark: isDark,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.payments_rounded,
+                    color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
+                    size: 16,
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Photo 3 (Secundaria 2)
-              Expanded(
-                child: AspectRatio(
-                  aspectRatio: 3 / 4,
-                  child: _buildPlacePhotoSlot(
-                    blockIndex: index,
-                    photoUrl: section.secondaryPhotoUrls.length > 1 ? section.secondaryPhotoUrls[1] : '',
-                    label: 'Foto 3',
-                    onTap: () => _uploadImageForBlock(index, 'place_sec_1'),
-                    onDelete: () => _deletePlaceSecondaryPhoto(index, 1),
-                    isDark: isDark,
+                  const SizedBox(width: 8),
+                  Text(
+                    'Costo:',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  DropdownButton<String>(
+                    value: section.currency.isNotEmpty ? section.currency : 'MXN',
+                    dropdownColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: OhtliColors.onyx,
+                    ),
+                    underline: const SizedBox(),
+                    isDense: true,
+                    items: <String>['MXN', 'USD', 'EUR', 'CAD', 'GBP'].map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        _updatePlaceBlock(index, currency: val);
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 70,
+                    child: TextFormField(
+                      controller: costController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      style: GoogleFonts.inter(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: OhtliColors.onyx,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '0.00',
+                        hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                        isDense: true,
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ],
+      );
+
+      final Widget leftColumnWidget = uploadedSlots.isNotEmpty
+          ? _buildPhotoStack(uploadedSlots, isDark)
+          : SizedBox(
+              width: 120,
+              height: 160,
+              child: _buildPlacePhotoSlot(
+                blockIndex: index,
+                photoUrl: '',
+                label: 'Principal',
+                onTap: () => _uploadImageForBlock(index, 'place_main'),
+                onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
+                isDark: isDark,
+              ),
+            );
+
+      blockContent = LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isDesktop = constraints.maxWidth >= 500;
+          if (isDesktop) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                leftColumnWidget,
+                const SizedBox(width: 16),
+                Expanded(child: rightColumnWidget),
+              ],
+            );
+          } else {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: leftColumnWidget,
+                ),
+                const SizedBox(height: 16),
+                rightColumnWidget,
+              ],
+            );
+          }
+        },
       );
     } else if (section is TextSection) {
       final alertData = parseAlertMarkdown(section.markdownText);
@@ -1515,7 +1694,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         typeIcon = Icons.info_outline_rounded;
         blockContent = _buildAlertBlockEditor(index, section, alertData, isDark);
       } else if (tableData != null) {
-        typeLabel = "Tabla Comparativa";
+        typeLabel = "Tabla";
         typeIcon = Icons.table_chart_rounded;
         blockContent = _buildTableBlockEditor(index, section, tableData, isDark);
       } else {
@@ -1535,37 +1714,49 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
         final focusNode = _getFocusNode(section.id);
 
-        blockContent = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
-            CallbackShortcuts(
-              bindings: <ShortcutActivator, VoidCallback>{
-                const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-                const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-              },
-              child: TextFormField(
-                controller: controller,
-                focusNode: focusNode,
-                maxLines: 4,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: OhtliColors.onyx,
-                  height: 1.4,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Escribe tu anécdota, historia o consejo aquí...',
-                  hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
+        blockContent = Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
+              const SizedBox(height: 4),
+              CallbackShortcuts(
+                bindings: <ShortcutActivator, VoidCallback>{
+                  const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                  const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                  const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                  const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                  const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+                  const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+                },
+                child: TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  maxLines: 4,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: OhtliColors.onyx,
+                    height: 1.4,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Escribe tu anécdota, historia o consejo aquí...',
+                    hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       }
     } else if (section is TextImageSection) {
@@ -1584,123 +1775,198 @@ class _TripEditorPageState extends State<TripEditorPage> {
       );
       final focusNode = _getFocusNode(section.id);
 
-      blockContent = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Alineación de la imagen:',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: OhtliColors.onyx.withValues(alpha: 0.5),
-                  fontWeight: FontWeight.w500,
-                ),
+      blockContent = LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isDesktop = constraints.maxWidth >= 500;
+          final bool isImageLeft = section.layout == 'left';
+
+          final Widget imageWidget = Container(
+            width: 125,
+            height: 165,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+                width: 1,
               ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: Text('Izquierda', style: GoogleFonts.inter(fontSize: 11)),
-                selected: section.layout == 'left',
-                onSelected: (val) {
-                  if (val) _updateTextImageBlock(index, layout: 'left');
-                },
-              ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: Text('Derecha', style: GoogleFonts.inter(fontSize: 11)),
-                selected: section.layout == 'right',
-                onSelected: (val) {
-                  if (val) _updateTextImageBlock(index, layout: 'right');
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Upload Image for block (3:4 Aspect Ratio)
-          GestureDetector(
-            onTap: () => _uploadImageForBlock(index, 'text_image'),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 120,
-                height: 160,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-                      width: 1,
+              image: section.imageUrl.isNotEmpty
+                  ? DecorationImage(
+                      image: _getImageProvider(section.imageUrl),
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+            ),
+            child: section.imageUrl.isEmpty
+                ? GestureDetector(
+                    onTap: () => _uploadImageForBlock(index, 'text_image'),
+                    behavior: HitTestBehavior.opaque,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_photo_alternate_outlined, size: 20, color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Subir (3:4)',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal,
+                          ),
+                        ),
+                      ],
                     ),
-                    image: section.imageUrl.isNotEmpty
-                        ? DecorationImage(
-                            image: _getImageProvider(section.imageUrl),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: section.imageUrl.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                  )
+                : Stack(
+                    children: [
+                      Positioned.fill(
+                        child: GestureDetector(
+                          onTap: () => _showImageLightbox(_getImageProvider(section.imageUrl), 'Nota con Imagen'),
+                          behavior: HitTestBehavior.opaque,
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(11),
+                              bottomRight: Radius.circular(11),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              Icon(Icons.add_photo_alternate_outlined, size: 20, color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Subir (3:4)',
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal,
-                                ),
+                              GestureDetector(
+                                onTap: () => _uploadImageForBlock(index, 'text_image'),
+                                behavior: HitTestBehavior.opaque,
+                                child: const Icon(Icons.edit_rounded, color: Colors.white, size: 11),
+                              ),
+                              Container(width: 1, height: 10, color: Colors.white24),
+                              GestureDetector(
+                                onTap: () => _updateTextImageBlock(index, photo: ''),
+                                behavior: HitTestBehavior.opaque,
+                                child: const Icon(Icons.delete_rounded, color: Colors.white, size: 11),
                               ),
                             ],
                           ),
-                        )
-                      : Container(
-                          alignment: Alignment.topRight,
-                          padding: const EdgeInsets.all(4),
-                          child: IconButton(
-                            icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 18),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            style: IconButton.styleFrom(backgroundColor: Colors.black.withValues(alpha: 0.4)),
-                            onPressed: () => _updateTextImageBlock(index, photo: ''),
-                          ),
                         ),
+                      ),
+                    ],
+                  ),
+          );
+
+          final Widget textEditorWidget = Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
+                const SizedBox(height: 4),
+                CallbackShortcuts(
+                  bindings: <ShortcutActivator, VoidCallback>{
+                    const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+                    const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+                  },
+                  child: TextFormField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    maxLines: 4,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: OhtliColors.onyx,
+                      height: 1.4,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Añade tu descripción lateral...',
+                      hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
-          CallbackShortcuts(
-            bindings: <ShortcutActivator, VoidCallback>{
-              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-            },
-            child: TextFormField(
-              controller: controller,
-              focusNode: focusNode,
-              maxLines: 3,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: OhtliColors.onyx,
-                height: 1.4,
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Alineación de la imagen:',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: OhtliColors.onyx.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: Text('Izquierda', style: GoogleFonts.inter(fontSize: 11)),
+                    selected: section.layout == 'left',
+                    onSelected: (val) {
+                      if (val) _updateTextImageBlock(index, layout: 'left');
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: Text('Derecha', style: GoogleFonts.inter(fontSize: 11)),
+                    selected: section.layout == 'right',
+                    onSelected: (val) {
+                      if (val) _updateTextImageBlock(index, layout: 'right');
+                    },
+                  ),
+                ],
               ),
-              decoration: InputDecoration(
-                hintText: 'Añade tu descripción lateral...',
-                hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ),
-        ],
+              const SizedBox(height: 12),
+              if (isDesktop)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isImageLeft) ...[
+                      imageWidget,
+                      const SizedBox(width: 16),
+                    ],
+                    Expanded(child: textEditorWidget),
+                    if (!isImageLeft) ...[
+                      const SizedBox(width: 16),
+                      imageWidget,
+                    ],
+                  ],
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: imageWidget,
+                    ),
+                    const SizedBox(height: 16),
+                    textEditorWidget,
+                  ],
+                ),
+            ],
+          );
+        },
       );
     }
 
@@ -1914,24 +2180,36 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   Widget _buildTableBlockEditor(int index, TextSection section, TableData table, bool isDark) {
-    final int numCols = table.headers.length;
+    final int numCols = table.columns.length;
     final int numRows = table.rows.length;
 
     TextEditingController getCellController(String key, String initialText) {
       return _blockControllers.putIfAbsent(key, () {
         final c = TextEditingController(text: initialText);
-        c.addListener(_onDataChanged); // Trigger local/cloud auto-save silently without rebuilds
+        c.addListener(_onDataChanged); // Trigger auto-save silently
         return c;
       });
     }
 
-    void addColumn() {
-      final List<String> currentHeaders = [];
+    void updateColumnType(int colIdx, String newType, String newCurrency) {
+      final List<TableColumn> currentColumns = [];
       for (int c = 0; c < numCols; c++) {
         final ctrl = _blockControllers['${section.id}_h_$c'];
-        currentHeaders.add(ctrl?.text ?? table.headers[c]);
+        final currentCol = table.columns[c];
+        if (c == colIdx) {
+          currentColumns.add(TableColumn(
+            name: ctrl?.text ?? currentCol.name,
+            type: newType,
+            currency: newCurrency,
+          ));
+        } else {
+          currentColumns.add(TableColumn(
+            name: ctrl?.text ?? currentCol.name,
+            type: currentCol.type,
+            currency: currentCol.currency,
+          ));
+        }
       }
-      currentHeaders.add('Columna ${numCols + 1}');
 
       final List<List<String>> currentRows = [];
       for (int r = 0; r < numRows; r++) {
@@ -1940,7 +2218,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
           final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
           rowCells.add(ctrl?.text ?? table.rows[r][c]);
         }
-        rowCells.add(''); // Add cell for the new column
         currentRows.add(rowCells);
       }
 
@@ -1949,18 +2226,56 @@ class _TripEditorPageState extends State<TripEditorPage> {
           .toList()
           .forEach((k) => _blockControllers.remove(k)?.dispose());
 
-      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
+      final newMarkdown = serializeTableMarkdown(TableData(columns: currentColumns, rows: currentRows));
+      _updateTextBlock(index, markdown: newMarkdown);
+    }
+
+    void addColumn() {
+      final List<TableColumn> currentColumns = [];
+      for (int c = 0; c < numCols; c++) {
+        final ctrl = _blockControllers['${section.id}_h_$c'];
+        final currentCol = table.columns[c];
+        currentColumns.add(TableColumn(
+          name: ctrl?.text ?? currentCol.name,
+          type: currentCol.type,
+          currency: currentCol.currency,
+        ));
+      }
+      currentColumns.add(TableColumn(name: 'Columna ${numCols + 1}', type: 'text'));
+
+      final List<List<String>> currentRows = [];
+      for (int r = 0; r < numRows; r++) {
+        final List<String> rowCells = [];
+        for (int c = 0; c < numCols; c++) {
+          final ctrl = _blockControllers['${section.id}_cell_${r}_$c'];
+          rowCells.add(ctrl?.text ?? table.rows[r][c]);
+        }
+        rowCells.add(''); // Add cell for new column
+        currentRows.add(rowCells);
+      }
+
+      _blockControllers.keys
+          .where((k) => k.startsWith(section.id))
+          .toList()
+          .forEach((k) => _blockControllers.remove(k)?.dispose());
+
+      final newMarkdown = serializeTableMarkdown(TableData(columns: currentColumns, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
     void deleteColumn(int colIdx) {
       if (numCols <= 1) return;
-      final List<String> currentHeaders = [];
+      final List<TableColumn> currentColumns = [];
       for (int c = 0; c < numCols; c++) {
         final ctrl = _blockControllers['${section.id}_h_$c'];
-        currentHeaders.add(ctrl?.text ?? table.headers[c]);
+        final currentCol = table.columns[c];
+        currentColumns.add(TableColumn(
+          name: ctrl?.text ?? currentCol.name,
+          type: currentCol.type,
+          currency: currentCol.currency,
+        ));
       }
-      currentHeaders.removeAt(colIdx);
+      currentColumns.removeAt(colIdx);
 
       final List<List<String>> currentRows = [];
       for (int r = 0; r < numRows; r++) {
@@ -1978,15 +2293,20 @@ class _TripEditorPageState extends State<TripEditorPage> {
           .toList()
           .forEach((k) => _blockControllers.remove(k)?.dispose());
 
-      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
+      final newMarkdown = serializeTableMarkdown(TableData(columns: currentColumns, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
     void addRow() {
-      final List<String> currentHeaders = [];
+      final List<TableColumn> currentColumns = [];
       for (int c = 0; c < numCols; c++) {
         final ctrl = _blockControllers['${section.id}_h_$c'];
-        currentHeaders.add(ctrl?.text ?? table.headers[c]);
+        final currentCol = table.columns[c];
+        currentColumns.add(TableColumn(
+          name: ctrl?.text ?? currentCol.name,
+          type: currentCol.type,
+          currency: currentCol.currency,
+        ));
       }
 
       final List<List<String>> currentRows = [];
@@ -2005,15 +2325,20 @@ class _TripEditorPageState extends State<TripEditorPage> {
           .toList()
           .forEach((k) => _blockControllers.remove(k)?.dispose());
 
-      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
+      final newMarkdown = serializeTableMarkdown(TableData(columns: currentColumns, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
     void deleteRow(int rowIdx) {
-      final List<String> currentHeaders = [];
+      final List<TableColumn> currentColumns = [];
       for (int c = 0; c < numCols; c++) {
         final ctrl = _blockControllers['${section.id}_h_$c'];
-        currentHeaders.add(ctrl?.text ?? table.headers[c]);
+        final currentCol = table.columns[c];
+        currentColumns.add(TableColumn(
+          name: ctrl?.text ?? currentCol.name,
+          type: currentCol.type,
+          currency: currentCol.currency,
+        ));
       }
 
       final List<List<String>> currentRows = [];
@@ -2034,7 +2359,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           .toList()
           .forEach((k) => _blockControllers.remove(k)?.dispose());
 
-      final newMarkdown = serializeTableMarkdown(TableData(headers: currentHeaders, rows: currentRows));
+      final newMarkdown = serializeTableMarkdown(TableData(columns: currentColumns, rows: currentRows));
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
@@ -2051,14 +2376,18 @@ class _TripEditorPageState extends State<TripEditorPage> {
             children: [
               // Column Headers Row
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ...List.generate(numCols, (colIdx) {
                     final ctrl = getCellController(
                       '${section.id}_h_$colIdx',
-                      table.headers[colIdx],
+                      table.columns[colIdx].name,
                     );
+                    final col = table.columns[colIdx];
+                    final bool isMoney = col.type == 'money';
+
                     return Container(
-                      width: 140,
+                      width: 155,
                       margin: const EdgeInsets.only(right: 6),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
@@ -2069,45 +2398,95 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Builder(
-                            builder: (context) {
-                              final fNode = _getFocusNode('${section.id}_h_$colIdx');
-                              return CallbackShortcuts(
-                                bindings: <ShortcutActivator, VoidCallback>{
-                                  const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
-                                  const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
-                                  const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
-                                  const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
-                                  const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
-                                  const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
-                                },
-                                child: TextFormField(
-                                  controller: ctrl,
-                                  focusNode: fNode,
-                                  style: GoogleFonts.inter(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                    color: OhtliColors.onyx,
-                                  ),
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    border: InputBorder.none,
-                                    contentPadding: EdgeInsets.symmetric(vertical: 4),
-                                  ),
-                                  textAlign: TextAlign.center,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    final fNode = _getFocusNode('${section.id}_h_$colIdx');
+                                    return CallbackShortcuts(
+                                      bindings: <ShortcutActivator, VoidCallback>{
+                                        const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
+                                        const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
+                                        const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
+                                        const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
+                                        const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
+                                        const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
+                                      },
+                                      child: TextFormField(
+                                        controller: ctrl,
+                                        focusNode: fNode,
+                                        style: GoogleFonts.inter(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                          color: OhtliColors.onyx,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          isDense: true,
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.symmetric(vertical: 4),
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    );
+                                  }
                                 ),
-                              );
-                            }
+                              ),
+                              // Type menu selector (Texto vs Dinero)
+                              PopupMenuButton<String>(
+                                icon: Icon(
+                                  isMoney ? Icons.payments_rounded : Icons.text_fields_rounded,
+                                  size: 14,
+                                  color: OhtliColors.stormyTeal,
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onSelected: (val) {
+                                  if (val == 'text') {
+                                    updateColumnType(colIdx, 'text', 'MXN');
+                                  } else {
+                                    updateColumnType(colIdx, 'money', val);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    value: 'text',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.text_fields_rounded, size: 14),
+                                        const SizedBox(width: 8),
+                                        Text('📝 Texto', style: GoogleFonts.inter(fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                  ...['MXN', 'USD', 'EUR', 'CAD', 'GBP'].map((curr) {
+                                    return PopupMenuItem(
+                                      value: curr,
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.payments_rounded, size: 14, color: Colors.amber),
+                                          const SizedBox(width: 8),
+                                          Text('💵 Dinero ($curr)', style: GoogleFonts.inter(fontSize: 11)),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ],
                           ),
                           if (numCols > 1)
                             Align(
                               alignment: Alignment.centerRight,
                               child: InkWell(
                                 onTap: () => deleteColumn(colIdx),
-                                child: Icon(
-                                  Icons.close_rounded,
-                                  size: 14,
-                                  color: OhtliColors.xoconostle.withValues(alpha: 0.8),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    size: 14,
+                                    color: OhtliColors.xoconostle.withValues(alpha: 0.8),
+                                  ),
                                 ),
                               ),
                             ),
@@ -2135,15 +2514,18 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           '${section.id}_cell_${rowIdx}_$colIdx',
                           cellVal,
                         );
+                        final col = table.columns[colIdx];
+                        final bool isMoney = col.type == 'money';
+
                         return Container(
-                          width: 140,
+                          width: 155,
                           margin: const EdgeInsets.only(right: 6),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: cellBorder),
                           ),
-                           child: Builder(
+                          child: Builder(
                             builder: (context) {
                               final fNode = _getFocusNode('${section.id}_cell_${rowIdx}_$colIdx');
                               return CallbackShortcuts(
@@ -2159,10 +2541,21 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                   controller: ctrl,
                                   focusNode: fNode,
                                   style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
-                                  decoration: const InputDecoration(
+                                  keyboardType: isMoney ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+                                  inputFormatters: isMoney ? [
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                                  ] : null,
+                                  decoration: InputDecoration(
                                     isDense: true,
                                     border: InputBorder.none,
-                                    contentPadding: EdgeInsets.symmetric(vertical: 4),
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                                    prefixText: isMoney ? '\$ ' : null,
+                                    suffixText: isMoney ? col.currency : null,
+                                    suffixStyle: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      color: OhtliColors.onyx.withValues(alpha: 0.5),
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               );
@@ -2205,6 +2598,73 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
+  Widget _buildPhotoStack(List<Map<String, dynamic>> uploadedSlots, bool isDark) {
+    return SizedBox(
+      width: 150,
+      height: 195,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: List.generate(uploadedSlots.length, (displayIndex) {
+          final displaySlot = uploadedSlots[displayIndex];
+          final String displayUrl = displaySlot['url'] as String;
+          final String displayLabel = displaySlot['label'] as String;
+          final VoidCallback displayOnTap = displaySlot['onTap'] as VoidCallback;
+          final VoidCallback displayOnDelete = displaySlot['onDelete'] as VoidCallback;
+
+          double rotation = 0.0;
+          double offsetX = 0.0;
+          double offsetY = 0.0;
+
+          if (uploadedSlots.length == 3) {
+            if (displayIndex == 0) { // back card
+              rotation = -0.06;
+              offsetX = -10.0;
+              offsetY = -6.0;
+            } else if (displayIndex == 1) { // middle card
+              rotation = 0.05;
+              offsetX = 8.0;
+              offsetY = -3.0;
+            } else if (displayIndex == 2) { // front card
+              rotation = 0.0;
+              offsetX = 0.0;
+              offsetY = 0.0;
+            }
+          } else if (uploadedSlots.length == 2) {
+            if (displayIndex == 0) { // back card
+              rotation = -0.05;
+              offsetX = -8.0;
+              offsetY = -4.0;
+            } else if (displayIndex == 1) { // front card
+              rotation = 0.0;
+              offsetX = 0.0;
+              offsetY = 0.0;
+            }
+          }
+
+          return Positioned(
+            left: 10 + offsetX,
+            top: 10 + offsetY,
+            child: Transform.rotate(
+              angle: rotation,
+              child: SizedBox(
+                width: 120,
+                height: 160,
+                child: _buildPlacePhotoSlot(
+                  blockIndex: -1,
+                  photoUrl: displayUrl,
+                  label: displayLabel,
+                  onTap: displayOnTap,
+                  onDelete: displayOnDelete,
+                  isDark: isDark,
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
   // Builder helper for Place Photo slots
   Widget _buildPlacePhotoSlot({
     required int blockIndex,
@@ -2217,25 +2677,26 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final bool hasPhoto = photoUrl.isNotEmpty;
     final Color placeholderColor = isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal;
     
-    return GestureDetector(
-      onTap: hasPhoto ? null : onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-            width: 1,
-          ),
-          image: hasPhoto
-              ? DecorationImage(
-                  image: _getImageProvider(photoUrl),
-                  fit: BoxFit.cover,
-                )
-              : null,
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+          width: 1,
         ),
-        child: !hasPhoto
-            ? Column(
+        image: hasPhoto
+            ? DecorationImage(
+                image: _getImageProvider(photoUrl),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: !hasPhoto
+          ? GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.add_photo_alternate_outlined, size: 18, color: placeholderColor),
@@ -2249,21 +2710,151 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     ),
                   ),
                 ],
-              )
-            : Container(
-                alignment: Alignment.topRight,
-                padding: const EdgeInsets.all(6),
-                child: IconButton(
-                  icon: const Icon(Icons.cancel_rounded, color: Colors.white, size: 18),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.4),
+              ),
+            )
+          : Stack(
+              children: [
+                // Full size click for Lightbox detail view
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: () => _showImageLightbox(_getImageProvider(photoUrl), label),
+                    behavior: HitTestBehavior.opaque,
+                    child: const SizedBox.expand(),
                   ),
-                  onPressed: onDelete,
+                ),
+                // Bottom hover/action bar for editing/deleting
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(11),
+                        bottomRight: Radius.circular(11),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        GestureDetector(
+                          onTap: onTap,
+                          behavior: HitTestBehavior.opaque,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.edit_rounded, color: Colors.white, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Editar',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(width: 1, height: 12, color: Colors.white24),
+                        GestureDetector(
+                          onTap: onDelete,
+                          behavior: HitTestBehavior.opaque,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.delete_rounded, color: Colors.white, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Quitar',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  void _showImageLightbox(ImageProvider provider, String label) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(16),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: InteractiveViewer(
+                  maxScale: 4.0,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      constraints: const BoxConstraints(maxHeight: 600, maxWidth: 600),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Image(
+                        image: provider,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-      ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 24),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black.withValues(alpha: 0.5),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+              Positioned(
+                bottom: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -2681,11 +3272,19 @@ String serializeAlertMarkdown(AlertType type, String content) {
 }
 
 // Markdown Table Helpers
+class TableColumn {
+  final String name;
+  final String type; // 'text' or 'money'
+  final String currency; // 'MXN', 'USD', etc.
+
+  TableColumn({required this.name, this.type = 'text', this.currency = 'MXN'});
+}
+
 class TableData {
-  final List<String> headers;
+  final List<TableColumn> columns;
   final List<List<String>> rows;
 
-  TableData({required this.headers, required this.rows});
+  TableData({required this.columns, required this.rows});
 }
 
 TableData? parseTableMarkdown(String markdown) {
@@ -2712,29 +3311,58 @@ TableData? parseTableMarkdown(String markdown) {
   final headers = splitRow(lines[0]);
   if (headers.isEmpty) return null;
 
+  final List<TableColumn> columns = headers.map((h) {
+    final moneyReg = RegExp(r'^(.*?)\s*\[money:([A-Z]{3,5})\]$');
+    final textReg = RegExp(r'^(.*?)\s*\[text\]$');
+    
+    if (moneyReg.hasMatch(h)) {
+      final match = moneyReg.firstMatch(h)!;
+      return TableColumn(
+        name: match.group(1)!.trim(),
+        type: 'money',
+        currency: match.group(2)!.toUpperCase(),
+      );
+    } else if (textReg.hasMatch(h)) {
+      final match = textReg.firstMatch(h)!;
+      return TableColumn(
+        name: match.group(1)!.trim(),
+        type: 'text',
+      );
+    } else {
+      return TableColumn(name: h.trim(), type: 'text');
+    }
+  }).toList();
+
   final List<List<String>> rows = [];
   for (int i = 2; i < lines.length; i++) {
     if (lines[i].startsWith('|') && lines[i].endsWith('|')) {
       final rowParts = splitRow(lines[i]);
-      while (rowParts.length < headers.length) {
+      while (rowParts.length < columns.length) {
         rowParts.add('');
       }
-      rows.add(rowParts.sublist(0, headers.length));
+      rows.add(rowParts.sublist(0, columns.length));
     }
   }
 
-  return TableData(headers: headers, rows: rows);
+  return TableData(columns: columns, rows: rows);
 }
 
 String serializeTableMarkdown(TableData table) {
   final buffer = StringBuffer();
   
   buffer.write('| ');
-  buffer.write(table.headers.join(' | '));
+  final headerStrings = table.columns.map((col) {
+    if (col.type == 'money') {
+      return '${col.name} [money:${col.currency}]';
+    } else {
+      return col.name;
+    }
+  }).toList();
+  buffer.write(headerStrings.join(' | '));
   buffer.writeln(' |');
   
   buffer.write('|');
-  for (int i = 0; i < table.headers.length; i++) {
+  for (int i = 0; i < table.columns.length; i++) {
     buffer.write('---|');
   }
   buffer.writeln();

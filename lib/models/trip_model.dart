@@ -101,6 +101,8 @@ class PlaceSection extends TripSection {
   final int rating;
   final String mainPhotoUrl;
   final List<String> secondaryPhotoUrls;
+  final double cost;
+  final String currency;
 
   PlaceSection({
     required super.id,
@@ -109,6 +111,8 @@ class PlaceSection extends TripSection {
     required this.rating,
     required this.mainPhotoUrl,
     required this.secondaryPhotoUrls,
+    this.cost = 0.0,
+    this.currency = 'MXN',
   }) : super(type: 'place');
 
   factory PlaceSection.fromMap(Map<String, dynamic> data) {
@@ -119,6 +123,8 @@ class PlaceSection extends TripSection {
       rating: data['rating'] ?? 0,
       mainPhotoUrl: data['mainPhotoUrl'] ?? '',
       secondaryPhotoUrls: List<String>.from(data['secondaryPhotoUrls'] ?? []),
+      cost: (data['cost'] as num?)?.toDouble() ?? 0.0,
+      currency: data['currency'] ?? 'MXN',
     );
   }
 
@@ -132,6 +138,8 @@ class PlaceSection extends TripSection {
       'rating': rating,
       'mainPhotoUrl': mainPhotoUrl,
       'secondaryPhotoUrls': secondaryPhotoUrls,
+      'cost': cost,
+      'currency': currency,
     };
   }
 }
