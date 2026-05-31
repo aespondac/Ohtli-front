@@ -13,7 +13,23 @@ import '../theme/colors.dart';
 import '../widgets/ohtli_sidebar.dart';
 import 'construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'trips/trips_dashboard_page.dart';
+import 'trips/trip_viewer_page.dart';
 import 'account/public_profile_page.dart';
+
+// Pinned Stories Model & Constant
+class PinnedStory {
+  final String tripId;
+  final String authorId;
+
+  const PinnedStory({required this.tripId, required this.authorId});
+}
+
+const List<PinnedStory> kPinnedStories = [
+  PinnedStory(
+    tripId: '8c945367-4543-403d-8f56-51798d7f4e7d',
+    authorId: '4cavo5EKn6Vvuoo2s46VokEj7lE3',
+  ),
+];
 
 class HomePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -316,9 +332,9 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildMainContent(
-    bool isMobile,
-  ) {
+  Widget _buildMainContent(bool isMobile) {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    
     return Stack(
       children: [
         Positioned.fill(
@@ -326,67 +342,379 @@ class _HomePageState extends State<HomePage> {
             painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
           ),
         ),
-        Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                constraints: const BoxConstraints(maxWidth: 280, maxHeight: 90),
-                child: SvgPicture.asset(
-                  'assets/logo.svg',
-                  width: 200,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) => Text(
-                    'Ohtli',
-                    style: GoogleFonts.inter(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: OhtliColors.stormyTeal,
+        SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 20),
+                    // Logo
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: 280, maxHeight: 90),
+                      child: SvgPicture.asset(
+                        'assets/logo.svg',
+                        width: 180,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => Text(
+                          'Ohtli',
+                          style: GoogleFonts.inter(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: OhtliColors.stormyTeal,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'el viaje empieza aquí',
+                      style: GoogleFonts.inter(
+                        fontSize: isMobile ? 18 : 22,
+                        fontWeight: FontWeight.w300,
+                        color: OhtliColors.onyx,
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    
+                    // Pinned Stories Carousel Title
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8.0, bottom: 12.0),
+                        child: Text(
+                          'Crónicas Destacadas',
+                          style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: OhtliColors.stormyTeal,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // Pinned Stories Carousel Card
+                    _buildPinnedStoriesCarousel(isMobile, isDark),
+                    
+                    const SizedBox(height: 50),
+                    Text(
+                      'próximamente',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w300,
+                        color: OhtliColors.onyx.withValues(alpha: 0.4),
+                        letterSpacing: 3.0,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'ohtli  •  cdmx',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 4.0,
+                        color: OhtliColors.onyx.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'el viaje empieza aquí',
-                style: GoogleFonts.inter(
-                  fontSize: isMobile ? 20 : 26,
-                  fontWeight: FontWeight.w300,
-                  color: OhtliColors.onyx,
-                  letterSpacing: 2.0,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'próximamente',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w300,
-                  color: OhtliColors.onyx.withValues(alpha: 0.4),
-                  letterSpacing: 3.0,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          bottom: 24,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Text(
-              'ohtli  •  cdmx',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w300,
-                letterSpacing: 4.0,
-                color: OhtliColors.onyx.withValues(alpha: 0.4),
               ),
             ),
           ),
         ),
       ],
     );
+  }
+
+  Widget _buildPinnedStoriesCarousel(bool isMobile, bool isDark) {
+    // PageController for sliding carousel
+    final PageController controller = PageController(viewportFraction: 0.96);
+    
+    return SizedBox(
+      height: 280,
+      width: double.infinity,
+      child: PageView.builder(
+        controller: controller,
+        itemCount: kPinnedStories.length,
+        itemBuilder: (context, index) {
+          final pinned = kPinnedStories[index];
+          return _buildPinnedStoryCard(pinned, isMobile, isDark);
+        },
+      ),
+    );
+  }
+
+  Widget _buildPinnedStoryCard(PinnedStory pinned, bool isMobile, bool isDark) {
+    return FutureBuilder<List<DocumentSnapshot>>(
+      future: Future.wait([
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(pinned.authorId)
+            .collection('trips')
+            .doc(pinned.tripId)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(pinned.authorId)
+            .get(),
+      ]),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3)),
+            ),
+            child: const Center(
+              child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data![0].exists == false) {
+          return const SizedBox();
+        }
+
+        final tripDoc = snapshot.data![0];
+        final authorDoc = snapshot.data![1];
+
+        final tripData = tripDoc.data() as Map<String, dynamic>?;
+        final authorData = authorDoc.exists ? (authorDoc.data() as Map<String, dynamic>?) : null;
+
+        final String title = tripData?['title'] ?? 'Sin Título';
+        final String cover = tripData?['coverUrl'] ?? '';
+        final String desc = tripData?['description'] ?? 'Sin descripción.';
+        
+        final String authorName = authorData?['displayName'] ?? 'Viajero Ohtli';
+        final String? authorPhoto = authorData?['photoURL'];
+
+        bool isHovered = false;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return MouseRegion(
+              onEnter: (_) => setState(() => isHovered = true),
+              onExit: (_) => setState(() => isHovered = false),
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TripViewerPage(
+                        tripId: pinned.tripId,
+                        authorId: pinned.authorId,
+                      ),
+                    ),
+                  );
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isHovered 
+                            ? OhtliColors.stormyTeal.withValues(alpha: 0.15)
+                            : Colors.black.withValues(alpha: 0.05),
+                        blurRadius: isHovered ? 16 : 8,
+                        offset: Offset(0, isHovered ? 8 : 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Stack(
+                      children: [
+                        // Cover Image Background with Zoom Effect on Hover
+                        Positioned.fill(
+                          child: AnimatedScale(
+                            scale: isHovered ? 1.05 : 1.0,
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeOutCubic,
+                            child: cover.isNotEmpty
+                                ? Image(
+                                    image: _getImageProvider(cover),
+                                    fit: BoxFit.cover,
+                                  )
+                                : Container(color: OhtliColors.cantera),
+                          ),
+                        ),
+                        // Premium Dark Gradient Overlay
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.8),
+                                  Colors.black.withValues(alpha: 0.1),
+                                  Colors.black.withValues(alpha: 0.85),
+                                ],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                stops: const [0.0, 0.45, 1.0],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Badge: "CRÓNICA DESTACADA"
+                        Positioned(
+                          top: 16,
+                          left: 16,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.xoconostle,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.stars_rounded, color: Colors.white, size: 12),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'CRÓNICA DESTACADA',
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        
+                        // Content overlay
+                        Positioned(
+                          bottom: 16,
+                          left: 16,
+                          right: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: isMobile ? 18 : 22,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.2,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                desc,
+                                style: GoogleFonts.inter(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 14),
+                              // Author Profile Row
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: OhtliColors.stormyTeal,
+                                    ),
+                                    child: ClipOval(
+                                      child: authorPhoto != null && authorPhoto.isNotEmpty
+                                          ? Image(
+                                              image: _getImageProvider(authorPhoto),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (c, e, s) => Center(
+                                                child: Text(
+                                                  authorName.substring(0, 1).toUpperCase(),
+                                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
+                                            )
+                                          : Center(
+                                              child: Text(
+                                                authorName.substring(0, 1).toUpperCase(),
+                                                style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          authorName,
+                                          style: GoogleFonts.outfit(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Explorador Ohtli',
+                                          style: GoogleFonts.inter(
+                                            color: Colors.white.withValues(alpha: 0.6),
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Read Action Indicator
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Leer historia',
+                                        style: GoogleFonts.inter(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 12),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  ImageProvider _getImageProvider(String url) {
+    if (url.startsWith('data:')) {
+      final String base64Data = url.split(',').last;
+      return MemoryImage(base64Decode(base64Data));
+    }
+    return NetworkImage(url);
   }
 }
