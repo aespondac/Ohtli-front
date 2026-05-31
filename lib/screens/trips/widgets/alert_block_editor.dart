@@ -170,14 +170,6 @@ class _OhtliAlertBlockEditorState extends State<OhtliAlertBlockEditor> {
                         color: alertColor,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Puedes cambiar el tipo de nota con las opciones de abajo.',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: OhtliColors.onyx.withValues(alpha: 0.4),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -199,6 +191,7 @@ class _OhtliAlertBlockEditorState extends State<OhtliAlertBlockEditor> {
 
                   return ChoiceChip(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    checkmarkColor: Colors.white,
                     label: Text(
                       label,
                       style: GoogleFonts.inter(
@@ -243,7 +236,8 @@ class _OhtliAlertBlockEditorState extends State<OhtliAlertBlockEditor> {
             child: TextFormField(
               controller: _controller,
               focusNode: _focusNode,
-              maxLines: 3,
+              minLines: 3,
+              maxLines: null,
               style: GoogleFonts.inter(
                 fontSize: 13.5,
                 color: OhtliColors.onyx,

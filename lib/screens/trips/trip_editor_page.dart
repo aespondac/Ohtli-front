@@ -1017,7 +1017,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 controller: _descriptionController,
                 focusNode: _getFocusNode('trip_description'),
                 hintText: 'Escribe una breve descripción del viaje...',
-                maxLines: 3,
+                minLines: 3,
+                maxLines: null,
                 onChanged: _onDataChanged,
               ),
 
@@ -1370,7 +1371,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
             controller: controller,
             focusNode: focusNode,
             hintText: 'Escribe una breve reseña de este lugar...',
-            maxLines: 2,
+            minLines: 2,
+            maxLines: null,
           ),
           // Yellow Cost Block
           Align(
@@ -1586,7 +1588,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
           controller: controller,
           focusNode: focusNode,
           hintText: 'Escribe tu anécdota, historia o consejo aquí...',
-          maxLines: 4,
+          minLines: 4,
+          maxLines: null,
         );
       }
     } else if (section is TextImageSection) {
@@ -1694,7 +1697,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
             controller: controller,
             focusNode: focusNode,
             hintText: 'Añade tu descripción lateral...',
-            maxLines: 4,
+            minLines: 4,
+            maxLines: null,
           );
 
           return Column(
@@ -1712,6 +1716,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   ),
                   const SizedBox(width: 8),
                   ChoiceChip(
+                    checkmarkColor: Colors.white,
                     label: Text('Izquierda', style: GoogleFonts.inter(fontSize: 11)),
                     selected: section.layout == 'left',
                     onSelected: (val) {
@@ -1720,6 +1725,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   ),
                   const SizedBox(width: 8),
                   ChoiceChip(
+                    checkmarkColor: Colors.white,
                     label: Text('Derecha', style: GoogleFonts.inter(fontSize: 11)),
                     selected: section.layout == 'right',
                     onSelected: (val) {
