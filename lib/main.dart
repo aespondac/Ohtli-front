@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 import 'theme/colors.dart';
 import 'screens/construction_page.dart';
@@ -56,6 +57,23 @@ void main() async {
 
   try {
     await Firebase.initializeApp(options: options);
+    
+    // Initialize Firebase App Check to prevent overcost and abuse
+    const configRecaptchaKey = String.fromEnvironment('recaptchaSiteKey');
+    final String recaptchaKey = configRecaptchaKey.isNotEmpty 
+        ? configRecaptchaKey 
+        : '6LdFakeKeyForOhtliLocalDevelopment';
+
+    try {
+      await FirebaseAppCheck.instance.activate(
+        webProvider: ReCaptchaV3Provider(recaptchaKey),
+        androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+        appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+      );
+    } catch (appCheckError) {
+      print("Firebase App Check initialization error: $appCheckError");
+    }
+
     // Enable Firestore offline persistence for Web — queues writes when offline
     // and syncs automatically when connectivity returns
     try {
