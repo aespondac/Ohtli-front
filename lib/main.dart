@@ -35,16 +35,9 @@ void main() async {
 
   FirebaseOptions options;
   if (configApiKey.isNotEmpty) {
-    // Para evitar fallos en la redirección de Google Auth (OAuth popup),
-    // la authDomain siempre debe ser <projectId>.firebaseapp.com en producción,
-    // incluso si se inyecta ohtli.quest desde los secretos de GitHub Actions.
-    final String safeAuthDomain = (configAuthDomain.contains('firebaseapp.com') || configAuthDomain.isEmpty)
-        ? configAuthDomain
-        : "${configProjectId.isNotEmpty ? configProjectId : 'othli-497404'}.firebaseapp.com";
-
     options = FirebaseOptions(
       apiKey: configApiKey,
-      authDomain: safeAuthDomain,
+      authDomain: configAuthDomain,
       projectId: configProjectId,
       storageBucket: configStorageBucket,
       messagingSenderId: configMessagingSenderId,
