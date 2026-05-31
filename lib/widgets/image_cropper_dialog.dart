@@ -301,16 +301,16 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
       await Future.delayed(const Duration(milliseconds: 150));
 
       // Dynamically adjust export quality (pixelRatio) depending on the image's purpose:
-      // - Cover Image (not circle and not 3:4): Best quality (pixelRatio: 2.8)
-      // - Place photos / block images (3:4): Compressed/lightweight (pixelRatio: 0.65)
-      // - Profile Photo (circle): Medium quality (pixelRatio: 1.2)
+      // - Cover Image (not circle and not 3:4): Best quality (pixelRatio: 3.0)
+      // - Place photos / block images (3:4): Crisp high-quality (pixelRatio: 3.0)
+      // - Profile Photo (circle): Medium-high quality (pixelRatio: 2.0)
       double pixelRatio = 1.0;
       if (widget.isCircle) {
-        pixelRatio = 1.2;
+        pixelRatio = 2.0;
       } else if (widget.aspectRatio == 3 / 4) {
-        pixelRatio = 0.65; // Highly compressed for blocks to avoid Firestore document limit issues
+        pixelRatio = 3.0; // Crisp high-resolution place photos (approx 700x933 pixels)
       } else {
-        pixelRatio = 2.8; // High-res for visual crispness of Cover image
+        pixelRatio = 3.0; // Cinematic high-resolution cover image
       }
 
       final boundary = _boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
