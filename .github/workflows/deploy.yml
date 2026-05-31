@@ -70,7 +70,8 @@ jobs:
             --dart-define=storageBucket="${{ env.STORAGEBUCKET }}" \
             --dart-define=messagingSenderId="${{ env.MESSAGINGSENDERID }}" \
             --dart-define=appId="${{ env.APPID }}" \
-            --dart-define=measurementId="${{ env.MEASUREMENTID }}"
+            --dart-define=measurementId="${{ env.MEASUREMENTID }}" \
+            --dart-define=recaptchaSiteKey="${{ env.RECAPTCHASITEKEY }}"
 
       # 7. Deploy to Firebase Hosting Live Channel
       - name: Deploy to Firebase Hosting
