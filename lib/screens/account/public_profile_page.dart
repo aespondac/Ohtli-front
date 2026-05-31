@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
 
 import 'dart:async';
+import 'dart:ui';
 import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
@@ -37,6 +38,7 @@ class PublicProfilePage extends StatefulWidget {
 class _PublicProfilePageState extends State<PublicProfilePage> with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _userProfile;
   bool _isLoadingProfile = true;
+  double _scrollOffset = 0.0;
   
   // Follow and friendship states
   int _followersCount = 0;
@@ -576,375 +578,407 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         .map((w) => w[0].toUpperCase())
         .join();
 
-    final Widget profileBody = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 1. Cover Banner & Avatar Header
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // Cover Photo
-            Container(
-              height: isDesktop ? 320 : 180,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.3),
-                image: coverURL != null && coverURL.isNotEmpty
-                    ? DecorationImage(
-                        image: _getImageProvider(coverURL),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-                gradient: coverURL == null
-                    ? LinearGradient(
-                        colors: [
-                          OhtliColors.stormyTeal.withValues(alpha: 0.8),
-                          OhtliColors.xoconostle.withValues(alpha: 0.7),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      )
-                    : null,
-              ),
-              child: _isSelf
-                  ? Stack(
-                      children: [
-                        Positioned(
-                          top: 16,
-                          right: 16,
-                          child: InkWell(
-                            onTap: () => _handleImageUpload(isCover: true),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.edit_rounded, color: Colors.white, size: 15),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Cambiar Portada',
-                                    style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : null,
-            ),
+    // 1. Calculate collapsing banner height and blur amount based on scroll offset
+    final double clampedOffset = _scrollOffset.clamp(0.0, double.infinity);
+    final double initialCoverHeight = isDesktop ? 320.0 : 180.0;
+    final double minCoverHeight = isDesktop ? 120.0 : 70.0;
+    
+    // As we scroll, the height of the cover shrinks
+    final double coverHeight = (initialCoverHeight - clampedOffset).clamp(minCoverHeight, initialCoverHeight);
+    
+    // Proportional progress and blur
+    final double collapseProgress = ((initialCoverHeight - coverHeight) / (initialCoverHeight - minCoverHeight)).clamp(0.0, 1.0);
+    final double blurSigma = collapseProgress * 12.0;
 
-            // Back Button inside cover if pushed
-            if (widget.showBackButton)
-              Positioned(
-                top: 16,
-                left: 16,
-                child: GestureDetector(
-                  onTap: widget.onBack,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black.withValues(alpha: 0.5),
+    final Widget profileBody = NotificationListener<ScrollNotification>(
+      onNotification: (ScrollNotification notification) {
+        if (notification.depth == 0) {
+          final double offset = notification.metrics.pixels;
+          if (offset != _scrollOffset) {
+            setState(() {
+              _scrollOffset = offset;
+            });
+          }
+        }
+        return false;
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. Cover Banner & Avatar Header
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Cover Photo Container with dynamic height & real-time blur
+              Container(
+                height: coverHeight,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.3),
+                ),
+                child: ClipRect(
+                  child: ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        image: coverURL != null && coverURL.isNotEmpty
+                            ? DecorationImage(
+                                image: _getImageProvider(coverURL),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                        gradient: coverURL == null
+                            ? LinearGradient(
+                                colors: [
+                                  OhtliColors.stormyTeal.withValues(alpha: 0.8),
+                                  OhtliColors.xoconostle.withValues(alpha: 0.7),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                      ),
                     ),
-                    child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
                   ),
                 ),
               ),
-
-            // Overlapping Profile Avatar
-            Positioned(
-              bottom: isDesktop ? -60 : -45,
-              left: 24,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: isDesktop ? 130 : 90,
-                    height: isDesktop ? 130 : 90,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
-                        width: 4,
+  
+              // Edit cover button (fades & hides when collapsed)
+              if (_isSelf)
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: Visibility(
+                    visible: collapseProgress < 0.8,
+                    child: Opacity(
+                      opacity: (1.0 - collapseProgress).clamp(0.0, 1.0),
+                      child: InkWell(
+                        onTap: () => _handleImageUpload(isCover: true),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.edit_rounded, color: Colors.white, size: 15),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Cambiar Portada',
+                                style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      color: OhtliColors.stormyTeal,
                     ),
-                    child: ClipOval(
-                      child: photoURL != null && photoURL.isNotEmpty
-                          ? Image(
-                              image: _getImageProvider(photoURL),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Center(
+                  ),
+                ),
+  
+              // Back Button inside cover if pushed
+              if (widget.showBackButton)
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: GestureDetector(
+                    onTap: widget.onBack,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withValues(alpha: 0.5),
+                      ),
+                      child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                    ),
+                  ),
+                ),
+  
+              // Overlapping Profile Avatar
+              Positioned(
+                bottom: isDesktop ? -60 : -45,
+                left: 24,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: isDesktop ? 130 : 90,
+                      height: isDesktop ? 130 : 90,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+                          width: 4,
+                        ),
+                        color: OhtliColors.stormyTeal,
+                      ),
+                      child: ClipOval(
+                        child: photoURL != null && photoURL.isNotEmpty
+                            ? Image(
+                                image: _getImageProvider(photoURL),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Center(
+                                  child: Text(
+                                    initials,
+                                    style: GoogleFonts.inter(color: Colors.white, fontSize: isDesktop ? 36 : 24, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              )
+                            : Center(
                                 child: Text(
                                   initials,
                                   style: GoogleFonts.inter(color: Colors.white, fontSize: isDesktop ? 36 : 24, fontWeight: FontWeight.bold),
                                 ),
                               ),
-                            )
-                          : Center(
-                              child: Text(
-                                initials,
-                                style: GoogleFonts.inter(color: Colors.white, fontSize: isDesktop ? 36 : 24, fontWeight: FontWeight.bold),
-                              ),
+                      ),
+                    ),
+                    if (_isSelf)
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () => _handleImageUpload(isCover: false),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: OhtliColors.stormyTeal,
                             ),
-                    ),
-                  ),
-                  if (_isSelf)
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: () => _handleImageUpload(isCover: false),
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: OhtliColors.stormyTeal,
-                          ),
-                          child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 70),
-
-        // 2. Profile Meta Details (Name, Title, Stats)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Left Column: Name, Title, Joined Date
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      style: GoogleFonts.outfit(
-                        fontSize: isDesktop ? 26 : 22,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : OhtliColors.onyx,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    _buildActiveTitleWidget(
-                      _userProfile?['activeTitleId'] ?? 'viajero',
-                      isDark,
-                    ),
-                    const SizedBox(height: 12),
-                    // Registration Date
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today_rounded, size: 13, color: isDark ? Colors.white38 : OhtliColors.cantera),
-                        const SizedBox(width: 6),
-                        Text(
-                          _formatJoinedDate(rawCreatedAt),
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.5),
+                            child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              // Right Column: Stats (Followers/Following) + Action Button
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Stats counter
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      RichText(
-                        text: TextSpan(
-                          children: [
-                            TextSpan(
-                              text: '$_followersCount ',
-                              style: GoogleFonts.outfit(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                                color: isDark ? Colors.white : OhtliColors.onyx,
-                              ),
-                            ),
-                            TextSpan(
-                              text: 'Seguidores',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      RichText(
-                        text: TextSpan(
-                          children: [
-                            TextSpan(
-                              text: '${followingList.length} ',
-                              style: GoogleFonts.outfit(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                                color: isDark ? Colors.white : OhtliColors.onyx,
-                              ),
-                            ),
-                            TextSpan(
-                              text: 'Siguiendo',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  // Actions: Follow & Friend options, or Configure Account Settings
-                  if (!_isSelf)
+  
+              // Overlapping Stats and Configuration (Purple Area) - Positioned next to Avatar
+              Positioned(
+                bottom: isDesktop ? -45 : -35,
+                right: 24,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Stats counter
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: _toggleFollow,
-                          icon: Icon(_isFollowing ? Icons.check_rounded : Icons.person_add_rounded, size: 14),
-                          label: Text(
-                            _isFollowing ? 'Siguiendo' : 'Seguir',
-                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isFollowing ? OhtliColors.cantera : OhtliColors.stormyTeal,
-                            foregroundColor: _isFollowing ? OhtliColors.onyx : Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '$_followersCount ',
+                                style: GoogleFonts.outfit(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13.5,
+                                  color: isDark ? Colors.white : OhtliColors.onyx,
+                                ),
+                              ),
+                              TextSpan(
+                                text: 'Seguidores',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        _buildFriendButton(isDark),
+                        const SizedBox(width: 16),
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${followingList.length} ',
+                                style: GoogleFonts.outfit(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13.5,
+                                  color: isDark ? Colors.white : OhtliColors.onyx,
+                                ),
+                              ),
+                              TextSpan(
+                                text: 'Siguiendo',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AccountManagementPage(
-                              onBackToHome: (_) => Navigator.pop(context),
-                              onLogout: () async {
-                                await FirebaseAuth.instance.signOut();
-                                Navigator.pushReplacementNamed(context, '/login');
-                              },
+                    ),
+                    const SizedBox(height: 12),
+                    // Actions: Follow & Friend options, or Configure Account Settings
+                    if (!_isSelf)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: _toggleFollow,
+                            icon: Icon(_isFollowing ? Icons.check_rounded : Icons.person_add_rounded, size: 14),
+                            label: Text(
+                              _isFollowing ? 'Siguiendo' : 'Seguir',
+                              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _isFollowing ? OhtliColors.cantera : OhtliColors.stormyTeal,
+                              foregroundColor: _isFollowing ? OhtliColors.onyx : Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                             ),
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.edit_rounded, size: 14),
-                      label: Text(
-                        'Configurar Cuenta',
-                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                          const SizedBox(width: 8),
+                          _buildFriendButton(isDark),
+                        ],
+                      )
+                    else
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AccountManagementPage(
+                                onBackToHome: (_) => Navigator.pop(context),
+                                onLogout: () async {
+                                  await FirebaseAuth.instance.signOut();
+                                  Navigator.pushReplacementNamed(context, '/login');
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.edit_rounded, size: 14),
+                        label: Text(
+                          'Configurar Cuenta',
+                          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: OhtliColors.stormyTeal,
+                          side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        ),
                       ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: OhtliColors.stormyTeal,
-                        side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ],
+                ),
+              ),
+            ],
+          ),
+  
+          const SizedBox(height: 70),
+  
+          // 2. Profile Meta Details (Name, Title, Joined Date)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: GoogleFonts.outfit(
+                    fontSize: isDesktop ? 26 : 22,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : OhtliColors.onyx,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                _buildActiveTitleWidget(
+                  _userProfile?['activeTitleId'] ?? 'viajero',
+                  isDark,
+                ),
+                const SizedBox(height: 12),
+                // Registration Date
+                Row(
+                  children: [
+                    Icon(Icons.calendar_today_rounded, size: 13, color: isDark ? Colors.white38 : OhtliColors.cantera),
+                    const SizedBox(width: 6),
+                    Text(
+                      _formatJoinedDate(rawCreatedAt),
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.5),
                       ),
                     ),
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // 3. Custom Tabs: "Viajes" vs "Planes"
-        Container(
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-                width: 1,
-              ),
+                  ],
+                ),
+              ],
             ),
           ),
-          child: TabBar(
-            controller: _tabController,
-            indicatorColor: OhtliColors.stormyTeal,
-            labelColor: OhtliColors.stormyTeal,
-            unselectedLabelColor: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
-            labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13.5),
-            unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13.5),
-            tabs: const [
-              Tab(text: 'Viajes'),
-              Tab(text: 'Planes'),
-            ],
+  
+          const SizedBox(height: 24),
+  
+          // 3. Custom Tabs: "Viajes" vs "Planes"
+          Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: OhtliColors.stormyTeal,
+              labelColor: OhtliColors.stormyTeal,
+              unselectedLabelColor: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
+              labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13.5),
+              unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13.5),
+              tabs: const [
+                Tab(text: 'Viajes'),
+                Tab(text: 'Planes'),
+              ],
+            ),
           ),
-        ),
-
-        // 4. Tab Grids / Lists
-        Expanded(
-          child: StreamBuilder<List<Trip>>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(widget.userId)
-                .collection('trips')
-                .orderBy('createdAt', descending: true)
-                .snapshots()
-                .map((snapshot) => snapshot.docs
-                    .map((doc) => Trip.fromMap(doc.data(), doc.id))
-                    .toList()),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 40.0),
-                    child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
-                  ),
-                );
-              }
-
-              final trips = snapshot.data ?? [];
-              
-              // Filter based on self vs public visibility
-              final List<Trip> filteredTrips = trips.where((t) {
-                if (_isSelf) return t.status == 'published'; // Show all my published trips
-                return t.status == 'published' && t.visibility == 'public'; // Show only public published
-              }).toList();
-
-              final List<Trip> filteredPlans = trips.where((t) {
-                if (_isSelf) return t.status == 'draft'; // Show all my draft plans
-                return t.status == 'draft' && t.visibility == 'public'; // Show only public drafts
-              }).toList();
-
-              return _tabController.index == 0
-                  ? _buildTripsGrid(filteredTrips, isDesktop, isDark, isTrip: true)
-                  : _buildTripsGrid(filteredPlans, isDesktop, isDark, isTrip: false);
-            },
+  
+          // 4. Tab Grids / Lists
+          Expanded(
+            child: StreamBuilder<List<Trip>>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(widget.userId)
+                  .collection('trips')
+                  .orderBy('createdAt', descending: true)
+                  .snapshots()
+                  .map((snapshot) => snapshot.docs
+                      .map((doc) => Trip.fromMap(doc.data(), doc.id))
+                      .toList()),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40.0),
+                      child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+                    ),
+                  );
+                }
+  
+                final trips = snapshot.data ?? [];
+                
+                // Filter based on self vs public visibility
+                final List<Trip> filteredTrips = trips.where((t) {
+                  if (_isSelf) return t.status == 'published'; // Show all my published trips
+                  return t.status == 'published' && t.visibility == 'public'; // Show only public published
+                }).toList();
+  
+                final List<Trip> filteredPlans = trips.where((t) {
+                  if (_isSelf) return t.status == 'draft'; // Show all my draft plans
+                  return t.status == 'draft' && t.visibility == 'public'; // Show only public drafts
+                }).toList();
+  
+                return _tabController.index == 0
+                    ? _buildTripsGrid(filteredTrips, isDesktop, isDark, isTrip: true)
+                    : _buildTripsGrid(filteredPlans, isDesktop, isDark, isTrip: false);
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
 
   return Scaffold(
