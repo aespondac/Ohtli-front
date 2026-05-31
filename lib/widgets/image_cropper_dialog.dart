@@ -412,16 +412,16 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
       await Future.delayed(const Duration(milliseconds: 150));
 
       // Dynamically adjust export quality (pixelRatio) depending on the image's purpose:
-      // - Cover Image (not circle and not 3:4): Best quality (pixelRatio: 3.0)
+      // - Cover Image (not circle and not 3:4): Cinematic ultra-high quality (pixelRatio: 6.0)
       // - Place photos / block images (3:4): Crisp high-quality (pixelRatio: 3.0)
-      // - Profile Photo (circle): Medium-high quality (pixelRatio: 2.0)
+      // - Profile Photo (circle): Medium-high quality (pixelRatio: 2.5)
       double pixelRatio = 1.0;
       if (widget.isCircle) {
-        pixelRatio = 2.0;
+        pixelRatio = 2.5;
       } else if (widget.aspectRatio == 3 / 4) {
-        pixelRatio = 3.0; // Crisp high-resolution place photos (approx 700x933 pixels)
+        pixelRatio = 3.0; // Crisp high-resolution place photos
       } else {
-        pixelRatio = 3.0; // Cinematic high-resolution cover image
+        pixelRatio = 6.0; // Cinematic ultra-high-resolution cover image (1920x640px)
       }
 
       final boundary = _boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
@@ -452,8 +452,8 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
             imgElement.src = base64String;
             await completer.future;
             
-            // Export to JPEG with premium compressed quality (0.85)
-            base64String = canvas.toDataUrl('image/jpeg', 0.85);
+            // Export to JPEG with premium compressed quality (0.95)
+            base64String = canvas.toDataUrl('image/jpeg', 0.95);
           } catch (e) {
             print("Error converting cropped image to JPEG: $e");
           }

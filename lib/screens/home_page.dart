@@ -344,58 +344,48 @@ class _HomePageState extends State<HomePage> {
         ),
         SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 10),
-                    
-                    // Pinned Stories Carousel Title
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 8.0, bottom: 12.0),
-                        child: Text(
-                          'Crónicas Destacadas',
-                          style: GoogleFonts.outfit(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: OhtliColors.stormyTeal,
-                            letterSpacing: 0.5,
+            // No horizontal padding on ScrollView to allow edge-to-edge hero carousel
+            padding: const EdgeInsets.only(bottom: 40.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Pinned Stories Carousel (Full Width, edge-to-edge)
+                _buildPinnedStoriesCarousel(isMobile, isDark),
+                
+                const SizedBox(height: 50),
+                
+                // 2. Centered Content Container for remaining items (footers, slogan, etc.)
+                Center(
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 800),
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'próximamente',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w300,
+                            color: OhtliColors.onyx.withValues(alpha: 0.4),
+                            letterSpacing: 3.0,
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'ohtli  •  cdmx',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w300,
+                            letterSpacing: 4.0,
+                            color: OhtliColors.onyx.withValues(alpha: 0.4),
+                          ),
+                        ),
+                      ],
                     ),
-                    
-                    // Pinned Stories Carousel Card
-                    _buildPinnedStoriesCarousel(isMobile, isDark),
-                    
-                    const SizedBox(height: 50),
-                    Text(
-                      'próximamente',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w300,
-                        color: OhtliColors.onyx.withValues(alpha: 0.4),
-                        letterSpacing: 3.0,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'ohtli  •  cdmx',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: 4.0,
-                        color: OhtliColors.onyx.withValues(alpha: 0.4),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -404,11 +394,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildPinnedStoriesCarousel(bool isMobile, bool isDark) {
-    // PageController for sliding carousel
-    final PageController controller = PageController(viewportFraction: 0.96);
+    // PageController for sliding carousel - full width viewport fraction 1.0!
+    final PageController controller = PageController(viewportFraction: 1.0);
+    final double height = isMobile ? 260.0 : 380.0;
     
     return SizedBox(
-      height: 280,
+      height: height,
       width: double.infinity,
       child: PageView.builder(
         controller: controller,
@@ -438,11 +429,10 @@ class _HomePageState extends State<HomePage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            margin: EdgeInsets.zero,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3)),
+              borderRadius: BorderRadius.zero,
             ),
             child: const Center(
               child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
@@ -490,21 +480,20 @@ class _HomePageState extends State<HomePage> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOutCubic,
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  margin: EdgeInsets.zero,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.zero,
                     boxShadow: [
                       BoxShadow(
                         color: isHovered 
-                            ? OhtliColors.stormyTeal.withValues(alpha: 0.15)
-                            : Colors.black.withValues(alpha: 0.05),
-                        blurRadius: isHovered ? 16 : 8,
-                        offset: Offset(0, isHovered ? 8 : 4),
+                            ? OhtliColors.stormyTeal.withValues(alpha: 0.1)
+                            : Colors.transparent,
+                        blurRadius: isHovered ? 12 : 0,
                       ),
                     ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.zero,
                     child: Stack(
                       children: [
                         // Cover Image Background with Zoom Effect on Hover
@@ -540,8 +529,8 @@ class _HomePageState extends State<HomePage> {
                         ),
                         // Badge: "CRÓNICA DESTACADA"
                         Positioned(
-                          top: 16,
-                          left: 16,
+                          top: isMobile ? 16 : 24,
+                          left: isMobile ? 16 : 24,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
@@ -569,9 +558,9 @@ class _HomePageState extends State<HomePage> {
                         
                         // Content overlay
                         Positioned(
-                          bottom: 16,
-                          left: 16,
-                          right: 16,
+                          bottom: isMobile ? 16 : 32,
+                          left: isMobile ? 16 : 32,
+                          right: isMobile ? 16 : 32,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
