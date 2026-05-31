@@ -14,11 +14,11 @@ import '../../models/trip_model.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/ohtli_sidebar.dart';
+import '../../services/trip_service.dart';
 import '../home_page.dart';
 import '../trips/trip_viewer_page.dart';
 import '../trips/trip_editor_page.dart';
 import 'account_management_page.dart';
-import '../../services/trip_service.dart';
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;
@@ -39,11 +39,13 @@ class PublicProfilePage extends StatefulWidget {
 class _PublicProfilePageState extends State<PublicProfilePage> with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _userProfile;
   bool _isLoadingProfile = true;
-  bool _isSavingImages = false;
   
-  // Follow counts and state
+  // Follow and friendship states
   int _followersCount = 0;
   bool _isFollowing = false;
+  bool _isFriend = false;
+  bool _isCloseFriend = false;
+  
   StreamSubscription<QuerySnapshot>? _followersSubscription;
   StreamSubscription<DocumentSnapshot>? _currentUserSubscription;
   
@@ -119,7 +121,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         }
       });
 
-      // 3. Listen to current user following state
+      // 3. Listen to current user following and friendship states
       if (_currentUser != null) {
         _currentUserSubscription = FirebaseFirestore.instance
             .collection('users')
@@ -129,8 +131,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           if (doc.exists && mounted) {
             final data = doc.data();
             final List<dynamic> following = data?['following'] ?? [];
+            final List<dynamic> friends = data?['friends'] ?? [];
+            final List<dynamic> closeFriends = data?['closeFriends'] ?? [];
             setState(() {
               _isFollowing = following.contains(widget.userId);
+              _isFriend = friends.contains(widget.userId);
+              _isCloseFriend = closeFriends.contains(widget.userId);
             });
           }
         });
@@ -172,6 +178,47 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     } catch (e) {
       print("Error toggling follow: $e");
     }
+  }
+
+  Future<void> _setFriendStatus(String status) async {
+    if (_currentUser == null) return;
+    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid);
+
+    try {
+      if (status == 'none') {
+        await docRef.update({
+          'friends': FieldValue.arrayRemove([widget.userId]),
+          'closeFriends': FieldValue.arrayRemove([widget.userId]),
+        });
+        _showStatusSnackBar('Relación de amistad removida.');
+      } else if (status == 'friend') {
+        await docRef.update({
+          'friends': FieldValue.arrayUnion([widget.userId]),
+          'closeFriends': FieldValue.arrayRemove([widget.userId]),
+        });
+        _showStatusSnackBar('¡Añadido como Amigo!');
+      } else if (status == 'closeFriend') {
+        await docRef.update({
+          'closeFriends': FieldValue.arrayUnion([widget.userId]),
+          'friends': FieldValue.arrayRemove([widget.userId]),
+        });
+        _showStatusSnackBar('¡Añadido como Close Friend! ⭐');
+      }
+    } catch (e) {
+      print("Error setting friend status: $e");
+    }
+  }
+
+  void _showStatusSnackBar(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
+        backgroundColor: OhtliColors.stormyTeal,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   Future<void> _handleImageUpload({required bool isCover}) async {
@@ -226,8 +273,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     required bool isCover,
   }) async {
     if (_currentUser == null) return;
-    
-    setState(() => _isSavingImages = true);
 
     try {
       final rawBase64 = base64String.contains(',')
@@ -276,10 +321,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       }
     } catch (e) {
       print("Error uploading image: $e");
-    } finally {
-      if (mounted) {
-        setState(() => _isSavingImages = false);
-      }
     }
   }
 
@@ -588,22 +629,29 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     ),
                   ),
 
-                  // Actions: Follow or Configure Account Settings
+                  // Actions: Follow & Friend options, or Configure Account Settings
                   if (!_isSelf)
-                    ElevatedButton.icon(
-                      onPressed: _toggleFollow,
-                      icon: Icon(_isFollowing ? Icons.check_rounded : Icons.person_add_rounded, size: 15),
-                      label: Text(
-                        _isFollowing ? 'Siguiendo' : 'Seguir',
-                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isFollowing ? OhtliColors.cantera : OhtliColors.stormyTeal,
-                        foregroundColor: _isFollowing ? OhtliColors.onyx : Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: _toggleFollow,
+                          icon: Icon(_isFollowing ? Icons.check_rounded : Icons.person_add_rounded, size: 14),
+                          label: Text(
+                            _isFollowing ? 'Siguiendo' : 'Seguir',
+                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isFollowing ? OhtliColors.cantera : OhtliColors.stormyTeal,
+                            foregroundColor: _isFollowing ? OhtliColors.onyx : Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildFriendButton(isDark),
+                      ],
                     )
                   else
                     OutlinedButton.icon(
@@ -812,6 +860,130 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildFriendButton(bool isDark) {
+    Color btnBg = Colors.transparent;
+    Color btnText = OhtliColors.onyx;
+    IconData btnIcon = Icons.person_add_alt_1_rounded;
+    String btnLabel = 'Añadir amigo';
+    bool isOutline = true;
+
+    if (_isCloseFriend) {
+      btnBg = const Color(0xFF10B981); // Emerald green
+      btnText = Colors.white;
+      btnIcon = Icons.star_rounded;
+      btnLabel = 'Close Friend';
+      isOutline = false;
+    } else if (_isFriend) {
+      btnBg = OhtliColors.cantera.withValues(alpha: 0.8);
+      btnText = OhtliColors.onyx;
+      btnIcon = Icons.people_alt_rounded;
+      btnLabel = 'Amigos';
+      isOutline = false;
+    }
+
+    final Widget buttonChild = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(btnIcon, size: 14, color: isOutline ? OhtliColors.stormyTeal : btnText),
+        const SizedBox(width: 6),
+        Text(
+          btnLabel,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: isOutline ? OhtliColors.stormyTeal : btnText,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(
+          Icons.arrow_drop_down_rounded,
+          size: 16,
+          color: isOutline ? OhtliColors.stormyTeal : btnText,
+        ),
+      ],
+    );
+
+    return PopupMenuButton<String>(
+      onSelected: _setFriendStatus,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: isDark ? const Color(0xFF25252A) : Colors.white,
+      offset: const Offset(0, 40),
+      itemBuilder: (context) => [
+        PopupMenuItem<String>(
+          value: 'friend',
+          child: Row(
+            children: [
+              const Icon(Icons.people_outline_rounded, size: 16, color: OhtliColors.stormyTeal),
+              const SizedBox(width: 10),
+              Text(
+                'Añadir como Amigo',
+                style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx),
+              ),
+              if (_isFriend) ...[
+                const Spacer(),
+                const Icon(Icons.check_rounded, size: 14, color: Colors.green),
+              ],
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'closeFriend',
+          child: Row(
+            children: [
+              const Icon(Icons.star_rounded, size: 16, color: Color(0xFF10B981)),
+              const SizedBox(width: 10),
+              Text(
+                'Añadir como Close Friend',
+                style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx),
+              ),
+              if (_isCloseFriend) ...[
+                const Spacer(),
+                const Icon(Icons.check_rounded, size: 14, color: Colors.green),
+              ],
+            ],
+          ),
+        ),
+        if (_isFriend || _isCloseFriend) ...[
+          const PopupMenuDivider(height: 1),
+          PopupMenuItem<String>(
+            value: 'none',
+            child: Row(
+              children: [
+                const Icon(Icons.person_remove_rounded, size: 16, color: OhtliColors.xoconostle),
+                const SizedBox(width: 10),
+                Text(
+                  'Eliminar de mis Amigos',
+                  style: GoogleFonts.inter(
+                    fontSize: 12.5,
+                    color: OhtliColors.xoconostle,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+      child: isOutline
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: OhtliColors.stormyTeal, width: 1.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: buttonChild,
+            )
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: btnBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: buttonChild,
+            ),
     );
   }
 
