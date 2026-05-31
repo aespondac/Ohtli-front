@@ -48,7 +48,7 @@ void main() async {
     // Fallback real de producción para evitar fallos de carga inicial
     options = const FirebaseOptions(
       apiKey: "AIzaSyAF-baQTkVN5vSEOgKUoqipdh-qwInr29Q",
-      authDomain: "ohtli.quest",
+      authDomain: "othli-497404.firebaseapp.com", // Usar siempre el subdominio de firebaseapp.com para evitar fallos de redirección OAuth
       projectId: "othli-497404",
       storageBucket: "othli-497404.firebasestorage.app",
       messagingSenderId: "793463336809",
