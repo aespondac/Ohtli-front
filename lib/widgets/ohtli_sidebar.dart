@@ -255,11 +255,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          if (index == 2) {
-            widget.onNavigateToAccount();
-          } else {
-            widget.onTabSelected(index);
-          }
+          widget.onTabSelected(index);
         },
         child: content,
       ),

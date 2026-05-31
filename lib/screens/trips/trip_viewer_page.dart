@@ -13,6 +13,7 @@ import '../../services/markdown_helpers.dart';
 import '../../widgets/ohtli_sidebar.dart';
 import '../home_page.dart';
 import '../account/account_management_page.dart';
+import '../account/public_profile_page.dart';
 import 'trip_editor_page.dart';
 
 class TripViewerPage extends StatefulWidget {
@@ -616,70 +617,89 @@ class _TripViewerPageState extends State<TripViewerPage> {
         .map((w) => w[0].toUpperCase())
         .join();
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+    return GestureDetector(
+      onTap: () {
+        if (_trip != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PublicProfilePage(
+                userId: _trip!.userId,
+                showBackButton: true,
+                onBack: () => Navigator.pop(context),
+              ),
+            ),
+          );
+        }
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
-              "Escrito por",
-              style: GoogleFonts.inter(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.4),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "Escrito por",
+                  style: GoogleFonts.inter(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.4),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  name,
+                  style: GoogleFonts.outfit(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : OhtliColors.onyx,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  role,
+                  style: GoogleFonts.inter(
+                    fontSize: 9.5,
+                    color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              name,
-              style: GoogleFonts.outfit(
-                fontSize: 13.5,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : OhtliColors.onyx,
+            const SizedBox(width: 12),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: OhtliColors.stormyTeal,
               ),
-            ),
-            const SizedBox(height: 1),
-            Text(
-              role,
-              style: GoogleFonts.inter(
-                fontSize: 9.5,
-                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+              child: ClipOval(
+                child: photoUrl != null && photoUrl.isNotEmpty
+                    ? Image(
+                        image: _getImageProvider(photoUrl),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Center(
+                          child: Text(
+                            initials,
+                            style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Text(
+                          initials,
+                          style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
               ),
             ),
           ],
         ),
-        const SizedBox(width: 12),
-        Container(
-          width: 36,
-          height: 36,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: OhtliColors.stormyTeal,
-          ),
-          child: ClipOval(
-            child: photoUrl != null && photoUrl.isNotEmpty
-                ? Image(
-                    image: _getImageProvider(photoUrl),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Center(
-                      child: Text(
-                        initials,
-                        style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  )
-                : Center(
-                    child: Text(
-                      initials,
-                      style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 

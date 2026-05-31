@@ -13,6 +13,7 @@ import '../theme/colors.dart';
 import '../widgets/ohtli_sidebar.dart';
 import 'construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'trips/trips_dashboard_page.dart';
+import 'account/public_profile_page.dart';
 
 class HomePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -187,6 +188,12 @@ class _HomePageState extends State<HomePage> {
   Widget _buildBody(bool isMobile) {
     if (_currentIndex == 1) {
       return const TripsDashboardPage();
+    }
+    if (_currentIndex == 2) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        return PublicProfilePage(userId: user.uid);
+      }
     }
     if (_currentIndex == 3 || _currentIndex == 4) {
       return ConstructionPage(onLoginClick: () {});
