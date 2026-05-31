@@ -460,7 +460,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              "Written by",
+              "Escrito por",
               style: GoogleFonts.inter(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w600,
