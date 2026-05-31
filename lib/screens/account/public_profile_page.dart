@@ -56,22 +56,16 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   bool get _isSelf => _currentUser != null && _currentUser!.uid == widget.userId;
 
-  // Title editing state
-  bool _isEditingTitle = false;
-  late TextEditingController _titleController;
-
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _titleController = TextEditingController();
     _loadProfileData();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _titleController.dispose();
     _followersSubscription?.cancel();
     _currentUserSubscription?.cancel();
     super.dispose();
@@ -91,7 +85,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         if (doc.exists && mounted) {
           setState(() {
             _userProfile = doc.data();
-            _titleController.text = _userProfile?['title'] ?? 'Viajero';
             _isLoadingProfile = false;
           });
         } else if (mounted) {
@@ -324,26 +317,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     }
   }
 
-  Future<void> _saveTitle() async {
-    if (_currentUser == null) return;
-    final newTitle = _titleController.text.trim();
-    if (newTitle.isEmpty) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .set({
-        'title': newTitle,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      setState(() => _isEditingTitle = false);
-    } catch (e) {
-      print("Error saving title: $e");
-    }
-  }
-
   String _formatJoinedDate(dynamic rawDate) {
     if (rawDate == null) return 'registrado recientemente';
     DateTime? date;
@@ -389,7 +362,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final String displayName = _userProfile?['displayName'] ?? 'Viajero Ohtli';
     final String? photoURL = _userProfile?['photoURL'];
     final String? coverURL = _userProfile?['coverURL'];
-    final String travelerTitle = _userProfile?['title'] ?? 'Viajero';
     final List<dynamic> followingList = _userProfile?['following'] ?? [];
     final dynamic rawCreatedAt = _userProfile?['createdAt'];
 
@@ -567,63 +539,13 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                           ),
                         ),
                         const SizedBox(height: 4),
-                        // Interactive Title (by default "Viajero")
-                        Row(
-                          children: [
-                            if (_isEditingTitle)
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _titleController,
-                                        maxLength: 30,
-                                        style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 13),
-                                        decoration: InputDecoration(
-                                          isDense: true,
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                          filled: true,
-                                          fillColor: OhtliColors.inputBg,
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.check_rounded, color: Colors.green, size: 18),
-                                      onPressed: _saveTitle,
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close_rounded, color: OhtliColors.xoconostle, size: 18),
-                                      onPressed: () {
-                                        setState(() {
-                                          _titleController.text = travelerTitle;
-                                          _isEditingTitle = false;
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else ...[
-                              Text(
-                                travelerTitle,
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: OhtliColors.xoconostle,
-                                ),
-                              ),
-                              if (_isSelf) ...[
-                                const SizedBox(width: 6),
-                                InkWell(
-                                  onTap: () => setState(() => _isEditingTitle = true),
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: const Icon(Icons.edit_outlined, size: 14, color: OhtliColors.xoconostle),
-                                ),
-                              ],
-                            ],
-                          ],
+                        Text(
+                          'Viajero',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: OhtliColors.xoconostle,
+                          ),
                         ),
                       ],
                     ),
