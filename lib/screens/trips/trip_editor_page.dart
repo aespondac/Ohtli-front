@@ -812,7 +812,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (!kIsWeb) return;
 
     try {
-      final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
+      final uploadInput = html.FileUploadInputElement()
+        ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
       uploadInput.click();
       uploadInput.onChange.listen((e) {
         final files = uploadInput.files;
@@ -864,7 +865,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (!kIsWeb) return;
 
     try {
-      final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
+      final uploadInput = html.FileUploadInputElement()
+        ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
       uploadInput.click();
       uploadInput.onChange.listen((e) {
         final files = uploadInput.files;
@@ -1442,7 +1444,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
       ];
 
       final uploadedSlots = slots.where((s) => (s['url'] as String).isNotEmpty).toList();
-      final emptySlots = slots.where((s) => (s['url'] as String).isEmpty).toList();
 
       final Widget rightColumnWidget = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1533,33 +1534,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          // Empty slots row/wrap
-          if (emptySlots.isNotEmpty) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: emptySlots.map((slot) {
-                // If it is 'Principal' and uploadedSlots is empty, it is shown in Left Column, so do not duplicate!
-                if (slot['type'] == 'place_main' && uploadedSlots.isEmpty) {
-                  return const SizedBox();
-                }
-                return SizedBox(
-                  width: 100,
-                  height: 133,
-                  child: _buildPlacePhotoSlot(
-                    blockIndex: index,
-                    photoUrl: '',
-                    label: slot['label'] as String,
-                    onTap: slot['onTap'] as VoidCallback,
-                    onDelete: slot['onDelete'] as VoidCallback,
-                    isDark: isDark,
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-          ],
           // Yellow Cost Block
           Align(
             alignment: Alignment.centerLeft,
@@ -1643,20 +1617,73 @@ class _TripEditorPageState extends State<TripEditorPage> {
         ],
       );
 
-      final Widget leftColumnWidget = uploadedSlots.isNotEmpty
-          ? _buildPhotoStack(uploadedSlots, isDark)
-          : SizedBox(
+      // Determine next empty slot callback to auto-add
+      VoidCallback? nextEmptySlotOnTap;
+      if (section.mainPhotoUrl.isEmpty) {
+        nextEmptySlotOnTap = () => _uploadImageForBlock(index, 'place_main');
+      } else if (section.secondaryPhotoUrls.isEmpty) {
+        nextEmptySlotOnTap = () => _uploadImageForBlock(index, 'place_sec_0');
+      } else if (section.secondaryPhotoUrls.length < 2) {
+        nextEmptySlotOnTap = () => _uploadImageForBlock(index, 'place_sec_1');
+      }
+
+      final Widget leftColumnWidget = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          uploadedSlots.isNotEmpty
+              ? _buildPhotoStack(uploadedSlots, isDark)
+              : SizedBox(
+                  width: 120,
+                  height: 160,
+                  child: _buildPlacePhotoSlot(
+                    blockIndex: index,
+                    photoUrl: '',
+                    label: 'Principal',
+                    onTap: () => _uploadImageForBlock(index, 'place_main'),
+                    onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
+                    isDark: isDark,
+                  ),
+                ),
+          if (nextEmptySlotOnTap != null)
+            Container(
               width: 120,
-              height: 160,
-              child: _buildPlacePhotoSlot(
-                blockIndex: index,
-                photoUrl: '',
-                label: 'Principal',
-                onTap: () => _uploadImageForBlock(index, 'place_main'),
-                onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
-                isDark: isDark,
+              margin: EdgeInsets.only(
+                top: uploadedSlots.isNotEmpty ? 0 : 8,
+                left: uploadedSlots.isNotEmpty ? 10 : 0,
               ),
-            );
+              child: OutlinedButton(
+                onPressed: nextEmptySlotOnTap,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: OhtliColors.stormyTeal,
+                  side: BorderSide(
+                    color: OhtliColors.stormyTeal.withValues(alpha: 0.5),
+                    width: 1.5,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.add_photo_alternate_rounded, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Añadir Foto',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
 
       blockContent = LayoutBuilder(
         builder: (context, constraints) {
@@ -2599,69 +2626,225 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   Widget _buildPhotoStack(List<Map<String, dynamic>> uploadedSlots, bool isDark) {
-    return SizedBox(
-      width: 150,
-      height: 195,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: List.generate(uploadedSlots.length, (displayIndex) {
-          final displaySlot = uploadedSlots[displayIndex];
-          final String displayUrl = displaySlot['url'] as String;
-          final String displayLabel = displaySlot['label'] as String;
-          final VoidCallback displayOnTap = displaySlot['onTap'] as VoidCallback;
-          final VoidCallback displayOnDelete = displaySlot['onDelete'] as VoidCallback;
+    // Sort so back cards are drawn first and front card (place_main) is drawn last (on top/front of Stack)
+    final List<Map<String, dynamic>> drawOrderSlots = List.from(uploadedSlots);
+    drawOrderSlots.sort((a, b) {
+      final typeA = a['type'] as String;
+      final typeB = b['type'] as String;
+      int weight(String type) {
+        if (type == 'place_sec_1') return 0;
+        if (type == 'place_sec_0') return 1;
+        if (type == 'place_main') return 2;
+        return 3;
+      }
+      return weight(typeA).compareTo(weight(typeB));
+    });
 
-          double rotation = 0.0;
-          double offsetX = 0.0;
-          double offsetY = 0.0;
+    return OhtliPlacePhotoStack(
+      drawOrderSlots: drawOrderSlots,
+      isDark: isDark,
+      slotBuilder: (displaySlot, displayIndex) {
+        final String displayUrl = displaySlot['url'] as String;
+        final String displayLabel = displaySlot['label'] as String;
+        final VoidCallback displayOnTap = displaySlot['onTap'] as VoidCallback;
+        final VoidCallback displayOnDelete = displaySlot['onDelete'] as VoidCallback;
+        return _buildPlacePhotoSlot(
+          blockIndex: -1,
+          photoUrl: displayUrl,
+          label: displayLabel,
+          onTap: displayOnTap,
+          onDelete: displayOnDelete,
+          isDark: isDark,
+          onPhotoTap: () => _showPlacePhotoGallery(drawOrderSlots, displayIndex, isDark),
+        );
+      },
+    );
+  }
 
-          if (uploadedSlots.length == 3) {
-            if (displayIndex == 0) { // back card
-              rotation = -0.06;
-              offsetX = -10.0;
-              offsetY = -6.0;
-            } else if (displayIndex == 1) { // middle card
-              rotation = 0.05;
-              offsetX = 8.0;
-              offsetY = -3.0;
-            } else if (displayIndex == 2) { // front card
-              rotation = 0.0;
-              offsetX = 0.0;
-              offsetY = 0.0;
-            }
-          } else if (uploadedSlots.length == 2) {
-            if (displayIndex == 0) { // back card
-              rotation = -0.05;
-              offsetX = -8.0;
-              offsetY = -4.0;
-            } else if (displayIndex == 1) { // front card
-              rotation = 0.0;
-              offsetX = 0.0;
-              offsetY = 0.0;
-            }
-          }
+  // Interactive gallery for showing visited place photos
+  void _showPlacePhotoGallery(List<Map<String, dynamic>> drawOrderSlots, int initialIndex, bool isDark) {
+    int currentIndex = initialIndex;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final activeSlot = drawOrderSlots[currentIndex];
+            final String label = activeSlot['label'] as String;
+            final String photoUrl = activeSlot['url'] as String;
+            final VoidCallback onTap = activeSlot['onTap'] as VoidCallback;
+            final VoidCallback onDelete = activeSlot['onDelete'] as VoidCallback;
 
-          return Positioned(
-            left: 10 + offsetX,
-            top: 10 + offsetY,
-            child: Transform.rotate(
-              angle: rotation,
-              child: SizedBox(
-                width: 120,
-                height: 160,
-                child: _buildPlacePhotoSlot(
-                  blockIndex: -1,
-                  photoUrl: displayUrl,
-                  label: displayLabel,
-                  onTap: displayOnTap,
-                  onDelete: displayOnDelete,
-                  isDark: isDark,
-                ),
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(16),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Full screen touch-dismiss underlay
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      color: Colors.transparent,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+                  ),
+                  
+                  // Gallery main card
+                  Container(
+                    width: (MediaQuery.of(context).size.width * 0.9).clamp(280.0, 360.0),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Dialog Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              label == 'Principal' ? 'Foto Principal' : label,
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: OhtliColors.onyx,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                              color: OhtliColors.onyx.withValues(alpha: 0.6),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Image display with navigation arrows
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Left navigation arrow
+                            IconButton(
+                              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                              color: currentIndex > 0
+                                  ? OhtliColors.stormyTeal
+                                  : OhtliColors.cantera.withValues(alpha: 0.4),
+                              onPressed: currentIndex > 0
+                                  ? () {
+                                      setDialogState(() {
+                                        currentIndex--;
+                                      });
+                                    }
+                                  : null,
+                            ),
+                            
+                            // Photo box
+                            Expanded(
+                              child: Container(
+                                height: 260,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: OhtliColors.cantera.withValues(alpha: 0.2),
+                                    width: 1,
+                                  ),
+                                  image: DecorationImage(
+                                    image: _getImageProvider(photoUrl),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            
+                            // Right navigation arrow
+                            IconButton(
+                              icon: const Icon(Icons.arrow_forward_ios_rounded, size: 18),
+                              color: currentIndex < drawOrderSlots.length - 1
+                                  ? OhtliColors.stormyTeal
+                                  : OhtliColors.cantera.withValues(alpha: 0.4),
+                              onPressed: currentIndex < drawOrderSlots.length - 1
+                                  ? () {
+                                      setDialogState(() {
+                                        currentIndex++;
+                                      });
+                                    }
+                                  : null,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Indicator
+                        Text(
+                          '${currentIndex + 1} de ${drawOrderSlots.length}',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: OhtliColors.onyx.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Quick actions row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            TextButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                onTap();
+                              },
+                              style: TextButton.styleFrom(
+                                foregroundColor: OhtliColors.stormyTeal,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              ),
+                              icon: const Icon(Icons.edit_rounded, size: 14),
+                              label: Text(
+                                'Editar',
+                                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            Container(width: 1, height: 16, color: OhtliColors.cantera.withValues(alpha: 0.3)),
+                            TextButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                onDelete();
+                              },
+                              style: TextButton.styleFrom(
+                                foregroundColor: OhtliColors.xoconostle,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              ),
+                              icon: const Icon(Icons.delete_outline_rounded, size: 14),
+                              label: Text(
+                                'Quitar',
+                                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          );
-        }),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -2673,6 +2856,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     required VoidCallback onTap,
     required VoidCallback onDelete,
     required bool isDark,
+    VoidCallback? onPhotoTap,
   }) {
     final bool hasPhoto = photoUrl.isNotEmpty;
     final Color placeholderColor = isDark ? OhtliColors.onyx.withValues(alpha: 0.6) : OhtliColors.stormyTeal;
@@ -2714,10 +2898,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
             )
           : Stack(
               children: [
-                // Full size click for Lightbox detail view
+                // Full size click for Lightbox detail view / Gallery
                 Positioned.fill(
                   child: GestureDetector(
-                    onTap: () => _showImageLightbox(_getImageProvider(photoUrl), label),
+                    onTap: onPhotoTap ?? () => _showImageLightbox(_getImageProvider(photoUrl), label),
                     behavior: HitTestBehavior.opaque,
                     child: const SizedBox.expand(),
                   ),
@@ -3374,4 +3558,107 @@ String serializeTableMarkdown(TableData table) {
   }
   
   return buffer.toString().trim();
+}
+
+// Standalone StatefulWidget for premium fanning out spring micro-animations on hover/tap
+class OhtliPlacePhotoStack extends StatefulWidget {
+  final List<Map<String, dynamic>> drawOrderSlots;
+  final bool isDark;
+  final Widget Function(Map<String, dynamic> slot, int index) slotBuilder;
+
+  const OhtliPlacePhotoStack({
+    super.key,
+    required this.drawOrderSlots,
+    required this.isDark,
+    required this.slotBuilder,
+  });
+
+  @override
+  State<OhtliPlacePhotoStack> createState() => _OhtliPlacePhotoStackState();
+}
+
+class _OhtliPlacePhotoStackState extends State<OhtliPlacePhotoStack> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final int count = widget.drawOrderSlots.length;
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _isHovered = true),
+        onTapUp: (_) => setState(() => _isHovered = false),
+        onTapCancel: () => setState(() => _isHovered = false),
+        child: SizedBox(
+          width: 160,
+          height: 195,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: List.generate(count, (displayIndex) {
+              final displaySlot = widget.drawOrderSlots[displayIndex];
+              final String type = displaySlot['type'] as String;
+
+              double rotation = 0.0;
+              double offsetX = 0.0;
+              double offsetY = 0.0;
+              double scale = 1.0;
+
+              // Compute bouncy premium offsets when hovered/tapped to fan out
+              if (count == 3) {
+                if (type == 'place_sec_1') { // back card
+                  rotation = _isHovered ? -0.15 : -0.06;
+                  offsetX = _isHovered ? -26.0 : -10.0;
+                  offsetY = _isHovered ? -8.0 : -6.0;
+                } else if (type == 'place_sec_0') { // middle card
+                  rotation = _isHovered ? 0.12 : 0.05;
+                  offsetX = _isHovered ? 24.0 : 8.0;
+                  offsetY = _isHovered ? -5.0 : -3.0;
+                } else if (type == 'place_main') { // front card
+                  rotation = 0.0;
+                  offsetX = 0.0;
+                  offsetY = 0.0;
+                  scale = _isHovered ? 1.05 : 1.0;
+                }
+              } else if (count == 2) {
+                if (type != 'place_main') { // back card
+                  rotation = _isHovered ? -0.12 : -0.05;
+                  offsetX = _isHovered ? -20.0 : -8.0;
+                  offsetY = _isHovered ? -6.0 : -4.0;
+                } else { // front card
+                  rotation = 0.0;
+                  offsetX = 0.0;
+                  offsetY = 0.0;
+                  scale = _isHovered ? 1.05 : 1.0;
+                }
+              }
+
+              return AnimatedPositioned(
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutBack, // High-end spring physics curve
+                left: 15 + offsetX,
+                top: 10 + offsetY,
+                child: AnimatedScale(
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutBack,
+                  scale: scale,
+                  child: AnimatedRotation(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutBack,
+                    turns: rotation / (2 * 3.14159265),
+                    child: SizedBox(
+                      width: 120,
+                      height: 160,
+                      child: widget.slotBuilder(displaySlot, displayIndex),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
 }

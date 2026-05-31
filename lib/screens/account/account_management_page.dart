@@ -668,7 +668,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     if (!kIsWeb) return;
 
     try {
-      final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
+      final uploadInput = html.FileUploadInputElement()
+        ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
       uploadInput.click();
 
       uploadInput.onChange.listen((e) {

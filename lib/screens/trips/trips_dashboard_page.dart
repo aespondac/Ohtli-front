@@ -212,7 +212,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                               ? null
                               : () {
                                   if (kIsWeb) {
-                                    final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
+                                    final uploadInput = html.FileUploadInputElement()
+                                      ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
                                     uploadInput.click();
                                     uploadInput.onChange.listen((e) {
                                       final files = uploadInput.files;
