@@ -60,6 +60,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _initializeDefaultTitles();
     _loadProfileData();
   }
 
@@ -81,12 +82,25 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           .collection('users')
           .doc(widget.userId)
           .snapshots()
-          .listen((doc) {
+          .listen((doc) async {
         if (doc.exists && mounted) {
+          final data = doc.data();
           setState(() {
-            _userProfile = doc.data();
+            _userProfile = data;
             _isLoadingProfile = false;
           });
+
+          // Self-heal: ensure activeTitleId and possessedTitles are set for self
+          if (_isSelf && data != null) {
+            final List<dynamic> possessed = data['possessedTitles'] ?? [];
+            final String? active = data['activeTitleId'];
+            if (possessed.isEmpty || active == null) {
+              await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).set({
+                'possessedTitles': possessed.isEmpty ? ['viajero'] : possessed,
+                'activeTitleId': active ?? 'viajero',
+              }, SetOptions(merge: true));
+            }
+          }
         } else if (mounted) {
           setState(() {
             _userProfile = {
@@ -211,6 +225,190 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
+    );
+  }
+
+  Future<void> _initializeDefaultTitles() async {
+    final firestore = FirebaseFirestore.instance;
+    final collection = firestore.collection('titles');
+    
+    try {
+      final doc = await collection.doc('viajero').get();
+      if (!doc.exists) {
+        print("Initializing default titles in Firestore...");
+        await collection.doc('viajero').set({
+          'name': 'Viajero',
+          'description': 'Miembro fundador de la comunidad Ohtli.',
+        });
+        await collection.doc('explorador').set({
+          'name': 'Explorador',
+          'description': 'Viajero aventurero con varios destinos registrados.',
+        });
+        await collection.doc('cronista').set({
+          'name': 'Cronista',
+          'description': 'Narrador talentoso de crónicas y bitácoras de viaje.',
+        });
+        await collection.doc('guia').set({
+          'name': 'Guía Ohtli',
+          'description': 'Experto local que orienta a la comunidad con recomendaciones únicas.',
+        });
+      }
+    } catch (e) {
+      print("Error initializing default titles: $e");
+    }
+  }
+
+  Widget _buildActiveTitleWidget(String? activeTitleId, bool isDark) {
+    final titleId = activeTitleId ?? 'viajero';
+    
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('titles').doc(titleId).snapshots(),
+      builder: (context, snapshot) {
+        String titleName = 'Viajero';
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>?;
+          titleName = data?['name'] ?? 'Viajero';
+        }
+        
+        final Widget textWidget = Text(
+          titleName,
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: OhtliColors.xoconostle,
+          ),
+        );
+        
+        if (!_isSelf) return textWidget;
+        
+        return InkWell(
+          onTap: _showTitleSelectionDialog,
+          borderRadius: BorderRadius.circular(4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              textWidget,
+              const SizedBox(width: 4),
+              const Icon(Icons.swap_horiz_rounded, size: 14, color: OhtliColors.xoconostle),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showTitleSelectionDialog() async {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final List<dynamic> possessed = _userProfile?['possessedTitles'] ?? ['viajero'];
+    final String activeId = _userProfile?['activeTitleId'] ?? 'viajero';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: OhtliColors.cloudDancer,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(
+            'Mis Títulos de Viajero',
+            style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+          ),
+          content: SizedBox(
+            width: 400,
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('titles').snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
+                }
+
+                final docs = snapshot.data?.docs ?? [];
+                
+                return SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: docs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final id = doc.id;
+                      final name = data['name'] ?? 'Viajero';
+                      final desc = data['description'] ?? '';
+                      final isUnlocked = possessed.contains(id);
+                      final isActive = activeId == id;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        decoration: BoxDecoration(
+                          color: isActive 
+                              ? OhtliColors.stormyTeal.withValues(alpha: 0.1) 
+                              : (isDark ? const Color(0xFF1E1E22) : Colors.white),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isActive 
+                                ? OhtliColors.stormyTeal 
+                                : (isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4)),
+                            width: isActive ? 1.5 : 1,
+                          ),
+                        ),
+                        child: ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isUnlocked 
+                                  ? OhtliColors.xoconostle.withValues(alpha: 0.1)
+                                  : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                            ),
+                            child: Icon(
+                              isUnlocked 
+                                  ? (isActive ? Icons.stars_rounded : Icons.star_rounded)
+                                  : Icons.lock_outline_rounded,
+                              color: isUnlocked 
+                                  ? OhtliColors.xoconostle
+                                  : (isDark ? Colors.white30 : Colors.black38),
+                              size: 18,
+                            ),
+                          ),
+                          title: Text(
+                            name,
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                              color: isUnlocked 
+                                  ? OhtliColors.onyx 
+                                  : OhtliColors.onyx.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          subtitle: Text(
+                            desc,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: isUnlocked 
+                                  ? OhtliColors.onyx.withValues(alpha: 0.6) 
+                                  : OhtliColors.onyx.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          trailing: isActive
+                              ? const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20)
+                              : null,
+                          onTap: isUnlocked && !isActive
+                              ? () async {
+                                  await FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(_currentUser!.uid)
+                                      .update({'activeTitleId': id});
+                                  Navigator.pop(context);
+                                  _showStatusSnackBar('Título activo cambiado a "$name"');
+                                }
+                              : null,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -539,13 +737,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          'Viajero',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: OhtliColors.xoconostle,
-                          ),
+                        _buildActiveTitleWidget(
+                          _userProfile?['activeTitleId'] ?? 'viajero',
+                          isDark,
                         ),
                       ],
                     ),

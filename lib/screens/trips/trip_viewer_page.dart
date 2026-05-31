@@ -42,6 +42,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Trip? _trip;
   List<TripSection> _sections = [];
   Map<String, dynamic>? _authorProfile;
+  String _authorActiveTitleName = 'Viajero';
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -92,9 +93,19 @@ class _TripViewerPageState extends State<TripViewerPage> {
     try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(_trip!.userId).get();
       if (doc.exists && mounted) {
+        final profileData = doc.data();
         setState(() {
-          _authorProfile = doc.data();
+          _authorProfile = profileData;
         });
+
+        // Fetch dynamic relational active title name
+        final String activeTitleId = profileData?['activeTitleId'] ?? 'viajero';
+        final titleDoc = await FirebaseFirestore.instance.collection('titles').doc(activeTitleId).get();
+        if (titleDoc.exists && mounted) {
+          setState(() {
+            _authorActiveTitleName = titleDoc.data()?['name'] ?? 'Viajero';
+          });
+        }
       }
     } catch (e) {
       print("Error loading author profile: $e");
@@ -808,7 +819,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
     final String authorName = _authorProfile?['displayName'] ?? 'Viajero Ohtli';
     final String? authorPhoto = _authorProfile?['photoURL'];
-    final String authorRole = 'Viajero';
+    final String authorRole = _authorActiveTitleName;
 
     return Container(
       width: double.infinity,
