@@ -90,14 +90,21 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             _isLoadingProfile = false;
           });
 
-          // Self-heal: ensure activeTitleId and possessedTitles are set for self
+          // Self-heal: ensure activeTitleId, possessedTitles, following, friends, closeFriends are set for self
           if (_isSelf && data != null) {
             final List<dynamic> possessed = data['possessedTitles'] ?? [];
             final String? active = data['activeTitleId'];
-            if (possessed.isEmpty || active == null) {
+            final List<dynamic>? following = data['following'];
+            final List<dynamic>? friends = data['friends'];
+            final List<dynamic>? closeFriends = data['closeFriends'];
+            
+            if (possessed.isEmpty || active == null || following == null || friends == null || closeFriends == null) {
               await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).set({
                 'possessedTitles': possessed.isEmpty ? ['viajero'] : possessed,
                 'activeTitleId': active ?? 'viajero',
+                'following': following ?? [],
+                'friends': friends ?? [],
+                'closeFriends': closeFriends ?? [],
               }, SetOptions(merge: true));
             }
           }

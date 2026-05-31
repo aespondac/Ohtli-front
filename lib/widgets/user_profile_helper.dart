@@ -149,6 +149,11 @@ class UserProfileHelper {
           true,
       'privacy_public':
           currentData?['privacy_public'] ?? oldData?['privacy_public'] ?? false,
+      'possessedTitles': currentData?['possessedTitles'] ?? oldData?['possessedTitles'] ?? ['viajero'],
+      'activeTitleId': currentData?['activeTitleId'] ?? oldData?['activeTitleId'] ?? 'viajero',
+      'following': currentData?['following'] ?? oldData?['following'] ?? [],
+      'friends': currentData?['friends'] ?? oldData?['friends'] ?? [],
+      'closeFriends': currentData?['closeFriends'] ?? oldData?['closeFriends'] ?? [],
       'isDeleted': false,
       'deletedAt': null,
       'scheduledDeletionAt': null,
