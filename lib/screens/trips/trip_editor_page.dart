@@ -13,6 +13,7 @@ import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/ohtli_markdown_editor.dart';
 import '../../widgets/ohtli_place_photo_stack.dart';
 import '../../services/markdown_helpers.dart';
+import 'package:uuid/uuid.dart';
 import 'widgets/alert_block_editor.dart';
 import 'widgets/table_block_editor.dart';
 
@@ -31,6 +32,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
   late String _visibility;
   late String _status;
   late String _coverUrl;
+  DateTime? _travelDate;
+  List<ErrataEntry> _errataHistory = [];
   
   List<TripSection> _sections = [];
   bool _isLoadingContent = true;
@@ -58,6 +61,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
     _visibility = widget.trip.visibility;
     _status = widget.trip.status;
     _coverUrl = widget.trip.coverUrl;
+    _travelDate = widget.trip.travelDate;
+    _errataHistory = List.from(widget.trip.errataHistory);
 
     _loadCloudContentAndCheckCache();
   }
@@ -449,7 +454,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
       visibility: _visibility,
       createdAt: widget.trip.createdAt,
       updatedAt: now,
-      travelDate: widget.trip.travelDate,
+      travelDate: _travelDate,
+      errataHistory: _errataHistory,
     );
 
     final updatedContent = TripContent(sections: updatedSections);
@@ -888,46 +894,333 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
   }
 
-  Future<void> _togglePublishStatus() async {
-    final bool isCurrentlyPublished = _status == 'published';
-    final String newStatus = isCurrentlyPublished ? 'draft' : 'published';
+  Future<void> _showPublishOptionsDialog() async {
+    DateTime? tempDate = _travelDate;
+    String tempVisibility = _visibility;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          newStatus == 'published'
-              ? 'Publicando bitácora de viaje...'
-              : 'Guardando como borrador...',
-          style: GoogleFonts.inter(color: Colors.white),
-        ),
-        backgroundColor: OhtliColors.stormyTeal,
-        duration: const Duration(milliseconds: 600),
-      ),
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: OhtliColors.cloudDancer,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text(
+                'Publicar Viaje',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Para publicar esta historia, la fecha del viaje es obligatoria.',
+                    style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.7)),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Fecha de Viaje (Obligatoria):',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                  ),
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: tempDate ?? DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        builder: (context, child) {
+                          return Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: ColorScheme.light(
+                                primary: OhtliColors.stormyTeal,
+                                onPrimary: Colors.white,
+                                onSurface: OhtliColors.onyx,
+                              ),
+                            ),
+                            child: child!,
+                          );
+                        },
+                      );
+                      if (picked != null) {
+                        setStateDialog(() {
+                          tempDate = picked;
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.calendar_today_rounded, size: 14, color: OhtliColors.stormyTeal),
+                    label: Text(
+                      tempDate != null
+                          ? '${tempDate!.day}/${tempDate!.month}/${tempDate!.year}'
+                          : 'Seleccionar Fecha',
+                      style: GoogleFonts.inter(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: OhtliColors.stormyTeal,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Visibilidad:',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: OhtliColors.cantera.withValues(alpha: 0.5)),
+                    ),
+                    child: DropdownButton<String>(
+                      value: tempVisibility,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: OhtliColors.stormyTeal),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'public',
+                          child: Text('Pública (cualquiera con el link)', style: GoogleFonts.inter(fontSize: 12.5)),
+                        ),
+                        DropdownMenuItem(
+                          value: 'private',
+                          child: Text('Privada (solo yo)', style: GoogleFonts.inter(fontSize: 12.5)),
+                        ),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setStateDialog(() {
+                            tempVisibility = val;
+                          });
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancelar',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      color: OhtliColors.onyx.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: tempDate == null
+                      ? null
+                      : () async {
+                          Navigator.pop(dialogContext);
+                          setState(() {
+                            _travelDate = tempDate;
+                            _visibility = tempVisibility;
+                            _status = 'published';
+                          });
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Publicando bitácora de viaje...',
+                                style: GoogleFonts.inter(color: Colors.white),
+                              ),
+                              backgroundColor: OhtliColors.stormyTeal,
+                              duration: const Duration(milliseconds: 600),
+                            ),
+                          );
+
+                          _syncAllTables();
+                          await _saveToCloudFirestore();
+
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '¡Tu viaje ha sido publicado con éxito!',
+                                  style: GoogleFonts.inter(color: Colors.white),
+                                ),
+                                backgroundColor: OhtliColors.stormyTeal,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: OhtliColors.stormyTeal,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Publicar',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
+  }
 
-    setState(() {
-      _status = newStatus;
-    });
+  Future<void> _showErrataDialog() async {
+    final noteController = TextEditingController();
 
-    _syncAllTables();
-    await _saveToCloudFirestore();
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: OhtliColors.cloudDancer,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Publicar Fe de Errata',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Introduce una breve nota detallando las correcciones realizadas. Esta nota se mostrará al final de la publicación para transparencia de tus lectores.',
+                    style: GoogleFonts.inter(fontSize: 12, height: 1.45, color: OhtliColors.onyx.withValues(alpha: 0.7)),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Descripción de cambios realizados:',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: noteController,
+                    maxLines: 3,
+                    style: GoogleFonts.inter(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Ej. Se actualizaron costos de boletos y se corrigió el nombre del hotel...',
+                      hintStyle: GoogleFonts.inter(fontSize: 12.5, color: Colors.grey),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.all(12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: OhtliColors.cantera.withValues(alpha: 0.5)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: OhtliColors.xoconostle, width: 1.2),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      setStateDialog(() {});
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancelar',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      color: OhtliColors.onyx.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: noteController.text.trim().isEmpty
+                      ? null
+                      : () async {
+                          final String noteText = noteController.text.trim();
+                          Navigator.pop(dialogContext);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            newStatus == 'published'
-                ? '¡Tu viaje ha sido publicado con éxito!'
-                : 'El viaje ahora está en modo borrador.',
-            style: GoogleFonts.inter(color: Colors.white),
-          ),
-          backgroundColor: newStatus == 'published' ? OhtliColors.stormyTeal : OhtliColors.onyx,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+                          final newErrata = ErrataEntry(
+                            id: const Uuid().v4(),
+                            note: noteText,
+                            date: DateTime.now(),
+                          );
+
+                          setState(() {
+                            _errataHistory.add(newErrata);
+                          });
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Guardando correcciones...',
+                                style: GoogleFonts.inter(color: Colors.white),
+                              ),
+                              backgroundColor: OhtliColors.xoconostle,
+                              duration: const Duration(milliseconds: 600),
+                            ),
+                          );
+
+                          _syncAllTables();
+                          await _saveToCloudFirestore();
+
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '¡Fe de Errata publicada con éxito!',
+                                  style: GoogleFonts.inter(color: Colors.white),
+                                ),
+                                backgroundColor: OhtliColors.xoconostle,
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: OhtliColors.xoconostle,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Publicar Errata',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _handlePublishAction() async {
+    if (_status == 'published') {
+      await _showErrataDialog();
+    } else {
+      await _showPublishOptionsDialog();
     }
   }
 
@@ -1228,29 +1521,29 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           ),
           actions: [
-            // Publish/Unpublish Button
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: _status == 'published'
-                  ? OutlinedButton.icon(
-                      onPressed: _togglePublishStatus,
-                      icon: const Icon(Icons.cloud_done_rounded, size: 14, color: OhtliColors.stormyTeal),
+                  ? ElevatedButton.icon(
+                      onPressed: _handlePublishAction,
+                      icon: const Icon(Icons.history_edu_rounded, size: 14, color: Colors.white),
                       label: Text(
-                        'Publicado',
+                        'Fe de Errata',
                         style: GoogleFonts.inter(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: OhtliColors.stormyTeal,
+                          color: Colors.white,
                         ),
                       ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.xoconostle,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
                       ),
                     )
                   : ElevatedButton.icon(
-                      onPressed: _togglePublishStatus,
+                      onPressed: _handlePublishAction,
                       icon: const Icon(Icons.publish_rounded, size: 14, color: Colors.white),
                       label: Text(
                         'Publicar',

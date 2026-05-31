@@ -1,5 +1,35 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+class ErrataEntry {
+  final String id;
+  final String note;
+  final DateTime date;
+
+  ErrataEntry({
+    required this.id,
+    required this.note,
+    required this.date,
+  });
+
+  factory ErrataEntry.fromMap(Map<String, dynamic> data) {
+    return ErrataEntry(
+      id: data['id'] ?? '',
+      note: data['note'] ?? '',
+      date: data['date'] != null 
+          ? (data['date'] as Timestamp).toDate() 
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'note': note,
+      'date': Timestamp.fromDate(date),
+    };
+  }
+}
+
 class Trip {
   final String id;
   final String userId;
@@ -11,6 +41,7 @@ class Trip {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? travelDate;
+  final List<ErrataEntry> errataHistory;
 
   Trip({
     required this.id,
@@ -23,9 +54,15 @@ class Trip {
     required this.createdAt,
     required this.updatedAt,
     this.travelDate,
+    this.errataHistory = const [],
   });
 
   factory Trip.fromMap(Map<String, dynamic> data, String documentId) {
+    var errataList = data['errataHistory'] as List<dynamic>? ?? [];
+    List<ErrataEntry> parsedErrata = errataList
+        .map((e) => ErrataEntry.fromMap(e as Map<String, dynamic>))
+        .toList();
+
     return Trip(
       id: documentId,
       userId: data['userId'] ?? '',
@@ -37,6 +74,7 @@ class Trip {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       travelDate: data['travelDate'] != null ? (data['travelDate'] as Timestamp).toDate() : null,
+      errataHistory: parsedErrata,
     );
   }
 
@@ -51,6 +89,7 @@ class Trip {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'travelDate': travelDate != null ? Timestamp.fromDate(travelDate!) : null,
+      'errataHistory': errataHistory.map((e) => e.toMap()).toList(),
     };
   }
 }

@@ -2,12 +2,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_place_photo_stack.dart';
 import '../../widgets/ohtli_markdown_renderer.dart';
 import '../../services/markdown_helpers.dart';
+import '../../widgets/ohtli_sidebar.dart';
+import '../home_page.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -34,6 +37,7 @@ class TripViewerPage extends StatefulWidget {
 class _TripViewerPageState extends State<TripViewerPage> {
   Trip? _trip;
   List<TripSection> _sections = [];
+  Map<String, dynamic>? _authorProfile;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -46,13 +50,19 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Future<void> _loadTripData() async {
     if (widget.trip != null) {
       _trip = widget.trip;
-      await _loadTripContent();
+      await Future.wait([
+        _loadTripContent(),
+        _loadAuthorProfile(),
+      ]);
     } else if (widget.tripId != null && widget.authorId != null) {
       try {
         final fetchedTrip = await TripService().getTrip(widget.authorId!, widget.tripId!);
         if (fetchedTrip != null) {
           _trip = fetchedTrip;
-          await _loadTripContent();
+          await Future.wait([
+            _loadTripContent(),
+            _loadAuthorProfile(),
+          ]);
         } else {
           setState(() {
             _errorMessage = "No se pudo encontrar el viaje. Puede que sea privado o haya sido eliminado.";
@@ -70,6 +80,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
         _errorMessage = "Datos de consulta insuficientes para cargar la historia.";
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadAuthorProfile() async {
+    if (_trip == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(_trip!.userId).get();
+      if (doc.exists && mounted) {
+        setState(() {
+          _authorProfile = doc.data();
+        });
+      }
+    } catch (e) {
+      print("Error loading author profile: $e");
     }
   }
 
@@ -246,33 +270,115 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
     final User? currentUser = FirebaseAuth.instance.currentUser;
     final bool hasActiveSession = currentUser != null;
+    final bool showTopNavbar = widget.isPublicLink;
+
+    final Widget mainScrollableContent = SingleChildScrollView(
+      child: Column(
+        children: [
+          _buildCoverHeader(isDark, isDesktop),
+          const SizedBox(height: 36),
+          Center(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 820),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _sections.length,
+                    itemBuilder: (context, index) {
+                      return _buildBlockCard(_sections[index], isDark, isDesktop, index);
+                    },
+                  ),
+                  _buildErrataHistorySection(isDark),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+
+    final Widget bodyContent = Row(
+      children: [
+        if (isDesktop && !widget.isPublicLink && hasActiveSession)
+          OhtliSidebar(
+            currentIndex: 1,
+            onTabSelected: (index) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => HomePage(
+                    initialIndex: index,
+                    onLogout: () {
+                      Navigator.pushReplacementNamed(context, '/login');
+                    },
+                    onNavigateToAccount: () {
+                      Navigator.pushNamed(context, '/account');
+                    },
+                  ),
+                ),
+              );
+            },
+            onNavigateToAccount: () {
+              Navigator.pushNamed(context, '/account');
+            },
+            onLogout: () async {
+              await FirebaseAuth.instance.signOut();
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+          ),
+        Expanded(
+          child: Stack(
+            children: [
+              mainScrollableContent,
+              if (!isDesktop || widget.isPublicLink)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 12,
+                  left: 16,
+                  child: GestureDetector(
+                    onTap: () {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      } else if (widget.onBackToDashboard != null) {
+                        widget.onBackToDashboard!();
+                      }
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: (isDark ? const Color(0xFF1E1E22) : Colors.white).withValues(alpha: 0.8),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: isDark ? Colors.white70 : OhtliColors.onyx,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
-      appBar: widget.isPublicLink 
-          ? _buildPublicNavbar(hasActiveSession, isDark) 
-          : _buildStandardNavbar(isDark),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildCoverHeader(isDark, isDesktop),
-            const SizedBox(height: 24),
-            Container(
-              constraints: const BoxConstraints(maxWidth: 820),
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _sections.length,
-                itemBuilder: (context, index) {
-                  return _buildBlockCard(_sections[index], isDark, isDesktop, index);
-                },
-              ),
-            ),
-            const SizedBox(height: 80),
-          ],
-        ),
-      ),
+      appBar: showTopNavbar ? _buildPublicNavbar(hasActiveSession, isDark) : null,
+      body: bodyContent,
     );
   }
 
@@ -337,22 +443,154 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
-  PreferredSizeWidget _buildStandardNavbar(bool isDark) {
-    return AppBar(
-      title: Text(
-        "Ver Historia",
-        style: GoogleFonts.inter(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-          color: isDark ? Colors.white : OhtliColors.onyx,
+  Widget _buildAuthorWidget(String name, String? photoUrl, String role, bool isDark) {
+    final initials = name
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "Written by",
+              style: GoogleFonts.inter(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.4),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              name,
+              style: GoogleFonts.outfit(
+                fontSize: 13.5,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : OhtliColors.onyx,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              role,
+              style: GoogleFonts.inter(
+                fontSize: 9.5,
+                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+              ),
+            ),
+          ],
         ),
-      ),
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: isDark ? Colors.white70 : OhtliColors.onyx),
-        onPressed: () => Navigator.pop(context),
-      ),
+        const SizedBox(width: 12),
+        Container(
+          width: 36,
+          height: 36,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: OhtliColors.stormyTeal,
+          ),
+          child: ClipOval(
+            child: photoUrl != null && photoUrl.isNotEmpty
+                ? Image(
+                    image: _getImageProvider(photoUrl),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Center(
+                      child: Text(
+                        initials,
+                        style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      initials,
+                      style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrataHistorySection(bool isDark) {
+    final errata = _trip?.errataHistory ?? [];
+    if (errata.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        Divider(color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3), height: 40),
+        Row(
+          children: [
+            const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              "Notas de Cambios y Fe de Erratas",
+              style: GoogleFonts.outfit(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : OhtliColors.onyx,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        ...errata.reversed.map((entry) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF231E1E) : const Color(0xFFFFF5F5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? const Color(0xFF5A2C2C) : const Color(0xFFFEE2E2),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Corrección publicada",
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: OhtliColors.xoconostle,
+                      ),
+                    ),
+                    Text(
+                      "${entry.date.day}/${entry.date.month}/${entry.date.year}",
+                      style: GoogleFonts.inter(
+                        fontSize: 10.5,
+                        color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  entry.note,
+                  style: GoogleFonts.inter(
+                    fontSize: 12.5,
+                    color: isDark ? Colors.white70 : OhtliColors.onyx,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 
@@ -360,6 +598,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final String cover = _trip?.coverUrl ?? '';
     final String title = _trip?.title ?? 'Sin Título';
     final String desc = _trip?.description ?? '';
+
+    final String authorName = _authorProfile?['displayName'] ?? 'Viajero Ohtli';
+    final String? authorPhoto = _authorProfile?['photoURL'];
+    final String authorRole = 'Viajero';
 
     return Container(
       width: double.infinity,
@@ -373,7 +615,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           if (cover.isNotEmpty)
             Container(
               width: double.infinity,
-              height: isDesktop ? 340 : 200,
+              height: isDesktop ? 500 : 320,
               decoration: BoxDecoration(
                 image: DecorationImage(
                   image: _getImageProvider(cover),
@@ -445,26 +687,46 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  Text(
-                    title,
-                    style: GoogleFonts.outfit(
-                      fontSize: isDesktop ? 30 : 22,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : OhtliColors.onyx,
-                      height: 1.15,
-                    ),
-                  ),
-                  if (desc.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    OhtliMarkdownText(
-                      text: desc,
-                      style: GoogleFonts.inter(
-                        fontSize: 14.5,
-                        color: isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.7),
-                        height: 1.5,
+                  const SizedBox(height: 20),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: GoogleFonts.outfit(
+                                fontSize: isDesktop ? 32 : 24,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : OhtliColors.onyx,
+                                height: 1.15,
+                              ),
+                            ),
+                            if (desc.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              OhtliMarkdownText(
+                                text: desc,
+                                style: GoogleFonts.inter(
+                                  fontSize: 14.5,
+                                  color: isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.7),
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
+                      if (isDesktop) ...[
+                        const SizedBox(width: 32),
+                        _buildAuthorWidget(authorName, authorPhoto, authorRole, isDark),
+                      ],
+                    ],
+                  ),
+                  if (!isDesktop) ...[
+                    const SizedBox(height: 20),
+                    _buildAuthorWidget(authorName, authorPhoto, authorRole, isDark),
                   ],
                 ],
               ),
@@ -477,70 +739,27 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   Widget _buildBlockCard(TripSection section, bool isDark, bool isDesktop, int index) {
     Widget blockContent = const SizedBox();
-    IconData? blockIcon;
-    Color blockIconColor = OhtliColors.stormyTeal;
 
     if (section is PlaceSection) {
-      blockIcon = Icons.location_on_rounded;
       blockContent = _buildPlaceBlockViewer(section, isDark, isDesktop);
     } else if (section is TextSection) {
       final alertData = parseAlertMarkdown(section.markdownText);
       final tableData = parseTableMarkdown(section.markdownText);
 
       if (alertData != null) {
-        blockIcon = Icons.info_outline_rounded;
-        blockIconColor = alertData.type == AlertType.warning 
-            ? OhtliColors.xoconostle 
-            : alertData.type == AlertType.tip 
-                ? OhtliColors.cempasuchil 
-                : OhtliColors.stormyTeal;
         blockContent = _buildAlertBlockViewer(alertData, isDark);
       } else if (tableData != null) {
-        blockIcon = Icons.table_chart_rounded;
         blockContent = _buildTableBlockViewer(tableData, isDark);
       } else {
-        blockIcon = Icons.notes_rounded;
         blockContent = _buildTextBlockViewer(section, isDark);
       }
     } else if (section is TextImageSection) {
-      blockIcon = Icons.photo_library_rounded;
       blockContent = _buildTextImageBlockViewer(section, isDark, isDesktop);
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.25),
-          width: 1,
-        ),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (blockIcon != null) ...[
-            Row(
-              children: [
-                Icon(blockIcon, color: blockIconColor, size: 16),
-                const SizedBox(width: 8),
-                Container(
-                  width: 32,
-                  height: 1.5,
-                  decoration: BoxDecoration(
-                    color: blockIconColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-          ],
-          blockContent,
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 36),
+      child: blockContent,
     );
   }
 
