@@ -58,6 +58,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
     _initializeDefaultTitles();
     _loadProfileData();
   }
@@ -484,6 +489,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
       final Map<String, dynamic> updateData = {
         isCover ? 'coverURL' : 'photoURL': downloadUrl,
+        if (isCover) 'coverUrl': downloadUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
@@ -559,7 +565,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
     final String displayName = _userProfile?['displayName'] ?? 'Viajero Ohtli';
     final String? photoURL = _userProfile?['photoURL'];
-    final String? coverURL = _userProfile?['coverURL'];
+    final String? coverURL = _userProfile?['coverURL'] ?? _userProfile?['coverUrl'];
     final List<dynamic> followingList = _userProfile?['following'] ?? [];
     final dynamic rawCreatedAt = _userProfile?['createdAt'];
 
@@ -570,9 +576,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         .map((w) => w[0].toUpperCase())
         .join();
 
-    final Widget profileBody = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    final Widget profileBody = SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         // 1. Cover Banner & Avatar Header
         Stack(
           clipBehavior: Clip.none,
@@ -618,7 +625,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 16),
+                                  const Icon(Icons.edit_rounded, color: Colors.white, size: 15),
                                   const SizedBox(width: 6),
                                   Text(
                                     'Cambiar Portada',
@@ -717,34 +724,102 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         // 2. Profile Meta Details (Name, Title, Stats)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Display name & Title
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              // Left Column: Name, Title, Joined Date
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: GoogleFonts.outfit(
+                        fontSize: isDesktop ? 26 : 22,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : OhtliColors.onyx,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    _buildActiveTitleWidget(
+                      _userProfile?['activeTitleId'] ?? 'viajero',
+                      isDark,
+                    ),
+                    const SizedBox(height: 12),
+                    // Registration Date
+                    Row(
                       children: [
+                        Icon(Icons.calendar_today_rounded, size: 13, color: isDark ? Colors.white38 : OhtliColors.cantera),
+                        const SizedBox(width: 6),
                         Text(
-                          displayName,
-                          style: GoogleFonts.outfit(
-                            fontSize: isDesktop ? 26 : 22,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : OhtliColors.onyx,
+                          _formatJoinedDate(rawCreatedAt),
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.5),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        _buildActiveTitleWidget(
-                          _userProfile?['activeTitleId'] ?? 'viajero',
-                          isDark,
                         ),
                       ],
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Right Column: Stats (Followers/Following) + Action Button
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Stats counter
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RichText(
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '$_followersCount ',
+                              style: GoogleFonts.outfit(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13.5,
+                                color: isDark ? Colors.white : OhtliColors.onyx,
+                              ),
+                            ),
+                            TextSpan(
+                              text: 'Seguidores',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      RichText(
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${followingList.length} ',
+                              style: GoogleFonts.outfit(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13.5,
+                                color: isDark ? Colors.white : OhtliColors.onyx,
+                              ),
+                            ),
+                            TextSpan(
+                              text: 'Siguiendo',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-
+                  const SizedBox(height: 14),
                   // Actions: Follow & Friend options, or Configure Account Settings
                   if (!_isSelf)
                     Row(
@@ -785,7 +860,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                           ),
                         );
                       },
-                      icon: const Icon(Icons.settings_outlined, size: 14),
+                      icon: const Icon(Icons.edit_rounded, size: 14),
                       label: Text(
                         'Configurar Cuenta',
                         style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
@@ -797,74 +872,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       ),
                     ),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              // Registration Date
-              Row(
-                children: [
-                  Icon(Icons.calendar_today_rounded, size: 13, color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4)),
-                  const SizedBox(width: 6),
-                  Text(
-                    _formatJoinedDate(rawCreatedAt),
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Stats counter (Followers, Following)
-              Row(
-                children: [
-                  RichText(
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '$_followersCount ',
-                          style: GoogleFonts.outfit(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: isDark ? Colors.white : OhtliColors.onyx,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'Seguidores',
-                          style: GoogleFonts.inter(
-                            fontSize: 12.5,
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-                  RichText(
-                    text: TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '${followingList.length} ',
-                          style: GoogleFonts.outfit(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: isDark ? Colors.white : OhtliColors.onyx,
-                          ),
-                        ),
-                        TextSpan(
-                          text: 'Siguiendo',
-                          style: GoogleFonts.inter(
-                            fontSize: 12.5,
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ],
@@ -898,56 +905,52 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         ),
 
         // 4. Tab Grids / Lists
-        Expanded(
-          child: StreamBuilder<List<Trip>>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .doc(widget.userId)
-                .collection('trips')
-                .orderBy('createdAt', descending: true)
-                .snapshots()
-                .map((snapshot) => snapshot.docs
-                    .map((doc) => Trip.fromMap(doc.data(), doc.id))
-                    .toList()),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
+        StreamBuilder<List<Trip>>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.userId)
+              .collection('trips')
+              .orderBy('createdAt', descending: true)
+              .snapshots()
+              .map((snapshot) => snapshot.docs
+                  .map((doc) => Trip.fromMap(doc.data(), doc.id))
+                  .toList()),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40.0),
                   child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
-                );
-              }
-
-              final trips = snapshot.data ?? [];
-              
-              // Filter based on self vs public visibility
-              final List<Trip> filteredTrips = trips.where((t) {
-                if (_isSelf) return t.status == 'published'; // Show all my published trips
-                return t.status == 'published' && t.visibility == 'public'; // Show only public published
-              }).toList();
-
-              final List<Trip> filteredPlans = trips.where((t) {
-                if (_isSelf) return t.status == 'draft'; // Show all my draft plans
-                return t.status == 'draft' && t.visibility == 'public'; // Show only public drafts
-              }).toList();
-
-              return TabBarView(
-                controller: _tabController,
-                children: [
-                  // Tab: Viajes
-                  _buildTripsGrid(filteredTrips, isDesktop, isDark, isTrip: true),
-                  // Tab: Planes
-                  _buildTripsGrid(filteredPlans, isDesktop, isDark, isTrip: false),
-                ],
+                ),
               );
-            },
-          ),
+            }
+
+            final trips = snapshot.data ?? [];
+            
+            // Filter based on self vs public visibility
+            final List<Trip> filteredTrips = trips.where((t) {
+              if (_isSelf) return t.status == 'published'; // Show all my published trips
+              return t.status == 'published' && t.visibility == 'public'; // Show only public published
+            }).toList();
+
+            final List<Trip> filteredPlans = trips.where((t) {
+              if (_isSelf) return t.status == 'draft'; // Show all my draft plans
+              return t.status == 'draft' && t.visibility == 'public'; // Show only public drafts
+            }).toList();
+
+            return _tabController.index == 0
+                ? _buildTripsGrid(filteredTrips, isDesktop, isDark, isTrip: true)
+                : _buildTripsGrid(filteredPlans, isDesktop, isDark, isTrip: false);
+          },
         ),
       ],
-    );
+    ),
+  );
 
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
-      body: profileBody,
-    );
+  return Scaffold(
+    backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+    body: profileBody,
+  );
   }
 
   Widget _buildFriendButton(bool isDark) {
