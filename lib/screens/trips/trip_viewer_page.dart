@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -117,51 +118,172 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
   }
 
-  void _showImageLightbox(ImageProvider imageProvider, String title) {
+  void _showImageLightbox({
+    required List<String> urls,
+    required int initialIndex,
+    required String title,
+  }) {
+    if (urls.isEmpty) return;
+
     showDialog(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.9),
+      barrierColor: Colors.black.withValues(alpha: 0.95),
       builder: (context) {
-        return GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.all(12),
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 3.0,
-              child: Hero(
-                tag: 'lightbox_${imageProvider.hashCode}',
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.75,
+        int currentIndex = initialIndex;
+        final pageController = PageController(initialPage: initialIndex);
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: EdgeInsets.zero,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Dismiss gesture on empty space
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  // PageView for swiping images
+                  PageView.builder(
+                    controller: pageController,
+                    itemCount: urls.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        currentIndex = index;
+                      });
+                    },
+                    itemBuilder: (context, idx) {
+                      final url = urls[idx];
+                      final provider = _getImageProvider(url);
+                      return GestureDetector(
+                        onTap: () {},
+                        child: Center(
+                          child: InteractiveViewer(
+                            minScale: 0.5,
+                            maxScale: 3.0,
+                            child: Container(
+                              constraints: BoxConstraints(
+                                maxHeight: MediaQuery.of(context).size.height * 0.75,
+                                maxWidth: MediaQuery.of(context).size.width * 0.9,
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: Image(
+                                  image: provider,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  // Close Button
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 16,
+                    right: 16,
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.black45,
+                        ),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Image(
-                          image: imageProvider,
-                          fit: BoxFit.contain,
+                    ),
+                  ),
+                  // Left Arrow for Desktop/Web
+                  if (urls.length > 1 && currentIndex > 0)
+                    Positioned(
+                      left: 16,
+                      child: GestureDetector(
+                        onTap: () {
+                          pageController.previousPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black45,
+                          ),
+                          child: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 28),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      title,
-                      style: GoogleFonts.inter(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                  // Right Arrow for Desktop/Web
+                  if (urls.length > 1 && currentIndex < urls.length - 1)
+                    Positioned(
+                      right: 16,
+                      child: GestureDetector(
+                        onTap: () {
+                          pageController.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black45,
+                          ),
+                          child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 28),
+                        ),
                       ),
-                      textAlign: TextAlign.center,
                     ),
-                  ],
-                ),
+                  // Page indicator & Title at the bottom
+                  Positioned(
+                    bottom: 40,
+                    left: 20,
+                    right: 20,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (urls.length > 1) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black45,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              "${currentIndex + 1} de ${urls.length}",
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        Text(
+                          title,
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -335,7 +457,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           child: Stack(
             children: [
               mainScrollableContent,
-              if (!isDesktop || widget.isPublicLink)
+              if (!widget.isPublicLink && !isDesktop)
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 12,
                   left: 16,
@@ -387,7 +509,12 @@ class _TripViewerPageState extends State<TripViewerPage> {
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.explore_rounded, color: OhtliColors.stormyTeal, size: 22),
+          SvgPicture.asset(
+            'assets/icon_isologo.svg',
+            height: 22,
+            fit: BoxFit.contain,
+            colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
+          ),
           const SizedBox(width: 8),
           Text(
             'Ohtli',
@@ -594,6 +721,28 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
+  String _formatSpanishDate(DateTime? date) {
+    if (date == null) return 'Sin fecha de viaje';
+    final months = [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre'
+    ];
+    final day = date.day;
+    final month = months[date.month - 1];
+    final year = date.year;
+    return 'el $day de $month del $year';
+  }
+
   Widget _buildCoverHeader(bool isDark, bool isDesktop) {
     final String cover = _trip?.coverUrl ?? '';
     final String title = _trip?.title ?? 'Sin Título';
@@ -644,51 +793,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.calendar_today_rounded, size: 10, color: OhtliColors.stormyTeal),
-                            const SizedBox(width: 6),
-                            Text(
-                              _trip?.travelDate != null
-                                  ? "${_trip!.travelDate!.day}/${_trip!.travelDate!.month}/${_trip!.travelDate!.year}"
-                                  : "Sin fecha",
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: OhtliColors.stormyTeal,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: OhtliColors.cempasuchil.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          "HISTORIA PUBLICADA",
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: OhtliColors.cempasuchil,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
@@ -700,8 +804,17 @@ class _TripViewerPageState extends State<TripViewerPage> {
                               style: GoogleFonts.outfit(
                                 fontSize: isDesktop ? 32 : 24,
                                 fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : OhtliColors.onyx,
+                                color: isDark ? OhtliColors.cantera : OhtliColors.onyx,
                                 height: 1.15,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _formatSpanishDate(_trip?.travelDate),
+                              style: GoogleFonts.inter(
+                                fontSize: 12.5,
+                                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.6),
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                             if (desc.isNotEmpty) ...[
@@ -766,13 +879,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Widget _buildPlaceBlockViewer(PlaceSection place, bool isDark, bool isDesktop) {
     // Collect active photo urls
     final List<Map<String, dynamic>> drawOrderSlots = [];
+    final List<String> activeUrls = [];
     if (place.mainPhotoUrl.isNotEmpty) {
       drawOrderSlots.add({'url': place.mainPhotoUrl, 'type': 'place_main'});
+      activeUrls.add(place.mainPhotoUrl);
     }
     for (int i = 0; i < place.secondaryPhotoUrls.length; i++) {
       final url = place.secondaryPhotoUrls[i];
       if (url.isNotEmpty) {
         drawOrderSlots.add({'url': url, 'type': 'place_sec_$i'});
+        activeUrls.add(url);
       }
     }
 
@@ -790,9 +906,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
             drawOrderSlots: drawOrderSlots,
             isDark: isDark,
             slotBuilder: (slot, _) {
-              final ImageProvider provider = _getImageProvider(slot['url'] as String);
+              final String currentUrl = slot['url'] as String;
+              final int clickedIndex = activeUrls.indexOf(currentUrl);
+              final ImageProvider provider = _getImageProvider(currentUrl);
               return GestureDetector(
-                onTap: () => _showImageLightbox(provider, place.title),
+                onTap: () => _showImageLightbox(
+                  urls: activeUrls,
+                  initialIndex: clickedIndex >= 0 ? clickedIndex : 0,
+                  title: place.title.isNotEmpty ? place.title : 'Fotos del Lugar',
+                ),
                 child: Hero(
                   tag: 'place_photo_${place.id}_${slot['url']}',
                   child: Container(
@@ -1180,7 +1302,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: GestureDetector(
-                  onTap: () => _showImageLightbox(_getImageProvider(section.imageUrl), "Foto adjunta"),
+                  onTap: () => _showImageLightbox(
+                    urls: [section.imageUrl],
+                    initialIndex: 0,
+                    title: "Foto adjunta",
+                  ),
                   child: Image(
                     image: _getImageProvider(section.imageUrl),
                     fit: BoxFit.cover,

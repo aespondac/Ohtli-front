@@ -100,9 +100,9 @@ TableData? parseTableMarkdown(String markdown) {
   if (headers.isEmpty) return null;
 
   final List<TableColumn> columns = headers.map((h) {
-    final moneyReg = RegExp(r'^(.*?)\s*\[money:([A-Z]{3,5})(?::(total|sum))?\]$');
-    final textReg = RegExp(r'^(.*?)\s*\[text\]$');
-    final numberReg = RegExp(r'^(.*?)\s*\[number\]$');
+    final moneyReg = RegExp(r'^(.*?)\s*\[money:([^:\]]+)(?::(total|sum))?\]$', caseSensitive: false);
+    final textReg = RegExp(r'^(.*?)\s*\[text\]$', caseSensitive: false);
+    final numberReg = RegExp(r'^(.*?)\s*\[number\]$', caseSensitive: false);
     
     if (moneyReg.hasMatch(h)) {
       final match = moneyReg.firstMatch(h)!;

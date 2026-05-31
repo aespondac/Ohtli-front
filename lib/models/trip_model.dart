@@ -223,7 +223,7 @@ class TextImageSection extends TripSection {
   factory TextImageSection.fromMap(Map<String, dynamic> data) {
     return TextImageSection(
       id: data['id'] ?? '',
-      markdownText: data['markdownText'] ?? '',
+      markdownText: data['markdownText'] ?? data['text'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
       layout: data['layout'] ?? 'left',
     );

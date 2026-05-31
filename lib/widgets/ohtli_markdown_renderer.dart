@@ -26,11 +26,11 @@ class OhtliMarkdownText extends StatelessWidget {
       height: 1.4,
     );
 
-    return RichText(
+    return Text.rich(
+      _parseMarkdown(text, defaultStyle),
       textAlign: textAlign,
       maxLines: maxLines,
       overflow: overflow ?? TextOverflow.clip,
-      text: _parseMarkdown(text, defaultStyle),
     );
   }
 
