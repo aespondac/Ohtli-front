@@ -45,14 +45,15 @@ void main() async {
       measurementId: configMeasurementId,
     );
   } else {
-    // Fallback local con credenciales de desarrollo para evitar fallos de carga inicial
+    // Fallback real de producción para evitar fallos de carga inicial
     options = const FirebaseOptions(
-      apiKey: "AIzaSyD-localDevFakeKeyForOhtliQuestAuth",
-      authDomain: "othli-497404.firebaseapp.com",
+      apiKey: "AIzaSyAF-baQTkVN5vSEOgKUoqipdh-qwInr29Q",
+      authDomain: "ohtli.quest",
       projectId: "othli-497404",
-      storageBucket: "othli-497404.appspot.com",
-      messagingSenderId: "1234567890",
-      appId: "1:1234567890:web:fakeAppId",
+      storageBucket: "othli-497404.firebasestorage.app",
+      messagingSenderId: "793463336809",
+      appId: "1:793463336809:web:d681af225315177f8257f8",
+      measurementId: "G-JMM9SJ9X5R",
     );
   }
 
