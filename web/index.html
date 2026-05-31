@@ -105,16 +105,25 @@
     };
 
     // Escuchar el evento oficial del motor de Flutter cuando renderiza el primer frame
-    document.addEventListener("flutter-first-frame", function() {
+    function removeLoader() {
       var loadingEl = document.getElementById('loading-indicator');
       if (loadingEl) {
         loadingEl.style.transition = "opacity 0.4s ease";
         loadingEl.style.opacity = "0";
         setTimeout(function() {
-          loadingEl.remove();
+          if (loadingEl && loadingEl.parentNode) {
+            loadingEl.remove();
+          }
         }, 400);
       }
-    });
+    }
+
+    // Escuchar en document y window
+    document.addEventListener("flutter-first-frame", removeLoader);
+    window.addEventListener("flutter-first-frame", removeLoader);
+
+    // Fallback de seguridad: remover el loader tras 5 segundos en caso de que se pierdan los eventos
+    setTimeout(removeLoader, 5000);
   </script>
   <!-- Lanzador oficial e inalterado de Flutter Web -->
   <script src="flutter_bootstrap.js" async></script>
