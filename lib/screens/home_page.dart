@@ -15,6 +15,8 @@ import 'construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'trips/trips_dashboard_page.dart';
 import 'trips/trip_viewer_page.dart';
 import 'account/public_profile_page.dart';
+import 'friends_page.dart';
+import 'notifications_page.dart';
 
 // Pinned Stories Model & Constant
 class PinnedStory {
@@ -211,8 +213,14 @@ class _HomePageState extends State<HomePage> {
         return PublicProfilePage(userId: user.uid);
       }
     }
-    if (_currentIndex == 3 || _currentIndex == 4) {
+    if (_currentIndex == 3) {
+      return const FriendsPage();
+    }
+    if (_currentIndex == 4 || _currentIndex == 5) {
       return ConstructionPage(onLoginClick: () {});
+    }
+    if (_currentIndex == 6) {
+      return const NotificationsPage();
     }
     return _buildMainContent(isMobile);
   }
@@ -258,6 +266,14 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.notifications_none_rounded, color: OhtliColors.stormyTeal, size: 20),
+              onPressed: () {
+                setState(() {
+                  _currentIndex = 6;
+                });
+              },
+            ),
             Padding(
               padding: const EdgeInsets.only(right: 16, top: 10, bottom: 10),
               child: _buildAvatarWidget(
@@ -271,7 +287,7 @@ class _HomePageState extends State<HomePage> {
         ),
         body: _buildBody(isMobile),
         bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _currentIndex,
+          currentIndex: _currentIndex < 2 ? _currentIndex : 0,
           onTap: (index) => setState(() => _currentIndex = index),
           backgroundColor: colorSidebar,
           selectedItemColor: OhtliColors.stormyTeal,

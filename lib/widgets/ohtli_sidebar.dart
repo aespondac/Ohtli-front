@@ -34,8 +34,10 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
   bool _isHoveringInicio = false;
   bool _isHoveringMisViajes = false;
   bool _isHoveringPerfil = false;
+  bool _isHoveringAmigos = false;
   bool _isHoveringLogros = false;
   bool _isHoveringLugares = false;
+  bool _isHoveringNotificaciones = false;
   bool _isHoveringLogout = false;
   String? _localPhotoURL;
 
@@ -391,10 +393,18 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
             onHover: (hovered) => setState(() => _isHoveringPerfil = hovered),
           ),
           _buildSidebarItem(
+            icon: Icons.people_outline_rounded,
+            activeIcon: Icons.people_rounded,
+            label: 'Amigos',
+            index: 3,
+            isHovered: _isHoveringAmigos,
+            onHover: (hovered) => setState(() => _isHoveringAmigos = hovered),
+          ),
+          _buildSidebarItem(
             icon: Icons.emoji_events_outlined,
             activeIcon: Icons.emoji_events_rounded,
             label: 'Logros',
-            index: 3,
+            index: 4,
             isHovered: _isHoveringLogros,
             onHover: (hovered) => setState(() => _isHoveringLogros = hovered),
           ),
@@ -402,9 +412,17 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
             icon: Icons.place_outlined,
             activeIcon: Icons.place_rounded,
             label: 'Lugares',
-            index: 4,
+            index: 5,
             isHovered: _isHoveringLugares,
             onHover: (hovered) => setState(() => _isHoveringLugares = hovered),
+          ),
+          _buildSidebarItem(
+            icon: Icons.notifications_none_rounded,
+            activeIcon: Icons.notifications_rounded,
+            label: 'Notificaciones',
+            index: 6,
+            isHovered: _isHoveringNotificaciones,
+            onHover: (hovered) => setState(() => _isHoveringNotificaciones = hovered),
           ),
           const Spacer(),
 
