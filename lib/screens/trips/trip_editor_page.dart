@@ -364,6 +364,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
     final List<TripSection> updatedSections = [];
     final bucket = FirebaseStorage.instance.app.options.storageBucket;
+    final int timestamp = now.millisecondsSinceEpoch;
 
     for (var section in _sections) {
       if (section is PlaceSection) {
@@ -372,10 +373,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
           try {
             final String base64Data = finalMain.split(',').last;
             final Uint8List bytes = base64Decode(base64Data);
+            final String filename = "${section.id}_main_$timestamp.jpg";
             final storageRef = FirebaseStorage.instance
-                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/${section.id}_main.jpg');
+                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
             await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-            finalMain = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F${section.id}_main.jpg?alt=media";
+            finalMain = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
           } catch (e) {
             print("Error uploading section main photo: $e");
           }
@@ -388,10 +390,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
             try {
               final String base64Data = secUrl.split(',').last;
               final Uint8List bytes = base64Decode(base64Data);
+              final String filename = "${section.id}_sec_${timestamp}_$i.jpg";
               final storageRef = FirebaseStorage.instance
-                  .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/${section.id}_sec_$i.jpg');
+                  .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
               await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-              secUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F${section.id}_sec_$i.jpg?alt=media";
+              secUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
             } catch (e) {
               print("Error uploading section secondary photo $i: $e");
             }
@@ -406,6 +409,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
           rating: section.rating,
           mainPhotoUrl: finalMain,
           secondaryPhotoUrls: finalSec,
+          cost: section.cost,
+          currency: section.currency,
         ));
       } else if (section is TextImageSection) {
         String finalImg = section.imageUrl;
@@ -413,10 +418,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
           try {
             final String base64Data = finalImg.split(',').last;
             final Uint8List bytes = base64Decode(base64Data);
+            final String filename = "${section.id}_image_$timestamp.jpg";
             final storageRef = FirebaseStorage.instance
-                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/${section.id}_image.jpg');
+                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
             await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-            finalImg = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F${section.id}_image.jpg?alt=media";
+            finalImg = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
           } catch (e) {
             print("Error uploading section text_image photo: $e");
           }
@@ -454,6 +460,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
         TripService().updateTripContent(widget.trip.userId, widget.trip.id, updatedContent),
       ]);
 
+      // Dynamic Garbage Collector for Firebase Storage section photos
+      await _cleanupStoragePhotos(widget.trip.userId, widget.trip.id, updatedSections);
+
       if (mounted) {
         setState(() {
           _sections = updatedSections;
@@ -469,6 +478,52 @@ class _TripEditorPageState extends State<TripEditorPage> {
           _isSavingCloud = false;
         });
       }
+    }
+  }
+
+  Future<void> _cleanupStoragePhotos(String userId, String tripId, List<TripSection> finalSections) async {
+    try {
+      final storageRef = FirebaseStorage.instance.ref('users/$userId/trips/$tripId/sections');
+      final listResult = await storageRef.listAll();
+      
+      // Gather all referenced URLs
+      final Set<String> referencedUrls = {};
+      for (var sec in finalSections) {
+        if (sec is PlaceSection) {
+          if (sec.mainPhotoUrl.isNotEmpty) {
+            referencedUrls.add(sec.mainPhotoUrl);
+          }
+          for (var url in sec.secondaryPhotoUrls) {
+            if (url.isNotEmpty) {
+              referencedUrls.add(url);
+            }
+          }
+        } else if (sec is TextImageSection) {
+          if (sec.imageUrl.isNotEmpty) {
+            referencedUrls.add(sec.imageUrl);
+          }
+        }
+      }
+
+      // Check each file in storage sections folder
+      for (var item in listResult.items) {
+        final filename = item.name;
+        bool isReferenced = false;
+        for (var url in referencedUrls) {
+          // If the referenced url contains the filename, it is in use
+          if (url.contains(filename)) {
+            isReferenced = true;
+            break;
+          }
+        }
+        if (!isReferenced) {
+          print("Deleting orphaned storage section photo: ${item.name}");
+          await item.delete();
+        }
+      }
+    } catch (e) {
+      // Ignore safe errors (such as directory not existing)
+      print("Warning in _cleanupStoragePhotos: $e");
     }
   }
 
