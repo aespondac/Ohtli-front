@@ -1113,6 +1113,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final double computedAspectRatio = cardWidth / cardHeight;
 
     return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.all(padding),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,

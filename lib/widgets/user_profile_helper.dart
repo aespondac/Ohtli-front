@@ -152,6 +152,8 @@ class UserProfileHelper {
       'following': currentData?['following'] ?? oldData?['following'] ?? [],
       'friends': currentData?['friends'] ?? oldData?['friends'] ?? [],
       'closeFriends': currentData?['closeFriends'] ?? oldData?['closeFriends'] ?? [],
+      'coverURL': currentData?['coverURL'] ?? oldData?['coverURL'] ?? '',
+      'coverUrl': currentData?['coverUrl'] ?? oldData?['coverUrl'] ?? '',
       'isDeleted': false,
       'deletedAt': null,
       'scheduledDeletionAt': null,
