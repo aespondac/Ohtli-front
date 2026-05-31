@@ -61,7 +61,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   
   // Local active user
   final User? _currentUser = FirebaseAuth.instance.currentUser;
-  bool get _isSelf => _currentUser != null && _currentUser!.uid == widget.userId;
+  bool get _isSelf => _currentUser != null && _currentUser.uid == widget.userId;
 
   @override
   void initState() {
@@ -162,7 +162,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       if (_currentUser != null) {
         _currentUserSubscription = FirebaseFirestore.instance
             .collection('users')
-            .doc(_currentUser!.uid)
+            .doc(_currentUser.uid)
             .snapshots()
             .listen((doc) {
           if (doc.exists && mounted) {
@@ -182,7 +182,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         if (!_isSelf) {
           _requestsSubscription = FirebaseFirestore.instance
               .collection('friend_requests')
-              .where('senderId', isEqualTo: _currentUser!.uid)
+              .where('senderId', isEqualTo: _currentUser.uid)
               .where('receiverId', isEqualTo: widget.userId)
               .where('status', isEqualTo: 'pending')
               .snapshots()
@@ -197,7 +197,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           _incomingRequestsSubscription = FirebaseFirestore.instance
               .collection('friend_requests')
               .where('senderId', isEqualTo: widget.userId)
-              .where('receiverId', isEqualTo: _currentUser!.uid)
+              .where('receiverId', isEqualTo: _currentUser.uid)
               .where('status', isEqualTo: 'pending')
               .snapshots()
               .listen((snapshot) {
@@ -232,7 +232,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       return;
     }
 
-    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid);
+    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser.uid);
 
     try {
       if (_isFollowing) {
@@ -257,9 +257,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
       // 1. Create a top-level friend request
       final docRef = await firestore.collection('friend_requests').add({
-        'senderId': _currentUser!.uid,
-        'senderName': _currentUser!.displayName ?? 'Un viajero',
-        'senderPhoto': _currentUser!.photoURL,
+        'senderId': _currentUser.uid,
+        'senderName': _currentUser.displayName ?? 'Un viajero',
+        'senderPhoto': _currentUser.photoURL,
         'receiverId': widget.userId,
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
@@ -273,9 +273,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           .doc(docRef.id)
           .set({
         'type': 'friend_request',
-        'senderId': _currentUser!.uid,
-        'senderName': _currentUser!.displayName ?? 'Un viajero',
-        'senderPhoto': _currentUser!.photoURL,
+        'senderId': _currentUser.uid,
+        'senderName': _currentUser.displayName ?? 'Un viajero',
+        'senderPhoto': _currentUser.photoURL,
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
       });
@@ -300,7 +300,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       // 2. Update Bob's private notification
       await firestore
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .collection('notifications')
           .doc(requestId)
           .update({
@@ -309,11 +309,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
       // 3. Add Bob to Alice's friends list
       await firestore.collection('users').doc(widget.userId).update({
-        'friends': FieldValue.arrayUnion([_currentUser!.uid]),
+        'friends': FieldValue.arrayUnion([_currentUser.uid]),
       });
 
       // 4. Add Alice to Bob's friends list
-      await firestore.collection('users').doc(_currentUser!.uid).update({
+      await firestore.collection('users').doc(_currentUser.uid).update({
         'friends': FieldValue.arrayUnion([widget.userId]),
       });
 
@@ -325,7 +325,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   Future<void> _setFriendStatus(String status) async {
     if (_currentUser == null) return;
-    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid);
+    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser.uid);
 
     try {
       if (status == 'none') {
@@ -335,7 +335,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           'closeFriends': FieldValue.arrayRemove([widget.userId]),
         });
         await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
-          'friends': FieldValue.arrayRemove([_currentUser!.uid]),
+          'friends': FieldValue.arrayRemove([_currentUser.uid]),
         });
         _showStatusSnackBar('Relación de amistad removida.');
       } else if (status == 'friend') {
@@ -608,7 +608,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       final imageBytes = base64Decode(rawBase64);
 
       final fileName = isCover ? 'cover.jpg' : 'profile.jpg';
-      final storageRef = FirebaseStorage.instance.ref('users/${_currentUser!.uid}/$fileName');
+      final storageRef = FirebaseStorage.instance.ref('users/${_currentUser.uid}/$fileName');
       
       await storageRef.putData(
         Uint8List.fromList(imageBytes),
@@ -625,14 +625,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .set(updateData, SetOptions(merge: true));
 
       if (!isCover) {
-        await _currentUser!.updatePhotoURL(downloadUrl);
-        await _currentUser!.reload();
+        await _currentUser.updatePhotoURL(downloadUrl);
+        await _currentUser.reload();
         // Update local cache
-        html.window.localStorage['ohtli_profile_pic_${_currentUser!.uid}'] = downloadUrl;
+        html.window.localStorage['ohtli_profile_pic_${_currentUser.uid}'] = downloadUrl;
       }
 
       if (mounted) {
@@ -1124,8 +1124,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         return _buildTripsGrid(filteredItems, isDesktop, isDark, isTrip: isTrip);
       },
     );
-  }leBody,
-  );
   }
 
   Widget _buildFriendButton(bool isDark) {

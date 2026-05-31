@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
-import 'home_page.dart'; // For OhtliSettings
 import 'account/public_profile_page.dart'; // To visit their profile!
 import 'construction_page.dart'; // To reuse RouteBackgroundPainter
 
@@ -35,7 +34,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
   Future<void> _toggleFriendStatus(String targetUserId, String action) async {
     if (_currentUser == null) return;
-    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid);
+    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser.uid);
 
     try {
       if (action == 'none') {
@@ -45,7 +44,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
           'closeFriends': FieldValue.arrayRemove([targetUserId]),
         });
         await FirebaseFirestore.instance.collection('users').doc(targetUserId).update({
-          'friends': FieldValue.arrayRemove([_currentUser!.uid]),
+          'friends': FieldValue.arrayRemove([_currentUser.uid]),
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -87,9 +86,9 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
       // 1. Create a top-level friend request
       final docRef = await firestore.collection('friend_requests').add({
-        'senderId': _currentUser!.uid,
-        'senderName': _currentUser!.displayName ?? 'Un viajero',
-        'senderPhoto': _currentUser!.photoURL,
+        'senderId': _currentUser.uid,
+        'senderName': _currentUser.displayName ?? 'Un viajero',
+        'senderPhoto': _currentUser.photoURL,
         'receiverId': targetUserId,
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
@@ -103,9 +102,9 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
           .doc(docRef.id)
           .set({
         'type': 'friend_request',
-        'senderId': _currentUser!.uid,
-        'senderName': _currentUser!.displayName ?? 'Un viajero',
-        'senderPhoto': _currentUser!.photoURL,
+        'senderId': _currentUser.uid,
+        'senderName': _currentUser.displayName ?? 'Un viajero',
+        'senderPhoto': _currentUser.photoURL,
         'status': 'pending',
         'timestamp': FieldValue.serverTimestamp(),
       });
@@ -214,7 +213,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
           ),
           Positioned.fill(
             child: StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).snapshots(),
+              stream: FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).snapshots(),
               builder: (context, userSnapshot) {
                 if (userSnapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
@@ -237,7 +236,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                     var friendUsers = allUsers.where((doc) => friends.contains(doc.id)).toList();
                     
                     // 2. Filter suggested (everyone except ourselves and our friends)
-                    var suggestedUsers = allUsers.where((doc) => doc.id != _currentUser!.uid && !friends.contains(doc.id)).toList();
+                    var suggestedUsers = allUsers.where((doc) => doc.id != _currentUser.uid && !friends.contains(doc.id)).toList();
 
                     // Apply search query filter if search is active
                     if (_searchQuery.isNotEmpty) {

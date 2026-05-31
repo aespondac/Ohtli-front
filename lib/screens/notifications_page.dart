@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
-import 'home_page.dart'; // For OhtliSettings
 import 'construction_page.dart'; // To reuse RouteBackgroundPainter
 
 class NotificationsPage extends StatefulWidget {
@@ -31,7 +30,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         // 2. Update Bob's private notification
         await firestore
             .collection('users')
-            .doc(_currentUser!.uid)
+            .doc(_currentUser.uid)
             .collection('notifications')
             .doc(notificationId)
             .update({
@@ -40,11 +39,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
         // 3. Add Bob to Alice's friends list
         await firestore.collection('users').doc(senderId).update({
-          'friends': FieldValue.arrayUnion([_currentUser!.uid]),
+          'friends': FieldValue.arrayUnion([_currentUser.uid]),
         });
 
         // 4. Add Alice to Bob's friends list
-        await firestore.collection('users').doc(_currentUser!.uid).update({
+        await firestore.collection('users').doc(_currentUser.uid).update({
           'friends': FieldValue.arrayUnion([senderId]),
         });
 
@@ -66,7 +65,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         // 2. Update Bob's private notification
         await firestore
             .collection('users')
-            .doc(_currentUser!.uid)
+            .doc(_currentUser.uid)
             .collection('notifications')
             .doc(notificationId)
             .update({
@@ -153,7 +152,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
-                  .doc(_currentUser!.uid)
+                  .doc(_currentUser.uid)
                   .collection('notifications')
                   .orderBy('timestamp', descending: true)
                   .snapshots(),
