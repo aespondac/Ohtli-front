@@ -888,6 +888,49 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
   }
 
+  Future<void> _togglePublishStatus() async {
+    final bool isCurrentlyPublished = _status == 'published';
+    final String newStatus = isCurrentlyPublished ? 'draft' : 'published';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newStatus == 'published'
+              ? 'Publicando bitácora de viaje...'
+              : 'Guardando como borrador...',
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
+        backgroundColor: OhtliColors.stormyTeal,
+        duration: const Duration(milliseconds: 600),
+      ),
+    );
+
+    setState(() {
+      _status = newStatus;
+    });
+
+    _syncAllTables();
+    await _saveToCloudFirestore();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            newStatus == 'published'
+                ? '¡Tu viaje ha sido publicado con éxito!'
+                : 'El viaje ahora está en modo borrador.',
+            style: GoogleFonts.inter(color: Colors.white),
+          ),
+          backgroundColor: newStatus == 'published' ? OhtliColors.stormyTeal : OhtliColors.onyx,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
+  }
+
   // Exit checking
   Future<bool> _onWillPop() async {
     _debounceTimer?.cancel();
@@ -1185,6 +1228,46 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           ),
           actions: [
+            // Publish/Unpublish Button
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: _status == 'published'
+                  ? OutlinedButton.icon(
+                      onPressed: _togglePublishStatus,
+                      icon: const Icon(Icons.cloud_done_rounded, size: 14, color: OhtliColors.stormyTeal),
+                      label: Text(
+                        'Publicado',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: OhtliColors.stormyTeal,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: _togglePublishStatus,
+                      icon: const Icon(Icons.publish_rounded, size: 14, color: Colors.white),
+                      label: Text(
+                        'Publicar',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                    ),
+            ),
             // Visibility Dropdown
             Container(
               margin: const EdgeInsets.only(right: 16),

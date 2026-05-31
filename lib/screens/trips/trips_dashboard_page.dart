@@ -407,7 +407,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Plan creado con éxito',
+                                      'Plan creado con éxito. Redirigiendo al editor...',
                                       style: GoogleFonts.inter(color: Colors.white),
                                     ),
                                     backgroundColor: OhtliColors.stormyTeal,
@@ -415,6 +415,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
+                                  ),
+                                );
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TripEditorPage(trip: newTrip),
                                   ),
                                 );
                               }
