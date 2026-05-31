@@ -45,15 +45,16 @@ void main() async {
       measurementId: configMeasurementId,
     );
   } else {
-    // Fallback real de producción para evitar fallos de carga inicial
+    // Para desarrollo local, NO agregues tus credenciales reales aquí para evitar fugas en GitHub (Secret Scanning).
+    // En su lugar, ejecuta la app inyectando el archivo de configuración local:
+    //   flutter run -d chrome --dart-define-from-file=firebase_config.json
     options = const FirebaseOptions(
-      apiKey: "AIzaSyAF-baQTkVN5vSEOgKUoqipdh-qwInr29Q",
-      authDomain: "othli-497404.firebaseapp.com", // Usar siempre el subdominio de firebaseapp.com para evitar fallos de redirección OAuth
+      apiKey: "DEVELOPMENT-API-KEY-PLACEHOLDER",
+      authDomain: "othli-497404.firebaseapp.com",
       projectId: "othli-497404",
-      storageBucket: "othli-497404.firebasestorage.app",
-      messagingSenderId: "793463336809",
-      appId: "1:793463336809:web:d681af225315177f8257f8",
-      measurementId: "G-JMM9SJ9X5R",
+      storageBucket: "othli-497404.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "1:1234567890:web:fakeAppId",
     );
   }
 
