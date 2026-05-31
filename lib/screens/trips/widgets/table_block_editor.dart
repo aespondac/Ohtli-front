@@ -635,6 +635,7 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
                                 child: TextFormField(
                                   controller: ctrl,
                                   focusNode: fNode,
+                                  textAlign: (isMoney || isNumber) ? TextAlign.right : TextAlign.left,
                                   style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
                                   keyboardType: (isMoney || isNumber)
                                       ? const TextInputType.numberWithOptions(decimal: true, signed: true)
@@ -649,11 +650,21 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
                                     border: InputBorder.none,
                                     contentPadding: const EdgeInsets.symmetric(vertical: 4),
                                     prefixText: isMoney ? '\$ ' : null,
+                                    prefixStyle: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      color: OhtliColors.onyx.withValues(alpha: 0.4),
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                     suffixText: isMoney ? col.currency : null,
                                     suffixStyle: GoogleFonts.inter(
                                       fontSize: 10,
                                       color: OhtliColors.onyx.withValues(alpha: 0.5),
                                       fontWeight: FontWeight.bold,
+                                    ),
+                                    hintText: isMoney ? '0' : (isNumber ? '0' : null),
+                                    hintStyle: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      color: OhtliColors.onyx.withValues(alpha: 0.2),
                                     ),
                                   ),
                                 ),
