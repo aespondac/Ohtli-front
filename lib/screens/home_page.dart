@@ -351,35 +351,7 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const SizedBox(height: 20),
-                    // Logo
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 280, maxHeight: 90),
-                      child: SvgPicture.asset(
-                        'assets/logo.svg',
-                        width: 180,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Text(
-                          'Ohtli',
-                          style: GoogleFonts.inter(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: OhtliColors.stormyTeal,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'el viaje empieza aquí',
-                      style: GoogleFonts.inter(
-                        fontSize: isMobile ? 18 : 22,
-                        fontWeight: FontWeight.w300,
-                        color: OhtliColors.onyx,
-                        letterSpacing: 2.0,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 10),
                     
                     // Pinned Stories Carousel Title
                     Align(
@@ -494,6 +466,7 @@ class _HomePageState extends State<HomePage> {
         
         final String authorName = authorData?['displayName'] ?? 'Viajero Ohtli';
         final String? authorPhoto = authorData?['photoURL'];
+        final String activeTitleId = authorData?['activeTitleId'] ?? 'viajero';
 
         bool isHovered = false;
         return StatefulBuilder(
@@ -668,12 +641,28 @@ class _HomePageState extends State<HomePage> {
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
-                                        Text(
-                                          'Explorador Ohtli',
-                                          style: GoogleFonts.inter(
-                                            color: Colors.white.withValues(alpha: 0.6),
-                                            fontSize: 10,
-                                          ),
+                                        StreamBuilder<DocumentSnapshot>(
+                                          stream: FirebaseFirestore.instance
+                                              .collection('titles')
+                                              .doc(activeTitleId)
+                                              .snapshots(),
+                                          builder: (context, titleSnapshot) {
+                                            String titleName = 'Viajero';
+                                            if (titleSnapshot.hasData && titleSnapshot.data!.exists) {
+                                              final titleData = titleSnapshot.data!.data() as Map<String, dynamic>?;
+                                              titleName = titleData?['name'] ?? 'Viajero';
+                                            }
+                                            final String displayTitle = titleName.toLowerCase().contains('ohtli')
+                                                ? titleName
+                                                : '$titleName Ohtli';
+                                            return Text(
+                                              displayTitle,
+                                              style: GoogleFonts.inter(
+                                                color: Colors.white.withValues(alpha: 0.6),
+                                                fontSize: 10,
+                                              ),
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
