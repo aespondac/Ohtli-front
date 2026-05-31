@@ -36,6 +36,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // Persistent TextEditingControllers for text inputs to avoid cursor jumps
   final Map<String, TextEditingController> _blockControllers = {};
 
+  // Persistent FocusNodes for text inputs to return focus when formatting
+  final Map<String, FocusNode> _blockFocusNodes = {};
+
   // Image provider cache to prevent flickering
   final Map<String, ImageProvider> _imageProvidersCache = {};
 
@@ -46,7 +49,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.trip.title);
-    _descriptionController = TextEditingController(text: widget.trip.description);
+    _descriptionController = MarkdownRichTextController(text: widget.trip.description, context: context);
     _visibility = widget.trip.visibility;
     _status = widget.trip.status;
     _coverUrl = widget.trip.coverUrl;
@@ -62,7 +65,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
     for (var controller in _blockControllers.values) {
       controller.dispose();
     }
+    for (var node in _blockFocusNodes.values) {
+      node.dispose();
+    }
     super.dispose();
+  }
+
+  FocusNode _getFocusNode(String key) {
+    return _blockFocusNodes.putIfAbsent(key, () => FocusNode());
   }
 
   // Double resilient load
@@ -637,7 +647,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   // Markdown tool injector helper
-  void _injectMarkdown(TextEditingController controller, String wrapper) {
+  void _injectMarkdown(TextEditingController controller, String wrapper, {FocusNode? focusNode}) {
     final text = controller.text;
     final selection = controller.selection;
     if (!selection.isValid) {
@@ -646,13 +656,33 @@ class _TripEditorPageState extends State<TripEditorPage> {
         text: newText,
         selection: TextSelection.collapsed(offset: newText.length),
       );
+      if (focusNode != null) {
+        focusNode.requestFocus();
+      }
       _onDataChanged();
       return;
     }
 
-    final start = selection.start;
-    final end = selection.end;
-    final selectedText = selection.textInside(text);
+    int start = selection.start;
+    int end = selection.end;
+    String selectedText = selection.textInside(text);
+
+    // If selection is collapsed, expand to the current word under cursor to toggle it
+    if (start == end) {
+      int wordStart = start;
+      while (wordStart > 0 && _isWordChar(text[wordStart - 1])) {
+        wordStart--;
+      }
+      int wordEnd = end;
+      while (wordEnd < text.length && _isWordChar(text[wordEnd])) {
+        wordEnd++;
+      }
+      if (wordStart < wordEnd) {
+        start = wordStart;
+        end = wordEnd;
+        selectedText = text.substring(start, end);
+      }
+    }
 
     // List item toggle
     if (wrapper == '- ') {
@@ -676,41 +706,46 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ),
         );
       }
+      if (focusNode != null) {
+        focusNode.requestFocus();
+      }
       _onDataChanged();
       return;
     }
 
     final len = wrapper.length;
+    const formatChars = {'*', '_', '~'};
 
-    // Case 1: Selection itself is wrapped: e.g. **bold**
-    if (selectedText.length >= len * 2 &&
-        selectedText.startsWith(wrapper) &&
-        selectedText.endsWith(wrapper)) {
-      final unwrappedText = selectedText.substring(len, selectedText.length - len);
-      final newText = text.replaceRange(start, end, unwrappedText);
+    // Find contiguous formatting characters immediately surrounding the selection to handle nesting
+    int leftFormatStart = start;
+    while (leftFormatStart > 0 && formatChars.contains(text[leftFormatStart - 1])) {
+      leftFormatStart--;
+    }
+    final leftFormats = text.substring(leftFormatStart, start);
+
+    int rightFormatEnd = end;
+    while (rightFormatEnd < text.length && formatChars.contains(text[rightFormatEnd])) {
+      rightFormatEnd++;
+    }
+    final rightFormats = text.substring(end, rightFormatEnd);
+
+    // Case 1: Surrounding format chain contains the wrapper (Unwrapping / Deletion)
+    if (leftFormats.contains(wrapper) && rightFormats.contains(wrapper)) {
+      final newLeftFormats = leftFormats.replaceFirst(wrapper, '');
+      final newRightFormats = rightFormats.replaceFirst(wrapper, '');
+
+      final newText = text.replaceRange(leftFormatStart, rightFormatEnd, '$newLeftFormats$selectedText$newRightFormats');
+      final newStart = leftFormatStart + newLeftFormats.length;
+
       controller.value = TextEditingValue(
         text: newText,
         selection: TextSelection(
-          baseOffset: start,
-          extentOffset: start + unwrappedText.length,
+          baseOffset: newStart,
+          extentOffset: newStart + selectedText.length,
         ),
       );
     }
-    // Case 2: Surrounding text is wrapped: e.g. **|bold|** (cursor selection is "bold", outside matches wrapper)
-    else if (start >= len &&
-        end + len <= text.length &&
-        text.substring(start - len, start) == wrapper &&
-        text.substring(end, end + len) == wrapper) {
-      final newText = text.replaceRange(start - len, end + len, selectedText);
-      controller.value = TextEditingValue(
-        text: newText,
-        selection: TextSelection(
-          baseOffset: start - len,
-          extentOffset: start - len + selectedText.length,
-        ),
-      );
-    }
-    // Case 3: Wrap text: e.g. bold -> **bold**
+    // Case 2: Wrapping the selection (Insertion)
     else {
       final newText = text.replaceRange(start, end, '$wrapper$selectedText$wrapper');
       controller.value = TextEditingValue(
@@ -721,7 +756,17 @@ class _TripEditorPageState extends State<TripEditorPage> {
         ),
       );
     }
+
+    if (focusNode != null) {
+      focusNode.requestFocus();
+    }
     _onDataChanged();
+  }
+
+  bool _isWordChar(String char) {
+    if (char.isEmpty) return false;
+    const exclude = {' ', '\n', '\r', '\t', '*', '_', '~', '.', ',', '!', '?', ';', ':', '(', ')', '[', ']', '{', '}'};
+    return !exclude.contains(char);
   }
 
 
@@ -1019,23 +1064,45 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              TextFormField(
-                controller: _descriptionController,
-                maxLines: 3,
-                onChanged: (_) => _onDataChanged(),
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  color: OhtliColors.onyx.withValues(alpha: 0.7),
-                  height: 1.4,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Escribe una breve descripción del viaje...',
-                  hintStyle: GoogleFonts.inter(
-                    color: OhtliColors.onyx.withValues(alpha: 0.3),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
+              Builder(
+                builder: (context) {
+                  final descFocusNode = _getFocusNode('trip_description');
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildMarkdownToolbar(_descriptionController, isDark, focusNode: descFocusNode),
+                      CallbackShortcuts(
+                        bindings: <ShortcutActivator, VoidCallback>{
+                          const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(_descriptionController, '**', focusNode: descFocusNode),
+                          const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(_descriptionController, '**', focusNode: descFocusNode),
+                          const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(_descriptionController, '*', focusNode: descFocusNode),
+                          const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(_descriptionController, '*', focusNode: descFocusNode),
+                          const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(_descriptionController, '_', focusNode: descFocusNode),
+                          const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(_descriptionController, '_', focusNode: descFocusNode),
+                        },
+                        child: TextFormField(
+                          controller: _descriptionController,
+                          focusNode: descFocusNode,
+                          maxLines: 3,
+                          onChanged: (_) => _onDataChanged(),
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: OhtliColors.onyx.withValues(alpha: 0.7),
+                            height: 1.4,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Escribe una breve descripción del viaje...',
+                            hintStyle: GoogleFonts.inter(
+                              color: OhtliColors.onyx.withValues(alpha: 0.3),
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
               ),
 
               const Divider(height: 48, color: OhtliColors.cantera),
@@ -1276,6 +1343,18 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (section is PlaceSection) {
       typeLabel = "Lugar Visitado";
       typeIcon = Icons.location_on_rounded;
+      final controller = _blockControllers.putIfAbsent(
+        '${section.id}_desc',
+        () {
+          final c = MarkdownRichTextController(text: section.description, context: context);
+          c.addListener(() {
+            _updatePlaceBlock(index, description: c.text);
+          });
+          return c;
+        },
+      );
+      final focusNode = _getFocusNode('${section.id}_desc');
+
       blockContent = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1321,20 +1400,31 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           ),
           const SizedBox(height: 12),
-          TextFormField(
-            initialValue: section.description,
-            onChanged: (val) => _updatePlaceBlock(index, description: val),
-            maxLines: 2,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: OhtliColors.onyx.withValues(alpha: 0.7),
-            ),
-            decoration: InputDecoration(
-              hintText: 'Escribe una breve reseña de este lugar...',
-              hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              border: InputBorder.none,
+          _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
+          CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+            },
+            child: TextFormField(
+              controller: controller,
+              focusNode: focusNode,
+              maxLines: 2,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: OhtliColors.onyx.withValues(alpha: 0.7),
+              ),
+              decoration: InputDecoration(
+                hintText: 'Escribe una breve reseña de este lugar...',
+                hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                border: InputBorder.none,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -1416,21 +1506,24 @@ class _TripEditorPageState extends State<TripEditorPage> {
           },
         );
 
+        final focusNode = _getFocusNode(section.id);
+
         blockContent = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildMarkdownToolbar(controller, isDark),
+            _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
             CallbackShortcuts(
               bindings: <ShortcutActivator, VoidCallback>{
-                const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**'),
-                const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**'),
-                const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*'),
-                const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*'),
-                const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_'),
-                const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_'),
+                const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+                const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+                const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+                const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
               },
               child: TextFormField(
                 controller: controller,
+                focusNode: focusNode,
                 maxLines: 4,
                 style: GoogleFonts.inter(
                   fontSize: 13,
@@ -1462,6 +1555,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           return c;
         },
       );
+      final focusNode = _getFocusNode(section.id);
 
       blockContent = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1552,18 +1646,19 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
           ),
           const SizedBox(height: 12),
-          _buildMarkdownToolbar(controller, isDark),
+          _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
           CallbackShortcuts(
             bindings: <ShortcutActivator, VoidCallback>{
-              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**'),
-              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**'),
-              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*'),
-              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*'),
-              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_'),
-              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_'),
+              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
             },
             child: TextFormField(
               controller: controller,
+              focusNode: focusNode,
               maxLines: 3,
               style: GoogleFonts.inter(
                 fontSize: 13,
@@ -1687,6 +1782,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
       },
     );
 
+    final focusNode = _getFocusNode('${section.id}_alert');
+
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF25252A) : alertColor.withValues(alpha: 0.05),
@@ -1760,15 +1857,16 @@ class _TripEditorPageState extends State<TripEditorPage> {
           const SizedBox(height: 12),
           CallbackShortcuts(
             bindings: <ShortcutActivator, VoidCallback>{
-              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**'),
-              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**'),
-              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*'),
-              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*'),
-              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_'),
-              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_'),
+              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
+              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
             },
             child: TextFormField(
               controller: controller,
+              focusNode: focusNode,
               maxLines: 3,
               style: GoogleFonts.inter(
                 fontSize: 13.5,
@@ -1944,29 +2042,35 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          CallbackShortcuts(
-                            bindings: <ShortcutActivator, VoidCallback>{
-                              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**'),
-                              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**'),
-                              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*'),
-                              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*'),
-                              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_'),
-                              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_'),
-                            },
-                            child: TextFormField(
-                              controller: ctrl,
-                              style: GoogleFonts.inter(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                                color: OhtliColors.onyx,
-                              ),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(vertical: 4),
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
+                          Builder(
+                            builder: (context) {
+                              final fNode = _getFocusNode('${section.id}_h_$colIdx');
+                              return CallbackShortcuts(
+                                bindings: <ShortcutActivator, VoidCallback>{
+                                  const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
+                                },
+                                child: TextFormField(
+                                  controller: ctrl,
+                                  focusNode: fNode,
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: OhtliColors.onyx,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(vertical: 4),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              );
+                            }
                           ),
                           if (numCols > 1)
                             Align(
@@ -2012,24 +2116,30 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: cellBorder),
                           ),
-                           child: CallbackShortcuts(
-                            bindings: <ShortcutActivator, VoidCallback>{
-                              const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**'),
-                              const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**'),
-                              const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*'),
-                              const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*'),
-                              const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_'),
-                              const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_'),
-                            },
-                            child: TextFormField(
-                              controller: ctrl,
-                              style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(vertical: 4),
-                              ),
-                            ),
+                           child: Builder(
+                            builder: (context) {
+                              final fNode = _getFocusNode('${section.id}_cell_${rowIdx}_$colIdx');
+                              return CallbackShortcuts(
+                                bindings: <ShortcutActivator, VoidCallback>{
+                                  const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(ctrl, '**', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(ctrl, '*', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
+                                  const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(ctrl, '_', focusNode: fNode),
+                                },
+                                child: TextFormField(
+                                  controller: ctrl,
+                                  focusNode: fNode,
+                                  style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(vertical: 4),
+                                  ),
+                                ),
+                              );
+                            }
                           ),
                         );
                       }),
@@ -2131,58 +2241,146 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   // Builder helper for Markdown Toolbar
-  Widget _buildMarkdownToolbar(TextEditingController controller, bool isDark) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-          width: 1,
+  Widget _buildMarkdownToolbar(TextEditingController controller, bool isDark, {FocusNode? focusNode}) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, child) {
+        final text = value.text;
+        final sel = value.selection;
+        final isBold = _isFormatActive(text, sel, '**');
+        final isItalic = _isFormatActive(text, sel, '*');
+        final isUnderline = _isFormatActive(text, sel, '_');
+        
+        bool isList = false;
+        if (sel.isValid) {
+          final selectedText = sel.textInside(text);
+          if (selectedText.startsWith('- ')) {
+            isList = true;
+          } else {
+            int lineStart = sel.start;
+            while (lineStart > 0 && text[lineStart - 1] != '\n') {
+              lineStart--;
+            }
+            if (lineStart + 2 <= text.length && text.substring(lineStart, lineStart + 2) == '- ') {
+              isList = true;
+            }
+          }
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildToolbarButton(
+                icon: Icons.format_bold_rounded,
+                tooltip: 'Negrita (**)',
+                isActive: isBold,
+                onTap: () => _injectMarkdown(controller, '**', focusNode: focusNode),
+              ),
+              _buildToolbarButton(
+                icon: Icons.format_italic_rounded,
+                tooltip: 'Cursiva (*)',
+                isActive: isItalic,
+                onTap: () => _injectMarkdown(controller, '*', focusNode: focusNode),
+              ),
+              _buildToolbarButton(
+                icon: Icons.format_underlined_rounded,
+                tooltip: 'Subrayado (_)',
+                isActive: isUnderline,
+                onTap: () => _injectMarkdown(controller, '_', focusNode: focusNode),
+              ),
+              _buildToolbarButton(
+                icon: Icons.format_list_bulleted_rounded,
+                tooltip: 'Lista (-)',
+                isActive: isList,
+                onTap: () => _injectMarkdown(controller, '- ', focusNode: focusNode),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildToolbarButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    bool isActive = false,
+  }) {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final Color activeColor = OhtliColors.cempasuchil;
+    final Color inactiveColor = isDark ? OhtliColors.onyx.withValues(alpha: 0.7) : OhtliColors.stormyTeal;
+
+    return Tooltip(
+      message: tooltip,
+      textStyle: GoogleFonts.inter(fontSize: 11, color: Colors.white),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isActive 
+              ? (isDark ? activeColor.withValues(alpha: 0.15) : activeColor.withValues(alpha: 0.1)) 
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildToolbarButton(
-            icon: Icons.format_bold_rounded,
-            tooltip: 'Negrita (**)',
-            onTap: () => _injectMarkdown(controller, '**'),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        child: IconButton(
+          icon: Icon(
+            icon, 
+            size: 16, 
+            color: isActive ? activeColor : inactiveColor,
           ),
-          _buildToolbarButton(
-            icon: Icons.format_italic_rounded,
-            tooltip: 'Cursiva (*)',
-            onTap: () => _injectMarkdown(controller, '*'),
-          ),
-          _buildToolbarButton(
-            icon: Icons.format_underlined_rounded,
-            tooltip: 'Subrayado (_)',
-            onTap: () => _injectMarkdown(controller, '_'),
-          ),
-          _buildToolbarButton(
-            icon: Icons.format_list_bulleted_rounded,
-            tooltip: 'Lista (-)',
-            onTap: () => _injectMarkdown(controller, '- '),
-          ),
-        ],
+          padding: const EdgeInsets.all(6),
+          constraints: const BoxConstraints(),
+          onPressed: onTap,
+        ),
       ),
     );
   }
 
-  Widget _buildToolbarButton({required IconData icon, required String tooltip, required VoidCallback onTap}) {
-    final bool isDark = OhtliSettings.instance.isDarkMode;
-    return Tooltip(
-      message: tooltip,
-      textStyle: GoogleFonts.inter(fontSize: 11, color: Colors.white),
-      child: IconButton(
-        icon: Icon(icon, size: 16, color: isDark ? OhtliColors.onyx.withValues(alpha: 0.7) : OhtliColors.stormyTeal),
-        padding: const EdgeInsets.all(6),
-        constraints: const BoxConstraints(),
-        onPressed: onTap,
-      ),
-    );
+  bool _isFormatActive(String text, TextSelection sel, String wrapper) {
+    if (!sel.isValid) return false;
+    int start = sel.start;
+    int end = sel.end;
+
+    if (start == end) {
+      int wordStart = start;
+      while (wordStart > 0 && _isWordChar(text[wordStart - 1])) {
+        wordStart--;
+      }
+      int wordEnd = end;
+      while (wordEnd < text.length && _isWordChar(text[wordEnd])) {
+        wordEnd++;
+      }
+      if (wordStart < wordEnd) {
+        start = wordStart;
+        end = wordEnd;
+      }
+    }
+
+    const formatChars = {'*', '_', '~'};
+    int leftFormatStart = start;
+    while (leftFormatStart > 0 && formatChars.contains(text[leftFormatStart - 1])) {
+      leftFormatStart--;
+    }
+    final leftFormats = text.substring(leftFormatStart, start);
+
+    int rightFormatEnd = end;
+    while (rightFormatEnd < text.length && formatChars.contains(text[rightFormatEnd])) {
+      rightFormatEnd++;
+    }
+    final rightFormats = text.substring(end, rightFormatEnd);
+
+    return leftFormats.contains(wrapper) && rightFormats.contains(wrapper);
   }
 
   Widget _buildAddBlockButton({required String label, required IconData icon, required VoidCallback onTap, double? width}) {
