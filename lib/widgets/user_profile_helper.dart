@@ -105,9 +105,7 @@ class UserProfileHelper {
               bytes,
               SettableMetadata(contentType: 'image/jpeg'),
             );
-            final bucket = FirebaseStorage.instance.app.options.storageBucket;
-            photoURL =
-                "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${user.uid}%2Fprofile.jpg?alt=media";
+            photoURL = await storageRef.getDownloadURL();
             print(
               "Successfully uploaded Google profile picture to Firebase Storage: $photoURL",
             );

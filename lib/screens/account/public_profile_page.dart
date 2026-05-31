@@ -13,9 +13,7 @@ import '../../theme/colors.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
-import '../../widgets/ohtli_sidebar.dart';
 import '../../services/trip_service.dart';
-import '../home_page.dart';
 import '../trips/trip_viewer_page.dart';
 import '../trips/trip_editor_page.dart';
 import 'account_management_page.dart';
@@ -293,10 +291,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           borderRadius: BorderRadius.circular(4),
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               textWidget,
-              const SizedBox(width: 4),
-              const Icon(Icons.swap_horiz_rounded, size: 14, color: OhtliColors.xoconostle),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.edit_rounded,
+                size: 13,
+                color: OhtliColors.xoconostle,
+              ),
             ],
           ),
         );
@@ -328,7 +331,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
                 }
 
-                final docs = snapshot.data?.docs ?? [];
+                final allDocs = snapshot.data?.docs ?? [];
+                // Only show the titles that the user actually possesses!
+                final docs = allDocs.where((doc) => possessed.contains(doc.id)).toList();
                 
                 return SingleChildScrollView(
                   child: Column(
@@ -338,7 +343,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                       final id = doc.id;
                       final name = data['name'] ?? 'Viajero';
                       final desc = data['description'] ?? '';
-                      final isUnlocked = possessed.contains(id);
                       final isActive = activeId == id;
 
                       return Container(
@@ -360,17 +364,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: isUnlocked 
-                                  ? OhtliColors.xoconostle.withValues(alpha: 0.1)
-                                  : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                              color: OhtliColors.xoconostle.withValues(alpha: 0.1),
                             ),
                             child: Icon(
-                              isUnlocked 
-                                  ? (isActive ? Icons.stars_rounded : Icons.star_rounded)
-                                  : Icons.lock_outline_rounded,
-                              color: isUnlocked 
-                                  ? OhtliColors.xoconostle
-                                  : (isDark ? Colors.white30 : Colors.black38),
+                              isActive ? Icons.stars_rounded : Icons.star_rounded,
+                              color: OhtliColors.xoconostle,
                               size: 18,
                             ),
                           ),
@@ -379,24 +377,20 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             style: GoogleFonts.inter(
                               fontWeight: FontWeight.bold,
                               fontSize: 13.5,
-                              color: isUnlocked 
-                                  ? OhtliColors.onyx 
-                                  : OhtliColors.onyx.withValues(alpha: 0.4),
+                              color: OhtliColors.onyx,
                             ),
                           ),
                           subtitle: Text(
                             desc,
                             style: GoogleFonts.inter(
                               fontSize: 11,
-                              color: isUnlocked 
-                                  ? OhtliColors.onyx.withValues(alpha: 0.6) 
-                                  : OhtliColors.onyx.withValues(alpha: 0.3),
+                              color: OhtliColors.onyx.withValues(alpha: 0.6),
                             ),
                           ),
                           trailing: isActive
                               ? const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20)
                               : null,
-                          onTap: isUnlocked && !isActive
+                          onTap: !isActive
                               ? () async {
                                   await FirebaseFirestore.instance
                                       .collection('users')
@@ -486,8 +480,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         SettableMetadata(contentType: 'image/jpeg'),
       );
 
-      final bucket = FirebaseStorage.instance.app.options.storageBucket;
-      final downloadUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${_currentUser!.uid}%2F$fileName?alt=media";
+      final downloadUrl = await storageRef.getDownloadURL();
 
       final Map<String, dynamic> updateData = {
         isCover ? 'coverURL' : 'photoURL': downloadUrl,
@@ -953,36 +946,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
-      body: Row(
-        children: [
-          if (isDesktop && !widget.showBackButton)
-            OhtliSidebar(
-              currentIndex: 2,
-              onTabSelected: (index) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => HomePage(
-                      initialIndex: index,
-                      onLogout: () => Navigator.pushReplacementNamed(context, '/login'),
-                      onNavigateToAccount: () {
-                        // Bypassed: we are already in profile tab!
-                      },
-                    ),
-                  ),
-                );
-              },
-              onNavigateToAccount: () {},
-              onLogout: () async {
-                await FirebaseAuth.instance.signOut();
-                Navigator.pushReplacementNamed(context, '/login');
-              },
-            ),
-          Expanded(
-            child: profileBody,
-          ),
-        ],
-      ),
+      body: profileBody,
     );
   }
 
@@ -1135,11 +1099,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     }
 
     final double screenWidth = MediaQuery.of(context).size.width;
-    final int crossAxisCount = isDesktop ? (screenWidth >= 1200 ? 3 : 2) : 1;
+    final double availableWidth = isDesktop ? (screenWidth - 260) : screenWidth;
+    final int crossAxisCount = isDesktop ? (availableWidth >= 940 ? 3 : 2) : 1;
     final double padding = isDesktop ? 24.0 : 16.0;
     
-    final double cardWidth = (screenWidth - (isDesktop ? 200 : 0) - (padding * (crossAxisCount + 1))) / crossAxisCount;
-    final double cardHeight = crossAxisCount == 1 ? 125.0 : 340.0;
+    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 20) / crossAxisCount;
+    final double cardHeight = crossAxisCount == 1 
+        ? 125.0 
+        : (cardWidth * 9 / 16) + 160.0;
     final double computedAspectRatio = cardWidth / cardHeight;
 
     return GridView.builder(
