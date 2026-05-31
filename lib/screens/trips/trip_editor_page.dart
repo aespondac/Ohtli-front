@@ -1104,45 +1104,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              Builder(
-                builder: (context) {
-                  final descFocusNode = _getFocusNode('trip_description');
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildMarkdownToolbar(_descriptionController, isDark, focusNode: descFocusNode),
-                      CallbackShortcuts(
-                        bindings: <ShortcutActivator, VoidCallback>{
-                          const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(_descriptionController, '**', focusNode: descFocusNode),
-                          const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(_descriptionController, '**', focusNode: descFocusNode),
-                          const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(_descriptionController, '*', focusNode: descFocusNode),
-                          const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(_descriptionController, '*', focusNode: descFocusNode),
-                          const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(_descriptionController, '_', focusNode: descFocusNode),
-                          const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(_descriptionController, '_', focusNode: descFocusNode),
-                        },
-                        child: TextFormField(
-                          controller: _descriptionController,
-                          focusNode: descFocusNode,
-                          maxLines: 3,
-                          onChanged: (_) => _onDataChanged(),
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            color: OhtliColors.onyx.withValues(alpha: 0.7),
-                            height: 1.4,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: 'Escribe una breve descripción del viaje...',
-                            hintStyle: GoogleFonts.inter(
-                              color: OhtliColors.onyx.withValues(alpha: 0.3),
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }
+              OhtliMarkdownEditor(
+                controller: _descriptionController,
+                focusNode: _getFocusNode('trip_description'),
+                hintText: 'Escribe una breve descripción del viaje...',
+                maxLines: 3,
+                onChanged: _onDataChanged,
               ),
 
               const Divider(height: 48, color: OhtliColors.cantera),
@@ -1490,49 +1457,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ),
           const SizedBox(height: 12),
           // Description Box wrapping toolbar and text field
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
-                const SizedBox(height: 4),
-                CallbackShortcuts(
-                  bindings: <ShortcutActivator, VoidCallback>{
-                    const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-                  },
-                  child: TextFormField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    maxLines: 2,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: OhtliColors.onyx,
-                      height: 1.4,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Escribe una breve reseña de este lugar...',
-                      hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          OhtliMarkdownEditor(
+            controller: controller,
+            focusNode: focusNode,
+            hintText: 'Escribe una breve reseña de este lugar...',
+            maxLines: 2,
           ),
           // Yellow Cost Block
           Align(
@@ -1736,49 +1665,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
         final focusNode = _getFocusNode(section.id);
 
-        blockContent = Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
-              const SizedBox(height: 4),
-              CallbackShortcuts(
-                bindings: <ShortcutActivator, VoidCallback>{
-                  const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                  const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                  const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                  const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                  const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-                  const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-                },
-                child: TextFormField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  maxLines: 4,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: OhtliColors.onyx,
-                    height: 1.4,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Escribe tu anécdota, historia o consejo aquí...',
-                    hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        blockContent = OhtliMarkdownEditor(
+          controller: controller,
+          focusNode: focusNode,
+          hintText: 'Escribe tu anécdota, historia o consejo aquí...',
+          maxLines: 4,
         );
       }
     } else if (section is TextImageSection) {
@@ -1882,49 +1773,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   ),
           );
 
-          final Widget textEditorWidget = Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildMarkdownToolbar(controller, isDark, focusNode: focusNode),
-                const SizedBox(height: 4),
-                CallbackShortcuts(
-                  bindings: <ShortcutActivator, VoidCallback>{
-                    const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown(controller, '**', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown(controller, '*', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-                    const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown(controller, '_', focusNode: focusNode),
-                  },
-                  child: TextFormField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    maxLines: 4,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: OhtliColors.onyx,
-                      height: 1.4,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Añade tu descripción lateral...',
-                      hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          final Widget textEditorWidget = OhtliMarkdownEditor(
+            controller: controller,
+            focusNode: focusNode,
+            hintText: 'Añade tu descripción lateral...',
+            maxLines: 4,
           );
 
           return Column(
@@ -3218,148 +3071,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
-  // Builder helper for Markdown Toolbar
-  Widget _buildMarkdownToolbar(TextEditingController controller, bool isDark, {FocusNode? focusNode}) {
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: controller,
-      builder: (context, value, child) {
-        final text = value.text;
-        final sel = value.selection;
-        final isBold = _isFormatActive(text, sel, '**');
-        final isItalic = _isFormatActive(text, sel, '*');
-        final isUnderline = _isFormatActive(text, sel, '_');
-        
-        bool isList = false;
-        if (sel.isValid) {
-          final selectedText = sel.textInside(text);
-          if (selectedText.startsWith('- ')) {
-            isList = true;
-          } else {
-            int lineStart = sel.start;
-            while (lineStart > 0 && text[lineStart - 1] != '\n') {
-              lineStart--;
-            }
-            if (lineStart + 2 <= text.length && text.substring(lineStart, lineStart + 2) == '- ') {
-              isList = true;
-            }
-          }
-        }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildToolbarButton(
-                icon: Icons.format_bold_rounded,
-                tooltip: 'Negrita (**)',
-                isActive: isBold,
-                onTap: () => _injectMarkdown(controller, '**', focusNode: focusNode),
-              ),
-              _buildToolbarButton(
-                icon: Icons.format_italic_rounded,
-                tooltip: 'Cursiva (*)',
-                isActive: isItalic,
-                onTap: () => _injectMarkdown(controller, '*', focusNode: focusNode),
-              ),
-              _buildToolbarButton(
-                icon: Icons.format_underlined_rounded,
-                tooltip: 'Subrayado (_)',
-                isActive: isUnderline,
-                onTap: () => _injectMarkdown(controller, '_', focusNode: focusNode),
-              ),
-              _buildToolbarButton(
-                icon: Icons.format_list_bulleted_rounded,
-                tooltip: 'Lista (-)',
-                isActive: isList,
-                onTap: () => _injectMarkdown(controller, '- ', focusNode: focusNode),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildToolbarButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-    bool isActive = false,
-  }) {
-    final bool isDark = OhtliSettings.instance.isDarkMode;
-    final Color activeColor = OhtliColors.cempasuchil;
-    final Color inactiveColor = isDark ? OhtliColors.onyx.withValues(alpha: 0.7) : OhtliColors.stormyTeal;
-
-    return Tooltip(
-      message: tooltip,
-      textStyle: GoogleFonts.inter(fontSize: 11, color: Colors.white),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isActive 
-              ? (isDark ? activeColor.withValues(alpha: 0.15) : activeColor.withValues(alpha: 0.1)) 
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        child: IconButton(
-          icon: Icon(
-            icon, 
-            size: 16, 
-            color: isActive ? activeColor : inactiveColor,
-          ),
-          padding: const EdgeInsets.all(6),
-          constraints: const BoxConstraints(),
-          onPressed: onTap,
-        ),
-      ),
-    );
-  }
-
-  bool _isFormatActive(String text, TextSelection sel, String wrapper) {
-    if (!sel.isValid) return false;
-    int start = sel.start;
-    int end = sel.end;
-
-    if (start == end) {
-      int wordStart = start;
-      while (wordStart > 0 && _isWordChar(text[wordStart - 1])) {
-        wordStart--;
-      }
-      int wordEnd = end;
-      while (wordEnd < text.length && _isWordChar(text[wordEnd])) {
-        wordEnd++;
-      }
-      if (wordStart < wordEnd) {
-        start = wordStart;
-        end = wordEnd;
-      }
-    }
-
-    const formatChars = {'*', '_', '~'};
-    int leftFormatStart = start;
-    while (leftFormatStart > 0 && formatChars.contains(text[leftFormatStart - 1])) {
-      leftFormatStart--;
-    }
-    final leftFormats = text.substring(leftFormatStart, start);
-
-    int rightFormatEnd = end;
-    while (rightFormatEnd < text.length && formatChars.contains(text[rightFormatEnd])) {
-      rightFormatEnd++;
-    }
-    final rightFormats = text.substring(end, rightFormatEnd);
-
-    return leftFormats.contains(wrapper) && rightFormats.contains(wrapper);
-  }
 
   Widget _buildAddBlockButton({required String label, required IconData icon, required VoidCallback onTap, double? width}) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
@@ -3854,6 +3566,470 @@ class _OhtliPlacePhotoStackState extends State<OhtliPlacePhotoStack> {
             }),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// Standalone rich text markdown editor with Notion-style borders, dynamic formatting highlight, and preview toggle
+class OhtliMarkdownEditor extends StatefulWidget {
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String hintText;
+  final int? maxLines;
+  final int? minLines;
+  final VoidCallback? onChanged;
+
+  const OhtliMarkdownEditor({
+    super.key,
+    required this.controller,
+    this.focusNode,
+    required this.hintText,
+    this.maxLines,
+    this.minLines,
+    this.onChanged,
+  });
+
+  @override
+  State<OhtliMarkdownEditor> createState() => _OhtliMarkdownEditorState();
+}
+
+class _OhtliMarkdownEditorState extends State<OhtliMarkdownEditor> {
+  late FocusNode _focusNode;
+  bool _isFocused = false;
+  bool _isPreviewMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = widget.focusNode ?? FocusNode();
+    _focusNode.addListener(_onFocusChange);
+    widget.controller.addListener(_onTextChange);
+  }
+
+  void _onFocusChange() {
+    setState(() {
+      _isFocused = _focusNode.hasFocus;
+    });
+  }
+
+  void _onTextChange() {
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    widget.controller.removeListener(_onTextChange);
+    if (widget.focusNode == null) {
+      _focusNode.dispose();
+    }
+    super.dispose();
+  }
+
+  int get _charCount => widget.controller.text.length;
+
+  int get _wordCount {
+    final text = widget.controller.text.trim();
+    if (text.isEmpty) return 0;
+    return text.split(RegExp(r'\s+')).length;
+  }
+
+  void _injectMarkdown(String wrapper) {
+    final controller = widget.controller;
+    final text = controller.text;
+    final selection = controller.selection;
+    if (!selection.isValid) {
+      final newText = text + wrapper;
+      controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: newText.length),
+      );
+      _focusNode.requestFocus();
+      widget.onChanged?.call();
+      return;
+    }
+
+    int start = selection.start;
+    int end = selection.end;
+    String selectedText = selection.textInside(text);
+
+    if (start == end) {
+      int wordStart = start;
+      while (wordStart > 0 && _isWordChar(text[wordStart - 1])) {
+        wordStart--;
+      }
+      int wordEnd = end;
+      while (wordEnd < text.length && _isWordChar(text[wordEnd])) {
+        wordEnd++;
+      }
+      if (wordStart < wordEnd) {
+        start = wordStart;
+        end = wordEnd;
+        selectedText = text.substring(start, end);
+      }
+    }
+
+    if (wrapper == '- ') {
+      if (selectedText.startsWith('- ')) {
+        final unwrappedText = selectedText.substring(2);
+        final newText = text.replaceRange(start, end, unwrappedText);
+        controller.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection(
+            baseOffset: start,
+            extentOffset: start + unwrappedText.length,
+          ),
+        );
+      } else {
+        final newText = text.replaceRange(start, end, '- $selectedText');
+        controller.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection(
+            baseOffset: start,
+            extentOffset: start + 2 + selectedText.length,
+          ),
+        );
+      }
+      _focusNode.requestFocus();
+      widget.onChanged?.call();
+      return;
+    }
+
+    final len = wrapper.length;
+    const formatChars = {'*', '_', '~'};
+
+    int leftFormatStart = start;
+    while (leftFormatStart > 0 && formatChars.contains(text[leftFormatStart - 1])) {
+      leftFormatStart--;
+    }
+    final leftFormats = text.substring(leftFormatStart, start);
+
+    int rightFormatEnd = end;
+    while (rightFormatEnd < text.length && formatChars.contains(text[rightFormatEnd])) {
+      rightFormatEnd++;
+    }
+    final rightFormats = text.substring(end, rightFormatEnd);
+
+    if (_hasFormat(leftFormats, rightFormats, wrapper)) {
+      final newLeftFormats = leftFormats.replaceFirst(wrapper, '');
+      final newRightFormats = rightFormats.replaceFirst(wrapper, '');
+
+      final newText = text.replaceRange(leftFormatStart, rightFormatEnd, '$newLeftFormats$selectedText$newRightFormats');
+      final newStart = leftFormatStart + newLeftFormats.length;
+
+      controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: newStart,
+          extentOffset: newStart + selectedText.length,
+        ),
+      );
+    } else {
+      final newText = text.replaceRange(start, end, '$wrapper$selectedText$wrapper');
+      controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: start + len,
+          extentOffset: start + len + selectedText.length,
+        ),
+      );
+    }
+
+    _focusNode.requestFocus();
+    widget.onChanged?.call();
+  }
+
+  bool _isWordChar(String char) {
+    if (char.isEmpty) return false;
+    const exclude = {' ', '\n', '\r', '\t', '*', '_', '~', '.', ',', '!', '?', ';', ':', '(', ')', '[', ']', '{', '}'};
+    return !exclude.contains(char);
+  }
+
+  bool _hasFormat(String left, String right, String wrapper) {
+    final leftAsterisks = _countOccurrences(left, '*');
+    final rightAsterisks = _countOccurrences(right, '*');
+    final leftUnderlines = _countOccurrences(left, '_');
+    final rightUnderlines = _countOccurrences(right, '_');
+
+    if (wrapper == '**') {
+      return leftAsterisks >= 2 && rightAsterisks >= 2;
+    } else if (wrapper == '*') {
+      return leftAsterisks >= 1 && rightAsterisks >= 1;
+    } else if (wrapper == '_') {
+      return leftUnderlines >= 1 && rightUnderlines >= 1;
+    }
+    return false;
+  }
+
+  int _countOccurrences(String source, String char) {
+    int count = 0;
+    for (int i = 0; i < source.length; i++) {
+      if (source[i] == char) count++;
+    }
+    return count;
+  }
+
+  bool _isFormatActive(String wrapper) {
+    final text = widget.controller.text;
+    final sel = widget.controller.selection;
+    if (!sel.isValid) return false;
+    int start = sel.start;
+    int end = sel.end;
+
+    if (start == end) {
+      int wordStart = start;
+      while (wordStart > 0 && _isWordChar(text[wordStart - 1])) {
+        wordStart--;
+      }
+      int wordEnd = end;
+      while (wordEnd < text.length && _isWordChar(text[wordEnd])) {
+        wordEnd++;
+      }
+      if (wordStart < wordEnd) {
+        start = wordStart;
+        end = wordEnd;
+      }
+    }
+
+    const formatChars = {'*', '_', '~'};
+    int leftFormatStart = start;
+    while (leftFormatStart > 0 && formatChars.contains(text[leftFormatStart - 1])) {
+      leftFormatStart--;
+    }
+    final leftFormats = text.substring(leftFormatStart, start);
+
+    int rightFormatEnd = end;
+    while (rightFormatEnd < text.length && formatChars.contains(text[rightFormatEnd])) {
+      rightFormatEnd++;
+    }
+    final rightFormats = text.substring(end, rightFormatEnd);
+
+    return _hasFormat(leftFormats, rightFormats, wrapper);
+  }
+
+  Widget _buildMarkdownToolbar(bool isDark) {
+    final text = widget.controller.text;
+    final sel = widget.controller.selection;
+    final isBold = _isFormatActive('**');
+    final isItalic = _isFormatActive('*');
+    final isUnderline = _isFormatActive('_');
+
+    bool isList = false;
+    if (sel.isValid) {
+      final selectedText = sel.textInside(text);
+      if (selectedText.startsWith('- ')) {
+        isList = true;
+      } else {
+        int lineStart = sel.start;
+        while (lineStart > 0 && text[lineStart - 1] != '\n') {
+          lineStart--;
+        }
+        if (lineStart + 2 <= text.length && text.substring(lineStart, lineStart + 2) == '- ') {
+          isList = true;
+        }
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildToolbarButton(
+            icon: Icons.format_bold_rounded,
+            tooltip: 'Negrita (Ctrl+B)',
+            isActive: isBold,
+            onTap: () => _injectMarkdown('**'),
+            isDark: isDark,
+          ),
+          _buildToolbarButton(
+            icon: Icons.format_italic_rounded,
+            tooltip: 'Cursiva (Ctrl+I)',
+            isActive: isItalic,
+            onTap: () => _injectMarkdown('*'),
+            isDark: isDark,
+          ),
+          _buildToolbarButton(
+            icon: Icons.format_underlined_rounded,
+            tooltip: 'Subrayado (Ctrl+U)',
+            isActive: isUnderline,
+            onTap: () => _injectMarkdown('_'),
+            isDark: isDark,
+          ),
+          _buildToolbarButton(
+            icon: Icons.format_list_bulleted_rounded,
+            tooltip: 'Lista (-)',
+            isActive: isList,
+            onTap: () => _injectMarkdown('- '),
+            isDark: isDark,
+          ),
+          const SizedBox(width: 4),
+          Container(
+            height: 16,
+            width: 1,
+            color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
+          ),
+          const SizedBox(width: 4),
+          _buildToolbarButton(
+            icon: _isPreviewMode ? Icons.edit_note_rounded : Icons.visibility_rounded,
+            tooltip: _isPreviewMode ? 'Modo Editor' : 'Vista Previa',
+            isActive: _isPreviewMode,
+            onTap: () {
+              setState(() {
+                _isPreviewMode = !_isPreviewMode;
+              });
+            },
+            isDark: isDark,
+            activeColor: OhtliColors.stormyTeal,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolbarButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    required bool isDark,
+    bool isActive = false,
+    Color? activeColor,
+  }) {
+    final Color actualActiveColor = activeColor ?? OhtliColors.cempasuchil;
+    final Color inactiveColor = isDark ? OhtliColors.onyx.withValues(alpha: 0.7) : OhtliColors.stormyTeal;
+
+    return Tooltip(
+      message: tooltip,
+      textStyle: GoogleFonts.inter(fontSize: 11, color: Colors.white),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isActive 
+              ? (isDark ? actualActiveColor.withValues(alpha: 0.15) : actualActiveColor.withValues(alpha: 0.1)) 
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        child: IconButton(
+          icon: Icon(
+            icon, 
+            size: 16, 
+            color: isActive ? actualActiveColor : inactiveColor,
+          ),
+          padding: const EdgeInsets.all(6),
+          constraints: const BoxConstraints(),
+          onPressed: onTap,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark 
+            ? const Color(0xFF25252A) 
+            : OhtliColors.cantera.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _isFocused
+              ? OhtliColors.stormyTeal
+              : (isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15)),
+          width: _isFocused ? 1.5 : 1,
+        ),
+        boxShadow: _isFocused
+            ? [
+                BoxShadow(
+                  color: OhtliColors.stormyTeal.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildMarkdownToolbar(isDark),
+              if (!_isPreviewMode)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Text(
+                    '$_wordCount palabras  |  $_charCount caracteres',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: OhtliColors.onyx.withValues(alpha: 0.35),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _isPreviewMode
+              ? Container(
+                  width: double.infinity,
+                  constraints: BoxConstraints(
+                    minHeight: widget.minLines != null ? (widget.minLines! * 20.0) : 40,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: SelectableText.rich(
+                    widget.controller.buildTextSpan(
+                      context: context,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        color: OhtliColors.onyx,
+                        height: 1.4,
+                      ),
+                      withComposing: false,
+                    ),
+                  ),
+                )
+              : CallbackShortcuts(
+                  bindings: <ShortcutActivator, VoidCallback>{
+                    const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown('**'),
+                    const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () => _injectMarkdown('**'),
+                    const SingleActivator(LogicalKeyboardKey.keyI, control: true): () => _injectMarkdown('*'),
+                    const SingleActivator(LogicalKeyboardKey.keyI, meta: true): () => _injectMarkdown('*'),
+                    const SingleActivator(LogicalKeyboardKey.keyU, control: true): () => _injectMarkdown('_'),
+                    const SingleActivator(LogicalKeyboardKey.keyU, meta: true): () => _injectMarkdown('_'),
+                  },
+                  child: TextFormField(
+                    controller: widget.controller,
+                    focusNode: _focusNode,
+                    maxLines: widget.maxLines,
+                    minLines: widget.minLines,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: OhtliColors.onyx,
+                      height: 1.4,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: widget.hintText,
+                      hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      isDense: true,
+                    ),
+                  ),
+                ),
+        ],
       ),
     );
   }
