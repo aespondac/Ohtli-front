@@ -19,6 +19,7 @@ import 'screens/login/auth_action_page.dart';
 import 'screens/register/desktop_register_page.dart';
 import 'screens/register/mobile_register_page.dart';
 import 'screens/account/account_management_page.dart';
+import 'screens/trips/trip_viewer_page.dart';
 import 'widgets/user_profile_helper.dart';
 
 void main() async {
@@ -174,6 +175,7 @@ enum OhtliScreen {
   home, // Pantalla principal tras autenticación exitosa
   authAction, // Pantalla de acción de autenticación (recuperación/verificación)
   accountManagement, // Pantalla independiente de gestión de cuenta
+  publicViewer, // Visor de viajes públicos / compartidos
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -189,6 +191,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   late StreamSubscription<User?> _authSubscription;
   String _oobCode = '';
   String _authMode = '';
+  String _publicTripId = '';
+  String _publicAuthorId = '';
   int _homeInitialIndex = 0;
 
   bool _isOnline = true;
@@ -230,6 +234,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       _authMode = params['mode']!;
       _oobCode = params['oobCode']!;
       _currentScreen = OhtliScreen.authAction;
+    } else if (params.containsKey('tripId') && params.containsKey('authorId')) {
+      _publicTripId = params['tripId']!;
+      _publicAuthorId = params['authorId']!;
+      _currentScreen = OhtliScreen.publicViewer;
     }
 
     // Initialize connection status
@@ -262,7 +270,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
         if (_currentScreen != OhtliScreen.home &&
             _currentScreen != OhtliScreen.authAction &&
-            _currentScreen != OhtliScreen.accountManagement) {
+            _currentScreen != OhtliScreen.accountManagement &&
+            _currentScreen != OhtliScreen.publicViewer) {
           _navigateTo(OhtliScreen.home);
         }
       } else {
@@ -353,6 +362,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             print("Error al cerrar sesión: $e");
           }
         },
+      );
+    } else if (_currentScreen == OhtliScreen.publicViewer) {
+      activeView = TripViewerPage(
+        tripId: _publicTripId,
+        authorId: _publicAuthorId,
+        isPublicLink: true,
+        onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
+        onBackToDashboard: () => _navigateTo(OhtliScreen.home),
       );
     } else if (isMobile) {
       switch (_currentScreen) {

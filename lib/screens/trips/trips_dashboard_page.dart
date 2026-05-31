@@ -16,6 +16,7 @@ import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 import 'trip_editor_page.dart';
+import 'trip_viewer_page.dart';
 
 class TripsDashboardPage extends StatefulWidget {
   const TripsDashboardPage({super.key});
@@ -808,12 +809,21 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           trip: trip,
           isHorizontal: crossAxisCount == 1,
           onEdit: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => TripEditorPage(trip: trip),
-              ),
-            );
+            if (trip.status == 'published') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TripViewerPage(trip: trip),
+                ),
+              );
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TripEditorPage(trip: trip),
+                ),
+              );
+            }
           },
           onDelete: () => _deleteTrip(trip),
         );
