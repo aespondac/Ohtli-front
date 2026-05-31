@@ -730,7 +730,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final rightFormats = text.substring(end, rightFormatEnd);
 
     // Case 1: Surrounding format chain contains the wrapper (Unwrapping / Deletion)
-    if (leftFormats.contains(wrapper) && rightFormats.contains(wrapper)) {
+    if (_hasFormat(leftFormats, rightFormats, wrapper)) {
       final newLeftFormats = leftFormats.replaceFirst(wrapper, '');
       final newRightFormats = rightFormats.replaceFirst(wrapper, '');
 
@@ -767,6 +767,33 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (char.isEmpty) return false;
     const exclude = {' ', '\n', '\r', '\t', '*', '_', '~', '.', ',', '!', '?', ';', ':', '(', ')', '[', ']', '{', '}'};
     return !exclude.contains(char);
+  }
+
+  bool _hasFormat(String left, String right, String wrapper) {
+    final leftAsterisks = _countOccurrences(left, '*');
+    final rightAsterisks = _countOccurrences(right, '*');
+    final leftUnderlines = _countOccurrences(left, '_');
+    final rightUnderlines = _countOccurrences(right, '_');
+
+    if (wrapper == '**') {
+      return leftAsterisks >= 2 && rightAsterisks >= 2;
+    } else if (wrapper == '*') {
+      return (leftAsterisks == 1 || leftAsterisks == 3) && 
+             (rightAsterisks == 1 || rightAsterisks == 3);
+    } else if (wrapper == '_') {
+      return leftUnderlines >= 1 && rightUnderlines >= 1;
+    }
+    return false;
+  }
+
+  int _countOccurrences(String source, String char) {
+    int count = 0;
+    int index = 0;
+    while ((index = source.indexOf(char, index)) != -1) {
+      count++;
+      index += char.length;
+    }
+    return count;
   }
 
 
