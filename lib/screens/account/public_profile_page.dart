@@ -576,10 +576,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         .map((w) => w[0].toUpperCase())
         .join();
 
-    final Widget profileBody = SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final Widget profileBody = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         // 1. Cover Banner & Avatar Header
         Stack(
           clipBehavior: Clip.none,
@@ -905,47 +904,48 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         ),
 
         // 4. Tab Grids / Lists
-        StreamBuilder<List<Trip>>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(widget.userId)
-              .collection('trips')
-              .orderBy('createdAt', descending: true)
-              .snapshots()
-              .map((snapshot) => snapshot.docs
-                  .map((doc) => Trip.fromMap(doc.data(), doc.id))
-                  .toList()),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40.0),
-                  child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
-                ),
-              );
-            }
+        Expanded(
+          child: StreamBuilder<List<Trip>>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(widget.userId)
+                .collection('trips')
+                .orderBy('createdAt', descending: true)
+                .snapshots()
+                .map((snapshot) => snapshot.docs
+                    .map((doc) => Trip.fromMap(doc.data(), doc.id))
+                    .toList()),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40.0),
+                    child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+                  ),
+                );
+              }
 
-            final trips = snapshot.data ?? [];
-            
-            // Filter based on self vs public visibility
-            final List<Trip> filteredTrips = trips.where((t) {
-              if (_isSelf) return t.status == 'published'; // Show all my published trips
-              return t.status == 'published' && t.visibility == 'public'; // Show only public published
-            }).toList();
+              final trips = snapshot.data ?? [];
+              
+              // Filter based on self vs public visibility
+              final List<Trip> filteredTrips = trips.where((t) {
+                if (_isSelf) return t.status == 'published'; // Show all my published trips
+                return t.status == 'published' && t.visibility == 'public'; // Show only public published
+              }).toList();
 
-            final List<Trip> filteredPlans = trips.where((t) {
-              if (_isSelf) return t.status == 'draft'; // Show all my draft plans
-              return t.status == 'draft' && t.visibility == 'public'; // Show only public drafts
-            }).toList();
+              final List<Trip> filteredPlans = trips.where((t) {
+                if (_isSelf) return t.status == 'draft'; // Show all my draft plans
+                return t.status == 'draft' && t.visibility == 'public'; // Show only public drafts
+              }).toList();
 
-            return _tabController.index == 0
-                ? _buildTripsGrid(filteredTrips, isDesktop, isDark, isTrip: true)
-                : _buildTripsGrid(filteredPlans, isDesktop, isDark, isTrip: false);
-          },
+              return _tabController.index == 0
+                  ? _buildTripsGrid(filteredTrips, isDesktop, isDark, isTrip: true)
+                  : _buildTripsGrid(filteredPlans, isDesktop, isDark, isTrip: false);
+            },
+          ),
         ),
       ],
-    ),
-  );
+    );
 
   return Scaffold(
     backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
@@ -1113,8 +1113,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final double computedAspectRatio = cardWidth / cardHeight;
 
     return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.all(padding),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
