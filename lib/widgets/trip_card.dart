@@ -13,6 +13,7 @@ class TripCard extends StatelessWidget {
   final Trip trip;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final VoidCallback? onFeDeErratas;
   final bool isHorizontal;
 
   const TripCard({
@@ -20,6 +21,7 @@ class TripCard extends StatelessWidget {
     required this.trip,
     required this.onDelete,
     required this.onEdit,
+    this.onFeDeErratas,
     this.isHorizontal = false,
   });
 
@@ -350,6 +352,10 @@ class TripCard extends StatelessWidget {
                             onEdit();
                           } else if (value == 'share') {
                             _handleShare(context);
+                          } else if (value == 'errata') {
+                            if (onFeDeErratas != null) {
+                              onFeDeErratas!();
+                            }
                           } else if (value == 'delete') {
                             _showDeleteConfirmation(context);
                           }
@@ -376,6 +382,27 @@ class TripCard extends StatelessWidget {
                               ],
                             ),
                           ),
+                          if (trip.status == 'published')
+                            PopupMenuItem<String>(
+                              value: 'errata',
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.history_edu_rounded,
+                                    size: 18,
+                                    color: OhtliColors.xoconostle,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Fe de Erratas',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      color: OhtliColors.onyx,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           PopupMenuItem<String>(
                             value: 'share',
                             child: Row(
@@ -530,6 +557,10 @@ class TripCard extends StatelessWidget {
                             onEdit();
                           } else if (value == 'share') {
                             _handleShare(context);
+                          } else if (value == 'errata') {
+                            if (onFeDeErratas != null) {
+                              onFeDeErratas!();
+                            }
                           } else if (value == 'delete') {
                             _showDeleteConfirmation(context);
                           }
@@ -556,6 +587,27 @@ class TripCard extends StatelessWidget {
                               ],
                             ),
                           ),
+                          if (trip.status == 'published')
+                            PopupMenuItem<String>(
+                              value: 'errata',
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.history_edu_rounded,
+                                    size: 16,
+                                    color: OhtliColors.xoconostle,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Fe de Erratas',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      color: OhtliColors.onyx,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           PopupMenuItem<String>(
                             value: 'share',
                             child: Row(

@@ -831,6 +831,14 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
               );
             }
           },
+          onFeDeErratas: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TripEditorPage(trip: trip),
+              ),
+            );
+          },
           onDelete: () => _deleteTrip(trip),
         );
       },
