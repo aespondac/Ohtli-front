@@ -100,62 +100,173 @@ String _getMimeType(Uint8List bytes) {
   }
 }
 
-// Blazing-fast optimized raw camera image JPEG extraction
-Uint8List? _extractEmbeddedJpeg(Uint8List rawBytes) {
-  final int len = rawBytes.length;
-  if (len < 100) return null;
+int _readUint16(Uint8List bytes, int offset, bool isLittleEndian) {
+  if (isLittleEndian) {
+    return bytes[offset] | (bytes[offset + 1] << 8);
+  } else {
+    return (bytes[offset] << 8) | bytes[offset + 1];
+  }
+}
 
-  int bestStart = -1;
-  int bestEnd = -1;
-  int maxLen = 0;
+int _readUint32(Uint8List bytes, int offset, bool isLittleEndian) {
+  if (isLittleEndian) {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+  } else {
+    return (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+  }
+}
 
-  int i = 0;
-  while (true) {
-    // Highly optimized byte scanning using browser native TypedArray indexOf via Dart
-    i = rawBytes.indexOf(0xFF, i);
-    if (i == -1 || i > len - 4) {
-      break;
-    }
+Uint8List? _extractEmbeddedJpegFromTiff(Uint8List bytes) {
+  final int len = bytes.length;
+  if (len < 64) return null;
 
-    // Check if we hit a JPEG SOI marker (0xFF, 0xD8, 0xFF)
-    if (rawBytes[i + 1] == 0xD8 && rawBytes[i + 2] == 0xFF) {
-      final int start = i;
-      int end = -1;
-      
-      // Look ahead to find the EOI marker (0xFF, 0xD9)
-      // Limit search to 30MB ahead to avoid infinite loops on corrupted data
-      final int searchLimit = (start + 30 * 1024 * 1024).clamp(0, len);
-      
-      int j = start + 2;
-      while (true) {
-        j = rawBytes.indexOf(0xFF, j);
-        if (j == -1 || j >= searchLimit - 1) {
-          break;
-        }
-        if (rawBytes[j + 1] == 0xD9) {
-          end = j + 2;
-          break;
-        }
-        j++;
-      }
-      
-      if (end != -1) {
-        final int segmentLen = end - start;
-        if (segmentLen > maxLen) {
-          maxLen = segmentLen;
-          bestStart = start;
-          bestEnd = end;
-        }
-        // Jump past this JPEG segment in the outer loop
-        i = end;
-        continue;
-      }
-    }
-    i++;
+  // 1. Determine byte order
+  final bool isLittleEndian;
+  if (bytes[0] == 0x49 && bytes[1] == 0x49) {
+    isLittleEndian = true;
+  } else if (bytes[0] == 0x4D && bytes[1] == 0x4D) {
+    isLittleEndian = false;
+  } else {
+    return null; // Not a TIFF-based RAW file
   }
 
-  if (bestStart != -1 && bestEnd != -1 && maxLen > 40 * 1024) { // Filter out tiny thumbnails under 40KB
-    return Uint8List.sublistView(rawBytes, bestStart, bestEnd);
+  // 2. Verify magic number (42 = standard TIFF)
+  final int magic = _readUint16(bytes, 2, isLittleEndian);
+  if (magic != 42 && magic != 0x4F52) {
+    return null;
+  }
+
+  // 3. Find first IFD offset
+  int firstIfdOffset = _readUint32(bytes, 4, isLittleEndian);
+  if (firstIfdOffset <= 0 || firstIfdOffset >= len) return null;
+
+  List<int> ifdQueue = [firstIfdOffset];
+  Set<int> visitedIfds = {};
+  
+  int bestOffset = -1;
+  int bestSize = -1;
+
+  while (ifdQueue.isNotEmpty) {
+    final int ifdOffset = ifdQueue.removeAt(0);
+    if (visitedIfds.contains(ifdOffset) || ifdOffset <= 0 || ifdOffset >= len - 2) {
+      continue;
+    }
+    visitedIfds.add(ifdOffset);
+
+    try {
+      final int numFields = _readUint16(bytes, ifdOffset, isLittleEndian);
+      if (ifdOffset + 2 + numFields * 12 + 4 > len) continue;
+
+      int? jpegOffset;
+      int? jpegSize;
+      int? stripOffset;
+      int? stripSize;
+      int? compression;
+
+      for (int i = 0; i < numFields; i++) {
+        final int entryPos = ifdOffset + 2 + i * 12;
+        final int tagId = _readUint16(bytes, entryPos, isLittleEndian);
+        _readUint16(bytes, entryPos + 2, isLittleEndian);
+        final int count = _readUint32(bytes, entryPos + 4, isLittleEndian);
+        final int valOffset = _readUint32(bytes, entryPos + 8, isLittleEndian);
+
+        if (tagId == 0x0201) { // JPEGInterchangeFormat (JPEG offset)
+          jpegOffset = valOffset;
+        } else if (tagId == 0x0202) { // JPEGInterchangeFormatLength (JPEG size)
+          jpegSize = valOffset;
+        } else if (tagId == 0x0111) { // StripOffsets
+          if (count == 1) {
+            stripOffset = valOffset;
+          } else if (count > 1 && valOffset < len - 4) {
+            stripOffset = _readUint32(bytes, valOffset, isLittleEndian);
+          }
+        } else if (tagId == 0x0117) { // StripByteCounts
+          if (count == 1) {
+            stripSize = valOffset;
+          } else if (count > 1 && valOffset < len - 4) {
+            stripSize = _readUint32(bytes, valOffset, isLittleEndian);
+          }
+        } else if (tagId == 0x0103) { // Compression
+          compression = valOffset;
+        } else if (tagId == 0x014A) { // SubIFDs
+          if (count == 1) {
+            ifdQueue.add(valOffset);
+          } else if (count > 1 && valOffset < len - (count * 4)) {
+            for (int j = 0; j < count; j++) {
+              final int subOffset = _readUint32(bytes, valOffset + j * 4, isLittleEndian);
+              ifdQueue.add(subOffset);
+            }
+          }
+        } else if (tagId == 0x8769) { // EXIFOffset
+          ifdQueue.add(valOffset);
+        }
+      }
+
+      // Prioritize JPEGInterchangeFormat (0x0201)
+      if (jpegOffset != null && jpegSize != null && jpegOffset > 0 && jpegSize > 0) {
+        if (jpegOffset + jpegSize <= len) {
+          if (jpegSize > bestSize) {
+            bestSize = jpegSize;
+            bestOffset = jpegOffset;
+          }
+        }
+      }
+      // Fallback to StripOffsets (0x0111) if compression is JPEG (6 or 7)
+      else if (stripOffset != null && stripSize != null && stripOffset > 0 && stripSize > 0) {
+        if (stripOffset + stripSize <= len) {
+          if (stripSize > bestSize && (compression == null || compression == 6 || compression == 7)) {
+            bestSize = stripSize;
+            bestOffset = stripOffset;
+          }
+        }
+      }
+
+      // Find next IFD offset in standard TIFF chain
+      final int nextIfdOffsetPos = ifdOffset + 2 + numFields * 12;
+      final int nextIfdOffset = _readUint32(bytes, nextIfdOffsetPos, isLittleEndian);
+      if (nextIfdOffset > 0 && nextIfdOffset < len) {
+        ifdQueue.add(nextIfdOffset);
+      }
+    } catch (_) {}
+  }
+
+  if (bestOffset > 0 && bestSize > 40 * 1024 && bestOffset + bestSize <= len) {
+    return Uint8List.sublistView(bytes, bestOffset, bestOffset + bestSize);
+  }
+  return null;
+}
+
+Uint8List? _extractEmbeddedJpegFromRaf(Uint8List bytes) {
+  final int len = bytes.length;
+  if (len < 100) return null;
+  
+  // Fujifilm RAF files use Big Endian (Motorola) byte order.
+  // The JPEG image offset is at byte 84 (0x54) and length is at byte 88 (0x58).
+  final int jpegOffset = _readUint32(bytes, 84, false);
+  final int jpegSize = _readUint32(bytes, 88, false);
+
+  if (jpegOffset > 0 && jpegSize > 40 * 1024 && jpegOffset + jpegSize <= len) {
+    return Uint8List.sublistView(bytes, jpegOffset, jpegOffset + jpegSize);
+  }
+  return null;
+}
+
+// Blazing-fast optimized raw camera image JPEG extraction
+Uint8List? _extractEmbeddedJpeg(Uint8List rawBytes) {
+  final ImageFormat format = _detectFormat(rawBytes);
+  if (format == ImageFormat.tiff) {
+    return _extractEmbeddedJpegFromTiff(rawBytes);
+  }
+  if (format == ImageFormat.raf) {
+    return _extractEmbeddedJpegFromRaf(rawBytes);
+  }
+  if (format == ImageFormat.unknown) {
+    // Attempt TIFF/RAF parser as fallbacks on unknown binary formats
+    final tiffRes = _extractEmbeddedJpegFromTiff(rawBytes);
+    if (tiffRes != null) return tiffRes;
+    
+    final rafRes = _extractEmbeddedJpegFromRaf(rawBytes);
+    if (rafRes != null) return rafRes;
   }
   return null;
 }
