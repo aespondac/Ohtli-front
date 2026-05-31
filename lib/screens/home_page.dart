@@ -267,7 +267,7 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.notifications_none_rounded, color: OhtliColors.stormyTeal, size: 20),
+              icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
               onPressed: () {
                 setState(() {
                   _currentIndex = 6;
@@ -287,14 +287,41 @@ class _HomePageState extends State<HomePage> {
         ),
         body: _buildBody(isMobile),
         bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _currentIndex < 2 ? _currentIndex : 0,
-          onTap: (index) => setState(() => _currentIndex = index),
+          currentIndex: _currentIndex == 1
+              ? 0
+              : (_currentIndex == 2
+                  ? 1
+                  : (_currentIndex == 0
+                      ? 2
+                      : (_currentIndex == 4
+                          ? 3
+                          : (_currentIndex == 5 ? 4 : 2)))),
+          onTap: (index) {
+            setState(() {
+              if (index == 0) _currentIndex = 1; // Mis Viajes
+              if (index == 1) _currentIndex = 2; // Perfil
+              if (index == 2) _currentIndex = 0; // Explorar
+              if (index == 3) _currentIndex = 4; // Logros
+              if (index == 4) _currentIndex = 5; // Lugares
+            });
+          },
           backgroundColor: colorSidebar,
           selectedItemColor: OhtliColors.stormyTeal,
           unselectedItemColor: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
           selectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 11),
           unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 11),
+          type: BottomNavigationBarType.fixed, // Use fixed when >= 4 items
           items: [
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.map_outlined),
+              activeIcon: Icon(Icons.map),
+              label: 'Mis Viajes',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
+              label: 'Perfil',
+            ),
             BottomNavigationBarItem(
               icon: SvgPicture.asset(
                 'assets/icon_isologo.svg',
@@ -309,7 +336,7 @@ class _HomePageState extends State<HomePage> {
                 'assets/icon_isologo.svg',
                 width: 20,
                 height: 20,
-                colorFilter: ColorFilter.mode(
+                colorFilter: const ColorFilter.mode(
                   OhtliColors.stormyTeal,
                   BlendMode.srcIn,
                 ),
@@ -317,9 +344,14 @@ class _HomePageState extends State<HomePage> {
               label: 'Explorar',
             ),
             const BottomNavigationBarItem(
-              icon: Icon(Icons.map_outlined),
-              activeIcon: Icon(Icons.map_rounded),
-              label: 'Mis Viajes',
+              icon: Icon(Icons.emoji_events_outlined),
+              activeIcon: Icon(Icons.emoji_events),
+              label: 'Logros',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.place_outlined),
+              activeIcon: Icon(Icons.place),
+              label: 'Lugares',
             ),
           ],
         ),

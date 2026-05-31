@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
 import 'home_page.dart'; // For OhtliSettings
 import 'account/public_profile_page.dart'; // To visit their profile!
+import 'construction_page.dart'; // To reuse RouteBackgroundPainter
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({super.key});
@@ -45,7 +46,6 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         });
         await FirebaseFirestore.instance.collection('users').doc(targetUserId).update({
           'friends': FieldValue.arrayRemove([_currentUser!.uid]),
-          'closeFriends': FieldValue.arrayRemove([_currentUser!.uid]),
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -142,119 +142,167 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
       );
     }
 
+    final double width = MediaQuery.of(context).size.width;
+    final double padding = width > 800 ? 32.0 : 16.0;
+
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(
-          'Amigos',
-          style: GoogleFonts.outfit(
-            color: textColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 80,
+        title: Padding(
+          padding: EdgeInsets.symmetric(horizontal: padding - 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Amigos',
+                style: GoogleFonts.inter(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Conéctate y comparte con otros viajeros',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: textColor.withValues(alpha: 0.5),
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: OhtliColors.stormyTeal,
-          labelColor: OhtliColors.stormyTeal,
-          unselectedLabelColor: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
-          labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13.5),
-          unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13.5),
-          tabs: const [
-            Tab(text: 'Tus Amigos'),
-            Tab(text: 'Sugeridos'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            alignment: Alignment.centerLeft,
+            padding: EdgeInsets.symmetric(horizontal: padding),
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              indicatorColor: OhtliColors.stormyTeal,
+              indicatorWeight: 3,
+              labelColor: OhtliColors.stormyTeal,
+              unselectedLabelColor: textColor.withValues(alpha: 0.5),
+              labelStyle: GoogleFonts.inter(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+              unselectedLabelStyle: GoogleFonts.inter(
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+              tabs: const [
+                Tab(text: 'Tus Amigos'),
+                Tab(text: 'Sugeridos'),
+              ],
+            ),
+          ),
         ),
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).snapshots(),
-        builder: (context, userSnapshot) {
-          if (userSnapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
-          }
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: CustomPaint(
+              painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.3)),
+            ),
+          ),
+          Positioned.fill(
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).snapshots(),
+              builder: (context, userSnapshot) {
+                if (userSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
+                }
 
-          final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
-          final List<dynamic> friends = userData?['friends'] ?? [];
-          final List<dynamic> closeFriends = userData?['closeFriends'] ?? [];
+                final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                final List<dynamic> friends = userData?['friends'] ?? [];
+                final List<dynamic> closeFriends = userData?['closeFriends'] ?? [];
 
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('users').snapshots(),
-            builder: (context, usersSnapshot) {
-              if (usersSnapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
-              }
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('users').snapshots(),
+                  builder: (context, usersSnapshot) {
+                    if (usersSnapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
+                    }
 
-              final allUsers = usersSnapshot.data?.docs ?? [];
-              
-              // 1. Filter friends
-              var friendUsers = allUsers.where((doc) => friends.contains(doc.id)).toList();
-              
-              // 2. Filter suggested (everyone except ourselves and our friends)
-              var suggestedUsers = allUsers.where((doc) => doc.id != _currentUser!.uid && !friends.contains(doc.id)).toList();
+                    final allUsers = usersSnapshot.data?.docs ?? [];
+                    
+                    // 1. Filter friends
+                    var friendUsers = allUsers.where((doc) => friends.contains(doc.id)).toList();
+                    
+                    // 2. Filter suggested (everyone except ourselves and our friends)
+                    var suggestedUsers = allUsers.where((doc) => doc.id != _currentUser!.uid && !friends.contains(doc.id)).toList();
 
-              // Apply search query filter if search is active
-              if (_searchQuery.isNotEmpty) {
-                friendUsers = friendUsers.where((doc) {
-                  final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
-                  return name.toLowerCase().contains(_searchQuery.toLowerCase());
-                }).toList();
+                    // Apply search query filter if search is active
+                    if (_searchQuery.isNotEmpty) {
+                      friendUsers = friendUsers.where((doc) {
+                        final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
+                        return name.toLowerCase().contains(_searchQuery.toLowerCase());
+                      }).toList();
 
-                suggestedUsers = suggestedUsers.where((doc) {
-                  final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
-                  return name.toLowerCase().contains(_searchQuery.toLowerCase());
-                }).toList();
-              }
+                      suggestedUsers = suggestedUsers.where((doc) {
+                        final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
+                        return name.toLowerCase().contains(_searchQuery.toLowerCase());
+                      }).toList();
+                    }
 
-              return Column(
-                children: [
-                  // Search Bar
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (val) {
-                        setState(() {
-                          _searchQuery = val;
-                        });
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Buscar aventureros...',
-                        hintStyle: GoogleFonts.inter(
-                          color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
-                          fontSize: 13,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search_rounded,
-                          color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
-                          size: 20,
-                        ),
-                        filled: true,
-                        fillColor: cardColor,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                      ),
-                      style: GoogleFonts.inter(color: textColor, fontSize: 13),
-                    ),
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
+                    return Column(
                       children: [
-                        _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false),
-                        _buildFriendsList(suggestedUsers, closeFriends, cardColor, textColor, isDark, isSuggested: true),
+                        // Search Bar
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: TextField(
+                            controller: _searchController,
+                            onChanged: (val) {
+                              setState(() {
+                                _searchQuery = val;
+                              });
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'Buscar aventureros...',
+                              hintStyle: GoogleFonts.inter(
+                                color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
+                                fontSize: 13,
+                              ),
+                              prefixIcon: Icon(
+                                Icons.search_rounded,
+                                color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
+                                size: 20,
+                              ),
+                              filled: true,
+                              fillColor: cardColor,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(30),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                            ),
+                            style: GoogleFonts.inter(color: textColor, fontSize: 13),
+                          ),
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [
+                              _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false),
+                              _buildFriendsList(suggestedUsers, closeFriends, cardColor, textColor, isDark, isSuggested: true),
+                            ],
+                          ),
+                        ),
                       ],
-                    ),
-                  ),
-                ],
-              );
-            },
-          );
-        },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
