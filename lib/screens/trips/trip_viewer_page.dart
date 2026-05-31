@@ -533,25 +533,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   PreferredSizeWidget _buildPublicNavbar(bool isLoggedIn, bool isDark) {
     return AppBar(
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SvgPicture.asset(
-            'assets/icon_isologo.svg',
-            height: 22,
-            fit: BoxFit.contain,
-            colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Ohtli',
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: isDark ? Colors.white : OhtliColors.onyx,
-            ),
-          ),
-        ],
+      title: SvgPicture.asset(
+        'assets/logo.svg',
+        height: 22,
+        fit: BoxFit.contain,
+        colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
       ),
       backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
       elevation: 0.5,
