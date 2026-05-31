@@ -342,50 +342,18 @@ class _HomePageState extends State<HomePage> {
             painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
           ),
         ),
-        SafeArea(
-          child: SingleChildScrollView(
-            // No horizontal padding on ScrollView to allow edge-to-edge hero carousel
-            padding: const EdgeInsets.only(bottom: 40.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. Pinned Stories Carousel (Full Width, edge-to-edge)
-                _buildPinnedStoriesCarousel(isMobile, isDark),
-                
-                const SizedBox(height: 50),
-                
-                // 2. Centered Content Container for remaining items (footers, slogan, etc.)
-                Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 800),
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          'próximamente',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w300,
-                            color: OhtliColors.onyx.withValues(alpha: 0.4),
-                            letterSpacing: 3.0,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'ohtli  •  cdmx',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w300,
-                            letterSpacing: 4.0,
-                            color: OhtliColors.onyx.withValues(alpha: 0.4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+        Positioned.fill(
+          child: SafeArea(
+            child: SingleChildScrollView(
+              // No horizontal padding on ScrollView to allow edge-to-edge hero carousel
+              padding: const EdgeInsets.only(bottom: 40.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. Pinned Stories Carousel (Full Width, edge-to-edge)
+                  _buildPinnedStoriesCarousel(isMobile, isDark),
+                ],
+              ),
             ),
           ),
         ),
@@ -429,10 +397,13 @@ class _HomePageState extends State<HomePage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
-            margin: EdgeInsets.zero,
+            margin: EdgeInsets.symmetric(
+              horizontal: isMobile ? 16.0 : 24.0,
+              vertical: isMobile ? 12.0 : 16.0,
+            ),
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-              borderRadius: BorderRadius.zero,
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Center(
               child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
@@ -480,20 +451,24 @@ class _HomePageState extends State<HomePage> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOutCubic,
-                  margin: EdgeInsets.zero,
+                  margin: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 16.0 : 24.0,
+                    vertical: isMobile ? 12.0 : 16.0,
+                  ),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.zero,
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
                         color: isHovered 
-                            ? OhtliColors.stormyTeal.withValues(alpha: 0.1)
-                            : Colors.transparent,
-                        blurRadius: isHovered ? 12 : 0,
+                            ? OhtliColors.stormyTeal.withValues(alpha: 0.15)
+                            : Colors.black.withValues(alpha: 0.08),
+                        blurRadius: isHovered ? 16 : 8,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.zero,
+                    borderRadius: BorderRadius.circular(16),
                     child: Stack(
                       children: [
                         // Cover Image Background with Zoom Effect on Hover
@@ -641,11 +616,8 @@ class _HomePageState extends State<HomePage> {
                                               final titleData = titleSnapshot.data!.data() as Map<String, dynamic>?;
                                               titleName = titleData?['name'] ?? 'Viajero';
                                             }
-                                            final String displayTitle = titleName.toLowerCase().contains('ohtli')
-                                                ? titleName
-                                                : '$titleName Ohtli';
                                             return Text(
-                                              displayTitle,
+                                              titleName,
                                               style: GoogleFonts.inter(
                                                 color: Colors.white.withValues(alpha: 0.6),
                                                 fontSize: 10,
