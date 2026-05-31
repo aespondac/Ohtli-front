@@ -13,6 +13,7 @@ import '../../services/markdown_helpers.dart';
 import '../../widgets/ohtli_sidebar.dart';
 import '../home_page.dart';
 import '../account/account_management_page.dart';
+import 'trip_editor_page.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -394,6 +395,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final User? currentUser = FirebaseAuth.instance.currentUser;
     final bool hasActiveSession = currentUser != null;
     final bool showTopNavbar = widget.isPublicLink;
+    final bool isOwner = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
 
     final Widget mainScrollableContent = SingleChildScrollView(
       child: Column(
@@ -528,6 +530,29 @@ class _TripViewerPageState extends State<TripViewerPage> {
       backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
       appBar: showTopNavbar ? _buildPublicNavbar(hasActiveSession, isDark) : null,
       body: bodyContent,
+      floatingActionButton: isOwner
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TripEditorPage(trip: _trip!),
+                  ),
+                ).then((_) {
+                  _loadTripData();
+                });
+              },
+              backgroundColor: OhtliColors.xoconostle,
+              foregroundColor: Colors.white,
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              icon: const Icon(Icons.history_edu_rounded, size: 20),
+              label: Text(
+                'Fe de Erratas',
+                style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+              ),
+            )
+          : null,
     );
   }
 
@@ -768,7 +793,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera,
         border: Border(bottom: BorderSide(color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3))),
       ),
       child: Column(
