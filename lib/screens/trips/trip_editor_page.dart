@@ -1618,14 +1618,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
       );
 
       // Determine next empty slot callback to auto-add
-      VoidCallback? nextEmptySlotOnTap;
-      if (section.mainPhotoUrl.isEmpty) {
-        nextEmptySlotOnTap = () => _uploadImageForBlock(index, 'place_main');
-      } else if (section.secondaryPhotoUrls.isEmpty) {
-        nextEmptySlotOnTap = () => _uploadImageForBlock(index, 'place_sec_0');
-      } else if (section.secondaryPhotoUrls.length < 2) {
-        nextEmptySlotOnTap = () => _uploadImageForBlock(index, 'place_sec_1');
-      }
+      final nextEmptySlot = slots.firstWhere((s) => (s['url'] as String).isEmpty, orElse: () => {});
+      final nextEmptySlotOnTap = nextEmptySlot.isNotEmpty ? nextEmptySlot['onTap'] as VoidCallback? : null;
+
 
       final Widget leftColumnWidget = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2218,7 +2213,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       });
     }
 
-    void updateColumnType(int colIdx, String newType, String newCurrency) {
+    void updateColumnType(int colIdx, String newType, String newCurrency, {bool? isTotalEnabled}) {
       final List<TableColumn> currentColumns = [];
       for (int c = 0; c < numCols; c++) {
         final ctrl = _blockControllers['${section.id}_h_$c'];
@@ -2228,12 +2223,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
             name: ctrl?.text ?? currentCol.name,
             type: newType,
             currency: newCurrency,
+            isTotalEnabled: isTotalEnabled ?? currentCol.isTotalEnabled,
           ));
         } else {
           currentColumns.add(TableColumn(
             name: ctrl?.text ?? currentCol.name,
             type: currentCol.type,
             currency: currentCol.currency,
+            isTotalEnabled: currentCol.isTotalEnabled,
           ));
         }
       }
@@ -2266,6 +2263,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           name: ctrl?.text ?? currentCol.name,
           type: currentCol.type,
           currency: currentCol.currency,
+          isTotalEnabled: currentCol.isTotalEnabled,
         ));
       }
       currentColumns.add(TableColumn(name: 'Columna ${numCols + 1}', type: 'text'));
@@ -2300,6 +2298,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           name: ctrl?.text ?? currentCol.name,
           type: currentCol.type,
           currency: currentCol.currency,
+          isTotalEnabled: currentCol.isTotalEnabled,
         ));
       }
       currentColumns.removeAt(colIdx);
@@ -2333,6 +2332,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           name: ctrl?.text ?? currentCol.name,
           type: currentCol.type,
           currency: currentCol.currency,
+          isTotalEnabled: currentCol.isTotalEnabled,
         ));
       }
 
@@ -2365,6 +2365,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           name: ctrl?.text ?? currentCol.name,
           type: currentCol.type,
           currency: currentCol.currency,
+          isTotalEnabled: currentCol.isTotalEnabled,
         ));
       }
 
@@ -2390,6 +2391,21 @@ class _TripEditorPageState extends State<TripEditorPage> {
       _updateTextBlock(index, markdown: newMarkdown);
     }
 
+    double calculateTotal(int colIdx) {
+      double total = 0.0;
+      for (int r = 0; r < numRows; r++) {
+        final ctrl = _blockControllers['${section.id}_cell_${r}_$colIdx'];
+        final valStr = ctrl?.text ?? table.rows[r][colIdx];
+        final cleanStr = valStr.replaceAll(RegExp(r'[^\d.-]'), '');
+        final double? val = double.tryParse(cleanStr);
+        if (val != null) {
+          total += val;
+        }
+      }
+      return total;
+    }
+
+    final bool showTotalRow = table.columns.any((col) => col.type == 'money' && col.isTotalEnabled);
     final Color headerBg = isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.2);
     final Color cellBorder = isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4);
 
@@ -2415,7 +2431,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
                     return Container(
                       width: 155,
-                      margin: const EdgeInsets.only(right: 6),
+                      margin: const EdgeInsets.only(right: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: headerBg,
@@ -2459,10 +2475,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                   }
                                 ),
                               ),
-                              // Type menu selector (Texto vs Dinero)
+                              // Type menu selector (Texto vs Número vs Dinero)
                               PopupMenuButton<String>(
                                 icon: Icon(
-                                  isMoney ? Icons.payments_rounded : Icons.text_fields_rounded,
+                                  col.type == 'money'
+                                      ? Icons.payments_rounded
+                                      : col.type == 'number'
+                                          ? Icons.tag_rounded
+                                          : Icons.text_fields_rounded,
                                   size: 14,
                                   color: OhtliColors.stormyTeal,
                                 ),
@@ -2470,9 +2490,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                 constraints: const BoxConstraints(),
                                 onSelected: (val) {
                                   if (val == 'text') {
-                                    updateColumnType(colIdx, 'text', 'MXN');
+                                    updateColumnType(colIdx, 'text', 'MXN', isTotalEnabled: false);
+                                  } else if (val == 'number') {
+                                    updateColumnType(colIdx, 'number', 'MXN', isTotalEnabled: false);
                                   } else {
-                                    updateColumnType(colIdx, 'money', val);
+                                    updateColumnType(colIdx, 'money', 'MXN');
                                   }
                                 },
                                 itemBuilder: (context) => [
@@ -2486,22 +2508,109 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                       ],
                                     ),
                                   ),
-                                  ...['MXN', 'USD', 'EUR', 'CAD', 'GBP'].map((curr) {
-                                    return PopupMenuItem(
-                                      value: curr,
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.payments_rounded, size: 14, color: Colors.amber),
-                                          const SizedBox(width: 8),
-                                          Text('💵 Dinero ($curr)', style: GoogleFonts.inter(fontSize: 11)),
-                                        ],
-                                      ),
-                                    );
-                                  }),
+                                  PopupMenuItem(
+                                    value: 'number',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.tag_rounded, size: 14),
+                                        const SizedBox(width: 8),
+                                        Text('🔢 Número', style: GoogleFonts.inter(fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'money',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.payments_rounded, size: 14, color: Colors.amber),
+                                        const SizedBox(width: 8),
+                                        Text('💵 Dinero', style: GoogleFonts.inter(fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ],
                           ),
+                          if (isMoney) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                // Compact Currency Dropdown
+                                Container(
+                                  height: 22,
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: OhtliColors.stormyTeal.withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: col.currency.isNotEmpty ? col.currency : 'MXN',
+                                      dropdownColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: OhtliColors.onyx,
+                                      ),
+                                      isDense: true,
+                                      items: <String>['MXN', 'USD', 'EUR', 'CAD', 'GBP'].map((String value) {
+                                        return DropdownMenuItem<String>(
+                                          value: value,
+                                          child: Text(value),
+                                        );
+                                      }).toList(),
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          updateColumnType(colIdx, 'money', val);
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                // Sigma Button (Icons.functions_rounded)
+                                Tooltip(
+                                  message: col.isTotalEnabled ? 'Desactivar total automático' : 'Activar total automático',
+                                  child: InkWell(
+                                    onTap: () {
+                                      updateColumnType(
+                                        colIdx,
+                                        'money',
+                                        col.currency,
+                                        isTotalEnabled: !col.isTotalEnabled,
+                                      );
+                                    },
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: BoxDecoration(
+                                        color: col.isTotalEnabled
+                                            ? OhtliColors.stormyTeal.withValues(alpha: 0.15)
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: col.isTotalEnabled
+                                              ? OhtliColors.stormyTeal.withValues(alpha: 0.4)
+                                              : Colors.transparent,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.functions_rounded,
+                                        size: 14,
+                                        color: col.isTotalEnabled
+                                            ? OhtliColors.stormyTeal
+                                            : OhtliColors.stormyTeal.withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                           if (numCols > 1)
                             Align(
                               alignment: Alignment.centerRight,
@@ -2532,7 +2641,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               // Rows
               ...List.generate(numRows, (rowIdx) {
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: Row(
                     children: [
                       ...List.generate(numCols, (colIdx) {
@@ -2543,11 +2652,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         );
                         final col = table.columns[colIdx];
                         final bool isMoney = col.type == 'money';
+                        final bool isNumber = col.type == 'number';
 
                         return Container(
                           width: 155,
-                          margin: const EdgeInsets.only(right: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          margin: const EdgeInsets.only(right: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: cellBorder),
@@ -2568,10 +2678,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                   controller: ctrl,
                                   focusNode: fNode,
                                   style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
-                                  keyboardType: isMoney ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-                                  inputFormatters: isMoney ? [
-                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-                                  ] : null,
+                                  keyboardType: (isMoney || isNumber)
+                                      ? const TextInputType.numberWithOptions(decimal: true, signed: true)
+                                      : TextInputType.text,
+                                  inputFormatters: (isMoney || isNumber)
+                                      ? [
+                                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*')),
+                                        ]
+                                      : null,
                                   decoration: InputDecoration(
                                     isDense: true,
                                     border: InputBorder.none,
@@ -2599,6 +2713,68 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   ),
                 );
               }),
+              if (showTotalRow)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 4),
+                  child: Row(
+                    children: [
+                      ...List.generate(numCols, (colIdx) {
+                        final col = table.columns[colIdx];
+                        final bool isMoneyTotal = col.type == 'money' && col.isTotalEnabled;
+
+                        return Container(
+                          width: 155,
+                          margin: const EdgeInsets.only(right: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isMoneyTotal
+                                ? (isDark ? const Color(0xFF2C2C32) : OhtliColors.stormyTeal.withValues(alpha: 0.05))
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            border: isMoneyTotal
+                                ? Border(
+                                    top: BorderSide(
+                                      color: OhtliColors.stormyTeal,
+                                      width: 1.5,
+                                      style: BorderStyle.solid,
+                                    ),
+                                    bottom: BorderSide(
+                                      color: OhtliColors.stormyTeal,
+                                      width: 1.5,
+                                      style: BorderStyle.solid,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          child: isMoneyTotal
+                              ? Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Total:',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: OhtliColors.stormyTeal,
+                                      ),
+                                    ),
+                                    Text(
+                                      '\$ ${calculateTotal(colIdx).toStringAsFixed(2)} ${col.currency}',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: OhtliColors.onyx,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : const SizedBox(),
+                        );
+                      }),
+                      const SizedBox(width: 48), // align with row delete icon
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -3458,10 +3634,16 @@ String serializeAlertMarkdown(AlertType type, String content) {
 // Markdown Table Helpers
 class TableColumn {
   final String name;
-  final String type; // 'text' or 'money'
+  final String type; // 'text', 'number', or 'money'
   final String currency; // 'MXN', 'USD', etc.
+  final bool isTotalEnabled;
 
-  TableColumn({required this.name, this.type = 'text', this.currency = 'MXN'});
+  TableColumn({
+    required this.name,
+    this.type = 'text',
+    this.currency = 'MXN',
+    this.isTotalEnabled = false,
+  });
 }
 
 class TableData {
@@ -3496,15 +3678,24 @@ TableData? parseTableMarkdown(String markdown) {
   if (headers.isEmpty) return null;
 
   final List<TableColumn> columns = headers.map((h) {
-    final moneyReg = RegExp(r'^(.*?)\s*\[money:([A-Z]{3,5})\]$');
+    final moneyReg = RegExp(r'^(.*?)\s*\[money:([A-Z]{3,5})(?::(total|sum))?\]$');
     final textReg = RegExp(r'^(.*?)\s*\[text\]$');
+    final numberReg = RegExp(r'^(.*?)\s*\[number\]$');
     
     if (moneyReg.hasMatch(h)) {
       final match = moneyReg.firstMatch(h)!;
+      final bool isTotal = match.group(3) != null;
       return TableColumn(
         name: match.group(1)!.trim(),
         type: 'money',
         currency: match.group(2)!.toUpperCase(),
+        isTotalEnabled: isTotal,
+      );
+    } else if (numberReg.hasMatch(h)) {
+      final match = numberReg.firstMatch(h)!;
+      return TableColumn(
+        name: match.group(1)!.trim(),
+        type: 'number',
       );
     } else if (textReg.hasMatch(h)) {
       final match = textReg.firstMatch(h)!;
@@ -3537,9 +3728,14 @@ String serializeTableMarkdown(TableData table) {
   buffer.write('| ');
   final headerStrings = table.columns.map((col) {
     if (col.type == 'money') {
+      if (col.isTotalEnabled) {
+        return '${col.name} [money:${col.currency}:total]';
+      }
       return '${col.name} [money:${col.currency}]';
+    } else if (col.type == 'number') {
+      return '${col.name} [number]';
     } else {
-      return col.name;
+      return '${col.name} [text]';
     }
   }).toList();
   buffer.write(headerStrings.join(' | '));
