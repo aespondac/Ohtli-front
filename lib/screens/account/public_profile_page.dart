@@ -888,7 +888,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   ),
 
                   Positioned(
-                    bottom: isDesktop ? -75 : -65,
+                    bottom: isDesktop ? -95 : -85,
                     right: 24,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
