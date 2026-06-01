@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:html' as html;
 import 'dart:async';
 import 'dart:convert';
@@ -1019,7 +1021,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             builder: (context, child) {
                               return Theme(
                                 data: Theme.of(context).copyWith(
-                                  colorScheme: const ColorScheme.light(
+                                  colorScheme: ColorScheme.light(
                                     primary: OhtliColors.stormyTeal,
                                     onPrimary: Colors.white,
                                     onSurface: OhtliColors.onyx,
@@ -1104,7 +1106,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         )
                       else
                         Container(
-                          maxHeight: 120,
+                          constraints: const BoxConstraints(maxHeight: 120),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(10),
@@ -1188,7 +1190,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                   ),
                                   const SizedBox(height: 6),
                                   Container(
-                                    maxHeight: 100,
+                                    constraints: const BoxConstraints(maxHeight: 100),
                                     decoration: BoxDecoration(
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(10),
@@ -1241,7 +1243,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                         builder: (context, child) {
                                           return Theme(
                                             data: Theme.of(context).copyWith(
-                                              colorScheme: const ColorScheme.light(
+                                              colorScheme: ColorScheme.light(
                                                 primary: OhtliColors.stormyTeal,
                                                 onPrimary: Colors.white,
                                                 onSurface: OhtliColors.onyx,
