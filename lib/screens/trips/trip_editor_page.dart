@@ -99,10 +99,16 @@ class _TripEditorPageState extends State<TripEditorPage> {
           final List<dynamic> friendsUids = data?['friends'] ?? [];
           final List<dynamic> myCloseFriends = data?['closeFriends'] ?? [];
           
-          if (friendsUids.isNotEmpty) {
+          final Set<String> uidsToFetch = {
+            ...friendsUids.cast<String>(),
+            ..._coAuthorIds,
+          };
+
+          if (uidsToFetch.isNotEmpty) {
+            final List<String> uidsList = uidsToFetch.take(30).toList();
             final friendsSnapshot = await FirebaseFirestore.instance
                 .collection('users')
-                .where(FieldPath.documentId, whereIn: friendsUids)
+                .where(FieldPath.documentId, whereIn: uidsList)
                 .get();
             
             final List<Map<String, dynamic>> fetched = [];
@@ -117,6 +123,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 'displayName': dName,
                 'photoURL': doc.data()['photoURL'],
                 'isMutualCloseFriend': isMutualCloseFriend,
+                'isFriend': friendsUids.contains(doc.id),
               });
             }
             if (mounted) {
@@ -1100,57 +1107,63 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
                       ),
                       const SizedBox(height: 6),
-                      if (_friendsList.isEmpty)
-                        Text(
-                          'Aún no tienes amigos para agregar como co-autor.',
-                          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
-                        )
-                      else
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 120),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
-                          ),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            physics: const ClampingScrollPhysics(),
-                            itemCount: _friendsList.length,
-                            itemBuilder: (context, idx) {
-                              final friend = _friendsList[idx];
-                              final String friendId = friend['uid'];
-                              final String friendName = friend['displayName'];
-                              final bool isSelected = tempCoAuthorIds.contains(friendId);
-                              
-                              return CheckboxListTile(
-                                title: Text(friendName, style: GoogleFonts.inter(fontSize: 12.5)),
-                                value: isSelected,
-                                activeColor: OhtliColors.stormyTeal,
-                                dense: true,
-                                visualDensity: VisualDensity.compact,
-                                onChanged: (val) {
-                                  setStateDialog(() {
-                                    if (val == true) {
-                                      tempCoAuthorIds.add(friendId);
-                                      tempCoAuthorNames.add(friendName);
-                                    } else {
-                                      tempCoAuthorIds.remove(friendId);
-                                      tempCoAuthorNames.remove(friendName);
-                                    }
-                                  });
-                                },
-                              );
-                            },
-                          ),
-                        ),
+                       Builder(
+                        builder: (context) {
+                          final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
+                          if (actualFriends.isEmpty) {
+                            return Text(
+                              'Aún no tienes amigos para agregar como co-autor.',
+                              style: GoogleFonts.inter(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                            );
+                          }
+                          return Container(
+                            constraints: const BoxConstraints(maxHeight: 120),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
+                            ),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              physics: const ClampingScrollPhysics(),
+                              itemCount: actualFriends.length,
+                              itemBuilder: (context, idx) {
+                                final friend = actualFriends[idx];
+                                final String friendId = friend['uid'];
+                                final String friendName = friend['displayName'];
+                                final bool isSelected = tempCoAuthorIds.contains(friendId);
+                                
+                                return CheckboxListTile(
+                                  title: Text(friendName, style: GoogleFonts.inter(fontSize: 12.5)),
+                                  value: isSelected,
+                                  activeColor: OhtliColors.stormyTeal,
+                                  dense: true,
+                                  visualDensity: VisualDensity.compact,
+                                  onChanged: (val) {
+                                    setStateDialog(() {
+                                      if (val == true) {
+                                        tempCoAuthorIds.add(friendId);
+                                        tempCoAuthorNames.add(friendName);
+                                      } else {
+                                        tempCoAuthorIds.remove(friendId);
+                                        tempCoAuthorNames.remove(friendName);
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 14),
 
                       // --- Surprise Plan section (only if travelDate is set and we have mutual close friends) ---
                       if (tempDate != null) ...[
                         Builder(
                           builder: (context) {
-                            final mutualCloseFriends = _friendsList
+                            final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
+                            final mutualCloseFriends = actualFriends
                                 .where((f) => f['isMutualCloseFriend'] == true)
                                 .toList();
                             
@@ -1598,18 +1611,22 @@ class _TripEditorPageState extends State<TripEditorPage> {
               content: Container(
                 width: double.maxFinite,
                 constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
-                child: _friendsList.isEmpty
-                    ? Center(
+                child: Builder(
+                  builder: (context) {
+                    final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
+                    if (actualFriends.isEmpty) {
+                      return Center(
                         child: Text(
                           'Aún no tienes amigos para agregar como co-autor.',
                           style: GoogleFonts.inter(fontSize: 13, color: Colors.grey, fontStyle: FontStyle.italic),
                         ),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: _friendsList.length,
-                        itemBuilder: (context, idx) {
-                          final friend = _friendsList[idx];
+                      );
+                    }
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: actualFriends.length,
+                      itemBuilder: (context, idx) {
+                        final friend = actualFriends[idx];
                           final String friendId = friend['uid'];
                           final String friendName = friend['displayName'];
                           final bool isSelected = tempCoAuthorIds.contains(friendId);
@@ -1652,7 +1669,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             },
                           );
                         },
-                      ),
+                      );
+                    },
+                  ),
               ),
               actions: [
                 TextButton(

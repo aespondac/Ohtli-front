@@ -279,6 +279,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     final String senderName = data['senderName'] ?? 'Viajero Ohtli';
                     final String senderId = data['senderId'] ?? '';
                     final String status = data['status'] ?? 'pending';
+                    final String? senderPhoto = data['senderPhoto'];
 
                     String messageText = '';
                     if (type == 'friend_request') {
@@ -375,15 +376,32 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                     shape: BoxShape.circle,
                                     color: OhtliColors.stormyTeal,
                                   ),
-                                  child: Center(
-                                    child: Text(
-                                      initials,
-                                      style: GoogleFonts.inter(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
+                                  child: ClipOval(
+                                    child: senderPhoto != null && senderPhoto.isNotEmpty
+                                        ? Image.network(
+                                            senderPhoto,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (c, e, s) => Center(
+                                              child: Text(
+                                                initials,
+                                                style: GoogleFonts.inter(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                        : Center(
+                                            child: Text(
+                                              initials,
+                                              style: GoogleFonts.inter(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -424,15 +442,32 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                         shape: BoxShape.circle,
                                         color: OhtliColors.stormyTeal,
                                       ),
-                                      child: Center(
-                                        child: Text(
-                                          initials,
-                                          style: GoogleFonts.inter(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                          ),
-                                        ),
+                                      child: ClipOval(
+                                        child: senderPhoto != null && senderPhoto.isNotEmpty
+                                            ? Image.network(
+                                                senderPhoto,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (c, e, s) => Center(
+                                                  child: Text(
+                                                    initials,
+                                                    style: GoogleFonts.inter(
+                                                      color: Colors.white,
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            : Center(
+                                                child: Text(
+                                                  initials,
+                                                  style: GoogleFonts.inter(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
