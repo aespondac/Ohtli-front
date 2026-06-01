@@ -57,6 +57,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   // New fields for co-authors & surprise
   List<String> _coAuthorIds = [];
+  List<String> _originalCoAuthorIds = [];
   List<String> _coAuthorNames = [];
   bool _isSurprise = false;
   List<String> _surpriseTargetIds = [];
@@ -78,6 +79,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
     // Initialize co-authors and surprise targets lists
     _coAuthorIds = List.from(widget.trip.coAuthorIds);
+    _originalCoAuthorIds = List.from(widget.trip.coAuthorIds);
     _coAuthorNames = List.from(widget.trip.coAuthorNames);
     _isSurprise = widget.trip.isSurprise;
     _surpriseTargetIds = List.from(widget.trip.surpriseTargetIds);
@@ -1139,17 +1141,19 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                   activeColor: OhtliColors.stormyTeal,
                                   dense: true,
                                   visualDensity: VisualDensity.compact,
-                                  onChanged: (val) {
-                                    setStateDialog(() {
-                                      if (val == true) {
-                                        tempCoAuthorIds.add(friendId);
-                                        tempCoAuthorNames.add(friendName);
-                                      } else {
-                                        tempCoAuthorIds.remove(friendId);
-                                        tempCoAuthorNames.remove(friendName);
-                                      }
-                                    });
-                                  },
+                                  onChanged: (_status == 'published' && _originalCoAuthorIds.contains(friendId))
+                                      ? null
+                                      : (val) {
+                                          setStateDialog(() {
+                                            if (val == true) {
+                                              tempCoAuthorIds.add(friendId);
+                                              tempCoAuthorNames.add(friendName);
+                                            } else {
+                                              tempCoAuthorIds.remove(friendId);
+                                              tempCoAuthorNames.remove(friendName);
+                                            }
+                                          });
+                                        },
                                 );
                               },
                             ),
@@ -1656,17 +1660,19 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             value: isSelected,
                             activeColor: OhtliColors.stormyTeal,
                             dense: true,
-                            onChanged: (val) {
-                              setStateDialog(() {
-                                if (val == true) {
-                                  tempCoAuthorIds.add(friendId);
-                                  tempCoAuthorNames.add(friendName);
-                                } else {
-                                  tempCoAuthorIds.remove(friendId);
-                                  tempCoAuthorNames.remove(friendName);
-                                }
-                              });
-                            },
+                            onChanged: (_status == 'published' && _originalCoAuthorIds.contains(friendId))
+                                ? null
+                                : (val) {
+                                    setStateDialog(() {
+                                      if (val == true) {
+                                        tempCoAuthorIds.add(friendId);
+                                        tempCoAuthorNames.add(friendName);
+                                      } else {
+                                        tempCoAuthorIds.remove(friendId);
+                                        tempCoAuthorNames.remove(friendName);
+                                      }
+                                    });
+                                  },
                           );
                         },
                       );

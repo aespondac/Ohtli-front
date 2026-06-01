@@ -42,6 +42,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Trip? _trip;
   List<TripSection> _sections = [];
   Map<String, dynamic>? _authorProfile;
+  List<Map<String, dynamic>> _coAuthorsProfiles = [];
   String _authorActiveTitleName = 'Viajero';
   bool _isLoading = true;
   String? _errorMessage;
@@ -144,6 +145,35 @@ class _TripViewerPageState extends State<TripViewerPage> {
         if (titleDoc.exists && mounted) {
           setState(() {
             _authorActiveTitleName = titleDoc.data()?['name'] ?? 'Viajero';
+          });
+        }
+      }
+
+      // Load co-authors profiles
+      if (_trip!.coAuthorIds.isNotEmpty) {
+        final coAuthorsSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: _trip!.coAuthorIds)
+            .get();
+
+        final List<Map<String, dynamic>> loadedCoAuthors = [];
+        for (var doc in coAuthorsSnapshot.docs) {
+          final data = doc.data();
+          
+          final String titleId = data['activeTitleId'] ?? 'viajero';
+          final tDoc = await FirebaseFirestore.instance.collection('titles').doc(titleId).get();
+          final String titleName = tDoc.exists ? (tDoc.data()?['name'] ?? 'Viajero') : 'Viajero';
+          
+          loadedCoAuthors.add({
+            'uid': doc.id,
+            'displayName': data['displayName'] ?? 'Viajero Ohtli',
+            'photoURL': data['photoURL'],
+            'title': titleName,
+          });
+        }
+        if (mounted) {
+          setState(() {
+            _coAuthorsProfiles = loadedCoAuthors;
           });
         }
       }
@@ -689,97 +719,369 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
-  Widget _buildAuthorWidget(String name, String? photoUrl, String role, bool isDark) {
-    final initials = name
-        .split(' ')
-        .where((w) => w.isNotEmpty)
-        .take(2)
-        .map((w) => w[0].toUpperCase())
-        .join();
+  Widget _buildAuthorWidget(bool isDark) {
+    if (_trip == null) return const SizedBox.shrink();
 
-    return GestureDetector(
-      onTap: () {
-        if (_trip != null) {
+    final List<Map<String, dynamic>> allAuthors = [];
+
+    // Add main author first
+    allAuthors.add({
+      'uid': _trip!.userId,
+      'displayName': _authorProfile?['displayName'] ?? 'Viajero Ohtli',
+      'photoURL': _authorProfile?['photoURL'],
+      'title': _authorActiveTitleName,
+    });
+
+    // Add co-authors
+    for (final coAuthorId in _trip!.coAuthorIds) {
+      final cachedProfile = _coAuthorsProfiles.firstWhere(
+        (p) => p['uid'] == coAuthorId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (cachedProfile.isNotEmpty) {
+        allAuthors.add(cachedProfile);
+      } else {
+        int index = _trip!.coAuthorIds.indexOf(coAuthorId);
+        String name = (index >= 0 && index < _trip!.coAuthorNames.length)
+            ? _trip!.coAuthorNames[index]
+            : 'Viajero Ohtli';
+        allAuthors.add({
+          'uid': coAuthorId,
+          'displayName': name,
+          'photoURL': null,
+          'title': 'Viajero',
+        });
+      }
+    }
+
+    if (allAuthors.length == 1) {
+      final author = allAuthors.first;
+      final String name = author['displayName'] ?? 'Viajero Ohtli';
+      final String? photoUrl = author['photoURL'];
+      final String role = author['title'] ?? 'Viajero';
+      final initials = name
+          .split(' ')
+          .where((w) => w.isNotEmpty)
+          .take(2)
+          .map((w) => w[0].toUpperCase())
+          .join();
+
+      return GestureDetector(
+        onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => PublicProfilePage(
-                userId: _trip!.userId,
+                userId: author['uid'],
                 showBackButton: true,
                 onBack: () => Navigator.pop(context),
               ),
             ),
           );
-        }
-      },
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Escrito por",
-                  style: GoogleFonts.inter(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.4),
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "Escrito por",
+                    style: GoogleFonts.inter(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.4),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  name,
-                  style: GoogleFonts.outfit(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : OhtliColors.onyx,
+                  const SizedBox(height: 2),
+                  Text(
+                    name,
+                    style: GoogleFonts.outfit(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : OhtliColors.onyx,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  role,
-                  style: GoogleFonts.inter(
-                    fontSize: 9.5,
-                    color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                  const SizedBox(height: 1),
+                  Text(
+                    role,
+                    style: GoogleFonts.inter(
+                      fontSize: 9.5,
+                      color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: OhtliColors.stormyTeal,
+                ],
               ),
-              child: ClipOval(
-                child: photoUrl != null && photoUrl.isNotEmpty
-                    ? Image(
-                        image: _getImageProvider(photoUrl),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Center(
+              const SizedBox(width: 12),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: OhtliColors.stormyTeal,
+                ),
+                child: ClipOval(
+                  child: photoUrl != null && photoUrl.isNotEmpty
+                      ? Image(
+                          image: _getImageProvider(photoUrl),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Center(
+                            child: Text(
+                              initials,
+                              style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        )
+                      : Center(
                           child: Text(
                             initials,
                             style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                           ),
                         ),
-                      )
-                    : Center(
-                        child: Text(
-                          initials,
-                          style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return GestureDetector(
+        onTap: () => _showAuthorsListDialog(allAuthors),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "Escrito por",
+                    style: GoogleFonts.inter(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "Varios autores",
+                    style: GoogleFonts.outfit(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : OhtliColors.onyx,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    "${allAuthors.length} colaboradores",
+                    style: GoogleFonts.inter(
+                      fontSize: 9.5,
+                      color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              _buildStackedAvatars(allAuthors, isDark),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildStackedAvatars(List<Map<String, dynamic>> allAuthors, bool isDark) {
+    final int maxVisible = 3;
+    final List<Widget> avatarWidgets = [];
+
+    for (int i = 0; i < allAuthors.length; i++) {
+      if (i >= maxVisible) {
+        final int remaining = allAuthors.length - maxVisible;
+        avatarWidgets.add(
+          Align(
+            widthFactor: 0.6,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: isDark ? const Color(0xFF1E1E22) : Colors.white, width: 2),
+              ),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: OhtliColors.stormyTeal,
+                child: Text(
+                  '+$remaining',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        break;
+      }
+
+      final author = allAuthors[i];
+      final String? photoURL = author['photoURL'];
+      final String name = author['displayName'] ?? 'Viajero';
+      final String initials = name.isNotEmpty ? name[0].toUpperCase() : '';
+
+      avatarWidgets.add(
+        Align(
+          widthFactor: 0.6,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: isDark ? const Color(0xFF1E1E22) : Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: OhtliColors.stormyTeal,
+              backgroundImage: (photoURL != null && photoURL.isNotEmpty)
+                  ? _getImageProvider(photoURL)
+                  : null,
+              child: (photoURL == null || photoURL.isEmpty)
+                  ? Text(
+                      initials,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: avatarWidgets,
+    );
+  }
+
+  void _showAuthorsListDialog(List<Map<String, dynamic>> allAuthors) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        final bool isDark = OhtliSettings.instance.isDarkMode;
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E22) : OhtliColors.cloudDancer,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(
+            'Autores',
+            style: GoogleFonts.outfit(
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : OhtliColors.onyx,
+            ),
+          ),
+          content: Container(
+            width: double.maxFinite,
+            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: allAuthors.length,
+              itemBuilder: (context, index) {
+                final author = allAuthors[index];
+                final String uid = author['uid'];
+                final String name = author['displayName'] ?? 'Viajero Ohtli';
+                final String? photoURL = author['photoURL'];
+                final String role = author['title'] ?? 'Viajero';
+                final String initials = name.isNotEmpty ? name[0].toUpperCase() : '';
+
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                  leading: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.2), width: 1),
+                    ),
+                    child: CircleAvatar(
+                      radius: 20,
+                      backgroundColor: OhtliColors.stormyTeal.withOpacity(0.1),
+                      backgroundImage: (photoURL != null && photoURL.isNotEmpty)
+                          ? _getImageProvider(photoURL)
+                          : null,
+                      child: (photoURL == null || photoURL.isEmpty)
+                          ? Text(
+                              initials,
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: OhtliColors.stormyTeal,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                  title: Text(
+                    name,
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: isDark ? Colors.white : OhtliColors.onyx,
+                    ),
+                  ),
+                  subtitle: Text(
+                    role,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.6),
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: OhtliColors.stormyTeal,
+                  ),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PublicProfilePage(
+                          userId: uid,
+                          showBackButton: true,
+                          onBack: () => Navigator.pop(context),
                         ),
                       ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cerrar',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.bold,
+                  color: OhtliColors.stormyTeal,
+                ),
               ),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -955,6 +1257,12 @@ class _TripViewerPageState extends State<TripViewerPage> {
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
+                            if (!isDesktop) ...[
+                              const SizedBox(height: 16),
+                              Center(
+                                child: _buildAuthorWidget(isDark),
+                              ),
+                            ],
                             if (desc.isNotEmpty) ...[
                               const SizedBox(height: 14),
                               OhtliMarkdownText(
@@ -971,14 +1279,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       ),
                       if (isDesktop) ...[
                         const SizedBox(width: 32),
-                        _buildAuthorWidget(authorName, authorPhoto, authorRole, isDark),
+                        _buildAuthorWidget(isDark),
                       ],
                     ],
                   ),
-                  if (!isDesktop) ...[
-                    const SizedBox(height: 20),
-                    _buildAuthorWidget(authorName, authorPhoto, authorRole, isDark),
-                  ],
                 ],
               ),
             ),
