@@ -363,7 +363,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         await docRef.update({
           'closeFriends': FieldValue.arrayUnion([widget.userId]),
         });
-        _showStatusSnackBar('¡Añadido a tus Mejores Amigos! ⭐');
+        _showStatusSnackBar('¡Añadido a tus Mejores Amigos!');
       }
     } catch (e) {
       print("Error setting friend status: $e");
@@ -742,38 +742,44 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Cover Photo Banner
-                  Container(
-                    height: coverHeight,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withOpacity(0.3),
-                    ),
-                    child: ClipRect(
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            image: coverURL != null && coverURL.isNotEmpty
-                                ? DecorationImage(
-                                    image: _getImageProvider(coverURL),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                            gradient: coverURL == null
-                                ? LinearGradient(
-                                    colors: [
-                                      OhtliColors.stormyTeal.withOpacity(0.8),
-                                      OhtliColors.xoconostle.withOpacity(0.7),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  )
-                                : null,
+                  // Cover Photo Banner with bottom spacing to expand the Stack
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        height: coverHeight,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withOpacity(0.3),
+                        ),
+                        child: ClipRect(
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                image: coverURL != null && coverURL.isNotEmpty
+                                    ? DecorationImage(
+                                        image: _getImageProvider(coverURL),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                                gradient: coverURL == null
+                                    ? LinearGradient(
+                                        colors: [
+                                          OhtliColors.stormyTeal.withOpacity(0.8),
+                                          OhtliColors.xoconostle.withOpacity(0.7),
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      )
+                                    : null,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 95),
+                    ],
                   ),
 
                   // Edit Cover Button
@@ -831,7 +837,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
                   // Overlapping Profile Avatar
                   Positioned(
-                    bottom: isDesktop ? -60 : -45,
+                    bottom: isDesktop ? 35 : 50,
                     left: 24,
                     child: Stack(
                       alignment: Alignment.center,
@@ -888,7 +894,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   ),
 
                   Positioned(
-                    bottom: isDesktop ? -95 : -85,
+                    bottom: isDesktop ? 0 : 10,
                     right: 24,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -904,9 +910,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
               ),
             ),
 
-            // Spacer for Avatar overlap
+            // Spacer for Avatar overlap is handled by the cover banner Column's 95px height expansion
             const SliverToBoxAdapter(
-              child: SizedBox(height: 70),
+              child: SizedBox(height: 10),
             ),
 
             // Profile metadata
@@ -916,13 +922,21 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      displayName,
-                      style: GoogleFonts.outfit(
-                        fontSize: isDesktop ? 26 : 22,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : OhtliColors.onyx,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          displayName,
+                          style: GoogleFonts.outfit(
+                            fontSize: isDesktop ? 26 : 22,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : OhtliColors.onyx,
+                          ),
+                        ),
+                        if (_isCloseFriend) ...[
+                          const SizedBox(width: 8),
+                          const Icon(Icons.star_rounded, color: OhtliColors.stormyTeal, size: 20),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 4),
                     _buildActiveTitleWidget(
@@ -1146,7 +1160,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       if (_isCloseFriend) {
         btnBg = OhtliColors.stormyTeal;
         btnText = Colors.white;
-        btnIcon = Icons.star_rounded;
+        btnIcon = Icons.people_alt_rounded;
         btnLabel = 'Mejor Amigo';
         isOutline = false;
       } else {
@@ -1206,7 +1220,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             value: 'closeFriend',
             child: Row(
               children: [
-                const Icon(Icons.star_rounded, size: 16, color: OhtliColors.stormyTeal),
+                const Icon(Icons.people_rounded, size: 16, color: OhtliColors.stormyTeal),
                 const SizedBox(width: 10),
                 Text(
                   'Mejor Amigo',
@@ -1238,13 +1252,16 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             ),
           ),
         ],
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: btnBg,
-            borderRadius: BorderRadius.circular(10),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: btnBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: buttonChild,
           ),
-          child: buttonChild,
         ),
       );
     }

@@ -67,7 +67,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('¡Añadido a tus Mejores Amigos! ⭐', style: GoogleFonts.inter()),
+              content: Text('¡Añadido a tus Mejores Amigos!', style: GoogleFonts.inter()),
               backgroundColor: OhtliColors.stormyTeal,
             ),
           );
@@ -198,7 +198,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
               ),
               tabs: const [
                 Tab(text: 'Tus Amigos'),
-                Tab(text: 'Mejores Amigos ⭐'),
+                Tab(text: 'Mejores Amigos'),
                 Tab(text: 'Sugeridos'),
               ],
             ),
@@ -329,7 +329,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
             isSuggested
                 ? 'No hay sugerencias disponibles.'
                 : (onlyCloseFriends
-                    ? 'No tienes mejores amigos asignados aún. ⭐'
+                    ? 'No tienes mejores amigos asignados aún.'
                     : 'Aún no tienes amigos en tu lista.'),
             style: GoogleFonts.inter(
               color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
