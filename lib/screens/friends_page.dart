@@ -581,10 +581,10 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
                   if (hasSent) {
                     return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
                         color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withOpacity(0.4),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -605,7 +605,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                   } else if (incomingRequestId != null) {
                     return ElevatedButton.icon(
                       onPressed: () => _acceptFriendRequestFromSuggested(incomingRequestId, friendId),
-                      icon: const Icon(Icons.check_rounded, size: 12, color: Colors.white),
+                      icon: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
                       label: Text(
                         'Aceptar',
                         style: GoogleFonts.inter(
@@ -617,30 +617,31 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                       style: ElevatedButton.styleFrom(
                         backgroundColor: OhtliColors.stormyTeal,
                         elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         minimumSize: Size.zero,
                       ),
                     );
                   } else {
-                    return ElevatedButton(
+                    return ElevatedButton.icon(
                       onPressed: () => _sendFriendRequest(friendId, name, photoURL),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        minimumSize: Size.zero,
-                      ),
-                      child: Text(
+                      icon: const Icon(Icons.person_add_rounded, size: 14, color: Colors.white),
+                      label: Text(
                         'Añadir amigo',
                         style: GoogleFonts.inter(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                         ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        minimumSize: Size.zero,
                       ),
                     );
                   }
@@ -663,17 +664,17 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                     ),
                   ],
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: isCloseFriend ? OhtliColors.stormyTeal : OhtliColors.cantera.withOpacity(0.8),
-                      borderRadius: BorderRadius.circular(20),
+                      color: isCloseFriend ? OhtliColors.stormyTeal : (isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withOpacity(0.8)),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       isCloseFriend ? 'Mejor Amigo' : 'Amigo',
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: isCloseFriend ? Colors.white : OhtliColors.onyx,
+                        color: isCloseFriend ? Colors.white : (isDark ? Colors.white70 : OhtliColors.onyx),
                       ),
                     ),
                   ),
