@@ -128,6 +128,33 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     try {
       final firestore = FirebaseFirestore.instance;
 
+      // Check if there is already a friend request between these two users to avoid duplicates
+      final existingRequests = await firestore
+          .collection('friend_requests')
+          .where('senderId', isEqualTo: _currentUser.uid)
+          .where('receiverId', isEqualTo: targetUserId)
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      final existingIncoming = await firestore
+          .collection('friend_requests')
+          .where('senderId', isEqualTo: targetUserId)
+          .where('receiverId', isEqualTo: _currentUser.uid)
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      if (existingRequests.docs.isNotEmpty || existingIncoming.docs.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ya existe una solicitud de amistad pendiente.', style: GoogleFonts.inter()),
+              backgroundColor: OhtliColors.xoconostle,
+            ),
+          );
+        }
+        return;
+      }
+
       // 1. Create a top-level friend request
       final docRef = await firestore.collection('friend_requests').add({
         'senderId': _currentUser.uid,

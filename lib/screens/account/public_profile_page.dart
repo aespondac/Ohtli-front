@@ -269,6 +269,26 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     try {
       final firestore = FirebaseFirestore.instance;
 
+      // Check if there is already a friend request between these two users to avoid duplicates
+      final existingRequests = await firestore
+          .collection('friend_requests')
+          .where('senderId', isEqualTo: _currentUser.uid)
+          .where('receiverId', isEqualTo: widget.userId)
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      final existingIncoming = await firestore
+          .collection('friend_requests')
+          .where('senderId', isEqualTo: widget.userId)
+          .where('receiverId', isEqualTo: _currentUser.uid)
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      if (existingRequests.docs.isNotEmpty || existingIncoming.docs.isNotEmpty) {
+        _showStatusSnackBar('Ya existe una solicitud de amistad pendiente.');
+        return;
+      }
+
       // 1. Create a top-level friend request
       final docRef = await firestore.collection('friend_requests').add({
         'senderId': _currentUser.uid,
@@ -778,7 +798,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                           ),
                         ),
                       ),
-                      const SizedBox(height: 95),
+                      SizedBox(height: isDesktop ? 95 : 75),
                     ],
                   ),
 
@@ -837,7 +857,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
                   // Overlapping Profile Avatar
                   Positioned(
-                    bottom: isDesktop ? 35 : 50,
+                    bottom: isDesktop ? 35 : 30,
                     left: 24,
                     child: Stack(
                       alignment: Alignment.center,
@@ -894,7 +914,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   ),
 
                   Positioned(
-                    bottom: isDesktop ? 0 : 10,
+                    bottom: 0,
                     right: 24,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,

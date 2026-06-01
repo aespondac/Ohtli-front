@@ -76,6 +76,28 @@ class _NotificationsPageState extends State<NotificationsPage> {
           'friends': FieldValue.arrayUnion([senderId]),
         });
 
+        // 5. Clean up any other duplicate pending notifications/requests between these two users
+        final duplicateRequests = await firestore
+            .collection('friend_requests')
+            .where('senderId', isEqualTo: senderId)
+            .where('receiverId', isEqualTo: _currentUser.uid)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        for (var requestDoc in duplicateRequests.docs) {
+          if (requestDoc.id != notificationId) {
+            await requestDoc.reference.update({'status': 'accepted'});
+            await firestore
+                .collection('users')
+                .doc(_currentUser.uid)
+                .collection('notifications')
+                .doc(requestDoc.id)
+                .update({
+              'status': 'accepted',
+            });
+          }
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -100,6 +122,28 @@ class _NotificationsPageState extends State<NotificationsPage> {
             .update({
           'status': 'declined',
         });
+
+        // 3. Clean up any other duplicate pending requests as declined
+        final duplicateRequests = await firestore
+            .collection('friend_requests')
+            .where('senderId', isEqualTo: senderId)
+            .where('receiverId', isEqualTo: _currentUser.uid)
+            .where('status', isEqualTo: 'pending')
+            .get();
+
+        for (var requestDoc in duplicateRequests.docs) {
+          if (requestDoc.id != notificationId) {
+            await requestDoc.reference.update({'status': 'declined'});
+            await firestore
+                .collection('users')
+                .doc(_currentUser.uid)
+                .collection('notifications')
+                .doc(requestDoc.id)
+                .update({
+              'status': 'declined',
+            });
+          }
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
