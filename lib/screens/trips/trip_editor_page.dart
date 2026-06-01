@@ -1498,6 +1498,107 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
+  bool get _isOwner {
+    final user = FirebaseAuth.instance.currentUser;
+    return user != null && user.uid == widget.trip.userId;
+  }
+
+  void _showCoAuthorsSelectionDialog() {
+    List<String> tempCoAuthorIds = List.from(_coAuthorIds);
+    List<String> tempCoAuthorNames = List.from(_coAuthorNames);
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: OhtliColors.cloudDancer,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Text(
+                'Co-autores del Plan',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+              ),
+              content: Container(
+                width: double.maxFinite,
+                constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
+                child: _friendsList.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Aún no tienes amigos para agregar como co-autor.',
+                          style: GoogleFonts.inter(fontSize: 13, color: Colors.grey, fontStyle: FontStyle.italic),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _friendsList.length,
+                        itemBuilder: (context, idx) {
+                          final friend = _friendsList[idx];
+                          final String friendId = friend['uid'];
+                          final String friendName = friend['displayName'];
+                          final bool isSelected = tempCoAuthorIds.contains(friendId);
+
+                          return CheckboxListTile(
+                            title: Text(friendName, style: GoogleFonts.inter(fontSize: 13)),
+                            value: isSelected,
+                            activeColor: OhtliColors.stormyTeal,
+                            dense: true,
+                            onChanged: (val) {
+                              setStateDialog(() {
+                                if (val == true) {
+                                  tempCoAuthorIds.add(friendId);
+                                  tempCoAuthorNames.add(friendName);
+                                } else {
+                                  tempCoAuthorIds.remove(friendId);
+                                  tempCoAuthorNames.remove(friendName);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancelar',
+                    style: GoogleFonts.inter(color: Colors.grey, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    setState(() {
+                      _coAuthorIds = tempCoAuthorIds;
+                      _coAuthorNames = tempCoAuthorNames;
+                    });
+                    Navigator.pop(dialogContext);
+                    await _saveToCloudFirestore();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Co-autores actualizados y sincronizados con éxito. 👥', style: GoogleFonts.inter()),
+                        backgroundColor: OhtliColors.stormyTeal,
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: OhtliColors.stormyTeal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text(
+                    'Guardar',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _handlePublishAction() async {
     if (_status == 'published') {
       await _showErrataDialog();
@@ -1803,6 +1904,16 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           ),
           actions: [
+            // 1. Co-authors button for plans (drafts) - ONLY for the owner/creator
+            if (_status == 'draft' && _isOwner) ...[
+              IconButton(
+                icon: const Icon(Icons.people_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
+                tooltip: 'Co-autores del Plan',
+                onPressed: _showCoAuthorsSelectionDialog,
+              ),
+              const SizedBox(width: 4),
+            ],
+            // 2. Publish / Errata action button
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: _status == 'published'
@@ -1824,75 +1935,78 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         elevation: 0,
                       ),
                     )
-                  : ElevatedButton.icon(
-                      onPressed: _handlePublishAction,
-                      icon: const Icon(Icons.publish_rounded, size: 14, color: Colors.white),
-                      label: Text(
-                        'Publicar',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                  : (_isOwner
+                      ? ElevatedButton.icon(
+                          onPressed: _handlePublishAction,
+                          icon: const Icon(Icons.publish_rounded, size: 14, color: Colors.white),
+                          label: Text(
+                            'Publicar',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: OhtliColors.stormyTeal,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            elevation: 0,
+                          ),
+                        )
+                      : const SizedBox.shrink()),
+            ),
+            // 3. Visibility Dropdown - ONLY for the owner/creator
+            if (_isOwner)
+              Container(
+                margin: const EdgeInsets.only(right: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
+                    width: 1,
+                  ),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _visibility,
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+                    iconEnabledColor: OhtliColors.stormyTeal,
+                    dropdownColor: isDark ? const Color(0xFF25252A) : Colors.white,
+                    items: [
+                      DropdownMenuItem(
+                        value: 'private',
+                        child: Text(
+                          'Privado',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: OhtliColors.onyx,
+                          ),
                         ),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
+                      DropdownMenuItem(
+                        value: 'public',
+                        child: Text(
+                          'Público',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: OhtliColors.onyx,
+                          ),
+                        ),
                       ),
-                    ),
-            ),
-            // Visibility Dropdown
-            Container(
-              margin: const EdgeInsets.only(right: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
-                  width: 1,
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        _changeVisibility(val);
+                      }
+                    },
+                  ),
                 ),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _visibility,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
-                  iconEnabledColor: OhtliColors.stormyTeal,
-                  dropdownColor: isDark ? const Color(0xFF25252A) : Colors.white,
-                  items: [
-                    DropdownMenuItem(
-                      value: 'private',
-                      child: Text(
-                        'Privado',
-                        style: GoogleFonts.inter(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: OhtliColors.onyx,
-                        ),
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'public',
-                      child: Text(
-                        'Público',
-                        style: GoogleFonts.inter(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: OhtliColors.onyx,
-                        ),
-                      ),
-                    ),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) {
-                      _changeVisibility(val);
-                    }
-                  },
-                ),
-              ),
-            ),
           ],
         ),
         body: SafeArea(

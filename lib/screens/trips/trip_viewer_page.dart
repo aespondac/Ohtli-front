@@ -450,7 +450,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final bool isOwner = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
     final bool isCoAuthor = currentUser != null && _trip != null && _trip!.coAuthorIds.contains(currentUser.uid);
     final bool isPlan = _trip != null && _trip!.travelDate != null;
-    final bool showErrataButton = isOwner || (isCoAuthor && isPlan);
+    final bool showErrataButton = isOwner || isCoAuthor;
+    final bool canEdit = isOwner || (isCoAuthor && _trip != null && _trip!.status == 'draft');
 
     final Widget mainScrollableContent = SingleChildScrollView(
       child: Column(
@@ -609,7 +610,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       floatingActionButton: (showErrataButton && (!isSurpriseForMe || (isOpened || _hasUnwrappedGift)))
           ? FloatingActionButton.extended(
               onPressed: () {
-                if (isOwner) {
+                if (canEdit) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -622,13 +623,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   _showCoAuthorErrataDialog();
                 }
               },
-              backgroundColor: OhtliColors.xoconostle,
+              backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
               foregroundColor: Colors.white,
               elevation: 4,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              icon: const Icon(Icons.history_edu_rounded, size: 20),
+              icon: Icon(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, size: 20),
               label: Text(
-                'Fe de Erratas',
+                canEdit ? 'Editar' : 'Fe de Erratas',
                 style: GoogleFonts.inter(fontWeight: FontWeight.bold),
               ),
             )

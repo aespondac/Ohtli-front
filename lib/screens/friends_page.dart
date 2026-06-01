@@ -68,7 +68,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('¡Añadido a tus Mejores Amigos! ⭐', style: GoogleFonts.inter()),
-              backgroundColor: const Color(0xFF10B981),
+              backgroundColor: OhtliColors.stormyTeal,
             ),
           );
         }
@@ -442,7 +442,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                             ),
                             if (isCloseFriend) ...[
                               const SizedBox(width: 6),
-                              const Icon(Icons.star_rounded, color: Color(0xFF10B981), size: 14),
+                              const Icon(Icons.star_rounded, color: OhtliColors.stormyTeal, size: 14),
                             ],
                           ],
                         ),
@@ -506,17 +506,17 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                     ),
                     const PopupMenuItem<String>(
                       value: 'closeFriend',
-                      child: Text('Mejor Amigo ⭐'),
+                      child: Text('Mejor Amigo'),
                     ),
                   ],
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isCloseFriend ? const Color(0xFF10B981) : OhtliColors.cantera.withOpacity(0.8),
+                      color: isCloseFriend ? OhtliColors.stormyTeal : OhtliColors.cantera.withOpacity(0.8),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      isCloseFriend ? 'Mejor Amigo ⭐' : 'Amigo',
+                      isCloseFriend ? 'Mejor Amigo' : 'Amigo',
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,

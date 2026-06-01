@@ -1144,10 +1144,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       bool isOutline = true;
 
       if (_isCloseFriend) {
-        btnBg = const Color(0xFF10B981); // Emerald green
+        btnBg = OhtliColors.stormyTeal;
         btnText = Colors.white;
         btnIcon = Icons.star_rounded;
-        btnLabel = 'Mejor Amigo ⭐';
+        btnLabel = 'Mejor Amigo';
         isOutline = false;
       } else {
         btnBg = OhtliColors.cantera.withValues(alpha: 0.8);
@@ -1206,10 +1206,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             value: 'closeFriend',
             child: Row(
               children: [
-                const Icon(Icons.star_rounded, size: 16, color: Color(0xFF10B981)),
+                const Icon(Icons.star_rounded, size: 16, color: OhtliColors.stormyTeal),
                 const SizedBox(width: 10),
                 Text(
-                  'Mejor Amigo ⭐',
+                  'Mejor Amigo',
                   style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white : OhtliColors.onyx),
                 ),
                 if (_isCloseFriend) ...[
