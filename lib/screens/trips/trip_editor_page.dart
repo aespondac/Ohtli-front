@@ -115,6 +115,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               fetched.add({
                 'uid': doc.id,
                 'displayName': dName,
+                'photoURL': doc.data()['photoURL'],
                 'isMutualCloseFriend': isMutualCloseFriend,
               });
             }
@@ -1503,6 +1504,81 @@ class _TripEditorPageState extends State<TripEditorPage> {
     return user != null && user.uid == widget.trip.userId;
   }
 
+  Widget _buildCoAuthorsAvatarStack() {
+    if (_coAuthorIds.isEmpty) return const SizedBox.shrink();
+
+    final int maxVisible = 3;
+    final List<Widget> avatarWidgets = [];
+
+    for (int i = 0; i < _coAuthorIds.length; i++) {
+      if (i >= maxVisible) {
+        final int remaining = _coAuthorIds.length - maxVisible;
+        avatarWidgets.add(
+          Align(
+            widthFactor: 0.6,
+            child: CircleAvatar(
+              radius: 12,
+              backgroundColor: OhtliColors.stormyTeal,
+              child: Text(
+                '+$remaining',
+                style: GoogleFonts.inter(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        );
+        break;
+      }
+
+      final String uid = _coAuthorIds[i];
+      final friend = _friendsList.firstWhere(
+        (f) => f['uid'] == uid,
+        orElse: () => <String, dynamic>{'displayName': _coAuthorNames[i], 'photoURL': null},
+      );
+
+      final String? photoURL = friend['photoURL'];
+      final String name = friend['displayName'] ?? 'Viajero';
+      final String initials = name.isNotEmpty ? name[0].toUpperCase() : '';
+
+      avatarWidgets.add(
+        Align(
+          widthFactor: 0.6,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.5),
+            ),
+            child: CircleAvatar(
+              radius: 12,
+              backgroundColor: OhtliColors.stormyTeal,
+              backgroundImage: (photoURL != null && photoURL.isNotEmpty)
+                  ? NetworkImage(photoURL)
+                  : null,
+              child: (photoURL == null || photoURL.isEmpty)
+                  ? Text(
+                      initials,
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: avatarWidgets,
+    );
+  }
+
   void _showCoAuthorsSelectionDialog() {
     List<String> tempCoAuthorIds = List.from(_coAuthorIds);
     List<String> tempCoAuthorNames = List.from(_coAuthorNames);
@@ -1538,8 +1614,28 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           final String friendName = friend['displayName'];
                           final bool isSelected = tempCoAuthorIds.contains(friendId);
 
+                          final String? photoURL = friend['photoURL'];
+                          final String initials = friendName.isNotEmpty ? friendName[0].toUpperCase() : '';
+
                           return CheckboxListTile(
-                            title: Text(friendName, style: GoogleFonts.inter(fontSize: 13)),
+                            secondary: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: OhtliColors.stormyTeal.withOpacity(0.2),
+                              backgroundImage: (photoURL != null && photoURL.isNotEmpty)
+                                  ? NetworkImage(photoURL)
+                                  : null,
+                              child: (photoURL == null || photoURL.isEmpty)
+                                  ? Text(
+                                      initials,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: OhtliColors.stormyTeal,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            title: Text(friendName, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx, fontWeight: FontWeight.w500)),
                             value: isSelected,
                             activeColor: OhtliColors.stormyTeal,
                             dense: true,
@@ -1906,6 +2002,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
           actions: [
             // 1. Co-authors button for plans (drafts) - ONLY for the owner/creator
             if (_status == 'draft' && _isOwner) ...[
+              _buildCoAuthorsAvatarStack(),
+              const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.people_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
                 tooltip: 'Co-autores del Plan',

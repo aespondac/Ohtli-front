@@ -659,74 +659,101 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                   );
                 }
 
-                final allTrips = snapshot.data ?? [];
-                final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
-                final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collectionGroup('trips')
+                      .where('coAuthorIds', arrayContains: _userId)
+                      .snapshots(),
+                  builder: (context, coAuthorsSnapshot) {
+                    final coAuthorDocs = coAuthorsSnapshot.data?.docs ?? [];
+                    final coAuthorTrips = coAuthorDocs
+                        .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                        .toList();
 
-                return TabBarView(
-                  children: [
-                    // --- TAB: PUBLICADOS ---
-                    _buildTripsList(
-                      publishedTrips, 
-                      'Aún no tienes viajes publicados.',
-                      'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
-                      crossAxisCount, 
-                      padding,
-                    ),
+                    final ownedTrips = snapshot.data ?? [];
+                    
+                    // Combine all owned and co-authored trips, avoiding duplicates by trip ID
+                    final Map<String, Trip> combinedMap = {};
+                    for (var trip in ownedTrips) {
+                      combinedMap[trip.id] = trip;
+                    }
+                    for (var trip in coAuthorTrips) {
+                      combinedMap[trip.id] = trip;
+                    }
+                    
+                    final allTrips = combinedMap.values.toList();
+                    // Sort combined list by createdAt descending
+                    allTrips.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-                    // --- TAB: PLANES (Borradores) ---
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collectionGroup('trips')
-                          .where('surpriseTargetIds', arrayContains: _userId)
-                          .snapshots(),
-                      builder: (context, surpriseSnapshot) {
-                        final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
-                        final now = DateTime.now();
-                        final surpriseTrips = surpriseDocs
-                            .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                            .where((t) => t.surpriseUnlockDate == null || !now.isBefore(t.surpriseUnlockDate!))
-                            .toList();
+                    final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
+                    final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
 
-                        Widget? surpriseSection;
-                        if (surpriseTrips.isNotEmpty) {
-                          surpriseSection = _buildSurprisePlansSection(surpriseTrips, isDark);
-                        }
+                    return TabBarView(
+                      children: [
+                        // --- TAB: PUBLICADOS ---
+                        _buildTripsList(
+                          publishedTrips, 
+                          'Aún no tienes viajes publicados.',
+                          'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
+                          crossAxisCount, 
+                          padding,
+                        ),
 
-                        if (draftTrips.isEmpty && surpriseTrips.isEmpty) {
-                          return _buildTripsList(
-                            [], 
-                            'Tu libreta de caminos está vacía.',
-                            'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
-                            crossAxisCount, 
-                            padding,
-                          );
-                        }
+                        // --- TAB: PLANES (Borradores) ---
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collectionGroup('trips')
+                              .where('surpriseTargetIds', arrayContains: _userId)
+                              .snapshots(),
+                          builder: (context, surpriseSnapshot) {
+                            final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
+                            final now = DateTime.now();
+                            final surpriseTrips = surpriseDocs
+                                .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                                .where((t) => t.surpriseUnlockDate == null || !now.isBefore(t.surpriseUnlockDate!))
+                                .toList();
 
-                        return ListView(
-                          padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
-                          children: [
-                            if (surpriseSection != null) ...[
-                              surpriseSection,
-                              const SizedBox(height: 24),
-                            ],
-                            if (draftTrips.isNotEmpty) ...[
-                              Text(
-                                'Mis Planes de Viaje',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: OhtliColors.onyx,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              _buildTripsGrid(draftTrips, crossAxisCount),
-                            ],
-                          ],
-                        );
-                      },
-                    ),
-                  ],
+                            Widget? surpriseSection;
+                            if (surpriseTrips.isNotEmpty) {
+                              surpriseSection = _buildSurprisePlansSection(surpriseTrips, isDark);
+                            }
+
+                            if (draftTrips.isEmpty && surpriseTrips.isEmpty) {
+                              return _buildTripsList(
+                                [], 
+                                'Tu libreta de caminos está vacía.',
+                                'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
+                                crossAxisCount, 
+                                padding,
+                              );
+                            }
+
+                            return ListView(
+                              padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
+                              children: [
+                                if (surpriseSection != null) ...[
+                                  surpriseSection,
+                                  const SizedBox(height: 24),
+                                ],
+                                if (draftTrips.isNotEmpty) ...[
+                                  Text(
+                                    'Mis Planes de Viaje',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: OhtliColors.onyx,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildTripsGrid(draftTrips, crossAxisCount),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
