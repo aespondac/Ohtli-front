@@ -1168,11 +1168,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         Builder(
                           builder: (context) {
                             final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
-                            final closeFriends = actualFriends
-                                .where((f) => f['isCloseFriend'] == true)
+                            final mutualCloseFriends = actualFriends
+                                .where((f) => f['isMutualCloseFriend'] == true)
                                 .toList();
                             
-                            if (closeFriends.isEmpty) return const SizedBox.shrink();
+                            if (mutualCloseFriends.isEmpty) return const SizedBox.shrink();
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1218,9 +1218,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                     child: ListView.builder(
                                       shrinkWrap: true,
                                       physics: const ClampingScrollPhysics(),
-                                      itemCount: closeFriends.length,
+                                      itemCount: mutualCloseFriends.length,
                                       itemBuilder: (context, idx) {
-                                        final friend = closeFriends[idx];
+                                        final friend = mutualCloseFriends[idx];
                                         final String friendId = friend['uid'];
                                         final String friendName = friend['displayName'];
                                         final bool isSelected = tempSurpriseTargetIds.contains(friendId);
