@@ -1600,6 +1600,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
   void _showCoAuthorsSelectionDialog() {
     List<String> tempCoAuthorIds = List.from(_coAuthorIds);
     List<String> tempCoAuthorNames = List.from(_coAuthorNames);
+    bool tempIsSurprise = _isSurprise;
+    List<String> tempSurpriseTargetIds = List.from(_surpriseTargetIds);
+    List<String> tempSurpriseTargetNames = List.from(_surpriseTargetNames);
+    DateTime? tempUnlockDate = _surpriseUnlockDate;
 
     showDialog(
       context: context,
@@ -1615,71 +1619,224 @@ class _TripEditorPageState extends State<TripEditorPage> {
               ),
               content: Container(
                 width: double.maxFinite,
-                constraints: const BoxConstraints(maxWidth: 400, maxHeight: 300),
-                child: Builder(
-                  builder: (context) {
-                    final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
-                    if (actualFriends.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'Aún no tienes amigos para agregar como co-autor.',
-                          style: GoogleFonts.inter(fontSize: 13, color: Colors.grey, fontStyle: FontStyle.italic),
-                        ),
-                      );
-                    }
-                    return ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: actualFriends.length,
-                      itemBuilder: (context, idx) {
-                        final friend = actualFriends[idx];
-                          final String friendId = friend['uid'];
-                          final String friendName = friend['displayName'];
-                          final bool isSelected = tempCoAuthorIds.contains(friendId);
-
-                          final String? photoURL = friend['photoURL'];
-                          final String initials = friendName.isNotEmpty ? friendName[0].toUpperCase() : '';
-
-                          return CheckboxListTile(
-                            secondary: CircleAvatar(
-                              radius: 14,
-                              backgroundColor: OhtliColors.stormyTeal.withOpacity(0.2),
-                              backgroundImage: (photoURL != null && photoURL.isNotEmpty)
-                                  ? NetworkImage(photoURL)
-                                  : null,
-                              child: (photoURL == null || photoURL.isEmpty)
-                                  ? Text(
-                                      initials,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: OhtliColors.stormyTeal,
-                                      ),
-                                    )
-                                  : null,
+                constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Builder(
+                        builder: (context) {
+                          final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
+                          if (actualFriends.isEmpty) {
+                            return Center(
+                              child: Text(
+                                'Aún no tienes amigos para agregar como co-autor.',
+                                style: GoogleFonts.inter(fontSize: 13, color: Colors.grey, fontStyle: FontStyle.italic),
+                              ),
+                            );
+                          }
+                          return Container(
+                            constraints: const BoxConstraints(maxHeight: 150),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
                             ),
-                            title: Text(friendName, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx, fontWeight: FontWeight.w500)),
-                            value: isSelected,
-                            activeColor: OhtliColors.stormyTeal,
-                            dense: true,
-                            onChanged: (_status == 'published' && _originalCoAuthorIds.contains(friendId))
-                                ? null
-                                : (val) {
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              physics: const ClampingScrollPhysics(),
+                              itemCount: actualFriends.length,
+                              itemBuilder: (context, idx) {
+                                final friend = actualFriends[idx];
+                                final String friendId = friend['uid'];
+                                final String friendName = friend['displayName'];
+                                final bool isSelected = tempCoAuthorIds.contains(friendId);
+
+                                final String? photoURL = friend['photoURL'];
+                                final String initials = friendName.isNotEmpty ? friendName[0].toUpperCase() : '';
+
+                                return CheckboxListTile(
+                                  secondary: CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: OhtliColors.stormyTeal.withOpacity(0.2),
+                                    backgroundImage: (photoURL != null && photoURL.isNotEmpty)
+                                        ? NetworkImage(photoURL)
+                                        : null,
+                                    child: (photoURL == null || photoURL.isEmpty)
+                                        ? Text(
+                                            initials,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: OhtliColors.stormyTeal,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
+                                  title: Text(friendName, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx, fontWeight: FontWeight.w500)),
+                                  value: isSelected,
+                                  activeColor: OhtliColors.stormyTeal,
+                                  dense: true,
+                                  onChanged: (_status == 'published' && _originalCoAuthorIds.contains(friendId))
+                                      ? null
+                                      : (val) {
+                                          setStateDialog(() {
+                                            if (val == true) {
+                                              tempCoAuthorIds.add(friendId);
+                                              tempCoAuthorNames.add(friendName);
+                                            } else {
+                                              tempCoAuthorIds.remove(friendId);
+                                              tempCoAuthorNames.remove(friendName);
+                                            }
+                                          });
+                                        },
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // --- Surprise Plan section ---
+                      if (_status == 'draft') ...[
+                        Builder(
+                          builder: (context) {
+                            final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
+                            final mutualCloseFriends = actualFriends
+                                .where((f) => f['isMutualCloseFriend'] == true)
+                                .toList();
+                            
+                            if (mutualCloseFriends.isEmpty) return const SizedBox.shrink();
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Divider(color: OhtliColors.cantera.withOpacity(0.3)),
+                                const SizedBox(height: 8),
+                                SwitchListTile(
+                                  title: Text(
+                                    '¿Es un plan sorpresa? 🎁',
+                                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                                  ),
+                                  subtitle: Text(
+                                    'Selecciona a tus mejores amigos mutuos como destinatarios de la sorpresa.',
+                                    style: GoogleFonts.inter(fontSize: 11, color: Colors.grey),
+                                  ),
+                                  value: tempIsSurprise,
+                                  activeColor: OhtliColors.stormyTeal,
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                  onChanged: (val) {
                                     setStateDialog(() {
-                                      if (val == true) {
-                                        tempCoAuthorIds.add(friendId);
-                                        tempCoAuthorNames.add(friendName);
-                                      } else {
-                                        tempCoAuthorIds.remove(friendId);
-                                        tempCoAuthorNames.remove(friendName);
+                                      tempIsSurprise = val;
+                                      if (!val) {
+                                        tempSurpriseTargetIds.clear();
+                                        tempSurpriseTargetNames.clear();
+                                        tempUnlockDate = null;
                                       }
                                     });
                                   },
-                          );
-                        },
-                      );
-                    },
+                                ),
+                                if (tempIsSurprise) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Destinatarios de la sorpresa:',
+                                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    constraints: const BoxConstraints(maxHeight: 100),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
+                                    ),
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      physics: const ClampingScrollPhysics(),
+                                      itemCount: mutualCloseFriends.length,
+                                      itemBuilder: (context, idx) {
+                                        final friend = mutualCloseFriends[idx];
+                                        final String friendId = friend['uid'];
+                                        final String friendName = friend['displayName'];
+                                        final bool isSelected = tempSurpriseTargetIds.contains(friendId);
+                                        
+                                        return CheckboxListTile(
+                                          title: Text(friendName, style: GoogleFonts.inter(fontSize: 12)),
+                                          value: isSelected,
+                                          activeColor: OhtliColors.stormyTeal,
+                                          dense: true,
+                                          visualDensity: VisualDensity.compact,
+                                          onChanged: (val) {
+                                            setStateDialog(() {
+                                              if (val == true) {
+                                                tempSurpriseTargetIds.add(friendId);
+                                                tempSurpriseTargetNames.add(friendName);
+                                              } else {
+                                                tempSurpriseTargetIds.remove(friendId);
+                                                tempSurpriseTargetNames.remove(friendName);
+                                              }
+                                            });
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Fecha de Apertura (Obligatoria):',
+                                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: tempUnlockDate ?? DateTime.now(),
+                                        firstDate: DateTime.now(),
+                                        lastDate: DateTime(2100),
+                                        builder: (context, child) {
+                                          return Theme(
+                                            data: Theme.of(context).copyWith(
+                                              colorScheme: ColorScheme.light(
+                                                primary: OhtliColors.stormyTeal,
+                                                onPrimary: Colors.white,
+                                                onSurface: OhtliColors.onyx,
+                                              ),
+                                            ),
+                                            child: child!,
+                                          );
+                                        },
+                                      );
+                                      if (picked != null) {
+                                        setStateDialog(() {
+                                          tempUnlockDate = picked;
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.lock_open_rounded, size: 14, color: OhtliColors.stormyTeal),
+                                    label: Text(
+                                      tempUnlockDate != null
+                                          ? '${tempUnlockDate!.day}/${tempUnlockDate!.month}/${tempUnlockDate!.year}'
+                                          : 'Seleccionar Fecha de Apertura',
+                                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.stormyTeal),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ],
                   ),
-              ),
+                ),              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
@@ -1693,6 +1850,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     setState(() {
                       _coAuthorIds = tempCoAuthorIds;
                       _coAuthorNames = tempCoAuthorNames;
+                      _isSurprise = tempIsSurprise;
+                      _surpriseTargetIds = tempSurpriseTargetIds;
+                      _surpriseTargetNames = tempSurpriseTargetNames;
+                      _surpriseUnlockDate = tempUnlockDate;
                     });
                     Navigator.pop(dialogContext);
                     await _saveToCloudFirestore();
@@ -2027,7 +2188,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ),
           actions: [
             // 1. Co-authors button for plans (drafts) - ONLY for the owner/creator
-            if (_status == 'draft' && _isOwner) ...[
+            if (_isOwner) ...[
               _buildCoAuthorsAvatarStack(),
               const SizedBox(width: 4),
               IconButton(
