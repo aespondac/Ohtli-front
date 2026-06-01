@@ -291,7 +291,13 @@ class _HomePageState extends State<HomePage> {
                 builder: (context, snapshot) {
                   int unreadCount = 0;
                   if (snapshot.hasData) {
-                    unreadCount = snapshot.data!.docs.length;
+                    final now = DateTime.now();
+                    unreadCount = snapshot.data!.docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final Timestamp? ts = data['timestamp'] as Timestamp?;
+                      if (ts == null) return true;
+                      return !now.isBefore(ts.toDate());
+                    }).length;
                   }
 
                   return Stack(

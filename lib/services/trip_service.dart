@@ -71,7 +71,9 @@ class TripService {
               'isPlan': true,
               'status': 'unread',
               'read': false,
-              'timestamp': FieldValue.serverTimestamp(),
+              'timestamp': trip.surpriseUnlockDate != null
+                  ? Timestamp.fromDate(trip.surpriseUnlockDate!)
+                  : FieldValue.serverTimestamp(),
             });
           }
         }

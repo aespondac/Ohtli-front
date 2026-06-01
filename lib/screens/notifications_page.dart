@@ -192,7 +192,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   );
                 }
 
-                final docs = snapshot.data?.docs ?? [];
+                final allDocs = snapshot.data?.docs ?? [];
+                final now = DateTime.now();
+                final docs = allDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final Timestamp? ts = data['timestamp'] as Timestamp?;
+                  if (ts == null) return true;
+                  return !now.isBefore(ts.toDate());
+                }).toList();
 
                 if (docs.isEmpty) {
                   return Center(

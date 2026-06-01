@@ -682,8 +682,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           .snapshots(),
                       builder: (context, surpriseSnapshot) {
                         final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
+                        final now = DateTime.now();
                         final surpriseTrips = surpriseDocs
                             .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                            .where((t) => t.surpriseUnlockDate == null || !now.isBefore(t.surpriseUnlockDate!))
                             .toList();
 
                         Widget? surpriseSection;

@@ -57,7 +57,26 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   Future<void> _loadTripData() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
     if (widget.trip != null) {
+      final t = widget.trip!;
+      final bool isAuthor = currentUser != null && t.userId == currentUser.uid;
+      final bool isSurpriseForMe = t.isSurprise && 
+          currentUser != null && 
+          t.surpriseTargetIds.contains(currentUser.uid);
+      final bool isLocked = isSurpriseForMe && 
+          !isAuthor && 
+          t.surpriseUnlockDate != null && 
+          DateTime.now().isBefore(t.surpriseUnlockDate!);
+
+      if (isLocked) {
+        setState(() {
+          _errorMessage = "No se pudo encontrar el viaje. Puede que sea privado o haya sido eliminado.";
+          _isLoading = false;
+        });
+        return;
+      }
+
       _trip = widget.trip;
       await Future.wait([
         _loadTripContent(),
@@ -67,6 +86,23 @@ class _TripViewerPageState extends State<TripViewerPage> {
       try {
         final fetchedTrip = await TripService().getTrip(widget.authorId!, widget.tripId!);
         if (fetchedTrip != null) {
+          final bool isAuthor = currentUser != null && fetchedTrip.userId == currentUser.uid;
+          final bool isSurpriseForMe = fetchedTrip.isSurprise && 
+              currentUser != null && 
+              fetchedTrip.surpriseTargetIds.contains(currentUser.uid);
+          final bool isLocked = isSurpriseForMe && 
+              !isAuthor && 
+              fetchedTrip.surpriseUnlockDate != null && 
+              DateTime.now().isBefore(fetchedTrip.surpriseUnlockDate!);
+
+          if (isLocked) {
+            setState(() {
+              _errorMessage = "No se pudo encontrar el viaje. Puede que sea privado o haya sido eliminado.";
+              _isLoading = false;
+            });
+            return;
+          }
+
           _trip = fetchedTrip;
           await Future.wait([
             _loadTripContent(),
