@@ -50,6 +50,20 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  // Preservar iconos contra tree-shaking en la web
+  // ignore: unused_field
+  static const List<Icon> _preservedIcons = [
+    Icon(Icons.notifications_none),
+    Icon(Icons.map_outlined),
+    Icon(Icons.map),
+    Icon(Icons.person_outline),
+    Icon(Icons.person),
+    Icon(Icons.emoji_events_outlined),
+    Icon(Icons.emoji_events),
+    Icon(Icons.place_outlined),
+    Icon(Icons.place),
+  ];
+
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   String? _localPhotoURL;
   int _currentIndex = 0;
@@ -307,7 +321,7 @@ class _HomePageState extends State<HomePage> {
           },
           backgroundColor: colorSidebar,
           selectedItemColor: OhtliColors.stormyTeal,
-          unselectedItemColor: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
+          unselectedItemColor: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
           selectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 11),
           unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 11),
           type: BottomNavigationBarType.fixed, // Use fixed when >= 4 items
@@ -328,7 +342,7 @@ class _HomePageState extends State<HomePage> {
                 width: 20,
                 height: 20,
                 colorFilter: ColorFilter.mode(
-                  isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
+                  isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
                   BlendMode.srcIn,
                 ),
               ),
@@ -387,7 +401,7 @@ class _HomePageState extends State<HomePage> {
       children: [
         Positioned.fill(
           child: CustomPaint(
-            painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
+            painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.95)),
           ),
         ),
         Positioned.fill(
@@ -508,8 +522,8 @@ class _HomePageState extends State<HomePage> {
                     boxShadow: [
                       BoxShadow(
                         color: isHovered 
-                            ? OhtliColors.stormyTeal.withValues(alpha: 0.15)
-                            : Colors.black.withValues(alpha: 0.08),
+                            ? OhtliColors.stormyTeal.withOpacity(0.15)
+                            : Colors.black.withOpacity(0.08),
                         blurRadius: isHovered ? 16 : 8,
                         offset: const Offset(0, 4),
                       ),
@@ -539,9 +553,9 @@ class _HomePageState extends State<HomePage> {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  Colors.black.withValues(alpha: 0.8),
-                                  Colors.black.withValues(alpha: 0.1),
-                                  Colors.black.withValues(alpha: 0.85),
+                                  Colors.black.withOpacity(0.8),
+                                  Colors.black.withOpacity(0.1),
+                                  Colors.black.withOpacity(0.85),
                                 ],
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
@@ -602,7 +616,7 @@ class _HomePageState extends State<HomePage> {
                               Text(
                                 desc,
                                 style: GoogleFonts.inter(
-                                  color: Colors.white.withValues(alpha: 0.8),
+                                  color: Colors.white.withOpacity(0.8),
                                   fontSize: 12,
                                   height: 1.4,
                                 ),
@@ -667,7 +681,7 @@ class _HomePageState extends State<HomePage> {
                                             return Text(
                                               titleName,
                                               style: GoogleFonts.inter(
-                                                color: Colors.white.withValues(alpha: 0.6),
+                                                color: Colors.white.withOpacity(0.6),
                                                 fontSize: 10,
                                               ),
                                             );

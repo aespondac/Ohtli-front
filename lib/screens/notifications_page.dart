@@ -133,7 +133,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 'Mantente al día con tu actividad',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: textColor.withValues(alpha: 0.5),
+                  color: textColor.withOpacity(0.5),
                   fontWeight: FontWeight.w400,
                 ),
               ),
@@ -145,7 +145,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         children: [
           Positioned.fill(
             child: CustomPaint(
-              painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.3)),
+              painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.3)),
             ),
           ),
           Positioned.fill(
@@ -179,7 +179,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         Text(
                           'No tienes notificaciones todavía.',
                           style: GoogleFonts.inter(
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.5),
+                            color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.5),
                             fontSize: 14,
                           ),
                         ),
@@ -226,7 +226,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
+                            color: Colors.black.withOpacity(0.02),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -268,7 +268,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                       TextSpan(
                                         text: messageText,
                                         style: TextStyle(
-                                          color: isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.85),
+                                          color: isDark ? Colors.white70 : OhtliColors.onyx.withOpacity(0.85),
                                         ),
                                       ),
                                     ],

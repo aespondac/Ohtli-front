@@ -36,6 +36,20 @@ class PublicProfilePage extends StatefulWidget {
 }
 
 class _PublicProfilePageState extends State<PublicProfilePage> with SingleTickerProviderStateMixin {
+  // Preservar iconos contra tree-shaking
+  // ignore: unused_field
+  static const List<Icon> _preservedIcons = [
+    Icon(Icons.edit_rounded),
+    Icon(Icons.arrow_back_ios_new_rounded),
+    Icon(Icons.camera_alt_rounded),
+    Icon(Icons.calendar_today_rounded),
+    Icon(Icons.check_rounded),
+    Icon(Icons.person_add_rounded),
+    Icon(Icons.star_rounded),
+    Icon(Icons.stars_rounded),
+    Icon(Icons.check_circle_rounded),
+  ];
+
   Map<String, dynamic>? _userProfile;
   bool _isLoadingProfile = true;
   double _scrollOffset = 0.0;
@@ -484,13 +498,13 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                         margin: const EdgeInsets.only(bottom: 10),
                         decoration: BoxDecoration(
                           color: isActive 
-                              ? OhtliColors.stormyTeal.withValues(alpha: 0.1) 
+                              ? OhtliColors.stormyTeal.withOpacity(0.1) 
                               : (isDark ? const Color(0xFF1E1E22) : Colors.white),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: isActive 
                                 ? OhtliColors.stormyTeal 
-                                : (isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4)),
+                                : (isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withOpacity(0.4)),
                             width: isActive ? 1.5 : 1,
                           ),
                         ),
@@ -499,7 +513,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: OhtliColors.xoconostle.withValues(alpha: 0.1),
+                              color: OhtliColors.xoconostle.withOpacity(0.1),
                             ),
                             child: Icon(
                               isActive ? Icons.stars_rounded : Icons.star_rounded,
@@ -519,7 +533,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             desc,
                             style: GoogleFonts.inter(
                               fontSize: 11,
-                              color: OhtliColors.onyx.withValues(alpha: 0.6),
+                              color: OhtliColors.onyx.withOpacity(0.6),
                             ),
                           ),
                           trailing: isActive
@@ -733,7 +747,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     height: coverHeight,
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.3),
+                      color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withOpacity(0.3),
                     ),
                     child: ClipRect(
                       child: ImageFiltered(
@@ -749,8 +763,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             gradient: coverURL == null
                                 ? LinearGradient(
                                     colors: [
-                                      OhtliColors.stormyTeal.withValues(alpha: 0.8),
-                                      OhtliColors.xoconostle.withValues(alpha: 0.7),
+                                      OhtliColors.stormyTeal.withOpacity(0.8),
+                                      OhtliColors.xoconostle.withOpacity(0.7),
                                     ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
@@ -777,7 +791,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.6),
+                                color: Colors.black.withOpacity(0.6),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Row(
@@ -808,7 +822,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.black.withValues(alpha: 0.5),
+                            color: Colors.black.withOpacity(0.5),
                           ),
                           child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
                         ),
@@ -873,21 +887,19 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     ),
                   ),
 
-                  // Stats & Configuration on Desktop ONLY (width >= 600)
-                  if (width >= 600)
-                    Positioned(
-                      bottom: isDesktop ? -45 : -35,
-                      right: 24,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildStatsRow(isDark, followingList.length),
-                          const SizedBox(height: 12),
-                          _buildActionButtons(isDark),
-                        ],
-                      ),
+                  Positioned(
+                    bottom: isDesktop ? -75 : -65,
+                    right: 24,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildStatsRow(isDark, followingList.length),
+                        const SizedBox(height: 12),
+                        _buildActionButtons(isDark),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ),
@@ -919,13 +931,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     ),
                     const SizedBox(height: 12),
                     
-                    // Stats & Actions on Mobile ONLY (width < 600)
-                    if (width < 600) ...[
-                      _buildStatsRow(isDark, followingList.length),
-                      const SizedBox(height: 12),
-                      _buildActionButtons(isDark),
-                      const SizedBox(height: 12),
-                    ],
+                    // Stats & Actions now rendered inside Stack Positioned on all widths
 
                     // Registration Date
                     Row(
@@ -936,7 +942,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                           _formatJoinedDate(rawCreatedAt),
                           style: GoogleFonts.inter(
                             fontSize: 11,
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.5),
+                            color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.5),
                           ),
                         ),
                       ],
@@ -958,7 +964,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   controller: _tabController,
                   indicatorColor: OhtliColors.stormyTeal,
                   labelColor: OhtliColors.stormyTeal,
-                  unselectedLabelColor: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
+                  unselectedLabelColor: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
                   labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13.5),
                   unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13.5),
                   tabs: const [
@@ -1001,7 +1007,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 text: 'Seguidores',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                  color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
                 ),
               ),
             ],
@@ -1023,7 +1029,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 text: 'Siguiendo',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                  color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
                 ),
               ),
             ],

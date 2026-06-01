@@ -169,7 +169,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                 'Conéctate y comparte con otros viajeros',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: textColor.withValues(alpha: 0.5),
+                  color: textColor.withOpacity(0.5),
                   fontWeight: FontWeight.w400,
                 ),
               ),
@@ -187,7 +187,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
               indicatorColor: OhtliColors.stormyTeal,
               indicatorWeight: 3,
               labelColor: OhtliColors.stormyTeal,
-              unselectedLabelColor: textColor.withValues(alpha: 0.5),
+              unselectedLabelColor: textColor.withOpacity(0.5),
               labelStyle: GoogleFonts.inter(
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
@@ -208,7 +208,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         children: [
           Positioned.fill(
             child: CustomPaint(
-              painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.3)),
+              painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.3)),
             ),
           ),
           Positioned.fill(
@@ -266,12 +266,12 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                             decoration: InputDecoration(
                               hintText: 'Buscar aventureros...',
                               hintStyle: GoogleFonts.inter(
-                                color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
+                                color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
                                 fontSize: 13,
                               ),
                               prefixIcon: Icon(
                                 Icons.search_rounded,
-                                color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
+                                color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
                                 size: 20,
                               ),
                               filled: true,
@@ -321,7 +321,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
           child: Text(
             isSuggested ? 'No hay sugerencias disponibles.' : 'Aún no tienes amigos en tu lista.',
             style: GoogleFonts.inter(
-              color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
+              color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
               fontSize: 13,
             ),
           ),
@@ -357,7 +357,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
+                color: Colors.black.withOpacity(0.02),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -447,7 +447,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                             return Text(
                               titleName,
                               style: GoogleFonts.inter(
-                                color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.5),
+                                color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
                                 fontSize: 11,
                               ),
                             );
@@ -501,7 +501,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isCloseFriend ? const Color(0xFF10B981) : OhtliColors.cantera.withValues(alpha: 0.8),
+                      color: isCloseFriend ? const Color(0xFF10B981) : OhtliColors.cantera.withOpacity(0.8),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(

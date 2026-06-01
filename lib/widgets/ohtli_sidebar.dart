@@ -28,6 +28,26 @@ class OhtliSidebar extends StatefulWidget {
 }
 
 class _OhtliSidebarState extends State<OhtliSidebar> {
+  // Preservar iconos contra tree-shaking
+  // ignore: unused_field
+  static const List<Icon> _preservedIcons = [
+    Icon(Icons.map_outlined),
+    Icon(Icons.map_rounded),
+    Icon(Icons.person_outline),
+    Icon(Icons.person),
+    Icon(Icons.people_outline),
+    Icon(Icons.people),
+    Icon(Icons.emoji_events_outlined),
+    Icon(Icons.emoji_events),
+    Icon(Icons.place_outlined),
+    Icon(Icons.place),
+    Icon(Icons.notifications_none),
+    Icon(Icons.notifications),
+    Icon(Icons.keyboard_arrow_left_rounded),
+    Icon(Icons.keyboard_arrow_right_rounded),
+    Icon(Icons.logout_rounded),
+  ];
+
   static bool _isCollapsed = false;
   static bool _hasLoadedState = false;
 
@@ -204,7 +224,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
 
     Color itemColor = isActive
         ? OhtliColors.stormyTeal
-        : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withValues(alpha: 0.7));
+        : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withOpacity(0.7));
 
     Widget content = Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -214,8 +234,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
       ),
       decoration: BoxDecoration(
         color: isActive
-            ? OhtliColors.cloudDancer.withValues(alpha: 0.8)
-            : (isHovered ? Colors.white.withValues(alpha: 0.3) : Colors.transparent),
+            ? OhtliColors.cloudDancer.withOpacity(0.8)
+            : (isHovered ? Colors.white.withOpacity(0.3) : Colors.transparent),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -243,7 +263,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
       content = Tooltip(
         message: label,
         decoration: BoxDecoration(
-          color: OhtliColors.onyx.withValues(alpha: 0.8),
+          color: OhtliColors.onyx.withOpacity(0.8),
           borderRadius: BorderRadius.circular(8),
         ),
         textStyle: GoogleFonts.inter(color: Colors.white, fontSize: 11),
@@ -451,7 +471,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w400,
-                            color: OhtliColors.onyx.withValues(alpha: 0.8),
+                            color: OhtliColors.onyx.withOpacity(0.8),
                           ),
                         ),
                       ),
@@ -471,7 +491,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
                           size: 17,
                           color: _isHoveringLogout
                               ? OhtliColors.xoconostle
-                              : OhtliColors.onyx.withValues(alpha: 0.5),
+                              : OhtliColors.onyx.withOpacity(0.5),
                         ),
                       ),
                     ),
