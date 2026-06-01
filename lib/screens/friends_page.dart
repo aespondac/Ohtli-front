@@ -78,6 +78,50 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     }
   }
 
+  Future<void> _acceptFriendRequestFromSuggested(String requestId, String targetUserId) async {
+    if (_currentUser == null) return;
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+
+      // 1. Update the top-level friend request
+      await firestore.collection('friend_requests').doc(requestId).update({
+        'status': 'accepted',
+      });
+
+      // 2. Update Bob's private notification
+      await firestore
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('notifications')
+          .doc(requestId)
+          .update({
+        'status': 'accepted',
+      });
+
+      // 3. Add Bob to Alice's friends list
+      await firestore.collection('users').doc(targetUserId).update({
+        'friends': FieldValue.arrayUnion([_currentUser.uid]),
+      });
+
+      // 4. Add Alice to Bob's friends list
+      await firestore.collection('users').doc(_currentUser.uid).update({
+        'friends': FieldValue.arrayUnion([targetUserId]),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('¡Ahora son amigos!', style: GoogleFonts.inter()),
+            backgroundColor: OhtliColors.stormyTeal,
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error accepting friend request from suggested: $e");
+    }
+  }
+
   Future<void> _sendFriendRequest(String targetUserId, String targetName, String? targetPhoto) async {
     if (_currentUser == null) return;
 
@@ -231,72 +275,102 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                       return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
                     }
 
-                    final allUsers = usersSnapshot.data?.docs ?? [];
-                    
-                    // 1. Filter friends
-                    var friendUsers = allUsers.where((doc) => friends.contains(doc.id)).toList();
-                    
-                    // 2. Filter suggested (everyone except ourselves and our friends)
-                    var suggestedUsers = allUsers.where((doc) => doc.id != _currentUser.uid && !friends.contains(doc.id)).toList();
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('friend_requests')
+                          .where('senderId', isEqualTo: _currentUser.uid)
+                          .where('status', isEqualTo: 'pending')
+                          .snapshots(),
+                      builder: (context, sentRequestsSnapshot) {
+                        return StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('friend_requests')
+                              .where('receiverId', isEqualTo: _currentUser.uid)
+                              .where('status', isEqualTo: 'pending')
+                              .snapshots(),
+                          builder: (context, incomingRequestsSnapshot) {
+                            final allUsers = usersSnapshot.data?.docs ?? [];
+                            final sentPendingIds = sentRequestsSnapshot.data?.docs.map((doc) => doc['receiverId'] as String).toSet() ?? {};
+                            final incomingPendingMap = {for (var doc in incomingRequestsSnapshot.data?.docs ?? []) doc['senderId'] as String: doc.id};
 
-                    // Apply search query filter if search is active
-                    if (_searchQuery.isNotEmpty) {
-                      friendUsers = friendUsers.where((doc) {
-                        final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
-                        return name.toLowerCase().contains(_searchQuery.toLowerCase());
-                      }).toList();
+                            // 1. Filter friends
+                            var friendUsers = allUsers.where((doc) => friends.contains(doc.id)).toList();
+                            
+                            // 2. Filter suggested (everyone except ourselves and our friends)
+                            var suggestedUsers = allUsers.where((doc) => doc.id != _currentUser.uid && !friends.contains(doc.id)).toList();
 
-                      suggestedUsers = suggestedUsers.where((doc) {
-                        final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
-                        return name.toLowerCase().contains(_searchQuery.toLowerCase());
-                      }).toList();
-                    }
+                            // Apply search query filter if search is active
+                            if (_searchQuery.isNotEmpty) {
+                              friendUsers = friendUsers.where((doc) {
+                                final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
+                                return name.toLowerCase().contains(_searchQuery.toLowerCase());
+                              }).toList();
 
-                    return Column(
-                      children: [
-                        // Search Bar
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: (val) {
-                              setState(() {
-                                _searchQuery = val;
-                              });
-                            },
-                            decoration: InputDecoration(
-                              hintText: 'Buscar aventureros...',
-                              hintStyle: GoogleFonts.inter(
-                                color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
-                                fontSize: 13,
-                              ),
-                              prefixIcon: Icon(
-                                Icons.search_rounded,
-                                color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
-                                size: 20,
-                              ),
-                              filled: true,
-                              fillColor: cardColor,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
-                                borderSide: BorderSide.none,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                            ),
-                            style: GoogleFonts.inter(color: textColor, fontSize: 13),
-                          ),
-                        ),
-                        Expanded(
-                          child: TabBarView(
-                            controller: _tabController,
-                            children: [
-                              _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false, onlyCloseFriends: false),
-                              _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false, onlyCloseFriends: true),
-                              _buildFriendsList(suggestedUsers, closeFriends, cardColor, textColor, isDark, isSuggested: true, onlyCloseFriends: false),
-                            ],
-                          ),
-                        ),
-                      ],
+                              suggestedUsers = suggestedUsers.where((doc) {
+                                final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
+                                return name.toLowerCase().contains(_searchQuery.toLowerCase());
+                              }).toList();
+                            }
+
+                            return Column(
+                              children: [
+                                // Search Bar
+                                Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: TextField(
+                                    controller: _searchController,
+                                    onChanged: (val) {
+                                      setState(() {
+                                        _searchQuery = val;
+                                      });
+                                    },
+                                    decoration: InputDecoration(
+                                      hintText: 'Buscar aventureros...',
+                                      hintStyle: GoogleFonts.inter(
+                                        color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
+                                        fontSize: 13,
+                                      ),
+                                      prefixIcon: Icon(
+                                        Icons.search_rounded,
+                                        color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
+                                        size: 20,
+                                      ),
+                                      filled: true,
+                                      fillColor: cardColor,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(30),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                                    ),
+                                    style: GoogleFonts.inter(color: textColor, fontSize: 13),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: TabBarView(
+                                    controller: _tabController,
+                                    children: [
+                                      _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false, onlyCloseFriends: false),
+                                      _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false, onlyCloseFriends: true),
+                                      _buildFriendsList(
+                                        suggestedUsers,
+                                        closeFriends,
+                                        cardColor,
+                                        textColor,
+                                        isDark,
+                                        isSuggested: true,
+                                        onlyCloseFriends: false,
+                                        sentPendingIds: sentPendingIds,
+                                        incomingPendingMap: incomingPendingMap,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
                     );
                   },
                 );
@@ -316,6 +390,8 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     bool isDark, {
     required bool isSuggested,
     bool onlyCloseFriends = false,
+    Set<String> sentPendingIds = const {},
+    Map<String, dynamic> incomingPendingMap = const {},
   }) {
     final displayedList = onlyCloseFriends
         ? list.where((doc) => closeFriends.contains(doc.id)).toList()
@@ -472,26 +548,76 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
               const SizedBox(width: 12),
               // Action Buttons
               if (isSuggested)
-                ElevatedButton(
-                  onPressed: () => _sendFriendRequest(friendId, name, photoURL),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.stormyTeal,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    minimumSize: Size.zero,
-                  ),
-                  child: Text(
-                    'Añadir amigo',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                )
+                () {
+                  final bool hasSent = sentPendingIds.contains(friendId);
+                  final String? incomingRequestId = incomingPendingMap[friendId];
+
+                  if (hasSent) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.hourglass_empty_rounded, size: 12, color: isDark ? Colors.white54 : OhtliColors.onyx),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Pendiente',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white54 : OhtliColors.onyx,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else if (incomingRequestId != null) {
+                    return ElevatedButton.icon(
+                      onPressed: () => _acceptFriendRequestFromSuggested(incomingRequestId, friendId),
+                      icon: const Icon(Icons.check_rounded, size: 12, color: Colors.white),
+                      label: Text(
+                        'Aceptar',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        minimumSize: Size.zero,
+                      ),
+                    );
+                  } else {
+                    return ElevatedButton(
+                      onPressed: () => _sendFriendRequest(friendId, name, photoURL),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        minimumSize: Size.zero,
+                      ),
+                      child: Text(
+                        'Añadir amigo',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    );
+                  }
+                }()
               else
                 PopupMenuButton<String>(
                   onSelected: (action) => _toggleFriendStatus(friendId, action),
