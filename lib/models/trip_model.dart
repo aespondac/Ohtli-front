@@ -42,6 +42,19 @@ class Trip {
   final DateTime updatedAt;
   final DateTime? travelDate;
   final List<ErrataEntry> errataHistory;
+  
+  // Multiple co-authors
+  final List<String> coAuthorIds;
+  final List<String> coAuthorNames;
+
+  // Surprise fields
+  final bool isSurprise;
+
+  // Multiple targets
+  final List<String> surpriseTargetIds;
+  final List<String> surpriseTargetNames;
+  final DateTime? surpriseUnlockDate;
+  final List<String> surpriseOpenedBy; // List of UIDs of users who have unwrapped it
 
   Trip({
     required this.id,
@@ -55,6 +68,13 @@ class Trip {
     required this.updatedAt,
     this.travelDate,
     this.errataHistory = const [],
+    this.coAuthorIds = const [],
+    this.coAuthorNames = const [],
+    this.isSurprise = false,
+    this.surpriseTargetIds = const [],
+    this.surpriseTargetNames = const [],
+    this.surpriseUnlockDate,
+    this.surpriseOpenedBy = const [],
   });
 
   factory Trip.fromMap(Map<String, dynamic> data, String documentId) {
@@ -62,6 +82,16 @@ class Trip {
     List<ErrataEntry> parsedErrata = errataList
         .map((e) => ErrataEntry.fromMap(e as Map<String, dynamic>))
         .toList();
+
+    final List<String> coAuthorIds = List<String>.from(data['coAuthorIds'] ?? []);
+    final List<String> coAuthorNames = List<String>.from(data['coAuthorNames'] ?? []);
+    final List<String> surpriseTargetIds = List<String>.from(data['surpriseTargetIds'] ?? []);
+    final List<String> surpriseTargetNames = List<String>.from(data['surpriseTargetNames'] ?? []);
+
+    final List<String> surpriseOpenedBy = List<String>.from(data['surpriseOpenedBy'] ?? []);
+    final DateTime? surpriseUnlockDate = data['surpriseUnlockDate'] != null 
+        ? (data['surpriseUnlockDate'] as Timestamp).toDate() 
+        : null;
 
     return Trip(
       id: documentId,
@@ -75,6 +105,13 @@ class Trip {
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       travelDate: data['travelDate'] != null ? (data['travelDate'] as Timestamp).toDate() : null,
       errataHistory: parsedErrata,
+      coAuthorIds: coAuthorIds,
+      coAuthorNames: coAuthorNames,
+      isSurprise: data['isSurprise'] ?? false,
+      surpriseTargetIds: surpriseTargetIds,
+      surpriseTargetNames: surpriseTargetNames,
+      surpriseUnlockDate: surpriseUnlockDate,
+      surpriseOpenedBy: surpriseOpenedBy,
     );
   }
 
@@ -90,6 +127,13 @@ class Trip {
       'updatedAt': Timestamp.fromDate(updatedAt),
       'travelDate': travelDate != null ? Timestamp.fromDate(travelDate!) : null,
       'errataHistory': errataHistory.map((e) => e.toMap()).toList(),
+      'coAuthorIds': coAuthorIds,
+      'coAuthorNames': coAuthorNames,
+      'isSurprise': isSurprise,
+      'surpriseTargetIds': surpriseTargetIds,
+      'surpriseTargetNames': surpriseTargetNames,
+      'surpriseUnlockDate': surpriseUnlockDate != null ? Timestamp.fromDate(surpriseUnlockDate!) : null,
+      'surpriseOpenedBy': surpriseOpenedBy,
     };
   }
 }

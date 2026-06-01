@@ -46,6 +46,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  // Gift unwrap animation state variables
+  bool _isGiftUnwrapping = false;
+  bool _hasUnwrappedGift = false;
+
   @override
   void initState() {
     super.initState();
@@ -408,6 +412,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final bool hasActiveSession = currentUser != null;
     final bool showTopNavbar = widget.isPublicLink;
     final bool isOwner = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
+    final bool isCoAuthor = currentUser != null && _trip != null && _trip!.coAuthorIds.contains(currentUser.uid);
+    final bool isPlan = _trip != null && _trip!.travelDate != null;
+    final bool showErrataButton = isOwner || (isCoAuthor && isPlan);
 
     final Widget mainScrollableContent = SingleChildScrollView(
       child: Column(
@@ -438,6 +445,27 @@ class _TripViewerPageState extends State<TripViewerPage> {
         ],
       ),
     );
+
+    Widget activeContent = mainScrollableContent;
+    final isSurpriseForMe = _trip != null && 
+        _trip!.isSurprise && 
+        currentUser != null && 
+        _trip!.surpriseTargetIds.contains(currentUser.uid);
+
+    bool isLocked = false;
+    bool isOpened = false;
+
+    if (isSurpriseForMe) {
+      isLocked = _trip!.surpriseUnlockDate != null && 
+          DateTime.now().isBefore(_trip!.surpriseUnlockDate!);
+      isOpened = _trip!.surpriseOpenedBy.contains(currentUser.uid);
+      
+      if (isLocked) {
+        activeContent = _buildLockedSurpriseView(isDark);
+      } else if (!isOpened && !_hasUnwrappedGift) {
+        activeContent = _buildUnwrapGiftView(isDark, currentUser.uid);
+      }
+    }
 
     final Widget bodyContent = Row(
       children: [
@@ -497,7 +525,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         Expanded(
           child: Stack(
             children: [
-              mainScrollableContent,
+              activeContent,
               if (!widget.isPublicLink && !isDesktop)
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 12,
@@ -514,11 +542,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: (isDark ? const Color(0xFF1E1E22) : Colors.white).withValues(alpha: 0.8),
+                        color: (isDark ? const Color(0xFF1E1E22) : Colors.white).withOpacity(0.8),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
+                            color: Colors.black.withOpacity(0.1),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -542,17 +570,21 @@ class _TripViewerPageState extends State<TripViewerPage> {
       backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
       appBar: showTopNavbar ? _buildPublicNavbar(hasActiveSession, isDark) : null,
       body: bodyContent,
-      floatingActionButton: isOwner
+      floatingActionButton: (showErrataButton && (!isSurpriseForMe || (isOpened || _hasUnwrappedGift)))
           ? FloatingActionButton.extended(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TripEditorPage(trip: _trip!),
-                  ),
-                ).then((_) {
-                  _loadTripData();
-                });
+                if (isOwner) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TripEditorPage(trip: _trip!),
+                    ),
+                  ).then((_) {
+                    _loadTripData();
+                  });
+                } else {
+                  _showCoAuthorErrataDialog();
+                }
               },
               backgroundColor: OhtliColors.xoconostle,
               foregroundColor: Colors.white,
@@ -1424,6 +1456,387 @@ class _TripViewerPageState extends State<TripViewerPage> {
         ],
         textWidget,
       ],
+    );
+  }
+
+  Future<void> _showCoAuthorErrataDialog() async {
+    final noteController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: OhtliColors.cloudDancer,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Publicar Fe de Errata',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Como co-autor de este plan, puedes publicar una fe de errata detallando cualquier corrección o actualización.',
+                    style: GoogleFonts.inter(fontSize: 12, height: 1.45, color: OhtliColors.onyx.withOpacity(0.7)),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Descripción de cambios realizados:',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: noteController,
+                    maxLines: 3,
+                    style: GoogleFonts.inter(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Ej. Corrección de costos de hospedaje y rutas de transporte...',
+                      hintStyle: GoogleFonts.inter(fontSize: 12.5, color: Colors.grey),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.all(12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: OhtliColors.cantera.withOpacity(0.5)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: OhtliColors.xoconostle, width: 1.2),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      setStateDialog(() {});
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancelar',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      color: OhtliColors.onyx.withOpacity(0.6),
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: noteController.text.trim().isEmpty
+                      ? null
+                      : () async {
+                          final String noteText = noteController.text.trim();
+                          Navigator.pop(dialogContext);
+
+                          final newErrata = ErrataEntry(
+                            id: DateTime.now().millisecondsSinceEpoch.toString(),
+                            note: noteText,
+                            date: DateTime.now(),
+                          );
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Guardando fe de errata...'),
+                              backgroundColor: OhtliColors.xoconostle,
+                              duration: Duration(milliseconds: 600),
+                            ),
+                          );
+
+                          try {
+                            final List<ErrataEntry> updatedHistory = List.from(_trip!.errataHistory)..add(newErrata);
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(_trip!.userId)
+                                .collection('trips')
+                                .doc(_trip!.id)
+                                .update({
+                              'errataHistory': updatedHistory.map((e) => e.toMap()).toList(),
+                              'updatedAt': FieldValue.serverTimestamp(),
+                            });
+
+                            _loadTripData();
+
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('¡Fe de Errata publicada por el co-autor con éxito!'),
+                                  backgroundColor: OhtliColors.xoconostle,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            print("Error saving co-author errata: $e");
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: OhtliColors.xoconostle,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Publicar Errata',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildLockedSurpriseView(bool isDark) {
+    final diff = _trip!.surpriseUnlockDate!.difference(DateTime.now());
+    final days = diff.inDays;
+    final hours = diff.inHours % 24;
+    final minutes = diff.inMinutes % 60;
+    
+    String countdownStr = "";
+    if (days > 0) {
+      countdownStr = "$days días, $hours hrs y $minutes min";
+    } else if (hours > 0) {
+      countdownStr = "$hours horas y $minutes minutos";
+    } else {
+      countdownStr = "$minutes minutos";
+    }
+
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        constraints: const BoxConstraints(maxWidth: 450),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: OhtliColors.stormyTeal.withOpacity(0.08),
+              ),
+              child: const Center(
+                child: Icon(Icons.lock_rounded, size: 40, color: OhtliColors.stormyTeal),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '¡Shh... Es una sorpresa! 🎁',
+              style: GoogleFonts.outfit(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: OhtliColors.onyx,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Este plan ha sido preparado especialmente para ti, pero aún no puedes abrirlo.',
+              style: GoogleFonts.inter(
+                fontSize: 13.5,
+                color: OhtliColors.onyx.withOpacity(0.7),
+                height: 1.45,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: OhtliColors.cantera.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Se abrirá en:',
+                    style: GoogleFonts.inter(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: OhtliColors.stormyTeal,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    countdownStr,
+                    style: GoogleFonts.inter(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.bold,
+                      color: OhtliColors.onyx,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnwrapGiftView(bool isDark, String currentUid) {
+    return Center(
+      child: GestureDetector(
+        onTap: _isGiftUnwrapping
+            ? null
+            : () async {
+                setState(() {
+                  _isGiftUnwrapping = true;
+                });
+                
+                // Play unwrapping sound / trigger state changes after delay
+                Future.delayed(const Duration(milliseconds: 1800), () async {
+                  try {
+                    final updatedBy = List<String>.from(_trip!.surpriseOpenedBy)..add(currentUid);
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(_trip!.userId)
+                        .collection('trips')
+                        .doc(_trip!.id)
+                        .update({
+                      'surpriseOpenedBy': updatedBy,
+                    });
+                    
+                    if (mounted) {
+                      setState(() {
+                        _isGiftUnwrapping = false;
+                        _hasUnwrappedGift = true;
+                      });
+                    }
+                  } catch (e) {
+                    print("Error updating opened surprise state: $e");
+                    if (mounted) {
+                      setState(() {
+                        _isGiftUnwrapping = false;
+                        _hasUnwrappedGift = true;
+                      });
+                    }
+                  }
+                });
+              },
+        child: AnimatedScale(
+          scale: _isGiftUnwrapping ? 1.4 : 1.0,
+          duration: const Duration(milliseconds: 1500),
+          curve: Curves.elasticOut,
+          child: AnimatedRotation(
+            turns: _isGiftUnwrapping ? 4.0 : 0.0,
+            duration: const Duration(milliseconds: 1500),
+            curve: Curves.easeInOutBack,
+            child: Container(
+              margin: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [OhtliColors.stormyTeal, Color(0xFF1F5F5B)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: OhtliColors.stormyTeal.withOpacity(0.3),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Beautiful gift icon wrapped
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 1200),
+                    curve: Curves.bounceOut,
+                    builder: (context, val, child) {
+                      return Transform.translate(
+                        offset: Offset(0, (1 - val) * -20),
+                        child: child,
+                      );
+                    },
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: Text(
+                          '🎁',
+                          style: TextStyle(fontSize: 50),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    '¡Tienes una sorpresa! 💫',
+                    style: GoogleFonts.outfit(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Este plan fue creado especialmente para ti. ¡Toca el regalo para abrirlo!',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.85),
+                      height: 1.45,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _isGiftUnwrapping ? 'Abriendo...' : 'Tocar para Abrir',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

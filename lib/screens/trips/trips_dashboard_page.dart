@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/colors.dart';
 import '../../models/trip_model.dart';
@@ -538,6 +539,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     final double width = MediaQuery.of(context).size.width;
     final int crossAxisCount = width > 1200 ? 4 : (width > 800 ? 3 : (width > 550 ? 2 : 1));
     final double padding = width > 800 ? 32.0 : 16.0;
+    final bool isDark = OhtliSettings.instance.isDarkMode;
 
     return DefaultTabController(
       length: 2,
@@ -673,12 +675,54 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     ),
 
                     // --- TAB: PLANES (Borradores) ---
-                    _buildTripsList(
-                      draftTrips, 
-                      'Tu libreta de caminos está vacía.',
-                      'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
-                      crossAxisCount, 
-                      padding,
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collectionGroup('trips')
+                          .where('surpriseTargetIds', arrayContains: _userId)
+                          .snapshots(),
+                      builder: (context, surpriseSnapshot) {
+                        final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
+                        final surpriseTrips = surpriseDocs
+                            .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                            .toList();
+
+                        Widget? surpriseSection;
+                        if (surpriseTrips.isNotEmpty) {
+                          surpriseSection = _buildSurprisePlansSection(surpriseTrips, isDark);
+                        }
+
+                        if (draftTrips.isEmpty && surpriseTrips.isEmpty) {
+                          return _buildTripsList(
+                            [], 
+                            'Tu libreta de caminos está vacía.',
+                            'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
+                            crossAxisCount, 
+                            padding,
+                          );
+                        }
+
+                        return ListView(
+                          padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
+                          children: [
+                            if (surpriseSection != null) ...[
+                              surpriseSection,
+                              const SizedBox(height: 24),
+                            ],
+                            if (draftTrips.isNotEmpty) ...[
+                              Text(
+                                'Mis Planes de Viaje',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: OhtliColors.onyx,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildTripsGrid(draftTrips, crossAxisCount),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                   ],
                 );
@@ -842,6 +886,266 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           onDelete: () => _deleteTrip(trip),
         );
       },
+    );
+  }
+
+  Widget _buildTripsGrid(List<Trip> trips, int crossAxisCount) {
+    final double width = MediaQuery.of(context).size.width;
+    final double cardWidth = (width - 48 - (crossAxisCount - 1) * 24) / crossAxisCount;
+    final double cardHeight = crossAxisCount == 1 
+        ? 125.0 
+        : (cardWidth * 9 / 16) + 160.0;
+    
+    final double computedAspectRatio = cardWidth / cardHeight;
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 24,
+        crossAxisSpacing: 24,
+        childAspectRatio: computedAspectRatio,
+      ),
+      itemCount: trips.length,
+      itemBuilder: (context, index) {
+        final trip = trips[index];
+        return TripCard(
+          trip: trip,
+          isHorizontal: crossAxisCount == 1,
+          onEdit: () {
+            if (trip.status == 'published') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TripViewerPage(trip: trip),
+                ),
+              );
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TripEditorPage(trip: trip),
+                ),
+              );
+            }
+          },
+          onFeDeErratas: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TripEditorPage(trip: trip),
+              ),
+            );
+          },
+          onDelete: () => _deleteTrip(trip),
+        );
+      },
+    );
+  }
+
+  Widget _buildSurprisePlansSection(List<Trip> surpriseTrips, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '🎁',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Planes Sorpresa Para Ti',
+              style: GoogleFonts.outfit(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: OhtliColors.onyx,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 140,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: surpriseTrips.length,
+            itemBuilder: (context, index) {
+              final trip = surpriseTrips[index];
+              final isLocked = trip.surpriseUnlockDate != null && 
+                  DateTime.now().isBefore(trip.surpriseUnlockDate!);
+              final isOpened = trip.surpriseOpenedBy.contains(_userId);
+
+              return _buildSurpriseCard(trip, isLocked, isOpened, isDark);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSurpriseCard(Trip trip, bool isLocked, bool isOpened, bool isDark) {
+    final Color cardColor = isDark ? const Color(0xFF25252A) : Colors.white;
+
+    Widget cardContent;
+    if (isLocked) {
+      final date = trip.surpriseUnlockDate!;
+      cardContent = Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.lock_rounded, size: 28, color: Colors.grey),
+          const SizedBox(height: 10),
+          Text(
+            'Plan Sorpresa Cerrado',
+            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.grey),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Disponible el ${date.day}/${date.month}/${date.year}',
+            style: GoogleFonts.inter(fontSize: 11, color: Colors.grey.shade500),
+          ),
+        ],
+      );
+    } else if (!isOpened) {
+      cardContent = Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.95, end: 1.05),
+            duration: const Duration(seconds: 1),
+            curve: Curves.easeInOut,
+            builder: (context, scale, child) {
+              return Transform.scale(scale: scale, child: child);
+            },
+            child: const Text('🎁', style: TextStyle(fontSize: 32)),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '¡Tienes un Regalo!',
+            style: GoogleFonts.inter(
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+              color: OhtliColors.stormyTeal,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Toca para abrir la sorpresa',
+            style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.onyx.withOpacity(0.6)),
+          ),
+        ],
+      );
+    } else {
+      cardContent = Stack(
+        children: [
+          if (trip.coverUrl.isNotEmpty)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.network(
+                  trip.coverUrl,
+                  fit: BoxFit.cover,
+                  color: Colors.black.withOpacity(0.35),
+                  colorBlendMode: BlendMode.srcOver,
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Revelado 🎁',
+                    style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  trip.title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'De tu Mejor Amigo',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: Colors.white.withOpacity(0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      width: 200,
+      margin: const EdgeInsets.only(right: 14),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isLocked 
+              ? Colors.grey.withOpacity(0.2)
+              : (isOpened ? Colors.transparent : OhtliColors.stormyTeal.withOpacity(0.3)),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: isLocked
+              ? () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '¡Aún no es momento de abrir este regalo! 🤫 Estará disponible el ${trip.surpriseUnlockDate!.day}/${trip.surpriseUnlockDate!.month}/${trip.surpriseUnlockDate!.year}.',
+                        style: GoogleFonts.inter(),
+                      ),
+                      backgroundColor: OhtliColors.stormyTeal,
+                    ),
+                  );
+                }
+              : () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TripViewerPage(
+                        tripId: trip.id,
+                        authorId: trip.userId,
+                      ),
+                    ),
+                  ).then((_) {
+                    setState(() {});
+                  });
+                },
+          child: cardContent,
+        ),
+      ),
     );
   }
 }

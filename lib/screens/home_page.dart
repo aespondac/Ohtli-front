@@ -280,14 +280,71 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
-              onPressed: () {
-                setState(() {
-                  _currentIndex = 6;
-                });
-              },
-            ),
+            if (user != null)
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .collection('notifications')
+                    .where('read', isEqualTo: false)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  int unreadCount = 0;
+                  if (snapshot.hasData) {
+                    unreadCount = snapshot.data!.docs.length;
+                  }
+
+                  return Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
+                        onPressed: () {
+                          setState(() {
+                            _currentIndex = 6;
+                          });
+                        },
+                      ),
+                      if (unreadCount > 0)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.xoconostle,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 14,
+                              minHeight: 14,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '$unreadCount',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
+                onPressed: () {
+                  setState(() {
+                    _currentIndex = 6;
+                  });
+                },
+              ),
             Padding(
               padding: const EdgeInsets.only(right: 16, top: 10, bottom: 10),
               child: _buildAvatarWidget(

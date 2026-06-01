@@ -53,6 +53,16 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // Local changes tracking
   DateTime? _lastSavedCloudTime;
 
+  // New fields for co-authors & surprise
+  List<String> _coAuthorIds = [];
+  List<String> _coAuthorNames = [];
+  bool _isSurprise = false;
+  List<String> _surpriseTargetIds = [];
+  List<String> _surpriseTargetNames = [];
+  DateTime? _surpriseUnlockDate;
+  List<Map<String, dynamic>> _friendsList = [];
+  bool _isLoadingFriends = false;
+
   @override
   void initState() {
     super.initState();
@@ -64,7 +74,62 @@ class _TripEditorPageState extends State<TripEditorPage> {
     _travelDate = widget.trip.travelDate;
     _errataHistory = List.from(widget.trip.errataHistory);
 
+    // Initialize co-authors and surprise targets lists
+    _coAuthorIds = List.from(widget.trip.coAuthorIds);
+    _coAuthorNames = List.from(widget.trip.coAuthorNames);
+    _isSurprise = widget.trip.isSurprise;
+    _surpriseTargetIds = List.from(widget.trip.surpriseTargetIds);
+    _surpriseTargetNames = List.from(widget.trip.surpriseTargetNames);
+    _surpriseUnlockDate = widget.trip.surpriseUnlockDate;
+
     _loadCloudContentAndCheckCache();
+    _loadFriends();
+  }
+
+  Future<void> _loadFriends() async {
+    if (mounted) setState(() => _isLoadingFriends = true);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          final data = userDoc.data();
+          final List<dynamic> friendsUids = data?['friends'] ?? [];
+          final List<dynamic> myCloseFriends = data?['closeFriends'] ?? [];
+          
+          if (friendsUids.isNotEmpty) {
+            final friendsSnapshot = await FirebaseFirestore.instance
+                .collection('users')
+                .where(FieldPath.documentId, whereIn: friendsUids)
+                .get();
+            
+            final List<Map<String, dynamic>> fetched = [];
+            for (var doc in friendsSnapshot.docs) {
+              final dName = doc.data()['displayName'] ?? 'Viajero Ohtli';
+              final List<dynamic> friendCloseFriends = doc.data()['closeFriends'] ?? [];
+              final bool isMutualCloseFriend = friendCloseFriends.contains(user.uid) && 
+                  myCloseFriends.contains(doc.id);
+              
+              fetched.add({
+                'uid': doc.id,
+                'displayName': dName,
+                'isMutualCloseFriend': isMutualCloseFriend,
+              });
+            }
+            if (mounted) {
+              setState(() {
+                _friendsList = fetched;
+                _isLoadingFriends = false;
+              });
+            }
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      print("Error loading friends in trip editor: $e");
+    }
+    if (mounted) setState(() => _isLoadingFriends = false);
   }
 
   @override
@@ -456,6 +521,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
       updatedAt: now,
       travelDate: _travelDate,
       errataHistory: _errataHistory,
+      coAuthorIds: _coAuthorIds,
+      coAuthorNames: _coAuthorNames,
+      isSurprise: _isSurprise,
+      surpriseTargetIds: _surpriseTargetIds,
+      surpriseTargetNames: _surpriseTargetNames,
+      surpriseUnlockDate: _surpriseUnlockDate,
+      surpriseOpenedBy: widget.trip.surpriseOpenedBy,
     );
 
     final updatedContent = TripContent(sections: updatedSections);
@@ -897,12 +969,21 @@ class _TripEditorPageState extends State<TripEditorPage> {
   Future<void> _showPublishOptionsDialog() async {
     DateTime? tempDate = _travelDate;
     String tempVisibility = _visibility;
+    List<String> tempCoAuthorIds = List.from(_coAuthorIds);
+    List<String> tempCoAuthorNames = List.from(_coAuthorNames);
+    bool tempIsSurprise = _isSurprise;
+    List<String> tempSurpriseTargetIds = List.from(_surpriseTargetIds);
+    List<String> tempSurpriseTargetNames = List.from(_surpriseTargetNames);
+    DateTime? tempUnlockDate = _surpriseUnlockDate;
 
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
+            final isSaveDisabled = tempDate == null || 
+                (tempIsSurprise && (tempUnlockDate == null || tempSurpriseTargetIds.isEmpty));
+
             return AlertDialog(
               backgroundColor: OhtliColors.cloudDancer,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -910,101 +991,294 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 'Publicar Viaje',
                 style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Para publicar esta historia, la fecha del viaje es obligatoria.',
-                    style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.7)),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Fecha de Viaje (Obligatoria):',
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
-                  ),
-                  const SizedBox(height: 6),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: tempDate ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        builder: (context, child) {
-                          return Theme(
-                            data: Theme.of(context).copyWith(
-                              colorScheme: ColorScheme.light(
-                                primary: OhtliColors.stormyTeal,
-                                onPrimary: Colors.white,
-                                onSurface: OhtliColors.onyx,
-                              ),
-                            ),
-                            child: child!,
-                          );
-                        },
-                      );
-                      if (picked != null) {
-                        setStateDialog(() {
-                          tempDate = picked;
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.calendar_today_rounded, size: 14, color: OhtliColors.stormyTeal),
-                    label: Text(
-                      tempDate != null
-                          ? '${tempDate!.day}/${tempDate!.month}/${tempDate!.year}'
-                          : 'Seleccionar Fecha',
-                      style: GoogleFonts.inter(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.bold,
-                        color: OhtliColors.stormyTeal,
+              content: Container(
+                width: double.maxFinite,
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Para publicar esta historia, la fecha del viaje es obligatoria.',
+                        style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withOpacity(0.7)),
                       ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Visibilidad:',
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: OhtliColors.cantera.withValues(alpha: 0.5)),
-                    ),
-                    child: DropdownButton<String>(
-                      value: tempVisibility,
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: OhtliColors.stormyTeal),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'public',
-                          child: Text('Pública (cualquiera con el link)', style: GoogleFonts.inter(fontSize: 12.5)),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Fecha de Viaje (Obligatoria):',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                      ),
+                      const SizedBox(height: 6),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: tempDate ?? DateTime.now(),
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2100),
+                            builder: (context, child) {
+                              return Theme(
+                                data: Theme.of(context).copyWith(
+                                  colorScheme: const ColorScheme.light(
+                                    primary: OhtliColors.stormyTeal,
+                                    onPrimary: Colors.white,
+                                    onSurface: OhtliColors.onyx,
+                                  ),
+                                ),
+                                child: child!,
+                              );
+                            },
+                          );
+                          if (picked != null) {
+                            setStateDialog(() {
+                              tempDate = picked;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_today_rounded, size: 14, color: OhtliColors.stormyTeal),
+                        label: Text(
+                          tempDate != null
+                              ? '${tempDate!.day}/${tempDate!.month}/${tempDate!.year}'
+                              : 'Seleccionar Fecha',
+                          style: GoogleFonts.inter(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: OhtliColors.stormyTeal,
+                          ),
                         ),
-                        DropdownMenuItem(
-                          value: 'private',
-                          child: Text('Privada (solo yo)', style: GoogleFonts.inter(fontSize: 12.5)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Visibilidad:',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
+                        ),
+                        child: DropdownButton<String>(
+                          value: tempVisibility,
+                          isExpanded: true,
+                          underline: const SizedBox(),
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: OhtliColors.stormyTeal),
+                          items: [
+                            DropdownMenuItem(
+                              value: 'public',
+                              child: Text('Pública (cualquiera con el link)', style: GoogleFonts.inter(fontSize: 12.5)),
+                            ),
+                            DropdownMenuItem(
+                              value: 'private',
+                              child: Text('Privada (solo yo)', style: GoogleFonts.inter(fontSize: 12.5)),
+                            ),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setStateDialog(() {
+                                tempVisibility = val;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      
+                      // --- Co-Authors section ---
+                      Text(
+                        'Co-autores (Opcional):',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                      ),
+                      const SizedBox(height: 6),
+                      if (_friendsList.isEmpty)
+                        Text(
+                          'Aún no tienes amigos para agregar como co-autor.',
+                          style: GoogleFonts.inter(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                        )
+                      else
+                        Container(
+                          maxHeight: 120,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
+                          ),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            physics: const ClampingScrollPhysics(),
+                            itemCount: _friendsList.length,
+                            itemBuilder: (context, idx) {
+                              final friend = _friendsList[idx];
+                              final String friendId = friend['uid'];
+                              final String friendName = friend['displayName'];
+                              final bool isSelected = tempCoAuthorIds.contains(friendId);
+                              
+                              return CheckboxListTile(
+                                title: Text(friendName, style: GoogleFonts.inter(fontSize: 12.5)),
+                                value: isSelected,
+                                activeColor: OhtliColors.stormyTeal,
+                                dense: true,
+                                visualDensity: VisualDensity.compact,
+                                onChanged: (val) {
+                                  setStateDialog(() {
+                                    if (val == true) {
+                                      tempCoAuthorIds.add(friendId);
+                                      tempCoAuthorNames.add(friendName);
+                                    } else {
+                                      tempCoAuthorIds.remove(friendId);
+                                      tempCoAuthorNames.remove(friendName);
+                                    }
+                                  });
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+
+                      // --- Surprise Plan section (only if travelDate is set and we have mutual close friends) ---
+                      if (tempDate != null) ...[
+                        Builder(
+                          builder: (context) {
+                            final mutualCloseFriends = _friendsList
+                                .where((f) => f['isMutualCloseFriend'] == true)
+                                .toList();
+                            
+                            if (mutualCloseFriends.isEmpty) return const SizedBox.shrink();
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SwitchListTile(
+                                  title: Text(
+                                    '¿Es un plan sorpresa? 🎁',
+                                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                                  ),
+                                  subtitle: Text(
+                                    'Solo tus mejores amigos mutuos verán este plan cuando se abra.',
+                                    style: GoogleFonts.inter(fontSize: 11, color: Colors.grey),
+                                  ),
+                                  value: tempIsSurprise,
+                                  activeColor: OhtliColors.stormyTeal,
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                  onChanged: (val) {
+                                    setStateDialog(() {
+                                      tempIsSurprise = val;
+                                      if (!val) {
+                                        tempSurpriseTargetIds.clear();
+                                        tempSurpriseTargetNames.clear();
+                                        tempUnlockDate = null;
+                                      }
+                                    });
+                                  },
+                                ),
+                                if (tempIsSurprise) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Destinatarios de la sorpresa:',
+                                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    maxHeight: 100,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: OhtliColors.cantera.withOpacity(0.5)),
+                                    ),
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      physics: const ClampingScrollPhysics(),
+                                      itemCount: mutualCloseFriends.length,
+                                      itemBuilder: (context, idx) {
+                                        final friend = mutualCloseFriends[idx];
+                                        final String friendId = friend['uid'];
+                                        final String friendName = friend['displayName'];
+                                        final bool isSelected = tempSurpriseTargetIds.contains(friendId);
+                                        
+                                        return CheckboxListTile(
+                                          title: Text(friendName, style: GoogleFonts.inter(fontSize: 12)),
+                                          value: isSelected,
+                                          activeColor: OhtliColors.stormyTeal,
+                                          dense: true,
+                                          visualDensity: VisualDensity.compact,
+                                          onChanged: (val) {
+                                            setStateDialog(() {
+                                              if (val == true) {
+                                                tempSurpriseTargetIds.add(friendId);
+                                                tempSurpriseTargetNames.add(friendName);
+                                              } else {
+                                                tempSurpriseTargetIds.remove(friendId);
+                                                tempSurpriseTargetNames.remove(friendName);
+                                              }
+                                            });
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Fecha de Apertura (Obligatoria):',
+                                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: tempUnlockDate ?? DateTime.now(),
+                                        firstDate: DateTime.now(),
+                                        lastDate: DateTime(2100),
+                                        builder: (context, child) {
+                                          return Theme(
+                                            data: Theme.of(context).copyWith(
+                                              colorScheme: const ColorScheme.light(
+                                                primary: OhtliColors.stormyTeal,
+                                                onPrimary: Colors.white,
+                                                onSurface: OhtliColors.onyx,
+                                              ),
+                                            ),
+                                            child: child!,
+                                          );
+                                        },
+                                      );
+                                      if (picked != null) {
+                                        setStateDialog(() {
+                                          tempUnlockDate = picked;
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.lock_open_rounded, size: 14, color: OhtliColors.stormyTeal),
+                                    label: Text(
+                                      tempUnlockDate != null
+                                          ? '${tempUnlockDate!.day}/${tempUnlockDate!.month}/${tempUnlockDate!.year}'
+                                          : 'Seleccionar Fecha de Apertura',
+                                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.stormyTeal),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          }
                         ),
                       ],
-                      onChanged: (val) {
-                        if (val != null) {
-                          setStateDialog(() {
-                            tempVisibility = val;
-                          });
-                        }
-                      },
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -1013,12 +1287,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     'Cancelar',
                     style: GoogleFonts.inter(
                       fontWeight: FontWeight.w600,
-                      color: OhtliColors.onyx.withValues(alpha: 0.6),
+                      color: OhtliColors.onyx.withOpacity(0.6),
                     ),
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: tempDate == null
+                  onPressed: isSaveDisabled
                       ? null
                       : () async {
                           Navigator.pop(dialogContext);
@@ -1026,6 +1300,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             _travelDate = tempDate;
                             _visibility = tempVisibility;
                             _status = 'published';
+                            _coAuthorIds = tempCoAuthorIds;
+                            _coAuthorNames = tempCoAuthorNames;
+                            _isSurprise = tempIsSurprise;
+                            _surpriseTargetIds = tempSurpriseTargetIds;
+                            _surpriseTargetNames = tempSurpriseTargetNames;
+                            _surpriseUnlockDate = tempUnlockDate;
                           });
 
                           ScaffoldMessenger.of(context).showSnackBar(

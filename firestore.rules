@@ -31,19 +31,40 @@ service cloud.firestore {
       
       // Trips Collection
       match /trips/{tripId} {
-        // Read: Owner or public if published & public
-        allow read: if (request.auth != null && request.auth.uid == userId) || (resource != null && resource.data.status == 'published' && resource.data.visibility == 'public');
+        // Read: Owner, co-author (list), surprise target (list), or public if published & public
+        allow read: if (request.auth != null && (
+          request.auth.uid == userId || 
+          (resource.data.coAuthorIds != null && request.auth.uid in resource.data.coAuthorIds) ||
+          (resource.data.surpriseTargetIds != null && request.auth.uid in resource.data.surpriseTargetIds)
+        )) || (resource != null && resource.data.status == 'published' && resource.data.visibility == 'public');
         
-        // Write: Only owner
-        allow write: if request.auth != null && request.auth.uid == userId;
+        // Create/Delete: Only owner
+        allow create, delete: if request.auth != null && request.auth.uid == userId;
+        
+        // Update: Owner, co-author, or surprise target (to mark as opened)
+        allow update: if request.auth != null && (
+          request.auth.uid == userId || 
+          (resource.data.coAuthorIds != null && request.auth.uid in resource.data.coAuthorIds) ||
+          (resource.data.surpriseTargetIds != null && request.auth.uid in resource.data.surpriseTargetIds)
+        );
         
         // Trip Details Content
         match /details/content {
-          // Read: Owner or public if parent trip is published & public
-          allow read: if (request.auth != null && request.auth.uid == userId) || (get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.status == 'published' && get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.visibility == 'public');
+          // Read: Owner, co-author, surprise target, or public if parent trip is published & public
+          allow read: if (request.auth != null && (
+            request.auth.uid == userId || 
+            (get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.coAuthorIds != null && request.auth.uid in get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.coAuthorIds) ||
+            (get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.surpriseTargetIds != null && request.auth.uid in get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.surpriseTargetIds)
+          )) || (
+            get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.status == 'published' && 
+            get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.visibility == 'public'
+          );
           
-          // Write: Only owner
-          allow write: if request.auth != null && request.auth.uid == userId;
+          // Write: Owner or co-author
+          allow write: if request.auth != null && (
+            request.auth.uid == userId || 
+            (get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.coAuthorIds != null && request.auth.uid in get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.coAuthorIds)
+          );
         }
       }
     }

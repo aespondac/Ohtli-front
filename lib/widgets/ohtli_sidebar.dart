@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/colors.dart';
 
 class OhtliSidebar extends StatefulWidget {
@@ -221,10 +222,64 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
   }) {
     final bool isActive = widget.currentIndex == index;
     final bool isCollapsed = _isCollapsed;
+    final user = FirebaseAuth.instance.currentUser;
 
     Color itemColor = isActive
         ? OhtliColors.stormyTeal
         : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withOpacity(0.7));
+
+    Widget iconWidget = _buildItemIcon(isActive ? activeIcon : icon, itemColor);
+
+    if (index == 6 && user != null) {
+      iconWidget = StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('notifications')
+            .where('read', isEqualTo: false)
+            .snapshots(),
+        builder: (context, snapshot) {
+          int count = 0;
+          if (snapshot.hasData) {
+            count = snapshot.data!.docs.length;
+          }
+          if (count == 0) return _buildItemIcon(isActive ? activeIcon : icon, itemColor);
+
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _buildItemIcon(isActive ? activeIcon : icon, itemColor),
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(1.5),
+                  decoration: const BoxDecoration(
+                    color: OhtliColors.xoconostle,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 12,
+                    minHeight: 12,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$count',
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 7,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
 
     Widget content = Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -241,7 +296,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
       child: Row(
         mainAxisAlignment: isCollapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
-          _buildItemIcon(isActive ? activeIcon : icon, itemColor),
+          iconWidget,
           if (!isCollapsed) ...[
             const SizedBox(width: 12),
             Expanded(

@@ -22,7 +22,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -198,6 +198,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
               ),
               tabs: const [
                 Tab(text: 'Tus Amigos'),
+                Tab(text: 'Mejores Amigos ⭐'),
                 Tab(text: 'Sugeridos'),
               ],
             ),
@@ -289,8 +290,9 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                           child: TabBarView(
                             controller: _tabController,
                             children: [
-                              _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false),
-                              _buildFriendsList(suggestedUsers, closeFriends, cardColor, textColor, isDark, isSuggested: true),
+                              _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false, onlyCloseFriends: false),
+                              _buildFriendsList(friendUsers, closeFriends, cardColor, textColor, isDark, isSuggested: false, onlyCloseFriends: true),
+                              _buildFriendsList(suggestedUsers, closeFriends, cardColor, textColor, isDark, isSuggested: true, onlyCloseFriends: false),
                             ],
                           ),
                         ),
@@ -313,13 +315,22 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     Color textColor,
     bool isDark, {
     required bool isSuggested,
+    bool onlyCloseFriends = false,
   }) {
-    if (list.isEmpty) {
+    final displayedList = onlyCloseFriends
+        ? list.where((doc) => closeFriends.contains(doc.id)).toList()
+        : list;
+
+    if (displayedList.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 40.0),
           child: Text(
-            isSuggested ? 'No hay sugerencias disponibles.' : 'Aún no tienes amigos en tu lista.',
+            isSuggested
+                ? 'No hay sugerencias disponibles.'
+                : (onlyCloseFriends
+                    ? 'No tienes mejores amigos asignados aún. ⭐'
+                    : 'Aún no tienes amigos en tu lista.'),
             style: GoogleFonts.inter(
               color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
               fontSize: 13,
@@ -331,9 +342,9 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: list.length,
+      itemCount: displayedList.length,
       itemBuilder: (context, index) {
-        final doc = list[index];
+        final doc = displayedList[index];
         final friendId = doc.id;
         final data = doc.data() as Map<String, dynamic>;
         

@@ -21,12 +21,110 @@ class TripService {
   Future<Trip> createTrip(String userId, Trip trip) async {
     final ref = _tripsRef(userId).doc(trip.id);
     await ref.set(trip.toMap());
+    _checkAndNotifyFollowers(userId, trip);
     return trip;
   }
 
   Future<void> updateTrip(String userId, Trip trip) async {
     final ref = _tripsRef(userId).doc(trip.id);
     await ref.set(trip.toMap(), SetOptions(merge: true));
+    _checkAndNotifyFollowers(userId, trip);
+  }
+
+  Future<void> _checkAndNotifyFollowers(String authorId, Trip trip) async {
+    if (trip.status != 'published') return;
+
+    try {
+      // 1. Fetch author details
+      final authorDoc = await _firestore.collection('users').doc(authorId).get();
+      if (!authorDoc.exists) return;
+      final authorData = authorDoc.data();
+      final String authorName = authorData?['displayName'] ?? 'Viajero Ohtli';
+      final String? authorPhoto = authorData?['photoURL'];
+
+      // Handle surprise plan notifications for multiple recipients
+      if (trip.isSurprise && trip.surpriseTargetIds.isNotEmpty) {
+        final batch = _firestore.batch();
+        for (var targetId in trip.surpriseTargetIds) {
+          final existing = await _firestore
+              .collection('users')
+              .doc(targetId)
+              .collection('notifications')
+              .where('tripId', isEqualTo: trip.id)
+              .where('type', isEqualTo: 'surprise_plan')
+              .get();
+
+          if (existing.docs.isEmpty) {
+            final notifRef = _firestore
+                .collection('users')
+                .doc(targetId)
+                .collection('notifications')
+                .doc();
+
+            batch.set(notifRef, {
+              'type': 'surprise_plan',
+              'senderId': authorId,
+              'senderName': authorName,
+              'senderPhoto': authorPhoto,
+              'tripId': trip.id,
+              'tripTitle': trip.title,
+              'isPlan': true,
+              'status': 'unread',
+              'read': false,
+              'timestamp': FieldValue.serverTimestamp(),
+            });
+          }
+        }
+        await batch.commit();
+        return; // Do not notify other followers for surprise plans
+      }
+
+      // 2. Fetch all followers (users who follow authorId)
+      final followersSnapshot = await _firestore
+          .collection('users')
+          .where('following', arrayContains: authorId)
+          .get();
+
+      if (followersSnapshot.docs.isEmpty) return;
+
+      final batch = _firestore.batch();
+      for (var doc in followersSnapshot.docs) {
+        final followerId = doc.id;
+
+        // Check if follower already has a notification for this trip to avoid duplicate spam
+        final existing = await _firestore
+            .collection('users')
+            .doc(followerId)
+            .collection('notifications')
+            .where('tripId', isEqualTo: trip.id)
+            .where('type', isEqualTo: 'new_publication')
+            .get();
+
+        if (existing.docs.isEmpty) {
+          final notifRef = _firestore
+              .collection('users')
+              .doc(followerId)
+              .collection('notifications')
+              .doc(); // Auto-generated ID
+
+          batch.set(notifRef, {
+            'type': 'new_publication',
+            'senderId': authorId,
+            'senderName': authorName,
+            'senderPhoto': authorPhoto,
+            'tripId': trip.id,
+            'tripTitle': trip.title,
+            'isPlan': trip.travelDate != null, // If travelDate is set, it's a plan!
+            'status': 'unread',
+            'read': false,
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      await batch.commit();
+    } catch (e) {
+      print("Error notifying followers of new publication: $e");
+    }
   }
 
   Future<void> updateTripContent(String userId, String tripId, TripContent content) async {
