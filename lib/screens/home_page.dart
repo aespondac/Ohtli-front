@@ -231,7 +231,7 @@ class _HomePageState extends State<HomePage> {
       return const FriendsPage();
     }
     if (_currentIndex == 4 || _currentIndex == 5) {
-      return ConstructionPage(onLoginClick: () {});
+      return const ConstructionPage();
     }
     if (_currentIndex == 6) {
       return const NotificationsPage();

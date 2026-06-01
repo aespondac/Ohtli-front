@@ -7,8 +7,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/colors.dart';
 
 class ConstructionPage extends StatefulWidget {
-  final VoidCallback onLoginClick;
-  const ConstructionPage({super.key, required this.onLoginClick});
+  final VoidCallback? onLoginClick;
+  const ConstructionPage({super.key, this.onLoginClick});
 
   @override
   State<ConstructionPage> createState() => _ConstructionPageState();
@@ -80,8 +80,8 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
               ),
             ),
 
-            // Botón flotante superior de "Iniciar Sesión" (Solo si no es el dominio de desvío)
-            if (!_isOldDomain)
+            // Botón flotante superior de "Iniciar Sesión" (Solo si no es el dominio de desvío y onLoginClick no es nulo)
+            if (!_isOldDomain && widget.onLoginClick != null)
               Positioned(
                 top: 24,
                 right: 24,
@@ -89,7 +89,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
                   onEnter: (_) => setState(() => _isHoveringEnter = true),
                   onExit: (_) => setState(() => _isHoveringEnter = false),
                   child: TextButton(
-                    onPressed: widget.onLoginClick,
+                    onPressed: widget.onLoginClick!,
                     style: TextButton.styleFrom(
                       foregroundColor: _isHoveringEnter ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
