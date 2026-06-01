@@ -63,6 +63,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   bool _hasSentRequest = false;
   bool _hasIncomingRequest = false;
   String? _pendingRequestId;
+  String? _sentRequestId;
   
   StreamSubscription<QuerySnapshot>? _followersSubscription;
   StreamSubscription<DocumentSnapshot>? _currentUserSubscription;
@@ -204,6 +205,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             if (mounted) {
               setState(() {
                 _hasSentRequest = snapshot.docs.isNotEmpty;
+                _sentRequestId = snapshot.docs.isNotEmpty ? snapshot.docs.first.id : null;
               });
             }
           });
@@ -317,6 +319,29 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       _showStatusSnackBar('¡Solicitud de amistad enviada!');
     } catch (e) {
       print("Error sending friend request: $e");
+    }
+  }
+
+  Future<void> _cancelFriendRequest(String requestId) async {
+    if (_currentUser == null) return;
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+
+      // 1. Delete the top-level friend request
+      await firestore.collection('friend_requests').doc(requestId).delete();
+
+      // 2. Delete target user's private notification
+      await firestore
+          .collection('users')
+          .doc(widget.userId)
+          .collection('notifications')
+          .doc(requestId)
+          .delete();
+
+      _showStatusSnackBar('Solicitud de amistad cancelada.');
+    } catch (e) {
+      print("Error canceling friend request: $e");
     }
   }
 
@@ -1288,26 +1313,40 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
     // 2. If Alice sent a request to Bob
     if (_hasSentRequest) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.hourglass_empty_rounded, size: 14, color: OhtliColors.onyx),
-            const SizedBox(width: 6),
-            Text(
-              'Pendiente',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: OhtliColors.onyx,
-              ),
+      return GestureDetector(
+        onTap: () {
+          if (_sentRequestId != null) {
+            _cancelFriendRequest(_sentRequestId!);
+          }
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(10),
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.hourglass_empty_rounded,
+                  size: 14,
+                  color: isDark ? Colors.white54 : OhtliColors.onyx,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Pendiente',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white54 : OhtliColors.onyx,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -1325,24 +1364,42 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           backgroundColor: OhtliColors.stormyTeal,
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         ),
       );
     }
 
     // 4. Default: Show "Añadir amigo"
-    return ElevatedButton.icon(
-      onPressed: _sendFriendRequest,
-      icon: const Icon(Icons.person_add_alt_1_rounded, size: 14, color: Colors.white),
-      label: Text(
-        'Añadir amigo',
-        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: OhtliColors.stormyTeal,
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+    return GestureDetector(
+      onTap: _sendFriendRequest,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.person_add_alt_1_rounded,
+                size: 14,
+                color: isDark ? Colors.white54 : OhtliColors.onyx,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Añadir amigo',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white54 : OhtliColors.onyx,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

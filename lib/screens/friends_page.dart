@@ -122,6 +122,36 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     }
   }
 
+  Future<void> _cancelFriendRequest(String requestId, String targetUserId) async {
+    if (_currentUser == null) return;
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+
+      // 1. Delete the top-level friend request
+      await firestore.collection('friend_requests').doc(requestId).delete();
+
+      // 2. Delete target user's private notification
+      await firestore
+          .collection('users')
+          .doc(targetUserId)
+          .collection('notifications')
+          .doc(requestId)
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Solicitud de amistad cancelada.', style: GoogleFonts.inter()),
+            backgroundColor: OhtliColors.stormyTeal,
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error canceling friend request: $e");
+    }
+  }
+
   Future<void> _sendFriendRequest(String targetUserId, String targetName, String? targetPhoto) async {
     if (_currentUser == null) return;
 
@@ -317,8 +347,14 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                               .snapshots(),
                           builder: (context, incomingRequestsSnapshot) {
                             final allUsers = usersSnapshot.data?.docs ?? [];
-                            final sentPendingIds = sentRequestsSnapshot.data?.docs.map((doc) => doc['receiverId'] as String).toSet() ?? {};
-                            final incomingPendingMap = {for (var doc in incomingRequestsSnapshot.data?.docs ?? []) doc['senderId'] as String: doc.id};
+                            final Map<String, String> sentPendingMap = {
+                              for (var doc in sentRequestsSnapshot.data?.docs ?? [])
+                                doc['receiverId'] as String: doc.id
+                            };
+                            final incomingPendingMap = {
+                              for (var doc in incomingRequestsSnapshot.data?.docs ?? [])
+                                doc['senderId'] as String: doc.id
+                            };
 
                             // 1. Filter friends
                             var friendUsers = allUsers.where((doc) => friends.contains(doc.id)).toList();
@@ -328,7 +364,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
                             // Apply search query filter if search is active
                             if (_searchQuery.isNotEmpty) {
-                              friendUsers = friendUsers.where((doc) {
+                               friendUsers = friendUsers.where((doc) {
                                 final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
                                 return name.toLowerCase().contains(_searchQuery.toLowerCase());
                               }).toList();
@@ -387,7 +423,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                                         isDark,
                                         isSuggested: true,
                                         onlyCloseFriends: false,
-                                        sentPendingIds: sentPendingIds,
+                                        sentPendingMap: sentPendingMap,
                                         incomingPendingMap: incomingPendingMap,
                                       ),
                                     ],
@@ -417,7 +453,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     bool isDark, {
     required bool isSuggested,
     bool onlyCloseFriends = false,
-    Set<String> sentPendingIds = const {},
+    Map<String, String> sentPendingMap = const {},
     Map<String, dynamic> incomingPendingMap = const {},
   }) {
     final displayedList = onlyCloseFriends
@@ -576,30 +612,37 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
               // Action Buttons
               if (isSuggested)
                 () {
-                  final bool hasSent = sentPendingIds.contains(friendId);
+                  final String? sentRequestId = sentPendingMap[friendId];
+                  final bool hasSent = sentRequestId != null;
                   final String? incomingRequestId = incomingPendingMap[friendId];
 
                   if (hasSent) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withOpacity(0.4),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.hourglass_empty_rounded, size: 12, color: isDark ? Colors.white54 : OhtliColors.onyx),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Pendiente',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white54 : OhtliColors.onyx,
-                            ),
+                    return GestureDetector(
+                      onTap: () => _cancelFriendRequest(sentRequestId, friendId),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        ],
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.hourglass_empty_rounded, size: 12, color: isDark ? Colors.white54 : OhtliColors.onyx),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Pendiente',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white54 : OhtliColors.onyx,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     );
                   } else if (incomingRequestId != null) {
@@ -623,25 +666,32 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                       ),
                     );
                   } else {
-                    return ElevatedButton.icon(
-                      onPressed: () => _sendFriendRequest(friendId, name, photoURL),
-                      icon: const Icon(Icons.person_add_rounded, size: 14, color: Colors.white),
-                      label: Text(
-                        'Añadir amigo',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                    return GestureDetector(
+                      onTap: () => _sendFriendRequest(friendId, name, photoURL),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.person_add_rounded, size: 12, color: isDark ? Colors.white54 : OhtliColors.onyx),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Añadir amigo',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white54 : OhtliColors.onyx,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        minimumSize: Size.zero,
                       ),
                     );
                   }
