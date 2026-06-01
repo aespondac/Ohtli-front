@@ -125,6 +125,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 'displayName': dName,
                 'photoURL': doc.data()['photoURL'],
                 'isMutualCloseFriend': isMutualCloseFriend,
+                'isCloseFriend': myCloseFriends.contains(doc.id),
                 'isFriend': friendsUids.contains(doc.id),
               });
             }
@@ -1167,11 +1168,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         Builder(
                           builder: (context) {
                             final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
-                            final mutualCloseFriends = actualFriends
-                                .where((f) => f['isMutualCloseFriend'] == true)
+                            final closeFriends = actualFriends
+                                .where((f) => f['isCloseFriend'] == true)
                                 .toList();
                             
-                            if (mutualCloseFriends.isEmpty) return const SizedBox.shrink();
+                            if (closeFriends.isEmpty) return const SizedBox.shrink();
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1217,9 +1218,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                     child: ListView.builder(
                                       shrinkWrap: true,
                                       physics: const ClampingScrollPhysics(),
-                                      itemCount: mutualCloseFriends.length,
+                                      itemCount: closeFriends.length,
                                       itemBuilder: (context, idx) {
-                                        final friend = mutualCloseFriends[idx];
+                                        final friend = closeFriends[idx];
                                         final String friendId = friend['uid'];
                                         final String friendName = friend['displayName'];
                                         final bool isSelected = tempSurpriseTargetIds.contains(friendId);

@@ -22,13 +22,39 @@ class TripService {
     final ref = _tripsRef(userId).doc(trip.id);
     await ref.set(trip.toMap());
     _checkAndNotifyFollowers(userId, trip);
+    // Notify all initial co-authors
+    if (trip.coAuthorIds.isNotEmpty) {
+      _notifyNewCoAuthors(userId, trip, trip.coAuthorIds);
+    }
     return trip;
   }
 
   Future<void> updateTrip(String userId, Trip trip) async {
     final ref = _tripsRef(userId).doc(trip.id);
+
+    // Read existing trip to detect newly added co-authors
+    List<String> newlyAddedCoAuthors = [];
+    try {
+      final existingDoc = await ref.get();
+      if (existingDoc.exists) {
+        final existingData = existingDoc.data() as Map<String, dynamic>?;
+        final List<String> oldCoAuthorIds = List<String>.from(existingData?['coAuthorIds'] ?? []);
+        newlyAddedCoAuthors = trip.coAuthorIds.where((id) => !oldCoAuthorIds.contains(id)).toList();
+      } else {
+        // New trip, all co-authors are new
+        newlyAddedCoAuthors = List.from(trip.coAuthorIds);
+      }
+    } catch (e) {
+      print('Error reading existing trip for co-author diff: $e');
+    }
+
     await ref.set(trip.toMap(), SetOptions(merge: true));
     _checkAndNotifyFollowers(userId, trip);
+
+    // Notify only the newly added co-authors
+    if (newlyAddedCoAuthors.isNotEmpty) {
+      _notifyNewCoAuthors(userId, trip, newlyAddedCoAuthors);
+    }
   }
 
   Future<void> _checkAndNotifyFollowers(String authorId, Trip trip) async {
@@ -126,6 +152,60 @@ class TripService {
       await batch.commit();
     } catch (e) {
       print("Error notifying followers of new publication: $e");
+    }
+  }
+
+  /// Sends a 'co_author_added' notification to each newly added co-author.
+  Future<void> _notifyNewCoAuthors(String authorId, Trip trip, List<String> newCoAuthorIds) async {
+    try {
+      // Fetch author details
+      final authorDoc = await _firestore.collection('users').doc(authorId).get();
+      if (!authorDoc.exists) return;
+      final authorData = authorDoc.data();
+      final String authorName = authorData?['displayName'] ?? 'Viajero Ohtli';
+      final String? authorPhoto = authorData?['photoURL'];
+
+      final batch = _firestore.batch();
+      for (var coAuthorId in newCoAuthorIds) {
+        // Don't notify the author themselves
+        if (coAuthorId == authorId) continue;
+
+        // Check for existing notification to avoid duplicates
+        final existing = await _firestore
+            .collection('users')
+            .doc(coAuthorId)
+            .collection('notifications')
+            .where('tripId', isEqualTo: trip.id)
+            .where('type', isEqualTo: 'co_author_added')
+            .where('senderId', isEqualTo: authorId)
+            .get();
+
+        if (existing.docs.isEmpty) {
+          final notifRef = _firestore
+              .collection('users')
+              .doc(coAuthorId)
+              .collection('notifications')
+              .doc();
+
+          final bool isPlan = trip.status != 'published';
+          batch.set(notifRef, {
+            'type': 'co_author_added',
+            'senderId': authorId,
+            'senderName': authorName,
+            'senderPhoto': authorPhoto,
+            'tripId': trip.id,
+            'tripTitle': trip.title,
+            'tripOwnerId': trip.userId,
+            'isPlan': isPlan,
+            'status': 'unread',
+            'read': false,
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      await batch.commit();
+    } catch (e) {
+      print('Error notifying new co-authors: $e');
     }
   }
 

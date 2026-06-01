@@ -244,9 +244,13 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
             final now = DateTime.now();
             count = snapshot.data!.docs.where((doc) {
               final data = doc.data() as Map<String, dynamic>;
+              final String? type = data['type'] as String?;
               final Timestamp? ts = data['timestamp'] as Timestamp?;
               if (ts == null) return true;
-              return !now.isBefore(ts.toDate());
+              if (type == 'surprise_plan') {
+                return !now.isBefore(ts.toDate());
+              }
+              return true;
             }).length;
           }
           if (count == 0) return _buildItemIcon(isActive ? activeIcon : icon, itemColor);

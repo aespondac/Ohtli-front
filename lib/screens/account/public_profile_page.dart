@@ -328,16 +328,46 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     try {
       final firestore = FirebaseFirestore.instance;
 
-      // 1. Delete the top-level friend request
-      await firestore.collection('friend_requests').doc(requestId).delete();
+      // 1. Query and delete all pending top-level friend requests between these two users
+      final requestsSnapshot = await firestore
+          .collection('friend_requests')
+          .where('senderId', isEqualTo: _currentUser.uid)
+          .where('receiverId', isEqualTo: widget.userId)
+          .where('status', isEqualTo: 'pending')
+          .get();
 
-      // 2. Delete target user's private notification
-      await firestore
+      for (var doc in requestsSnapshot.docs) {
+        await doc.reference.delete();
+      }
+
+      // Fallback: Also try to delete specific requestId if not deleted yet
+      try {
+        await firestore.collection('friend_requests').doc(requestId).delete();
+      } catch (_) {}
+
+      // 2. Query and delete all pending notifications of type friend_request between these two users
+      final notificationsSnapshot = await firestore
           .collection('users')
           .doc(widget.userId)
           .collection('notifications')
-          .doc(requestId)
-          .delete();
+          .where('senderId', isEqualTo: _currentUser.uid)
+          .where('type', isEqualTo: 'friend_request')
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      for (var doc in notificationsSnapshot.docs) {
+        await doc.reference.delete();
+      }
+
+      // Fallback: Also try to delete specific notification by requestId if not deleted yet
+      try {
+        await firestore
+            .collection('users')
+            .doc(widget.userId)
+            .collection('notifications')
+            .doc(requestId)
+            .delete();
+      } catch (_) {}
 
       _showStatusSnackBar('Solicitud de amistad cancelada.');
     } catch (e) {

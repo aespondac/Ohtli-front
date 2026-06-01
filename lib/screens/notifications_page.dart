@@ -240,9 +240,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 final now = DateTime.now();
                 final docs = allDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
+                  final String? type = data['type'] as String?;
                   final Timestamp? ts = data['timestamp'] as Timestamp?;
                   if (ts == null) return true;
-                  return !now.isBefore(ts.toDate());
+                  if (type == 'surprise_plan') {
+                    return !now.isBefore(ts.toDate());
+                  }
+                  return true;
                 }).toList();
 
                 if (docs.isEmpty) {
@@ -297,6 +301,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     } else if (type == 'surprise_plan') {
                       final tripTitle = data['tripTitle'] ?? 'su itinerario';
                       messageText = 'te hizo un plan sorpresa: "$tripTitle"! 🎁';
+                    } else if (type == 'co_author_added') {
+                      final isPlan = data['isPlan'] ?? false;
+                      final tripTitle = data['tripTitle'] ?? 'su itinerario';
+                      messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle". ✍️';
                     }
 
                     final initials = senderName
@@ -306,7 +314,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         .map((w) => w[0].toUpperCase())
                         .join();
 
-                    final bool isClickable = (type == 'new_publication' || type == 'surprise_plan') && data['tripId'] != null;
+                    final bool isClickable = (type == 'new_publication' || type == 'surprise_plan' || type == 'co_author_added') && data['tripId'] != null;
 
                     final bool isDesktop = width > 600;
 
@@ -510,12 +518,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
                           onTap: () {
+                            // For co_author_added, use tripOwnerId since senderId is the person who added them
+                            final String navAuthorId = (type == 'co_author_added' && data['tripOwnerId'] != null)
+                                ? data['tripOwnerId']
+                                : senderId;
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => TripViewerPage(
                                   tripId: data['tripId'],
-                                  authorId: senderId,
+                                  authorId: navAuthorId,
                                 ),
                               ),
                             );

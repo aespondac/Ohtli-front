@@ -294,9 +294,13 @@ class _HomePageState extends State<HomePage> {
                     final now = DateTime.now();
                     unreadCount = snapshot.data!.docs.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
+                      final String? type = data['type'] as String?;
                       final Timestamp? ts = data['timestamp'] as Timestamp?;
                       if (ts == null) return true;
-                      return !now.isBefore(ts.toDate());
+                      if (type == 'surprise_plan') {
+                        return !now.isBefore(ts.toDate());
+                      }
+                      return true;
                     }).length;
                   }
 
