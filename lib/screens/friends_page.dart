@@ -7,7 +7,8 @@ import 'account/public_profile_page.dart'; // To visit their profile!
 import 'construction_page.dart'; // To reuse RouteBackgroundPainter
 
 class FriendsPage extends StatefulWidget {
-  const FriendsPage({super.key});
+  final bool showBackButton;
+  const FriendsPage({super.key, this.showBackButton = false});
 
   @override
   State<FriendsPage> createState() => _FriendsPageState();
@@ -280,12 +281,21 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: widget.showBackButton,
+        leading: widget.showBackButton
+            ? IconButton(
+                icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
         centerTitle: false,
-        titleSpacing: 0,
+        titleSpacing: widget.showBackButton ? null : 0,
         toolbarHeight: 80,
         title: Padding(
-          padding: EdgeInsets.symmetric(horizontal: padding),
+          padding: EdgeInsets.only(
+            left: widget.showBackButton ? 0 : padding,
+            right: padding,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

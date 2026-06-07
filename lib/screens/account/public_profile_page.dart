@@ -18,6 +18,7 @@ import '../../services/trip_service.dart';
 import '../trips/trip_viewer_page.dart';
 import '../trips/trip_editor_page.dart';
 import 'account_management_page.dart';
+import '../friends_page.dart';
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;
@@ -1078,9 +1079,52 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   }
 
   Widget _buildStatsRow(bool isDark, int followingCount) {
+    final int friendsCount = (_userProfile?['friends'] as List<dynamic>?)?.length ?? 0;
+
+    Widget friendsWidget = RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: '$friendsCount ',
+            style: GoogleFonts.outfit(
+              fontWeight: FontWeight.bold,
+              fontSize: 13.5,
+              color: isDark ? Colors.white : OhtliColors.onyx,
+            ),
+          ),
+          TextSpan(
+            text: 'Amigos',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (_isSelf) {
+      friendsWidget = GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FriendsPage(showBackButton: true),
+            ),
+          );
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: friendsWidget,
+        ),
+      );
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        friendsWidget,
+        const SizedBox(width: 16),
         RichText(
           text: TextSpan(
             children: [
