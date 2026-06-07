@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
@@ -28,31 +29,129 @@ class TripsDashboardPage extends StatefulWidget {
 
 class _TripsDashboardPageState extends State<TripsDashboardPage> {
   final TripService _tripService = TripService();
-  final String? _userId = FirebaseAuth.instance.currentUser?.uid;
+  String? _userId = FirebaseAuth.instance.currentUser?.uid;
 
   // Cache for author profiles (co-authored trips)
   final Map<String, Map<String, String?>> _authorProfilesCache = {};
 
-  late final Stream<List<Trip>> _ownedTripsStream;
-  late final Stream<QuerySnapshot> _coAuthorTripsStream;
-  late final Stream<QuerySnapshot> _surpriseTripsStream;
+  StreamSubscription<User?>? _authSub;
+  StreamSubscription? _ownedSub;
+  StreamSubscription? _coAuthorSub;
+  StreamSubscription? _surpriseSub;
+
+  List<Trip> _ownedTrips = [];
+  List<Trip> _coAuthorTrips = [];
+  List<Trip> _surpriseTrips = [];
+
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _ownedTripsStream = _tripService.getTripsStream(_userId ?? '');
-    _coAuthorTripsStream = FirebaseFirestore.instance
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null) {
+        _cancelStreams();
+        if (mounted) {
+          setState(() {
+            _userId = null;
+            _ownedTrips = [];
+            _coAuthorTrips = [];
+            _surpriseTrips = [];
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (user.uid != _userId || _ownedSub == null || _coAuthorSub == null || _surpriseSub == null) {
+          _subscribeToStreams(user.uid);
+        }
+      }
+    });
+    final initialUser = FirebaseAuth.instance.currentUser;
+    if (initialUser != null) {
+      _subscribeToStreams(initialUser.uid);
+    }
+  }
+
+  void _cancelStreams() {
+    _ownedSub?.cancel();
+    _coAuthorSub?.cancel();
+    _surpriseSub?.cancel();
+    _ownedSub = null;
+    _coAuthorSub = null;
+    _surpriseSub = null;
+  }
+
+  void _subscribeToStreams(String uid) {
+    _cancelStreams();
+
+    if (mounted) {
+      setState(() {
+        _userId = uid;
+        _isLoading = true;
+      });
+    }
+
+    _ownedSub = _tripService.getTripsStream(uid).listen((trips) {
+      if (mounted) {
+        setState(() {
+          _ownedTrips = trips;
+          _isLoading = false;
+        });
+      }
+    }, onError: (err) {
+      print("DEBUG: ownedTripsStream error: $err");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
+
+    _coAuthorSub = FirebaseFirestore.instance
         .collectionGroup('trips')
-        .where('coAuthorIds', arrayContains: _userId ?? '')
-        .snapshots();
-    _surpriseTripsStream = FirebaseFirestore.instance
+        .where('coAuthorIds', arrayContains: uid)
+        .snapshots()
+        .listen((snapshot) {
+      final trips = snapshot.docs
+          .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _coAuthorTrips = trips;
+        });
+      }
+    }, onError: (err) {
+      print("DEBUG: coAuthorTripsStream error: $err");
+    });
+
+    _surpriseSub = FirebaseFirestore.instance
         .collectionGroup('trips')
-        .where('surpriseTargetIds', arrayContains: _userId ?? '')
-        .snapshots();
+        .where('surpriseTargetIds', arrayContains: uid)
+        .snapshots()
+        .listen((snapshot) {
+      final trips = snapshot.docs
+          .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _surpriseTrips = trips;
+        });
+      }
+    }, onError: (err) {
+      print("DEBUG: surpriseTripsStream error: $err");
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _cancelStreams();
+    super.dispose();
   }
 
   void _showCreateTripDialog(BuildContext context) {
-    if (_userId == null) return;
+    final uid = _userId;
+    if (uid == null) return;
 
     final formKey = GlobalKey<FormState>();
     final titleController = TextEditingController();
@@ -421,14 +520,14 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                     : selectedCoverBase64!;
                                 final imageBytes = base64Decode(rawBase64);
                                 final storageRef = FirebaseStorage.instance
-                                    .ref('users/$_userId/trips/$tripId/cover.jpg');
+                                    .ref('users/$uid/trips/$tripId/cover.jpg');
                                 await storageRef.putData(
                                   Uint8List.fromList(imageBytes),
                                   SettableMetadata(contentType: 'image/jpeg'),
                                 );
                                 final bucket = FirebaseStorage.instance.app.options.storageBucket;
                                 finalCoverUrl =
-                                    "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F$_userId%2Ftrips%2F$tripId%2Fcover.jpg?alt=media";
+                                    "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F$uid%2Ftrips%2F$tripId%2Fcover.jpg?alt=media";
                               } catch (e) {
                                 print("Error uploading cover to Storage: $e");
                               }
@@ -437,7 +536,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                             // 2. Create Trip document as a private draft
                             final newTrip = Trip(
                               id: tripId,
-                              userId: _userId,
+                              userId: uid,
                               title: titleController.text.trim(),
                               description: descriptionController.text.trim(),
                               coverUrl: finalCoverUrl,
@@ -450,7 +549,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                             );
 
                             try {
-                              await _tripService.createTrip(_userId, newTrip);
+                              await _tripService.createTrip(uid, newTrip);
                               Navigator.of(dialogContext).pop();
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -538,9 +637,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   }
 
   void _deleteTrip(Trip trip) async {
-    if (_userId == null) return;
+    final uid = _userId;
+    if (uid == null) return;
     try {
-      await _tripService.deleteTrip(_userId, trip.id);
+      await _tripService.deleteTrip(uid, trip.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -590,6 +690,27 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final int crossAxisCount = width > 1200 ? 4 : (width > 800 ? 3 : (width > 550 ? 2 : 1));
         final double padding = width > 800 ? 32.0 : 16.0;
         final bool isDark = OhtliSettings.instance.isDarkMode;
+
+        // Combine all owned and co-authored trips, avoiding duplicates by trip ID
+        final Map<String, Trip> combinedMap = {};
+        for (var trip in _ownedTrips) {
+          combinedMap[trip.id] = trip;
+        }
+        for (var trip in _coAuthorTrips) {
+          combinedMap[trip.id] = trip;
+        }
+        
+        final allTrips = combinedMap.values.toList();
+        // Sort combined list by createdAt descending
+        allTrips.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
+        final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
+
+        Widget? surpriseSection;
+        if (_surpriseTrips.isNotEmpty) {
+          surpriseSection = _buildSurprisePlansSection(_surpriseTrips, isDark);
+        }
 
         return DefaultTabController(
           length: 2,
@@ -688,99 +809,35 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                   ),
                 ),
 
-                StreamBuilder<List<Trip>>(
-                  stream: _ownedTripsStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24.0),
-                          child: Text(
-                            'Ocurrió un error al cargar tus viajes: ${snapshot.error}',
-                            style: GoogleFonts.inter(color: OhtliColors.xoconostle),
-                          ),
-                        ),
-                      );
-                    }
-
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(
+                _isLoading
+                    ? const Center(
                         child: CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
                         ),
-                      );
-                    }
+                      )
+                    : TabBarView(
+                        children: [
+                          // --- TAB: PUBLICADOS ---
+                          _buildTripsList(
+                            publishedTrips, 
+                            'Aún no tienes viajes publicados.',
+                            'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
+                            crossAxisCount, 
+                            padding,
+                            width,
+                          ),
 
-                    return StreamBuilder<QuerySnapshot>(
-                      stream: _coAuthorTripsStream,
-                      builder: (context, coAuthorsSnapshot) {
-                        if (coAuthorsSnapshot.hasError) {
-                          print("DEBUG: coAuthorsSnapshot error: ${coAuthorsSnapshot.error}");
-                        }
-                        final coAuthorDocs = coAuthorsSnapshot.data?.docs ?? [];
-                        final coAuthorTrips = coAuthorDocs
-                            .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                            .toList();
-
-                        final ownedTrips = snapshot.data ?? [];
-                        
-                        // Combine all owned and co-authored trips, avoiding duplicates by trip ID
-                        final Map<String, Trip> combinedMap = {};
-                        for (var trip in ownedTrips) {
-                          combinedMap[trip.id] = trip;
-                        }
-                        for (var trip in coAuthorTrips) {
-                          combinedMap[trip.id] = trip;
-                        }
-                        
-                        final allTrips = combinedMap.values.toList();
-                        // Sort combined list by createdAt descending
-                        allTrips.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-                        final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
-                        final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
-
-                        return TabBarView(
-                          children: [
-                            // --- TAB: PUBLICADOS ---
-                            _buildTripsList(
-                              publishedTrips, 
-                              'Aún no tienes viajes publicados.',
-                              'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
-                              crossAxisCount, 
-                              padding,
-                              width,
-                            ),
-
-                            // --- TAB: PLANES (Borradores) ---
-                            StreamBuilder<QuerySnapshot>(
-                              stream: _surpriseTripsStream,
-                              builder: (context, surpriseSnapshot) {
-                                if (surpriseSnapshot.hasError) {
-                                  print("DEBUG: surpriseSnapshot error: ${surpriseSnapshot.error}");
-                                }
-                                final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
-                                final surpriseTrips = surpriseDocs
-                                    .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                                    .toList();
-
-                                Widget? surpriseSection;
-                                if (surpriseTrips.isNotEmpty) {
-                                  surpriseSection = _buildSurprisePlansSection(surpriseTrips, isDark);
-                                }
-
-                                if (draftTrips.isEmpty && surpriseTrips.isEmpty) {
-                                  return _buildTripsList(
-                                    [], 
-                                    'Tu libreta de caminos está vacía.',
-                                    'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
-                                    crossAxisCount, 
-                                    padding,
-                                    width,
-                                  );
-                                }
-
-                                return ListView(
+                          // --- TAB: PLANES (Borradores) ---
+                          (draftTrips.isEmpty && _surpriseTrips.isEmpty)
+                              ? _buildTripsList(
+                                  [], 
+                                  'Tu libreta de caminos está vacía.',
+                                  'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
+                                  crossAxisCount, 
+                                  padding,
+                                  width,
+                                )
+                              : ListView(
                                   padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
                                   children: [
                                     if (surpriseSection != null) ...[
@@ -800,15 +857,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                       _buildTripsGrid(draftTrips, crossAxisCount, width, padding),
                                     ],
                                   ],
-                                );
-                              },
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
+                                ),
+                        ],
+                      ),
               ],
             ),
             
