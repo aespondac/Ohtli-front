@@ -9,6 +9,22 @@ service cloud.firestore {
     // User profile rule: allow reading/deleting old profile matching user's authenticated email,
     // and full access to their own UID document.
     // Also allow any authenticated user to update ONLY the 'friends' array of other users to enable mutual friendship.
+    
+    // Collection Group rules for 'trips' (required for collectionGroup queries)
+    match /{path=**}/trips/{tripId} {
+      allow read: if (request.auth != null && (
+        (resource.data != null && 'userId' in resource.data && request.auth.uid == resource.data.userId) || 
+        (resource.data != null && 'coAuthorIds' in resource.data && resource.data.coAuthorIds is list && request.auth.uid in resource.data.coAuthorIds) ||
+        (resource.data != null && 'surpriseTargetIds' in resource.data && resource.data.surpriseTargetIds is list && request.auth.uid in resource.data.surpriseTargetIds)
+      )) || (resource != null && resource.data != null && 'status' in resource.data && resource.data.status == 'published' && 'visibility' in resource.data && resource.data.visibility == 'public');
+      
+      allow update: if request.auth != null && (
+        (resource.data != null && 'userId' in resource.data && request.auth.uid == resource.data.userId) || 
+        (resource.data != null && 'coAuthorIds' in resource.data && resource.data.coAuthorIds is list && request.auth.uid in resource.data.coAuthorIds) ||
+        (resource.data != null && 'surpriseTargetIds' in resource.data && resource.data.surpriseTargetIds is list && request.auth.uid in resource.data.surpriseTargetIds)
+      );
+    }
+
     match /users/{userId} {
       allow read: if true;
       allow delete: if request.auth != null && (

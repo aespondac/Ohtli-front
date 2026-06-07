@@ -699,6 +699,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           .where('coAuthorIds', arrayContains: _userId)
                           .snapshots(),
                       builder: (context, coAuthorsSnapshot) {
+                        if (coAuthorsSnapshot.hasError) {
+                          print("DEBUG: coAuthorsSnapshot error: ${coAuthorsSnapshot.error}");
+                        }
                         final coAuthorDocs = coAuthorsSnapshot.data?.docs ?? [];
                         final coAuthorTrips = coAuthorDocs
                             .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
@@ -741,6 +744,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                   .where('surpriseTargetIds', arrayContains: _userId)
                                   .snapshots(),
                               builder: (context, surpriseSnapshot) {
+                                if (surpriseSnapshot.hasError) {
+                                  print("DEBUG: surpriseSnapshot error: ${surpriseSnapshot.error}");
+                                }
                                 final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
                                 final surpriseTrips = surpriseDocs
                                     .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
