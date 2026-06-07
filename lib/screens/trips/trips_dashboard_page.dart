@@ -33,6 +33,24 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   // Cache for author profiles (co-authored trips)
   final Map<String, Map<String, String?>> _authorProfilesCache = {};
 
+  late final Stream<List<Trip>> _ownedTripsStream;
+  late final Stream<QuerySnapshot> _coAuthorTripsStream;
+  late final Stream<QuerySnapshot> _surpriseTripsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownedTripsStream = _tripService.getTripsStream(_userId ?? '');
+    _coAuthorTripsStream = FirebaseFirestore.instance
+        .collectionGroup('trips')
+        .where('coAuthorIds', arrayContains: _userId ?? '')
+        .snapshots();
+    _surpriseTripsStream = FirebaseFirestore.instance
+        .collectionGroup('trips')
+        .where('surpriseTargetIds', arrayContains: _userId ?? '')
+        .snapshots();
+  }
+
   void _showCreateTripDialog(BuildContext context) {
     if (_userId == null) return;
 
@@ -671,7 +689,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 ),
 
                 StreamBuilder<List<Trip>>(
-                  stream: _tripService.getTripsStream(_userId),
+                  stream: _ownedTripsStream,
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
                       return Center(
@@ -694,10 +712,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     }
 
                     return StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collectionGroup('trips')
-                          .where('coAuthorIds', arrayContains: _userId)
-                          .snapshots(),
+                      stream: _coAuthorTripsStream,
                       builder: (context, coAuthorsSnapshot) {
                         if (coAuthorsSnapshot.hasError) {
                           print("DEBUG: coAuthorsSnapshot error: ${coAuthorsSnapshot.error}");
@@ -739,10 +754,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
                             // --- TAB: PLANES (Borradores) ---
                             StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collectionGroup('trips')
-                                  .where('surpriseTargetIds', arrayContains: _userId)
-                                  .snapshots(),
+                              stream: _surpriseTripsStream,
                               builder: (context, surpriseSnapshot) {
                                 if (surpriseSnapshot.hasError) {
                                   print("DEBUG: surpriseSnapshot error: ${surpriseSnapshot.error}");
