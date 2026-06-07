@@ -15,6 +15,8 @@ import '../home_page.dart';
 import '../account/account_management_page.dart';
 import '../account/public_profile_page.dart';
 import 'trip_editor_page.dart';
+import '../error_404_page.dart';
+import '../error_403_page.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -46,6 +48,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   String _authorActiveTitleName = 'Viajero';
   bool _isLoading = true;
   String? _errorMessage;
+  int? _errorCode;
 
   // Gift unwrap animation state variables
   bool _isGiftUnwrapping = false;
@@ -113,12 +116,28 @@ class _TripViewerPageState extends State<TripViewerPage> {
           ]);
         } else {
           setState(() {
-            _errorMessage = "No se pudo encontrar el viaje. Puede que sea privado o haya sido eliminado.";
+            _errorCode = 404;
+            _errorMessage = "Este viaje ha tomado otro rumbo. No logramos encontrar la bitácora que buscas.";
+            _isLoading = false;
+          });
+        }
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') {
+          setState(() {
+            _errorCode = 403;
+            _errorMessage = "El aventurero ha decidido mantener esta bitácora bajo llave.";
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _errorCode = 404;
+            _errorMessage = "Este viaje ha tomado otro rumbo. No logramos encontrar la bitácora que buscas.";
             _isLoading = false;
           });
         }
       } catch (e) {
         setState(() {
+          _errorCode = 404;
           _errorMessage = "Error al conectar con la base de datos: $e";
           _isLoading = false;
         });
@@ -428,6 +447,19 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ],
           ),
         ),
+      );
+    }
+
+    if (_errorCode == 404) {
+      return Error404Page(
+        onExploreHome: widget.onBackToDashboard ?? () {},
+      );
+    }
+
+    if (_errorCode == 403) {
+      return Error403Page(
+        onExploreHome: widget.onBackToDashboard ?? () {},
+        onLoginRedirect: widget.onLoginRedirect ?? () {},
       );
     }
 

@@ -6,6 +6,9 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "functions": {
+    "source": "functions"
+  },
   "hosting": {
     "public": "build/web",
     "ignore": [
@@ -43,6 +46,10 @@
       }
     ],
     "rewrites": [
+      {
+        "source": "/viajes/**",
+        "function": "serveTripMeta"
+      },
       {
         "source": "**",
         "destination": "/index.html"

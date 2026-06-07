@@ -41,7 +41,7 @@ class TripCard extends StatelessWidget {
     final String baseUrl = kIsWeb 
         ? "${Uri.base.scheme}://${Uri.base.host}${Uri.base.port != 80 && Uri.base.port != 443 && Uri.base.port != 0 ? ':${Uri.base.port}' : ''}/"
         : 'https://ohtli.quest/';
-    final String tripUrl = '$baseUrl?tripId=${trip.id}&authorId=${trip.userId}';
+    final String tripUrl = '${baseUrl}viajes/${trip.userId}/${trip.id}';
     final String shareMessage = '¡Mira mi viaje "${trip.title}" en Ohtli! $tripUrl';
 
     if (kIsWeb) {

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:ui' show ImageFilter;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -40,6 +41,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   List<TripSection> _sections = [];
   bool _isLoadingContent = true;
   bool _isSavingCloud = false;
+  bool _isPublishing = false;
   
   Timer? _debounceTimer;
   
@@ -1099,14 +1101,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      
-                      // --- Co-Authors section ---
                       Text(
                         'Co-autores (Opcional):',
                         style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
                       ),
                       const SizedBox(height: 6),
-                       Builder(
+                      Builder(
                         builder: (context) {
                           final actualFriends = _friendsList.where((f) => f['isFriend'] == true).toList();
                           if (actualFriends.isEmpty) {
@@ -1157,25 +1157,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           );
                         },
                       ),
-                      if (isSurpriseInvalid) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: OhtliColors.xoconostle.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: OhtliColors.xoconostle.withOpacity(0.2)),
-                          ),
-                          child: Text(
-                            'Este es un plan sorpresa. Debes configurar los destinatarios y la fecha de apertura en la sección de Co-autores/Compartir antes de poder publicar.',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: OhtliColors.xoconostle,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -1197,6 +1178,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       : () async {
                           Navigator.pop(dialogContext);
                           setState(() {
+                            _isPublishing = true;
                             _travelDate = tempDate;
                             _visibility = tempVisibility;
                             _status = 'published';
@@ -1204,34 +1186,46 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             _coAuthorNames = tempCoAuthorNames;
                           });
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Publicando bitácora de viaje...',
-                                style: GoogleFonts.inter(color: Colors.white),
-                              ),
-                              backgroundColor: OhtliColors.stormyTeal,
-                              duration: const Duration(milliseconds: 600),
-                            ),
-                          );
-
                           _syncAllTables();
-                          await _saveToCloudFirestore();
-
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '¡Tu viaje ha sido publicado con éxito!',
-                                  style: GoogleFonts.inter(color: Colors.white),
+                          try {
+                            await _saveToCloudFirestore().timeout(const Duration(minutes: 2));
+                            if (mounted) {
+                              setState(() {
+                                _isPublishing = false;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '¡Tu viaje ha sido publicado con éxito!',
+                                    style: GoogleFonts.inter(color: Colors.white),
+                                  ),
+                                  backgroundColor: OhtliColors.stormyTeal,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
-                                backgroundColor: OhtliColors.stormyTeal,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              setState(() {
+                                _isPublishing = false;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Error al publicar el viaje: $e',
+                                    style: GoogleFonts.inter(color: Colors.white),
+                                  ),
+                                  backgroundColor: OhtliColors.xoconostle,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            }
                           }
                         },
                   style: ElevatedButton.styleFrom(
@@ -1339,37 +1333,50 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           );
 
                           setState(() {
+                            _isPublishing = true;
                             _errataHistory.add(newErrata);
                           });
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Guardando correcciones...',
-                                style: GoogleFonts.inter(color: Colors.white),
-                              ),
-                              backgroundColor: OhtliColors.xoconostle,
-                              duration: const Duration(milliseconds: 600),
-                            ),
-                          );
-
                           _syncAllTables();
-                          await _saveToCloudFirestore();
-
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '¡Fe de Errata publicada con éxito!',
-                                  style: GoogleFonts.inter(color: Colors.white),
+                          try {
+                            await _saveToCloudFirestore().timeout(const Duration(minutes: 2));
+                            if (mounted) {
+                              setState(() {
+                                _isPublishing = false;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '¡Fe de Errata publicada con éxito!',
+                                    style: GoogleFonts.inter(color: Colors.white),
+                                  ),
+                                  backgroundColor: OhtliColors.xoconostle,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
-                                backgroundColor: OhtliColors.xoconostle,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              setState(() {
+                                _isPublishing = false;
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Error al publicar errata: $e',
+                                    style: GoogleFonts.inter(color: Colors.white),
+                                  ),
+                                  backgroundColor: OhtliColors.xoconostle,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            }
                           }
                         },
                   style: ElevatedButton.styleFrom(
@@ -2024,9 +2031,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ],
           );
 
-    return PopScope(
+    final Widget mainWidgetTree = PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
+        if (_isPublishing) return;
         if (didPop) return;
         final bool shouldPop = await _onWillPop();
         if (shouldPop && context.mounted) {
@@ -2042,6 +2050,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             icon: const Icon(Icons.arrow_back_ios_new_rounded),
             color: OhtliColors.onyx,
             onPressed: () async {
+              if (_isPublishing) return;
               final bool shouldPop = await _onWillPop();
               if (shouldPop && context.mounted) {
                 Navigator.pop(context);
@@ -2181,8 +2190,45 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
           ),
         ),
-      ),
     );
+
+    if (_isPublishing) {
+      return Stack(
+        children: [
+          mainWidgetTree,
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.5),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        "Subiendo imágenes y preparando tu aventura...",
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return mainWidgetTree;
   }
 
   Widget _buildBlockCard(int index, TripSection section, bool isDark) {
