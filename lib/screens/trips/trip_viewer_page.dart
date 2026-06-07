@@ -50,9 +50,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   String? _errorMessage;
   int? _errorCode;
 
-  // Gift unwrap animation state variables
-  bool _isGiftUnwrapping = false;
-  bool _hasUnwrappedGift = false;
+
 
   bool _checkIsLocked(Trip t, bool isSurpriseForMe, bool isAuthor) {
     if (!isSurpriseForMe || isAuthor || t.surpriseUnlockDate == null) {
@@ -554,17 +552,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
         _trip!.surpriseTargetIds.contains(currentUser.uid);
 
     bool isLocked = false;
-    bool isOpened = false;
 
     if (isSurpriseForMe) {
       final bool isAuthor = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
       isLocked = _checkIsLocked(_trip!, isSurpriseForMe, isAuthor);
-      isOpened = _trip!.surpriseOpenedBy.contains(currentUser.uid);
       
       if (isLocked) {
         activeContent = _buildLockedSurpriseView(isDark);
-      } else if (!isOpened && !_hasUnwrappedGift) {
-        activeContent = _buildUnwrapGiftView(isDark, currentUser.uid);
       }
     }
 
@@ -671,7 +665,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
       appBar: showTopNavbar ? _buildPublicNavbar(hasActiveSession, isDark) : null,
       body: bodyContent,
-      floatingActionButton: (showErrataButton && (!isSurpriseForMe || (isOpened || _hasUnwrappedGift)))
+      floatingActionButton: (showErrataButton && (!isSurpriseForMe || !isLocked))
           ? FloatingActionButton.extended(
               onPressed: () {
                 if (canEdit) {
@@ -2021,7 +2015,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ),
             const SizedBox(height: 24),
             Text(
-              '¡Shh... Es una sorpresa! 🎁',
+              '¡Shh... Es una sorpresa!',
               style: GoogleFonts.outfit(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -2074,144 +2068,4 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
-  Widget _buildUnwrapGiftView(bool isDark, String currentUid) {
-    return Center(
-      child: GestureDetector(
-        onTap: _isGiftUnwrapping
-            ? null
-            : () async {
-                setState(() {
-                  _isGiftUnwrapping = true;
-                });
-                
-                // Play unwrapping sound / trigger state changes after delay
-                Future.delayed(const Duration(milliseconds: 1800), () async {
-                  try {
-                    final updatedBy = List<String>.from(_trip!.surpriseOpenedBy)..add(currentUid);
-                    await FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(_trip!.userId)
-                        .collection('trips')
-                        .doc(_trip!.id)
-                        .update({
-                      'surpriseOpenedBy': updatedBy,
-                    });
-                    
-                    if (mounted) {
-                      setState(() {
-                        _isGiftUnwrapping = false;
-                        _hasUnwrappedGift = true;
-                      });
-                    }
-                  } catch (e) {
-                    print("Error updating opened surprise state: $e");
-                    if (mounted) {
-                      setState(() {
-                        _isGiftUnwrapping = false;
-                        _hasUnwrappedGift = true;
-                      });
-                    }
-                  }
-                });
-              },
-        child: AnimatedScale(
-          scale: _isGiftUnwrapping ? 1.4 : 1.0,
-          duration: const Duration(milliseconds: 1500),
-          curve: Curves.elasticOut,
-          child: AnimatedRotation(
-            turns: _isGiftUnwrapping ? 4.0 : 0.0,
-            duration: const Duration(milliseconds: 1500),
-            curve: Curves.easeInOutBack,
-            child: Container(
-              margin: const EdgeInsets.all(24),
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [OhtliColors.stormyTeal, Color(0xFF1F5F5B)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: OhtliColors.stormyTeal.withOpacity(0.3),
-                    blurRadius: 24,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              constraints: const BoxConstraints(maxWidth: 360),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Beautiful gift icon wrapped
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 1200),
-                    curve: Curves.bounceOut,
-                    builder: (context, val, child) {
-                      return Transform.translate(
-                        offset: Offset(0, (1 - val) * -20),
-                        child: child,
-                      );
-                    },
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Center(
-                        child: Text(
-                          '🎁',
-                          style: TextStyle(fontSize: 50),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    '¡Tienes una sorpresa! 💫',
-                    style: GoogleFonts.outfit(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Este plan fue creado especialmente para ti. ¡Toca el regalo para abrirlo!',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: Colors.white.withOpacity(0.85),
-                      height: 1.45,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _isGiftUnwrapping ? 'Abriendo...' : 'Tocar para Abrir',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -302,7 +302,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       messageText = 'publicó un nuevo ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
                     } else if (type == 'surprise_plan') {
                       final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                      messageText = 'te hizo un plan sorpresa: "$tripTitle"! 🎁';
+                      messageText = 'te hizo un plan sorpresa: "$tripTitle"!';
                     } else if (type == 'co_author_added') {
                       final isPlan = data['isPlan'] ?? false;
                       final tripTitle = data['tripTitle'] ?? 'su itinerario';

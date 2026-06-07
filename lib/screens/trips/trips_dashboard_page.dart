@@ -1135,22 +1135,13 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Text(
-              '🎁',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Planes Sorpresa Para Ti',
-              style: GoogleFonts.outfit(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: OhtliColors.onyx,
-              ),
-            ),
-          ],
+        Text(
+          'Regalos por Abrir',
+          style: GoogleFonts.outfit(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: OhtliColors.onyx,
+          ),
         ),
         const SizedBox(height: 12),
         _buildSurpriseTripsGrid(surpriseTrips, crossAxisCount, availableWidth, padding, isDark),
