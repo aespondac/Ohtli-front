@@ -82,28 +82,7 @@ jobs:
           channelId: live
           projectId: othli-497404
 
-      # 8. Inspect Service Account Email (Diagnostics)
-      - name: Inspect Service Account Email
-        run: |
-          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT_OTHLI_497404 }}" ]; then
-            echo "ERROR: FIREBASE_SERVICE_ACCOUNT_OTHLI_497404 secret is empty or missing!"
-            exit 1
-          fi
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_OTHLI_497404 }}' > temp_sa.json
-          node -e "
-            const fs = require('fs');
-            try {
-              const sa = JSON.parse(fs.readFileSync('temp_sa.json', 'utf8'));
-              console.log('Service Account Email:', sa.client_email);
-              console.log('Project ID:', sa.project_id);
-            } catch (e) {
-              console.error('Failed to parse service account JSON:', e);
-              process.exit(1);
-            }
-          "
-          rm temp_sa.json
-
-      # 9. Deploy Firebase Functions
+      # 8. Deploy Firebase Functions
       - name: Deploy Firebase Functions
         run: |
           npm install -g firebase-tools
