@@ -2190,6 +2190,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
           ),
         ),
+      ),
     );
 
     if (_isPublishing) {
