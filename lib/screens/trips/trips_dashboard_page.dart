@@ -1020,7 +1020,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         
         final authorProfile = isCoAuthored ? _authorProfilesCache[trip.userId] : null;
 
-        return TripCard(
+        final tripCard = TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
           addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
@@ -1052,6 +1052,19 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           },
           onDelete: () => _deleteTrip(trip),
         );
+
+        if (trip.isSurprise) {
+          return GiftWrappedCard(
+            trip: trip,
+            isLocked: false, // Owner can always open
+            isOpened: false, // Show it wrapped by default so they see the ribbon
+            addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : 'Ti',
+            child: tripCard,
+            onRevealComplete: () {},
+          );
+        }
+
+        return tripCard;
       },
     );
   }
@@ -1095,7 +1108,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         
         final authorProfile = isCoAuthored ? _authorProfilesCache[trip.userId] : null;
 
-        return TripCard(
+        final tripCard = TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
           addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
@@ -1127,6 +1140,19 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           },
           onDelete: () => _deleteTrip(trip),
         );
+
+        if (trip.isSurprise) {
+          return GiftWrappedCard(
+            trip: trip,
+            isLocked: false,
+            isOpened: false,
+            addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : 'Ti',
+            child: tripCard,
+            onRevealComplete: () {},
+          );
+        }
+
+        return tripCard;
       },
     );
   }
