@@ -281,6 +281,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
+        centerTitle: false,
         toolbarHeight: 80,
         title: Padding(
           padding: EdgeInsets.symmetric(horizontal: padding - 16),

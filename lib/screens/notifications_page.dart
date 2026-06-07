@@ -187,6 +187,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
+        centerTitle: false,
         toolbarHeight: 80,
         title: Padding(
           padding: EdgeInsets.symmetric(horizontal: padding - 16),
