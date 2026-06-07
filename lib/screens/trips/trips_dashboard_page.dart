@@ -692,13 +692,19 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final double padding = width > 800 ? 32.0 : 16.0;
         final bool isDark = OhtliSettings.instance.isDarkMode;
 
-        // Combine all owned and co-authored trips, avoiding duplicates by trip ID
+        // Combine all owned, co-authored, and opened surprise trips, avoiding duplicates by trip ID
         final Map<String, Trip> combinedMap = {};
         for (var trip in _ownedTrips) {
           combinedMap[trip.id] = trip;
         }
         for (var trip in _coAuthorTrips) {
           combinedMap[trip.id] = trip;
+        }
+        for (var trip in _surpriseTrips) {
+          final bool isOpened = trip.surpriseOpenedBy.contains(_userId);
+          if (isOpened) {
+            combinedMap[trip.id] = trip;
+          }
         }
         
         final allTrips = combinedMap.values.toList();
@@ -708,9 +714,14 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
         final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
 
+        final unopenedSurprises = _surpriseTrips.where((t) {
+          final bool isOpened = t.surpriseOpenedBy.contains(_userId);
+          return !isOpened;
+        }).toList();
+
         Widget? surpriseSection;
-        if (_surpriseTrips.isNotEmpty) {
-          surpriseSection = _buildSurprisePlansSection(_surpriseTrips, crossAxisCount, width, padding, isDark);
+        if (unopenedSurprises.isNotEmpty) {
+          surpriseSection = _buildSurprisePlansSection(unopenedSurprises, crossAxisCount, width, padding, isDark);
         }
 
         return DefaultTabController(
@@ -829,7 +840,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           ),
 
                           // --- TAB: PLANES (Borradores) ---
-                          (draftTrips.isEmpty && _surpriseTrips.isEmpty)
+                          (draftTrips.isEmpty && unopenedSurprises.isEmpty)
                               ? _buildTripsList(
                                   [], 
                                   'Tu libreta de caminos está vacía.',
