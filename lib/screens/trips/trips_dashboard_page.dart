@@ -42,6 +42,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     final travelDateController = TextEditingController();
     DateTime? selectedTravelDate;
     String? selectedCoverBase64;
+    bool isSurprise = false;
     bool isSaving = false;
 
     showDialog(
@@ -194,6 +195,33 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                 travelDateController.text = '${picked.day} de ${months[picked.month - 1]} de ${picked.year}';
                               });
                             }
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        SwitchListTile(
+                          title: Text(
+                            '¿Es un plan sorpresa?',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: OhtliColors.onyx.withValues(alpha: 0.8),
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Tus mejores amigos mutuos verán este plan cuando se abra.',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: OhtliColors.onyx.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          value: isSurprise,
+                          activeColor: OhtliColors.stormyTeal,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          onChanged: (val) {
+                            setDialogState(() {
+                              isSurprise = val;
+                            });
                           },
                         ),
                         const SizedBox(height: 16),
@@ -400,6 +428,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                               createdAt: now,
                               updatedAt: now,
                               travelDate: selectedTravelDate,
+                              isSurprise: isSurprise,
                             );
 
                             try {
