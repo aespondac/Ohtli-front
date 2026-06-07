@@ -51,6 +51,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
   bool _isGiftUnwrapping = false;
   bool _hasUnwrappedGift = false;
 
+  bool _checkIsLocked(Trip t, bool isSurpriseForMe, bool isAuthor) {
+    if (!isSurpriseForMe || isAuthor || t.surpriseUnlockDate == null) {
+      return false;
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final unlockDay = DateTime(t.surpriseUnlockDate!.year, t.surpriseUnlockDate!.month, t.surpriseUnlockDate!.day);
+    return today.isBefore(unlockDay);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -65,20 +75,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
       final bool isSurpriseForMe = t.isSurprise && 
           currentUser != null && 
           t.surpriseTargetIds.contains(currentUser.uid);
-      final bool isLocked = isSurpriseForMe && 
-          !isAuthor && 
-          t.surpriseUnlockDate != null && 
-          DateTime.now().isBefore(t.surpriseUnlockDate!);
+      final bool isLocked = _checkIsLocked(t, isSurpriseForMe, isAuthor);
 
+      _trip = widget.trip;
       if (isLocked) {
         setState(() {
-          _errorMessage = "No se pudo encontrar el viaje. Puede que sea privado o haya sido eliminado.";
           _isLoading = false;
         });
         return;
       }
 
-      _trip = widget.trip;
       await Future.wait([
         _loadTripContent(),
         _loadAuthorProfile(),
@@ -91,20 +97,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
           final bool isSurpriseForMe = fetchedTrip.isSurprise && 
               currentUser != null && 
               fetchedTrip.surpriseTargetIds.contains(currentUser.uid);
-          final bool isLocked = isSurpriseForMe && 
-              !isAuthor && 
-              fetchedTrip.surpriseUnlockDate != null && 
-              DateTime.now().isBefore(fetchedTrip.surpriseUnlockDate!);
+          final bool isLocked = _checkIsLocked(fetchedTrip, isSurpriseForMe, isAuthor);
 
+          _trip = fetchedTrip;
           if (isLocked) {
             setState(() {
-              _errorMessage = "No se pudo encontrar el viaje. Puede que sea privado o haya sido eliminado.";
               _isLoading = false;
             });
             return;
           }
 
-          _trip = fetchedTrip;
           await Future.wait([
             _loadTripContent(),
             _loadAuthorProfile(),
@@ -523,8 +525,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     bool isOpened = false;
 
     if (isSurpriseForMe) {
-      isLocked = _trip!.surpriseUnlockDate != null && 
-          DateTime.now().isBefore(_trip!.surpriseUnlockDate!);
+      final bool isAuthor = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
+      isLocked = _checkIsLocked(_trip!, isSurpriseForMe, isAuthor);
       isOpened = _trip!.surpriseOpenedBy.contains(currentUser.uid);
       
       if (isLocked) {

@@ -566,245 +566,249 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       );
     }
 
-    final double width = MediaQuery.of(context).size.width;
-    final int crossAxisCount = width > 1200 ? 4 : (width > 800 ? 3 : (width > 550 ? 2 : 1));
-    final double padding = width > 800 ? 32.0 : 16.0;
-    final bool isDark = OhtliSettings.instance.isDarkMode;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        final int crossAxisCount = width > 1200 ? 4 : (width > 800 ? 3 : (width > 550 ? 2 : 1));
+        final double padding = width > 800 ? 32.0 : 16.0;
+        final bool isDark = OhtliSettings.instance.isDarkMode;
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: OhtliColors.cloudDancer,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          automaticallyImplyLeading: false,
-          centerTitle: false,
-          titleSpacing: 0,
-          toolbarHeight: 80,
-          title: Padding(
-            padding: EdgeInsets.symmetric(horizontal: padding),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        return DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            backgroundColor: OhtliColors.cloudDancer,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              centerTitle: false,
+              titleSpacing: 0,
+              toolbarHeight: 80,
+              title: Padding(
+                padding: EdgeInsets.symmetric(horizontal: padding),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Mis Viajes',
-                      style: GoogleFonts.inter(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: OhtliColors.onyx,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Organiza y comparte tus caminos',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: OhtliColors.onyx.withValues(alpha: 0.5),
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-                
-                // Styled "Crear Plan" button on desktop / tablet
-                if (width > 600)
-                  ElevatedButton.icon(
-                    onPressed: () => _showCreateTripDialog(context),
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: Text(
-                      'Crear Plan',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: OhtliColors.stormyTeal,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(48),
-            child: Container(
-              alignment: Alignment.centerLeft,
-              padding: EdgeInsets.symmetric(horizontal: padding),
-              child: TabBar(
-                isScrollable: true,
-                indicatorColor: OhtliColors.stormyTeal,
-                indicatorWeight: 3,
-                labelColor: OhtliColors.stormyTeal,
-                unselectedLabelColor: OhtliColors.onyx.withValues(alpha: 0.5),
-                labelStyle: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-                unselectedLabelStyle: GoogleFonts.inter(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-                tabs: const [
-                  Tab(text: 'Publicados'),
-                  Tab(text: 'Planes'),
-                ],
-              ),
-            ),
-          ),
-        ),
-        body: Stack(
-          children: [
-            // Map dotted line background
-            Positioned.fill(
-              child: CustomPaint(
-                painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.3)),
-              ),
-            ),
-
-            StreamBuilder<List<Trip>>(
-              stream: _tripService.getTripsStream(_userId),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Text(
-                        'Ocurrió un error al cargar tus viajes: ${snapshot.error}',
-                        style: GoogleFonts.inter(color: OhtliColors.xoconostle),
-                      ),
-                    ),
-                  );
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
-                    ),
-                  );
-                }
-
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collectionGroup('trips')
-                      .where('coAuthorIds', arrayContains: _userId)
-                      .snapshots(),
-                  builder: (context, coAuthorsSnapshot) {
-                    final coAuthorDocs = coAuthorsSnapshot.data?.docs ?? [];
-                    final coAuthorTrips = coAuthorDocs
-                        .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                        .toList();
-
-                    final ownedTrips = snapshot.data ?? [];
-                    
-                    // Combine all owned and co-authored trips, avoiding duplicates by trip ID
-                    final Map<String, Trip> combinedMap = {};
-                    for (var trip in ownedTrips) {
-                      combinedMap[trip.id] = trip;
-                    }
-                    for (var trip in coAuthorTrips) {
-                      combinedMap[trip.id] = trip;
-                    }
-                    
-                    final allTrips = combinedMap.values.toList();
-                    // Sort combined list by createdAt descending
-                    allTrips.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-                    final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
-                    final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
-
-                    return TabBarView(
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // --- TAB: PUBLICADOS ---
-                        _buildTripsList(
-                          publishedTrips, 
-                          'Aún no tienes viajes publicados.',
-                          'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
-                          crossAxisCount, 
-                          padding,
+                        Text(
+                          'Mis Viajes',
+                          style: GoogleFonts.inter(
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                            color: OhtliColors.onyx,
+                          ),
                         ),
-
-                        // --- TAB: PLANES (Borradores) ---
-                        StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collectionGroup('trips')
-                              .where('surpriseTargetIds', arrayContains: _userId)
-                              .snapshots(),
-                          builder: (context, surpriseSnapshot) {
-                            final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
-                            final now = DateTime.now();
-                            final surpriseTrips = surpriseDocs
-                                .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                                .where((t) => t.surpriseUnlockDate == null || !now.isBefore(t.surpriseUnlockDate!))
-                                .toList();
-
-                            Widget? surpriseSection;
-                            if (surpriseTrips.isNotEmpty) {
-                              surpriseSection = _buildSurprisePlansSection(surpriseTrips, isDark);
-                            }
-
-                            if (draftTrips.isEmpty && surpriseTrips.isEmpty) {
-                              return _buildTripsList(
-                                [], 
-                                'Tu libreta de caminos está vacía.',
-                                'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
-                                crossAxisCount, 
-                                padding,
-                              );
-                            }
-
-                            return ListView(
-                              padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
-                              children: [
-                                if (surpriseSection != null) ...[
-                                  surpriseSection,
-                                  const SizedBox(height: 24),
-                                ],
-                                if (draftTrips.isNotEmpty) ...[
-                                  Text(
-                                    'Mis Planes de Viaje',
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: OhtliColors.onyx,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _buildTripsGrid(draftTrips, crossAxisCount),
-                                ],
-                              ],
-                            );
-                          },
+                        const SizedBox(height: 4),
+                        Text(
+                          'Organiza y comparte tus caminos',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: OhtliColors.onyx.withValues(alpha: 0.5),
+                            fontWeight: FontWeight.w400,
+                          ),
                         ),
                       ],
+                    ),
+                    
+                    // Styled "Crear Plan" button on desktop / tablet
+                    if (width > 600)
+                      ElevatedButton.icon(
+                        onPressed: () => _showCreateTripDialog(context),
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: Text(
+                          'Crear Plan',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OhtliColors.stormyTeal,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: Container(
+                  alignment: Alignment.centerLeft,
+                  padding: EdgeInsets.symmetric(horizontal: padding),
+                  child: TabBar(
+                    isScrollable: true,
+                    indicatorColor: OhtliColors.stormyTeal,
+                    indicatorWeight: 3,
+                    labelColor: OhtliColors.stormyTeal,
+                    unselectedLabelColor: OhtliColors.onyx.withValues(alpha: 0.5),
+                    labelStyle: GoogleFonts.inter(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    unselectedLabelStyle: GoogleFonts.inter(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                    ),
+                    tabs: const [
+                      Tab(text: 'Publicados'),
+                      Tab(text: 'Planes'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            body: Stack(
+              children: [
+                // Map dotted line background
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.3)),
+                  ),
+                ),
+
+                StreamBuilder<List<Trip>>(
+                  stream: _tripService.getTripsStream(_userId),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Text(
+                            'Ocurrió un error al cargar tus viajes: ${snapshot.error}',
+                            style: GoogleFonts.inter(color: OhtliColors.xoconostle),
+                          ),
+                        ),
+                      );
+                    }
+
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
+                        ),
+                      );
+                    }
+
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collectionGroup('trips')
+                          .where('coAuthorIds', arrayContains: _userId)
+                          .snapshots(),
+                      builder: (context, coAuthorsSnapshot) {
+                        final coAuthorDocs = coAuthorsSnapshot.data?.docs ?? [];
+                        final coAuthorTrips = coAuthorDocs
+                            .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                            .toList();
+
+                        final ownedTrips = snapshot.data ?? [];
+                        
+                        // Combine all owned and co-authored trips, avoiding duplicates by trip ID
+                        final Map<String, Trip> combinedMap = {};
+                        for (var trip in ownedTrips) {
+                          combinedMap[trip.id] = trip;
+                        }
+                        for (var trip in coAuthorTrips) {
+                          combinedMap[trip.id] = trip;
+                        }
+                        
+                        final allTrips = combinedMap.values.toList();
+                        // Sort combined list by createdAt descending
+                        allTrips.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+                        final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
+                        final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
+
+                        return TabBarView(
+                          children: [
+                            // --- TAB: PUBLICADOS ---
+                            _buildTripsList(
+                              publishedTrips, 
+                              'Aún no tienes viajes publicados.',
+                              'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
+                              crossAxisCount, 
+                              padding,
+                              width,
+                            ),
+
+                            // --- TAB: PLANES (Borradores) ---
+                            StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collectionGroup('trips')
+                                  .where('surpriseTargetIds', arrayContains: _userId)
+                                  .snapshots(),
+                              builder: (context, surpriseSnapshot) {
+                                final surpriseDocs = surpriseSnapshot.data?.docs ?? [];
+                                final surpriseTrips = surpriseDocs
+                                    .map((doc) => Trip.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                                    .toList();
+
+                                Widget? surpriseSection;
+                                if (surpriseTrips.isNotEmpty) {
+                                  surpriseSection = _buildSurprisePlansSection(surpriseTrips, isDark);
+                                }
+
+                                if (draftTrips.isEmpty && surpriseTrips.isEmpty) {
+                                  return _buildTripsList(
+                                    [], 
+                                    'Tu libreta de caminos está vacía.',
+                                    'Crea tu primer plan para comenzar a diseñar tu ruta por la Ciudad de México.',
+                                    crossAxisCount, 
+                                    padding,
+                                    width,
+                                  );
+                                }
+
+                                return ListView(
+                                  padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
+                                  children: [
+                                    if (surpriseSection != null) ...[
+                                      surpriseSection,
+                                      const SizedBox(height: 24),
+                                    ],
+                                    if (draftTrips.isNotEmpty) ...[
+                                      Text(
+                                        'Mis Planes de Viaje',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: OhtliColors.onyx,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      _buildTripsGrid(draftTrips, crossAxisCount, width, padding),
+                                    ],
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-          ],
-        ),
-        
-        // Floating Action Button on mobile instead of AppBar button
-        floatingActionButton: width <= 600
-            ? FloatingActionButton(
-                onPressed: () => _showCreateTripDialog(context),
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(Icons.add_rounded),
-              )
-            : null,
-      ),
+              ],
+            ),
+            
+            // Floating Action Button on mobile instead of AppBar button
+            floatingActionButton: width <= 600
+                ? FloatingActionButton(
+                    onPressed: () => _showCreateTripDialog(context),
+                    backgroundColor: OhtliColors.stormyTeal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.add_rounded),
+                  )
+                : null,
+          ),
+        );
+      },
     );
   }
 
@@ -814,6 +818,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     String emptySub,
     int crossAxisCount,
     double padding,
+    double availableWidth,
   ) {
     if (trips.isEmpty) {
       return Center(
@@ -890,18 +895,16 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         ),
       );
     }
-
-    final double width = MediaQuery.of(context).size.width;
     
     // Calculate the width of a single card
-    final double cardWidth = (width - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
+    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
     
     // Calculate aspect ratio dynamically to prevent vertical text overflows:
     // - If it's a mobile 1-column layout, we want a compact horizontal card of fixed height (125px).
-    // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 160px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
+    // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 168px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 160.0;
+        : (cardWidth * 9 / 16) + 168.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -972,12 +975,11 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     );
   }
 
-  Widget _buildTripsGrid(List<Trip> trips, int crossAxisCount) {
-    final double width = MediaQuery.of(context).size.width;
-    final double cardWidth = (width - 48 - (crossAxisCount - 1) * 24) / crossAxisCount;
+  Widget _buildTripsGrid(List<Trip> trips, int crossAxisCount, double availableWidth, double padding) {
+    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 160.0;
+        : (cardWidth * 9 / 16) + 168.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -1078,7 +1080,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             itemBuilder: (context, index) {
               final trip = surpriseTrips[index];
               final isLocked = trip.surpriseUnlockDate != null && 
-                  DateTime.now().isBefore(trip.surpriseUnlockDate!);
+                  DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
+                      .isBefore(DateTime(trip.surpriseUnlockDate!.year, trip.surpriseUnlockDate!.month, trip.surpriseUnlockDate!.day));
               final isOpened = trip.surpriseOpenedBy.contains(_userId);
 
               return _buildSurpriseCard(trip, isLocked, isOpened, isDark);
