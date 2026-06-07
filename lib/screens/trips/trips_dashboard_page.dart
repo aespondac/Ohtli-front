@@ -16,6 +16,7 @@ import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
+import '../../widgets/gift_wrapped_card.dart';
 import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 import 'trip_editor_page.dart';
 import 'trip_viewer_page.dart';
@@ -709,7 +710,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
         Widget? surpriseSection;
         if (_surpriseTrips.isNotEmpty) {
-          surpriseSection = _buildSurprisePlansSection(_surpriseTrips, isDark);
+          surpriseSection = _buildSurprisePlansSection(_surpriseTrips, crossAxisCount, width, padding, isDark);
         }
 
         return DefaultTabController(
@@ -1119,7 +1120,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     );
   }
 
-  Widget _buildSurprisePlansSection(List<Trip> surpriseTrips, bool isDark) {
+  Widget _buildSurprisePlansSection(List<Trip> surpriseTrips, int crossAxisCount, double availableWidth, double padding, bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1141,187 +1142,116 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           ],
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 140,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: surpriseTrips.length,
-            itemBuilder: (context, index) {
-              final trip = surpriseTrips[index];
-              final isLocked = trip.surpriseUnlockDate != null && 
-                  DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
-                      .isBefore(DateTime(trip.surpriseUnlockDate!.year, trip.surpriseUnlockDate!.month, trip.surpriseUnlockDate!.day));
-              final isOpened = trip.surpriseOpenedBy.contains(_userId);
-
-              return _buildSurpriseCard(trip, isLocked, isOpened, isDark);
-            },
-          ),
-        ),
+        _buildSurpriseTripsGrid(surpriseTrips, crossAxisCount, availableWidth, padding, isDark),
       ],
     );
   }
 
-  Widget _buildSurpriseCard(Trip trip, bool isLocked, bool isOpened, bool isDark) {
-    final Color cardColor = isDark ? const Color(0xFF25252A) : Colors.white;
+  Widget _buildSurpriseTripsGrid(List<Trip> trips, int crossAxisCount, double availableWidth, double padding, bool isDark) {
+    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
+    final double cardHeight = crossAxisCount == 1 
+        ? 125.0 
+        : (cardWidth * 9 / 16) + 168.0;
+    
+    final double computedAspectRatio = cardWidth / cardHeight;
 
-    Widget cardContent;
-    if (isLocked) {
-      final date = trip.surpriseUnlockDate!;
-      cardContent = Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.lock_rounded, size: 28, color: Colors.grey),
-          const SizedBox(height: 10),
-          Text(
-            'Plan Sorpresa Cerrado',
-            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.grey),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Disponible el ${date.day}/${date.month}/${date.year}',
-            style: GoogleFonts.inter(fontSize: 11, color: Colors.grey.shade500),
-          ),
-        ],
-      );
-    } else if (!isOpened) {
-      cardContent = Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.95, end: 1.05),
-            duration: const Duration(seconds: 1),
-            curve: Curves.easeInOut,
-            builder: (context, scale, child) {
-              return Transform.scale(scale: scale, child: child);
-            },
-            child: const Text('🎁', style: TextStyle(fontSize: 32)),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '¡Tienes un Regalo!',
-            style: GoogleFonts.inter(
-              fontSize: 12.5,
-              fontWeight: FontWeight.bold,
-              color: OhtliColors.stormyTeal,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Toca para abrir la sorpresa',
-            style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.onyx.withOpacity(0.6)),
-          ),
-        ],
-      );
-    } else {
-      cardContent = Stack(
-        children: [
-          if (trip.coverUrl.isNotEmpty)
-            Positioned.fill(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Image.network(
-                  trip.coverUrl,
-                  fit: BoxFit.cover,
-                  color: Colors.black.withOpacity(0.35),
-                  colorBlendMode: BlendMode.srcOver,
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 24,
+        crossAxisSpacing: 24,
+        childAspectRatio: computedAspectRatio,
+      ),
+      itemCount: trips.length,
+      itemBuilder: (context, index) {
+        final trip = trips[index];
+        final bool isLocked = trip.surpriseUnlockDate != null && 
+            DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
+                .isBefore(DateTime(trip.surpriseUnlockDate!.year, trip.surpriseUnlockDate!.month, trip.surpriseUnlockDate!.day));
+        final bool isOpened = trip.surpriseOpenedBy.contains(_userId);
+
+        if (!_authorProfilesCache.containsKey(trip.userId)) {
+          _authorProfilesCache[trip.userId] = {'name': null, 'photo': null};
+          FirebaseFirestore.instance.collection('users').doc(trip.userId).get().then((doc) {
+            if (doc.exists && mounted) {
+              final data = doc.data();
+              setState(() {
+                _authorProfilesCache[trip.userId] = {
+                  'name': (data?['displayName'] as String?) ?? 'Viajero Ohtli',
+                  'photo': data?['photoURL'] as String?,
+                };
+              });
+            }
+          });
+        }
+        
+        final authorProfile = _authorProfilesCache[trip.userId];
+        final String authorName = authorProfile?['name'] ?? 'Un amigo';
+
+        final tripCard = TripCard(
+          trip: trip,
+          isHorizontal: crossAxisCount == 1,
+          addedByName: authorName,
+          addedByPhotoURL: authorProfile?['photo'],
+          onEdit: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TripViewerPage(
+                  tripId: trip.id,
+                  authorId: trip.userId,
                 ),
               ),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Revelado 🎁',
-                    style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  trip.title,
-                  style: GoogleFonts.outfit(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'De tu Mejor Amigo',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    color: Colors.white.withOpacity(0.85),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
+            ).then((_) {
+              setState(() {});
+            });
+          },
+          onFeDeErratas: null,
+          onDelete: () => _deleteTrip(trip),
+        );
 
-    return Container(
-      width: 200,
-      margin: const EdgeInsets.only(right: 14),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isLocked 
-              ? Colors.grey.withOpacity(0.2)
-              : (isOpened ? Colors.transparent : OhtliColors.stormyTeal.withOpacity(0.3)),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: isLocked
-              ? () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '¡Aún no es momento de abrir este regalo! 🤫 Estará disponible el ${trip.surpriseUnlockDate!.day}/${trip.surpriseUnlockDate!.month}/${trip.surpriseUnlockDate!.year}.',
-                        style: GoogleFonts.inter(),
-                      ),
-                      backgroundColor: OhtliColors.stormyTeal,
-                    ),
-                  );
-                }
-              : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => TripViewerPage(
-                        tripId: trip.id,
-                        authorId: trip.userId,
-                      ),
-                    ),
-                  ).then((_) {
-                    setState(() {});
-                  });
-                },
-          child: cardContent,
-        ),
-      ),
+        return GiftWrappedCard(
+          trip: trip,
+          isLocked: isLocked,
+          isOpened: isOpened,
+          addedByName: authorName,
+          onRevealComplete: () async {
+            final uid = _userId;
+            if (uid != null) {
+              try {
+                final updatedBy = List<String>.from(trip.surpriseOpenedBy)..add(uid);
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(trip.userId)
+                    .collection('trips')
+                    .doc(trip.id)
+                    .update({
+                  'surpriseOpenedBy': updatedBy,
+                });
+              } catch (e) {
+                print("Error updating opened surprise state: $e");
+              }
+            }
+
+            if (mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TripViewerPage(
+                    tripId: trip.id,
+                    authorId: trip.userId,
+                  ),
+                ),
+              ).then((_) {
+                setState(() {});
+              });
+            }
+          },
+          child: tripCard,
+        );
+      },
     );
   }
 }
