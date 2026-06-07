@@ -113,8 +113,8 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleLogout() async {
     try {
-      await FirebaseAuth.instance.signOut();
       widget.onLogout();
+      await FirebaseAuth.instance.signOut();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

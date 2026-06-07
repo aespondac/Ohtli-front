@@ -1205,8 +1205,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
               builder: (context) => AccountManagementPage(
                 onBackToHome: (_) => Navigator.pop(context),
                 onLogout: () async {
-                  await FirebaseAuth.instance.signOut();
                   Navigator.pushReplacementNamed(context, '/login');
+                  await FirebaseAuth.instance.signOut();
                 },
               ),
             ),

@@ -358,8 +358,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         },
         onLogout: () async {
           try {
-            await FirebaseAuth.instance.signOut();
             _navigateTo(OhtliScreen.underConstruction);
+            await FirebaseAuth.instance.signOut();
           } catch (e) {
             print("Error al cerrar sesión: $e");
           }

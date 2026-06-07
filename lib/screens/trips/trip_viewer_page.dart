@@ -557,8 +557,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                               Navigator.pop(context);
                             },
                             onLogout: () async {
-                              await FirebaseAuth.instance.signOut();
                               Navigator.pushReplacementNamed(context, '/login');
+                              await FirebaseAuth.instance.signOut();
                             },
                           ),
                         ),
@@ -577,16 +577,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       Navigator.pop(context);
                     },
                     onLogout: () async {
-                      await FirebaseAuth.instance.signOut();
                       Navigator.pushReplacementNamed(context, '/login');
+                      await FirebaseAuth.instance.signOut();
                     },
                   ),
                 ),
               );
             },
             onLogout: () async {
-              await FirebaseAuth.instance.signOut();
               Navigator.pushReplacementNamed(context, '/login');
+              await FirebaseAuth.instance.signOut();
             },
           ),
         Expanded(
