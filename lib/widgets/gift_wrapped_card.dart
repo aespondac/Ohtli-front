@@ -155,12 +155,15 @@ class _GiftWrappedCardState extends State<GiftWrappedCard> with SingleTickerProv
   }
 
   String _getUnlockDateString() {
+    if (!widget.isLocked) {
+      return "Ya disponible";
+    }
     if (widget.trip.surpriseUnlockDate == null) {
-      return "Abre: ¡Ya!";
+      return "Ya disponible";
     }
     final date = widget.trip.surpriseUnlockDate!;
     final months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    return "Abre: ${date.day} ${months[date.month - 1]}";
+    return "Disponible el ${date.day} ${months[date.month - 1]}";
   }
 
   @override
