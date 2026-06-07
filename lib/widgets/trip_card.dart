@@ -15,6 +15,8 @@ class TripCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback? onFeDeErratas;
   final bool isHorizontal;
+  final String? addedByName;
+  final String? addedByPhotoURL;
 
   const TripCard({
     super.key,
@@ -23,6 +25,8 @@ class TripCard extends StatelessWidget {
     required this.onEdit,
     this.onFeDeErratas,
     this.isHorizontal = false,
+    this.addedByName,
+    this.addedByPhotoURL,
   });
 
   String _formatSpanishDate(DateTime date) {
@@ -203,6 +207,53 @@ class TripCard extends StatelessWidget {
               ),
             ),
           ),
+          // "Añadido por" badge for co-authored trips
+          if (addedByName != null) 
+            Positioned(
+              bottom: 8,
+              left: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (addedByPhotoURL != null && addedByPhotoURL!.isNotEmpty)
+                      CircleAvatar(
+                        radius: 9,
+                        backgroundImage: NetworkImage(addedByPhotoURL!),
+                        backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.3),
+                      )
+                    else
+                      CircleAvatar(
+                        radius: 9,
+                        backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.5),
+                        child: Text(
+                          addedByName!.isNotEmpty ? addedByName![0].toUpperCase() : '?',
+                          style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Añadido por $addedByName',
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );

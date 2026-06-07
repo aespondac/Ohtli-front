@@ -30,7 +30,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   final TripService _tripService = TripService();
   final String? _userId = FirebaseAuth.instance.currentUser?.uid;
 
-
+  // Cache for author profiles (co-authored trips)
+  final Map<String, Map<String, String?>> _authorProfilesCache = {};
 
   void _showCreateTripDialog(BuildContext context) {
     if (_userId == null) return;
@@ -550,9 +551,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           elevation: 0,
           automaticallyImplyLeading: false,
           centerTitle: false,
+          titleSpacing: 0,
           toolbarHeight: 80,
           title: Padding(
-            padding: EdgeInsets.symmetric(horizontal: padding - 16),
+            padding: EdgeInsets.symmetric(horizontal: padding),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -885,9 +887,31 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       itemCount: trips.length,
       itemBuilder: (context, index) {
         final trip = trips[index];
+        final bool isCoAuthored = trip.userId != _userId;
+        
+        // For co-authored trips, fetch author profile lazily
+        if (isCoAuthored && !_authorProfilesCache.containsKey(trip.userId)) {
+          _authorProfilesCache[trip.userId] = {'name': null, 'photo': null};
+          FirebaseFirestore.instance.collection('users').doc(trip.userId).get().then((doc) {
+            if (doc.exists && mounted) {
+              final data = doc.data();
+              setState(() {
+                _authorProfilesCache[trip.userId] = {
+                  'name': (data?['displayName'] as String?) ?? 'Viajero Ohtli',
+                  'photo': data?['photoURL'] as String?,
+                };
+              });
+            }
+          });
+        }
+        
+        final authorProfile = isCoAuthored ? _authorProfilesCache[trip.userId] : null;
+
         return TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
+          addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
+          addedByPhotoURL: isCoAuthored ? (authorProfile?['photo']) : null,
           onEdit: () {
             if (trip.status == 'published') {
               Navigator.push(
@@ -940,9 +964,30 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       itemCount: trips.length,
       itemBuilder: (context, index) {
         final trip = trips[index];
+        final bool isCoAuthored = trip.userId != _userId;
+        
+        if (isCoAuthored && !_authorProfilesCache.containsKey(trip.userId)) {
+          _authorProfilesCache[trip.userId] = {'name': null, 'photo': null};
+          FirebaseFirestore.instance.collection('users').doc(trip.userId).get().then((doc) {
+            if (doc.exists && mounted) {
+              final data = doc.data();
+              setState(() {
+                _authorProfilesCache[trip.userId] = {
+                  'name': (data?['displayName'] as String?) ?? 'Viajero Ohtli',
+                  'photo': data?['photoURL'] as String?,
+                };
+              });
+            }
+          });
+        }
+        
+        final authorProfile = isCoAuthored ? _authorProfilesCache[trip.userId] : null;
+
         return TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
+          addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
+          addedByPhotoURL: isCoAuthored ? (authorProfile?['photo']) : null,
           onEdit: () {
             if (trip.status == 'published') {
               Navigator.push(

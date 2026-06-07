@@ -188,9 +188,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
         elevation: 0,
         automaticallyImplyLeading: false,
         centerTitle: false,
+        titleSpacing: 0,
         toolbarHeight: 80,
         title: Padding(
-          padding: EdgeInsets.symmetric(horizontal: padding - 16),
+          padding: EdgeInsets.symmetric(horizontal: padding),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
