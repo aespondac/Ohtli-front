@@ -18,6 +18,7 @@ class TripCard extends StatelessWidget {
   final bool isHorizontal;
   final String? addedByName;
   final String? addedByPhotoURL;
+  final bool disable3D;
 
   const TripCard({
     super.key,
@@ -28,6 +29,7 @@ class TripCard extends StatelessWidget {
     this.isHorizontal = false,
     this.addedByName,
     this.addedByPhotoURL,
+    this.disable3D = false,
   });
 
   String _formatSpanishDate(DateTime date) {
@@ -714,12 +716,21 @@ class TripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
+    final content = isHorizontal
+        ? _buildHorizontalLayout(context, isDark)
+        : _buildVerticalLayout(context, isDark);
+        
+    if (disable3D) {
+      return GestureDetector(
+        onTap: onEdit,
+        child: content,
+      );
+    }
+    
     return Interactive3DCard(
       onTap: onEdit,
       isDark: isDark,
-      child: isHorizontal
-          ? _buildHorizontalLayout(context, isDark)
-          : _buildVerticalLayout(context, isDark),
+      child: content,
     );
   }
 }

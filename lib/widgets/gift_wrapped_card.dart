@@ -31,8 +31,6 @@ class GiftWrapTheme {
 }
 
 class GiftWrappedCard extends StatefulWidget {
-  final Trip trip;
-  final bool isLocked;
   final bool isOpened;
   final String? addedByName;
   final Widget child; // The actual TripCard underneath

@@ -1023,6 +1023,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final tripCard = TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
+          disable3D: trip.isSurprise,
           addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
           addedByPhotoURL: isCoAuthored ? (authorProfile?['photo']) : null,
           onEdit: () {
@@ -1054,14 +1055,19 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         );
 
         if (trip.isSurprise) {
-          return GiftWrappedCard(
+          Widget wrappedCard = GiftWrappedCard(
             trip: trip,
-            isLocked: false, // Owner can always open
-            isOpened: false, // Show it wrapped by default so they see the ribbon
+            isLocked: false,
+            isOpened: false,
             addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : 'Ti',
             child: tripCard,
             onRevealComplete: () {},
           );
+          
+          if (crossAxisCount == 1) {
+            return SizedBox(height: 125.0, child: wrappedCard);
+          }
+          return wrappedCard;
         }
 
         return tripCard;
@@ -1111,6 +1117,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final tripCard = TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
+          disable3D: trip.isSurprise,
           addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
           addedByPhotoURL: isCoAuthored ? (authorProfile?['photo']) : null,
           onEdit: () {
@@ -1142,7 +1149,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         );
 
         if (trip.isSurprise) {
-          return GiftWrappedCard(
+          Widget wrappedCard = GiftWrappedCard(
             trip: trip,
             isLocked: false,
             isOpened: false,
@@ -1150,6 +1157,11 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             child: tripCard,
             onRevealComplete: () {},
           );
+          
+          if (crossAxisCount == 1) {
+            return SizedBox(height: 125.0, child: wrappedCard);
+          }
+          return wrappedCard;
         }
 
         return tripCard;
@@ -1221,6 +1233,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final tripCard = TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
+          disable3D: true, // It's wrapped
           addedByName: authorName,
           addedByPhotoURL: authorProfile?['photo'],
           onEdit: () {
@@ -1248,7 +1261,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           onDelete: () => _deleteTrip(trip),
         );
 
-        return GiftWrappedCard(
+        Widget surpriseCard = GiftWrappedCard(
           trip: trip,
           isLocked: isLocked,
           isOpened: isOpened,
@@ -1295,6 +1308,11 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           },
           child: tripCard,
         );
+
+        if (crossAxisCount == 1) {
+          return SizedBox(height: 125.0, child: surpriseCard);
+        }
+        return surpriseCard;
       },
     );
   }
