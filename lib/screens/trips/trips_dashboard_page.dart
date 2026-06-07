@@ -1198,17 +1198,25 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           addedByName: authorName,
           addedByPhotoURL: authorProfile?['photo'],
           onEdit: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => TripViewerPage(
-                  tripId: trip.id,
-                  authorId: trip.userId,
+            if (trip.status == 'published') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TripViewerPage(trip: trip),
                 ),
-              ),
-            ).then((_) {
-              setState(() {});
-            });
+              ).then((_) {
+                setState(() {});
+              });
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TripEditorPage(trip: trip),
+                ),
+              ).then((_) {
+                setState(() {});
+              });
+            }
           },
           onFeDeErratas: null,
           onDelete: () => _deleteTrip(trip),
@@ -1238,17 +1246,25 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             }
 
             if (mounted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TripViewerPage(
-                    tripId: trip.id,
-                    authorId: trip.userId,
+              if (trip.status == 'published') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TripViewerPage(trip: trip),
                   ),
-                ),
-              ).then((_) {
-                setState(() {});
-              });
+                ).then((_) {
+                  setState(() {});
+                });
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TripEditorPage(trip: trip),
+                  ),
+                ).then((_) {
+                  setState(() {});
+                });
+              }
             }
           },
           child: tripCard,
