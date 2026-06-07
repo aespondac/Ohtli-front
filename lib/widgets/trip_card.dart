@@ -8,6 +8,7 @@ import 'dart:convert';
 import '../theme/colors.dart';
 import '../models/trip_model.dart';
 import 'ohtli_markdown_renderer.dart';
+import 'interactive_3d_card.dart';
 
 class TripCard extends StatelessWidget {
   final Trip trip;
@@ -713,14 +714,12 @@ class TripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
-    return GestureDetector(
+    return Interactive3DCard(
       onTap: onEdit,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: isHorizontal
-            ? _buildHorizontalLayout(context, isDark)
-            : _buildVerticalLayout(context, isDark),
-      ),
+      isDark: isDark,
+      child: isHorizontal
+          ? _buildHorizontalLayout(context, isDark)
+          : _buildVerticalLayout(context, isDark),
     );
   }
 }

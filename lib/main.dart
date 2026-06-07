@@ -21,6 +21,8 @@ import 'screens/register/mobile_register_page.dart';
 import 'screens/account/account_management_page.dart';
 import 'screens/trips/trip_viewer_page.dart';
 import 'widgets/user_profile_helper.dart';
+import 'firebase_options.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,17 +47,7 @@ void main() async {
       measurementId: configMeasurementId,
     );
   } else {
-    // Para desarrollo local, NO agregues tus credenciales reales aquí para evitar fugas en GitHub (Secret Scanning).
-    // En su lugar, ejecuta la app inyectando el archivo de configuración local:
-    //   flutter run -d chrome --dart-define-from-file=firebase_config.json
-    options = const FirebaseOptions(
-      apiKey: "DEVELOPMENT-API-KEY-PLACEHOLDER",
-      authDomain: "othli-497404.firebaseapp.com",
-      projectId: "othli-497404",
-      storageBucket: "othli-497404.appspot.com",
-      messagingSenderId: "1234567890",
-      appId: "1:1234567890:web:fakeAppId",
-    );
+    options = DefaultFirebaseOptions.currentPlatform;
   }
 
   try {

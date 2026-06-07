@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../models/trip_model.dart';
 
 enum PatternType { stripes, stars, dots, cross, grid }
@@ -60,87 +61,138 @@ class _GiftWrappedCardState extends State<GiftWrappedCard> with SingleTickerProv
   
   bool _isUnwrapping = false;
   bool _fullyRevealed = false;
+  Offset _pointerOffset = Offset.zero;
 
+  void _updatePointer(Offset localPosition, double width, double height) {
+    if (_isUnwrapping || _fullyRevealed) return;
+    final dx = (localPosition.dx / width) * 2 - 1.0;
+    final dy = (localPosition.dy / height) * 2 - 1.0;
+    setState(() {
+      _pointerOffset = Offset(dx.clamp(-1.0, 1.0), dy.clamp(-1.0, 1.0));
+    });
+  }
+
+  // Premium themes with multi-stop metallic gradients
   static final List<GiftWrapTheme> _themes = [
     // 0. Crimson Red & Gold (Rojo con Dorado)
     GiftWrapTheme(
-      paperColor: const Color(0xFFB71C1C),
-      patternColor: const Color(0xFFFFD700).withValues(alpha: 0.18),
+      paperColor: const Color(0xFF8B0000), // Deep crimson red
+      patternColor: const Color(0xFFFFD700).withValues(alpha: 0.15),
       patternType: PatternType.stripes,
       ribbonGradient: const LinearGradient(
-        colors: [Color(0xFFFFE082), Color(0xFFFFD54F), Color(0xFFFFC107), Color(0xFFFFB300), Color(0xFFFFA000)],
+        colors: [
+          Color(0xFF7A5A0A), 
+          Color(0xFFC59F2E), 
+          Color(0xFFFFF1A8), 
+          Color(0xFFD4AF37), 
+          Color(0xFFAA8010), 
+          Color(0xFF7A5A0A)
+        ],
+        stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
-      tagBorderColor: const Color(0xFFFFC107),
-      tagTextColor: const Color(0xFFB71C1C),
-      tagIconColor: const Color(0xFFB71C1C),
+      tagBorderColor: const Color(0xFFD4AF37),
+      tagTextColor: const Color(0xFF8B0000),
+      tagIconColor: const Color(0xFF8B0000),
       tagBgColor: Colors.white,
-      bowOutlineColor: const Color(0xFFB48A1F),
+      bowOutlineColor: const Color(0xFF5A4307),
     ),
     // 1. Royal Midnight Blue & Gold (Azul con Dorado)
     GiftWrapTheme(
-      paperColor: const Color(0xFF0F1B29),
-      patternColor: const Color(0xFFFFD700).withValues(alpha: 0.16),
+      paperColor: const Color(0xFF0F1C2A), // Luxury Midnight Navy
+      patternColor: const Color(0xFFFFD700).withValues(alpha: 0.15),
       patternType: PatternType.stars,
       ribbonGradient: const LinearGradient(
-        colors: [Color(0xFFFFF9C4), Color(0xFFFBC02D), Color(0xFFF57F17)],
+        colors: [
+          Color(0xFF7A5A0A), 
+          Color(0xFFC59F2E), 
+          Color(0xFFFFF1A8), 
+          Color(0xFFD4AF37), 
+          Color(0xFFAA8010), 
+          Color(0xFF7A5A0A)
+        ],
+        stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
-      tagBorderColor: const Color(0xFFFBC02D),
-      tagTextColor: const Color(0xFF0F1B29),
-      tagIconColor: const Color(0xFFFBC02D),
-      tagBgColor: const Color(0xFFF4F6F9),
-      bowOutlineColor: const Color(0xFF9E7E0D),
+      tagBorderColor: const Color(0xFFD4AF37),
+      tagTextColor: const Color(0xFF0F1C2A),
+      tagIconColor: const Color(0xFFD4AF37),
+      tagBgColor: const Color(0xFFF0F4F8),
+      bowOutlineColor: const Color(0xFF5A4307),
     ),
-    // 2. Deep Emerald Forest & Silver (Verde con Plateado)
+    // 2. Emerald Forest & Silver (Verde con Plateado)
     GiftWrapTheme(
-      paperColor: const Color(0xFF064E3B),
-      patternColor: const Color(0xFFE5E7EB).withValues(alpha: 0.15),
+      paperColor: const Color(0xFF063A2F), // Imperial Jade Green
+      patternColor: const Color(0xFFE5E7EB).withValues(alpha: 0.12),
       patternType: PatternType.dots,
       ribbonGradient: const LinearGradient(
-        colors: [Color(0xFFF3F4F6), Color(0xFFE5E7EB), Color(0xFFD1D5DB), Color(0xFF9CA3AF)],
+        colors: [
+          Color(0xFF374151), 
+          Color(0xFF9CA3AF), 
+          Color(0xFFF3F4F6), 
+          Color(0xFFD1D5DB), 
+          Color(0xFF6B7280), 
+          Color(0xFF374151)
+        ],
+        stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       tagBorderColor: const Color(0xFF9CA3AF),
-      tagTextColor: const Color(0xFF064E3B),
-      tagIconColor: const Color(0xFF064E3B),
+      tagTextColor: const Color(0xFF063A2F),
+      tagIconColor: const Color(0xFF063A2F),
       tagBgColor: Colors.white,
-      bowOutlineColor: const Color(0xFF7B8390),
+      bowOutlineColor: const Color(0xFF4B5563),
     ),
-    // 3. Majestic Purple & Amber Gold (Morado con Dorado)
+    // 3. Velvet Purple & Gold (Morado con Dorado)
     GiftWrapTheme(
-      paperColor: const Color(0xFF4C1D95),
-      patternColor: const Color(0xFFFFD700).withValues(alpha: 0.18),
+      paperColor: const Color(0xFF310E4E), // Deep Royal Velvet
+      patternColor: const Color(0xFFFFD700).withValues(alpha: 0.15),
       patternType: PatternType.cross,
       ribbonGradient: const LinearGradient(
-        colors: [Color(0xFFFFECB3), Color(0xFFFFD54F), Color(0xFFFFB300), Color(0xFFFFA000)],
+        colors: [
+          Color(0xFF7A5A0A), 
+          Color(0xFFC59F2E), 
+          Color(0xFFFFF1A8), 
+          Color(0xFFD4AF37), 
+          Color(0xFFAA8010), 
+          Color(0xFF7A5A0A)
+        ],
+        stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       tagBorderColor: const Color(0xFFFFB300),
-      tagTextColor: const Color(0xFF4C1D95),
-      tagIconColor: const Color(0xFF4C1D95),
-      tagBgColor: const Color(0xFFFAFAFA),
-      bowOutlineColor: const Color(0xFFB59110),
+      tagTextColor: const Color(0xFF310E4E),
+      tagIconColor: const Color(0xFF310E4E),
+      tagBgColor: const Color(0xFFFAF7FC),
+      bowOutlineColor: const Color(0xFF5A4307),
     ),
-    // 4. Elegant Obsidian Black & Rose Gold (Negro con Oro Rosa)
+    // 4. Obsidian Black & Rose Gold (Negro con Oro Rosa)
     GiftWrapTheme(
-      paperColor: const Color(0xFF111827),
-      patternColor: const Color(0xFFFCA5A5).withValues(alpha: 0.12),
+      paperColor: const Color(0xFF161618), // Matte Obsidian Carbon
+      patternColor: const Color(0xFFFDA4AF).withValues(alpha: 0.12),
       patternType: PatternType.grid,
       ribbonGradient: const LinearGradient(
-        colors: [Color(0xFFFFE4E6), Color(0xFFFECDD3), Color(0xFFFDA4AF), Color(0xFFF43F5E)],
+        colors: [
+          Color(0xFF5E2B2B), 
+          Color(0xFFD29062), 
+          Color(0xFFFFE4E6), 
+          Color(0xFFFDA4AF), 
+          Color(0xFF9F1239), 
+          Color(0xFF5E2B2B)
+        ],
+        stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       tagBorderColor: const Color(0xFFFDA4AF),
-      tagTextColor: const Color(0xFF111827),
-      tagIconColor: const Color(0xFFF43F5E),
-      tagBgColor: const Color(0xFFFFF1F2),
-      bowOutlineColor: const Color(0xFFBE123C),
+      tagTextColor: const Color(0xFF161618),
+      tagIconColor: const Color(0xFF9F1239),
+      tagBgColor: const Color(0xFFFFF5F5),
+      bowOutlineColor: const Color(0xFF6B1D2F),
     ),
   ];
 
@@ -154,16 +206,76 @@ class _GiftWrappedCardState extends State<GiftWrappedCard> with SingleTickerProv
     return _themes[index];
   }
 
+  Widget _buildRibbonOverlay(double width, double height, GiftWrapTheme theme) {
+    final String tripId = widget.trip.id;
+    int hash = 0;
+    for (int i = 0; i < tripId.length; i++) {
+      hash += tripId.codeUnitAt(i);
+    }
+    int ribbonIndex = hash % 8;
+    if (ribbonIndex == 1) ribbonIndex = 0; // Ribbon 1 eliminated, fallback to 0
+    final themeIndex = hash % _themes.length;
+
+    String variant = 'gold';
+    if (themeIndex == 2) variant = 'silver';
+    else if (themeIndex == 4) variant = 'rosegold';
+
+    final asset = 'assets/ribbons/Ribbon_${ribbonIndex}_$variant.svg';
+
+    final svgWidget = Transform.scale(
+      scale: _bowScale.value,
+      child: Opacity(
+        opacity: math.max(0.0, 1.0 - _animController.value * 2.0),
+        child: SvgPicture.asset(
+          asset,
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+
+    switch (ribbonIndex) {
+      case 0:
+        return Positioned(
+          top: -18,
+          left: -15,
+          width: width + 25,
+          child: svgWidget,
+        );
+      case 2:
+      case 3:
+      case 5:
+      case 7:
+        return Positioned(
+          top: height * 0.33 - 50,
+          left: 0,
+          right: 0,
+          child: svgWidget,
+        );
+      case 4:
+      case 6:
+        return Positioned(
+          top: 0,
+          bottom: 0,
+          left: width * 0.5 - 55,
+          child: svgWidget,
+        );
+      default:
+        return Positioned.fill(child: svgWidget);
+    }
+  }
+
   String _getUnlockDateString() {
-    if (!widget.isLocked) {
-      return "Ya disponible";
+    if (widget.trip.surpriseUnlockDate != null) {
+      final date = widget.trip.surpriseUnlockDate!;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final unlockDay = DateTime(date.year, date.month, date.day);
+      if (today.isBefore(unlockDay)) {
+        final months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        return "Disponible el ${date.day} ${months[date.month - 1]}";
+      }
     }
-    if (widget.trip.surpriseUnlockDate == null) {
-      return "Ya disponible";
-    }
-    final date = widget.trip.surpriseUnlockDate!;
-    final months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    return "Disponible el ${date.day} ${months[date.month - 1]}";
+    return "Ya disponible";
   }
 
   @override
@@ -241,387 +353,308 @@ class _GiftWrappedCardState extends State<GiftWrappedCard> with SingleTickerProv
         final double width = constraints.maxWidth;
         final double height = constraints.maxHeight;
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // 1. The actual TripCard revealed underneath
-            Positioned.fill(child: widget.child),
+        final String tripId = widget.trip.id;
+        int hash = 0;
+        for (int i = 0; i < tripId.length; i++) {
+          hash += tripId.codeUnitAt(i);
+        }
+        int ribbonIndex = hash % 8;
+        if (ribbonIndex == 1) ribbonIndex = 0;
 
-            // 2. The Gift Wrapping Overlay
-            AnimatedBuilder(
-              animation: _animController,
-              builder: (context, child) {
-                return Opacity(
-                  opacity: _paperOpacity.value,
-                  child: IgnorePointer(
-                    ignoring: _fullyRevealed,
-                    child: GestureDetector(
-                      onTap: widget.isLocked ? null : _handleUnwrap,
-                      child: MouseRegion(
-                        cursor: widget.isLocked ? SystemMouseCursors.basic : SystemMouseCursors.click,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: Stack(
-                              children: [
-                                // Wrapping Paper Background Pattern
-                                Positioned.fill(
-                                  child: CustomPaint(
-                                    painter: WrappingPaperPainter(
-                                      paperColor: theme.paperColor,
-                                      patternColor: theme.patternColor,
-                                      patternType: theme.patternType,
-                                    ),
-                                  ),
-                                ),
+        final bool isMobile = height < 200;
+        final double tagWidth = 85.0;
+        final double tagHeight = 130.0;
+        
+        // Tag is on left for web. For mobile, it's on right, EXCEPT if ribbon is 0.
+        final bool tagIsOnLeft = isMobile ? (ribbonIndex == 0) : true;
+        final double tagLeft = tagIsOnLeft ? width * 0.08 : width - tagWidth - (width * 0.08);
+        final double tagBottom = height * 0.08;
 
-                                // Dotted border
-                                Positioned.fill(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(
-                                        color: theme.tagBorderColor.withValues(alpha: 0.4),
-                                        width: 2,
-                                        style: BorderStyle.solid,
+        return Listener(
+          onPointerMove: (e) => _updatePointer(e.localPosition, width, height),
+          onPointerHover: (e) => _updatePointer(e.localPosition, width, height),
+          onPointerUp: (_) => setState(() => _pointerOffset = Offset.zero),
+          onPointerCancel: (_) => setState(() => _pointerOffset = Offset.zero),
+          child: MouseRegion(
+            cursor: widget.isLocked ? SystemMouseCursors.basic : SystemMouseCursors.click,
+            onExit: (_) => setState(() => _pointerOffset = Offset.zero),
+            child: TweenAnimationBuilder<Offset>(
+              tween: Tween<Offset>(begin: Offset.zero, end: _pointerOffset),
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              builder: (context, pointer, _) {
+                final matrix = Matrix4.identity()
+                  ..setEntry(3, 2, 0.001)
+                  ..rotateX(-pointer.dy * 0.1)
+                  ..rotateY(pointer.dx * 0.1);
+
+                return Transform(
+                  transform: matrix,
+                  alignment: Alignment.center,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    clipBehavior: Clip.none,
+                    children: [
+                      // 1. The actual TripCard revealed underneath (now it tilts too!)
+                      Positioned.fill(child: widget.child),
+
+                      // 2. The Gift Wrapping Overlay
+                      AnimatedBuilder(
+                        animation: _animController,
+                        builder: (context, _) {
+                          return Opacity(
+                            opacity: _paperOpacity.value,
+                            child: IgnorePointer(
+                              ignoring: _fullyRevealed,
+                              child: GestureDetector(
+                                onTap: widget.isLocked ? null : _handleUnwrap,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(24),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.2),
+                                        blurRadius: 15,
+                                        offset: const Offset(0, 6),
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                ),
-
-                                // Horizontal Ribbon
-                                Transform.translate(
-                                  offset: Offset(_horizontalRibbonOffset.value, 0),
-                                  child: Align(
-                                    alignment: Alignment.center,
-                                    child: Container(
-                                      height: 28,
-                                      decoration: BoxDecoration(
-                                        gradient: theme.ribbonGradient,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.15),
-                                            blurRadius: 3,
-                                            offset: const Offset(0, 1),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                // Vertical Ribbon
-                                Transform.translate(
-                                  offset: Offset(0, _verticalRibbonOffset.value),
-                                  child: Align(
-                                    alignment: Alignment.center,
-                                    child: Container(
-                                      width: 28,
-                                      decoration: BoxDecoration(
-                                        gradient: theme.ribbonGradient,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.15),
-                                            blurRadius: 3,
-                                            offset: const Offset(1, 0),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                // Gift Tag
-                                Positioned(
-                                  bottom: height * 0.15,
-                                  left: width * 0.1,
-                                  child: Transform.rotate(
-                                    angle: -0.15,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: theme.tagBgColor,
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: theme.tagBorderColor, width: 1.5),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withValues(alpha: 0.15),
-                                            blurRadius: 5,
-                                            offset: const Offset(2, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              // Mini Rivet/Hole
-                                              Container(
-                                                width: 5,
-                                                height: 5,
-                                                margin: const EdgeInsets.only(right: 6),
-                                                decoration: BoxDecoration(
-                                                  color: theme.tagBorderColor,
-                                                  shape: BoxShape.circle,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(24),
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            // Wrapping Paper Background Pattern
+                                            Positioned.fill(
+                                              child: CustomPaint(
+                                                painter: WrappingPaperPainter(
+                                                  paperColor: theme.paperColor,
+                                                  patternColor: theme.patternColor,
+                                                  patternType: theme.patternType,
                                                 ),
                                               ),
-                                              Icon(
-                                                widget.isLocked ? Icons.lock_outline_rounded : Icons.card_giftcard_rounded,
-                                                size: 10,
-                                                color: theme.tagIconColor,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                _getUnlockDateString(),
-                                                style: GoogleFonts.outfit(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: theme.tagTextColor,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            widget.addedByName != null ? "De: ${widget.addedByName}" : "Para ti",
-                                            style: GoogleFonts.inter(
-                                              fontSize: 8.5,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.black87,
                                             ),
-                                          ),
-                                        ],
+                                            // 3D Radial Glare Effect Overlay
+                                            Positioned.fill(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: RadialGradient(
+                                                    center: Alignment(-pointer.dx, -pointer.dy),
+                                                    radius: 1.5,
+                                                    colors: [
+                                                      Colors.white.withValues(alpha: 0.15),
+                                                      Colors.white.withValues(alpha: 0.05),
+                                                      Colors.white.withValues(alpha: 0.0),
+                                                    ],
+                                                    stops: const [0.0, 0.5, 1.0],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            // Shiny gold/silver outline border
+                                            Positioned.fill(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.circular(24),
+                                                  border: Border.all(
+                                                    color: theme.tagBorderColor.withValues(alpha: 0.35),
+                                                    width: 2.5,
+                                                    style: BorderStyle.solid,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                ),
+                                      // Dynamic SVG Ribbons
+                                      _buildRibbonOverlay(constraints.maxWidth, constraints.maxHeight, theme),
 
-                                // Realistic Ribbon Bow in the Center
-                                Align(
-                                  alignment: Alignment.center,
-                                  child: Transform.scale(
-                                    scale: _bowScale.value,
-                                    child: Opacity(
-                                      opacity: math.max(0.0, 1.0 - _animController.value * 2.0),
-                                      child: SizedBox(
-                                        width: 80,
-                                        height: 80,
-                                        child: CustomPaint(
-                                          painter: RealisticBowPainter(
-                                            gradient: theme.ribbonGradient,
-                                            outlineColor: theme.bowOutlineColor,
+                                      // Gift Tag
+                                      Positioned(
+                                        bottom: tagBottom,
+                                        left: tagLeft,
+                                        child: Transform.rotate(
+                                          angle: 0.1,
+                                          child: CustomPaint(
+                                            painter: TagPainter(
+                                              borderColor: theme.tagBorderColor,
+                                              bgColor: theme.tagBgColor,
+                                              isOnLeft: tagIsOnLeft,
+                                            ),
+                                            child: Container(
+                                              width: tagWidth,
+                                              height: tagHeight,
+                                              padding: const EdgeInsets.only(left: 8, right: 8, top: 32, bottom: 8),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.center,
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    widget.isLocked ? Icons.lock_outline_rounded : Icons.card_giftcard_rounded,
+                                                    size: 16,
+                                                    color: theme.tagIconColor,
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    _getUnlockDateString(),
+                                                    style: GoogleFonts.outfit(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: theme.tagTextColor,
+                                                      height: 1.1,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const Spacer(),
+                                                  Container(
+                                                    width: 30,
+                                                    height: 1.5,
+                                                    color: theme.tagBorderColor.withValues(alpha: 0.4),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    widget.addedByName != null ? "De:\n${widget.addedByName}" : "Para ti",
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.black87,
+                                                      height: 1.1,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
-                    ),
+                    ],
                   ),
                 );
               },
             ),
-          ],
+          ),
         );
       },
     );
   }
 }
 
-class RealisticBowPainter extends CustomPainter {
-  final LinearGradient gradient;
-  final Color outlineColor;
+class TagPainter extends CustomPainter {
+  final Color borderColor;
+  final Color bgColor;
+  final bool isOnLeft;
 
-  RealisticBowPainter({required this.gradient, required this.outlineColor});
+  TagPainter({required this.borderColor, required this.bgColor, this.isOnLeft = false});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final paint = Paint()
-      ..shader = gradient.createShader(rect)
+      ..color = bgColor
       ..style = PaintingStyle.fill;
 
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0)
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    final path = Path();
+    final double clipX = size.width * 0.25;
+    final double clipY = size.height * 0.15;
+    
+    // Luggage tag shape: hole at the top
+    path.moveTo(clipX, 0);
+    path.lineTo(size.width - clipX, 0);
+    path.lineTo(size.width, clipY);
+    path.lineTo(size.width, size.height);
+    path.lineTo(0, size.height);
+    path.lineTo(0, clipY);
+    path.close();
+
+    // Draw realistic shadow depending on position
+    final shadowOffset = isOnLeft ? const Offset(4, 5) : const Offset(-4, 5);
+    canvas.drawPath(
+      path.shift(shadowOffset),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0),
+    );
+
+    canvas.drawPath(path, paint);
+    canvas.drawPath(path, borderPaint);
+
+    // Draw metal eyelet/rivet hole on the top center
+    final holeCenter = Offset(size.width / 2, clipY * 0.85);
+    final eyeletPaint = Paint()
+      ..color = borderColor
       ..style = PaintingStyle.fill;
-
-    final outlinePaint = Paint()
-      ..color = outlineColor.withValues(alpha: 0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    // 1. Draw ribbon tails (underneath)
-    final leftTail = Path();
-    leftTail.moveTo(center.dx - 4, center.dy + 4);
-    leftTail.cubicTo(
-      center.dx - 12, center.dy + 15,
-      center.dx - 22, center.dy + 25,
-      center.dx - 22, center.dy + 35,
-    );
-    // V-cut at end
-    leftTail.lineTo(center.dx - 14, center.dy + 30);
-    leftTail.lineTo(center.dx - 8, center.dy + 32);
-    leftTail.cubicTo(
-      center.dx - 8, center.dy + 25,
-      center.dx - 6, center.dy + 15,
-      center.dx - 2, center.dy + 4,
-    );
-    leftTail.close();
-
-    final rightTail = Path();
-    rightTail.moveTo(center.dx + 4, center.dy + 4);
-    rightTail.cubicTo(
-      center.dx + 12, center.dy + 15,
-      center.dx + 22, center.dy + 25,
-      center.dx + 22, center.dy + 35,
-    );
-    // V-cut at end
-    rightTail.lineTo(center.dx + 14, center.dy + 30);
-    rightTail.lineTo(center.dx + 8, center.dy + 32);
-    rightTail.cubicTo(
-      center.dx + 8, center.dy + 25,
-      center.dx + 6, center.dy + 15,
-      center.dx + 2, center.dy + 4,
-    );
-    rightTail.close();
-
-    // Draw tails shadow first
-    canvas.drawPath(leftTail.shift(const Offset(1, 2)), shadowPaint);
-    canvas.drawPath(rightTail.shift(const Offset(1, 2)), shadowPaint);
-
-    // Draw tails
-    canvas.drawPath(leftTail, paint);
-    canvas.drawPath(leftTail, outlinePaint);
-    canvas.drawPath(rightTail, paint);
-    canvas.drawPath(rightTail, outlinePaint);
-
-    // 2. Draw big outer loops (left & right)
-    final leftLoop = Path();
-    leftLoop.moveTo(center.dx, center.dy);
-    // Outer curve
-    leftLoop.cubicTo(
-      center.dx - 25, center.dy - 25,
-      center.dx - 45, center.dy - 10,
-      center.dx - 40, center.dy + 5,
-    );
-    // Inner return curve
-    leftLoop.cubicTo(
-      center.dx - 35, center.dy + 15,
-      center.dx - 15, center.dy + 5,
-      center.dx, center.dy,
-    );
-    leftLoop.close();
-
-    final rightLoop = Path();
-    rightLoop.moveTo(center.dx, center.dy);
-    // Outer curve
-    rightLoop.cubicTo(
-      center.dx + 25, center.dy - 25,
-      center.dx + 45, center.dy - 10,
-      center.dx + 40, center.dy + 5,
-    );
-    // Inner return curve
-    rightLoop.cubicTo(
-      center.dx + 35, center.dy + 15,
-      center.dx + 15, center.dy + 5,
-      center.dx, center.dy,
-    );
-    rightLoop.close();
-
-    // Draw loop shadows
-    canvas.drawPath(leftLoop.shift(const Offset(1, 3)), shadowPaint);
-    canvas.drawPath(rightLoop.shift(const Offset(1, 3)), shadowPaint);
-
-    // Draw loops
-    canvas.drawPath(leftLoop, paint);
-    canvas.drawPath(leftLoop, outlinePaint);
-    canvas.drawPath(rightLoop, paint);
-    canvas.drawPath(rightLoop, outlinePaint);
-
-    // 3. Draw inner smaller loops for 3D depth
-    final leftInner = Path();
-    leftInner.moveTo(center.dx, center.dy);
-    leftInner.cubicTo(
-      center.dx - 15, center.dy - 12,
-      center.dx - 25, center.dy - 5,
-      center.dx - 22, center.dy + 2,
-    );
-    leftInner.cubicTo(
-      center.dx - 18, center.dy + 8,
-      center.dx - 8, center.dy + 3,
-      center.dx, center.dy,
-    );
-    leftInner.close();
-
-    final rightInner = Path();
-    rightInner.moveTo(center.dx, center.dy);
-    rightInner.cubicTo(
-      center.dx + 15, center.dy - 12,
-      center.dx + 25, center.dy - 5,
-      center.dx + 22, center.dy + 2,
-    );
-    rightInner.cubicTo(
-      center.dx + 18, center.dy + 8,
-      center.dx + 8, center.dy + 3,
-      center.dx, center.dy,
-    );
-    rightInner.close();
-
-    // Paint inner loops
-    canvas.drawPath(leftInner, paint);
-    canvas.drawPath(leftInner, outlinePaint);
-    canvas.drawPath(rightInner, paint);
-    canvas.drawPath(rightInner, outlinePaint);
-
-    // 4. Center knot (draw last)
-    final knotPath = Path();
-    knotPath.addOval(Rect.fromCircle(center: center, radius: 9));
-
-    // Shadow
-    canvas.drawPath(knotPath.shift(const Offset(0, 2)), shadowPaint);
-
-    // Draw knot
-    canvas.drawPath(knotPath, paint);
-    canvas.drawPath(knotPath, outlinePaint);
-
-    // Knot texture lines (fold lines) for realism
-    final foldPaint = Paint()
-      ..color = outlineColor.withValues(alpha: 0.6)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    canvas.drawArc(
-      Rect.fromCircle(center: center - const Offset(1, 0), radius: 6),
-      0.5, 2.0, false, foldPaint
-    );
-    canvas.drawArc(
-      Rect.fromCircle(center: center + const Offset(1, 0), radius: 6),
-      3.5, 2.0, false, foldPaint
-    );
+    canvas.drawCircle(holeCenter, 4.5, eyeletPaint);
+    canvas.drawCircle(holeCenter, 2.0, Paint()..color = bgColor);
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+class TagStringPainter extends CustomPainter {
+  final Offset start;
+  final Offset end;
+  final Color color;
+
+  TagStringPainter({required this.start, required this.end, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    final path = Path();
+    path.moveTo(start.dx, start.dy);
+
+    // Draw a natural sagging curved string using cubic bezier points
+    final double controlX1 = start.dx + (end.dx - start.dx) * 0.1 - 20;
+    final double controlY1 = start.dy + (end.dy - start.dy) * 0.4 + 10;
+    final double controlX2 = start.dx + (end.dx - start.dx) * 0.6 - 15;
+    final double controlY2 = start.dy + (end.dy - start.dy) * 0.9 + 5;
+
+    path.cubicTo(controlX1, controlY1, controlX2, controlY2, end.dx, end.dy);
+
+    // Subtle drop shadow for the string
+    canvas.drawPath(
+      path.shift(const Offset(1, 2)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.15)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),
+    );
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 
 class WrappingPaperPainter extends CustomPainter {
   final Color paperColor;
@@ -636,11 +669,13 @@ class WrappingPaperPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 1. Draw solid wrapping paper background
     final paint = Paint()
       ..color = paperColor
       ..style = PaintingStyle.fill;
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
 
+    // 2. Draw pattern
     final patternPaint = Paint()
       ..color = patternColor
       ..style = PaintingStyle.stroke
@@ -659,8 +694,7 @@ class WrappingPaperPainter extends CustomPainter {
         final double spacing = 40.0;
         for (double x = 20; x < size.width; x += spacing) {
           for (double y = 20; y < size.height; y += spacing) {
-            // Draw a sparkle star
-            final double starSize = ((x + y) / spacing).round() % 2 == 0 ? 5.0 : 3.0;
+            final double starSize = ((x + y) / spacing).round() % 2 == 0 ? 5.5 : 3.0;
             _drawSparkleStar(canvas, Offset(x, y), starSize, patternPaint);
           }
         }
@@ -682,7 +716,7 @@ class WrappingPaperPainter extends CustomPainter {
         final double spacing = 35;
         for (double x = 20; x < size.width; x += spacing) {
           for (double y = 20; y < size.height; y += spacing) {
-            const double len = 3.0;
+            const double len = 3.2;
             canvas.drawLine(Offset(x - len, y), Offset(x + len, y), patternPaint);
             canvas.drawLine(Offset(x, y - len), Offset(x, y + len), patternPaint);
           }
@@ -697,6 +731,18 @@ class WrappingPaperPainter extends CustomPainter {
         }
         break;
     }
+
+    // 3. Draw 3D lighting vignette overlay (creates depth by darkening outer edges)
+    final vignettePaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.transparent,
+          Colors.black.withValues(alpha: 0.4),
+        ],
+        stops: const [0.55, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), vignettePaint);
   }
 
   void _drawSparkleStar(Canvas canvas, Offset center, double size, Paint paint) {
