@@ -97,4 +97,4 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/service_account.json
           
           # Deploy functions using Firebase CLI
-          firebase deploy --only functions --project=othli-497404
+          firebase deploy --only functions --project=othli-497404 --force
