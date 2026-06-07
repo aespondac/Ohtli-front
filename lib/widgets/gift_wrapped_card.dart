@@ -252,7 +252,7 @@ class _GiftWrappedCardState extends State<GiftWrappedCard> with SingleTickerProv
                                               ),
                                               const SizedBox(width: 4),
                                               Text(
-                                                widget.isLocked ? "CERRADO 🔒" : "SORPRESA 🎁",
+                                                widget.isLocked ? "CERRADO" : "SORPRESA",
                                                 style: GoogleFonts.outfit(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
