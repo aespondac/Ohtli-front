@@ -34,6 +34,7 @@ class GiftWrappedCard extends StatefulWidget {
   final Trip trip;
   final bool isLocked;
   final bool isOpened;
+  final DateTime? unlockDate;
   final String? addedByName;
   final Widget child; // The actual TripCard underneath
   final VoidCallback onRevealComplete;
@@ -43,6 +44,7 @@ class GiftWrappedCard extends StatefulWidget {
     required this.trip,
     required this.isLocked,
     required this.isOpened,
+    required this.unlockDate,
     required this.addedByName,
     required this.child,
     required this.onRevealComplete,
@@ -265,8 +267,8 @@ class _GiftWrappedCardState extends State<GiftWrappedCard> with SingleTickerProv
   }
 
   String _getUnlockDateString() {
-    if (widget.trip.surpriseUnlockDate != null) {
-      final date = widget.trip.surpriseUnlockDate!;
+    if (widget.unlockDate != null) {
+      final date = widget.unlockDate!;
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final unlockDay = DateTime(date.year, date.month, date.day);

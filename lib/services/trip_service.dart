@@ -97,8 +97,8 @@ class TripService {
               'isPlan': true,
               'status': 'unread',
               'read': false,
-              'timestamp': trip.surpriseUnlockDate != null
-                  ? Timestamp.fromDate(trip.surpriseUnlockDate!)
+              'timestamp': trip.surpriseUnlockDates[targetId] != null
+                  ? Timestamp.fromDate(trip.surpriseUnlockDates[targetId]!)
                   : FieldValue.serverTimestamp(),
             });
           }

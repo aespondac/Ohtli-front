@@ -53,12 +53,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
 
   bool _checkIsLocked(Trip t, bool isSurpriseForMe, bool isAuthor) {
-    if (!isSurpriseForMe || isAuthor || t.surpriseUnlockDate == null) {
+    if (!isSurpriseForMe || isAuthor) {
+      return false;
+    }
+    if (t.unlockOnPublish && t.status == 'published') {
+      return false;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final unlockDate = uid != null ? t.surpriseUnlockDates[uid] : null;
+    if (unlockDate == null) {
       return false;
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final unlockDay = DateTime(t.surpriseUnlockDate!.year, t.surpriseUnlockDate!.month, t.surpriseUnlockDate!.day);
+    final unlockDay = DateTime(unlockDate.year, unlockDate.month, unlockDate.day);
     return today.isBefore(unlockDay);
   }
 
@@ -1969,7 +1977,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   Widget _buildLockedSurpriseView(bool isDark) {
-    final diff = _trip!.surpriseUnlockDate!.difference(DateTime.now());
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final unlockDate = uid != null ? _trip!.surpriseUnlockDates[uid] : null;
+    if (unlockDate == null) return const SizedBox.shrink();
+
+    final diff = unlockDate.difference(DateTime.now());
     final days = diff.inDays;
     final hours = diff.inHours % 24;
     final minutes = diff.inMinutes % 60;

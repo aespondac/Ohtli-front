@@ -1054,22 +1054,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           onDelete: () => _deleteTrip(trip),
         );
 
-        if (trip.isSurprise) {
-          Widget wrappedCard = GiftWrappedCard(
-            trip: trip,
-            isLocked: false,
-            isOpened: false,
-            addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : 'Ti',
-            child: tripCard,
-            onRevealComplete: () {},
-          );
-          
-          if (crossAxisCount == 1) {
-            return SizedBox(height: 125.0, child: wrappedCard);
-          }
-          return wrappedCard;
-        }
-
         return tripCard;
       },
     );
@@ -1117,7 +1101,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final tripCard = TripCard(
           trip: trip,
           isHorizontal: crossAxisCount == 1,
-          disable3D: trip.isSurprise,
+          disable3D: false,
           addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
           addedByPhotoURL: isCoAuthored ? (authorProfile?['photo']) : null,
           onEdit: () {
@@ -1147,22 +1131,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           },
           onDelete: () => _deleteTrip(trip),
         );
-
-        if (trip.isSurprise) {
-          Widget wrappedCard = GiftWrappedCard(
-            trip: trip,
-            isLocked: false,
-            isOpened: false,
-            addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : 'Ti',
-            child: tripCard,
-            onRevealComplete: () {},
-          );
-          
-          if (crossAxisCount == 1) {
-            return SizedBox(height: 125.0, child: wrappedCard);
-          }
-          return wrappedCard;
-        }
 
         return tripCard;
       },
@@ -1207,9 +1175,17 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       itemCount: trips.length,
       itemBuilder: (context, index) {
         final trip = trips[index];
-        final bool isLocked = trip.surpriseUnlockDate != null && 
-            DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
-                .isBefore(DateTime(trip.surpriseUnlockDate!.year, trip.surpriseUnlockDate!.month, trip.surpriseUnlockDate!.day));
+        final DateTime? unlockDate = trip.surpriseUnlockDates[_userId];
+        bool isLocked = true;
+        if (trip.unlockOnPublish) {
+          isLocked = trip.status != 'published';
+        } else if (unlockDate != null) {
+          isLocked = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)
+              .isBefore(DateTime(unlockDate.year, unlockDate.month, unlockDate.day));
+        } else {
+          isLocked = false;
+        }
+        
         final bool isOpened = trip.surpriseOpenedBy.contains(_userId);
 
         if (!_authorProfilesCache.containsKey(trip.userId)) {
@@ -1265,6 +1241,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           trip: trip,
           isLocked: isLocked,
           isOpened: isOpened,
+          unlockDate: unlockDate,
           addedByName: authorName,
           onRevealComplete: () async {
             final uid = _userId;

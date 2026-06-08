@@ -53,7 +53,8 @@ class Trip {
   // Multiple targets
   final List<String> surpriseTargetIds;
   final List<String> surpriseTargetNames;
-  final DateTime? surpriseUnlockDate;
+  final Map<String, DateTime> surpriseUnlockDates;
+  final bool unlockOnPublish;
   final List<String> surpriseOpenedBy; // List of UIDs of users who have unwrapped it
 
   Trip({
@@ -73,7 +74,8 @@ class Trip {
     this.isSurprise = false,
     this.surpriseTargetIds = const [],
     this.surpriseTargetNames = const [],
-    this.surpriseUnlockDate,
+    this.surpriseUnlockDates = const {},
+    this.unlockOnPublish = false,
     this.surpriseOpenedBy = const [],
   });
 
@@ -89,9 +91,22 @@ class Trip {
     final List<String> surpriseTargetNames = List<String>.from(data['surpriseTargetNames'] ?? []);
 
     final List<String> surpriseOpenedBy = List<String>.from(data['surpriseOpenedBy'] ?? []);
-    final DateTime? surpriseUnlockDate = data['surpriseUnlockDate'] != null 
-        ? (data['surpriseUnlockDate'] as Timestamp).toDate() 
-        : null;
+    Map<String, DateTime> parsedUnlockDates = {};
+    if (data['surpriseUnlockDates'] != null) {
+      final rawMap = data['surpriseUnlockDates'] as Map<String, dynamic>;
+      rawMap.forEach((key, val) {
+        if (val is Timestamp) {
+          parsedUnlockDates[key] = val.toDate();
+        }
+      });
+    }
+    // Backward compatibility for existing trips with a single date
+    if (data['surpriseUnlockDate'] != null && parsedUnlockDates.isEmpty) {
+      final singleDate = (data['surpriseUnlockDate'] as Timestamp).toDate();
+      for (var targetId in surpriseTargetIds) {
+        parsedUnlockDates[targetId] = singleDate;
+      }
+    }
 
     return Trip(
       id: documentId,
@@ -110,7 +125,8 @@ class Trip {
       isSurprise: data['isSurprise'] ?? false,
       surpriseTargetIds: surpriseTargetIds,
       surpriseTargetNames: surpriseTargetNames,
-      surpriseUnlockDate: surpriseUnlockDate,
+      surpriseUnlockDates: parsedUnlockDates,
+      unlockOnPublish: data['unlockOnPublish'] ?? false,
       surpriseOpenedBy: surpriseOpenedBy,
     );
   }
@@ -132,7 +148,8 @@ class Trip {
       'isSurprise': isSurprise,
       'surpriseTargetIds': surpriseTargetIds,
       'surpriseTargetNames': surpriseTargetNames,
-      'surpriseUnlockDate': surpriseUnlockDate != null ? Timestamp.fromDate(surpriseUnlockDate!) : null,
+      'surpriseUnlockDates': surpriseUnlockDates.map((k, v) => MapEntry(k, Timestamp.fromDate(v))),
+      'unlockOnPublish': unlockOnPublish,
       'surpriseOpenedBy': surpriseOpenedBy,
     };
   }
