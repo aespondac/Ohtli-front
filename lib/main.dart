@@ -188,6 +188,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   String _publicTripId = '';
   String _publicAuthorId = '';
   int _homeInitialIndex = 0;
+  bool _isAuthInitialized = false;
 
   bool _isOnline = true;
   bool _showBanner = false;
@@ -254,6 +255,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
       User? user,
     ) async {
+      if (mounted && !_isAuthInitialized) {
+        setState(() {
+          _isAuthInitialized = true;
+        });
+      }
+
       if (user != null) {
         // Sync profile, upload Google photo if missing, and restore if previously deleted
         try {
@@ -293,6 +300,15 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isAuthInitialized) {
+      return Scaffold(
+        backgroundColor: OhtliSettings.instance.isDarkMode ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+        body: const Center(
+          child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+        ),
+      );
+    }
+
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 800;
 
