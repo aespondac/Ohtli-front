@@ -20,6 +20,7 @@ import 'screens/register/desktop_register_page.dart';
 import 'screens/register/mobile_register_page.dart';
 import 'screens/account/account_management_page.dart';
 import 'screens/trips/trip_viewer_page.dart';
+import 'screens/error_404_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -170,6 +171,7 @@ enum OhtliScreen {
   authAction, // Pantalla de acción de autenticación (recuperación/verificación)
   accountManagement, // Pantalla independiente de gestión de cuenta
   publicViewer, // Visor de viajes públicos / compartidos
+  test404, // Temporal para visualizar el 404
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -233,6 +235,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       _publicTripId = params['tripId']!;
       _publicAuthorId = params['authorId']!;
       _currentScreen = OhtliScreen.publicViewer;
+    } else if (params.containsKey('test404')) {
+      _currentScreen = OhtliScreen.test404;
     }
 
     // Initialize connection status
@@ -380,6 +384,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         isPublicLink: true,
         onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
         onBackToDashboard: () => _navigateTo(OhtliScreen.home),
+      );
+    } else if (_currentScreen == OhtliScreen.test404) {
+      activeView = Error404Page(
+        onExploreHome: () => _navigateTo(OhtliScreen.home),
       );
     } else if (isMobile) {
       switch (_currentScreen) {
