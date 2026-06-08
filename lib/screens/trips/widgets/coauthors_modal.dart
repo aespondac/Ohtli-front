@@ -100,7 +100,7 @@ class _CoAuthorsModalState extends State<CoAuthorsModal> {
         child: Container(
           padding: const EdgeInsets.all(2),
           decoration: const BoxDecoration(color: OhtliColors.stormyTeal, shape: BoxShape.circle),
-          child: const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 10),
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 10),
         ),
       );
     } else if (isSurprise) {
