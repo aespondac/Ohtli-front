@@ -996,7 +996,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
-            final isSurpriseInvalid = _isSurprise && (_surpriseUnlockDate == null || _surpriseTargetIds.isEmpty);
+            final isSurpriseInvalid = _isSurprise && (_surpriseTargetIds.isEmpty || (!_unlockOnPublish && _surpriseTargetIds.any((id) => _surpriseUnlockDates[id] == null)));
             final isSaveDisabled = tempDate == null || isSurpriseInvalid;
 
             return AlertDialog(
