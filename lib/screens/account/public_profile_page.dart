@@ -1251,12 +1251,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         final trips = snapshot.data ?? [];
         
         final List<Trip> filteredItems = trips.where((t) {
-          if (isTrip) {
-            if (_isSelf) return t.status == 'published';
-            return t.status == 'published' && t.visibility == 'public';
+          if (_isSelf) {
+            return isTrip ? t.status == 'published' : t.status == 'draft';
           } else {
-            if (_isSelf) return t.status == 'draft';
-            return t.status == 'draft' && t.visibility == 'public';
+            if (isTrip) {
+              return t.status == 'published' && t.visibility == 'public';
+            } else {
+              return _isFriend && t.status == 'draft';
+            }
           }
         }).toList();
 
