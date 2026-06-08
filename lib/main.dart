@@ -253,6 +253,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.publicViewer;
       } else if (params.containsKey('test404')) {
         _currentScreen = OhtliScreen.test404;
+      } else if (params.containsKey('testLab')) {
+        _currentScreen = OhtliScreen.labLanding;
+      } else if (params.containsKey('testApi')) {
+        _currentScreen = OhtliScreen.apiLanding;
       }
     }
 

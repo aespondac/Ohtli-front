@@ -1,7 +1,8 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
+import 'widgets/particles_background.dart';
 
 class LabLandingPage extends StatefulWidget {
   final VoidCallback onLoginRedirect;
@@ -15,247 +16,174 @@ class LabLandingPage extends StatefulWidget {
   State<LabLandingPage> createState() => _LabLandingPageState();
 }
 
-class _LabLandingPageState extends State<LabLandingPage> with SingleTickerProviderStateMixin {
-  late AnimationController _bgController;
+class _LabLandingPageState extends State<LabLandingPage> {
   bool _isHoveringLogin = false;
-  bool _isHoveringCta = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _bgController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 20),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _bgController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 800;
-    final isDark = OhtliSettings.instance.isDarkMode;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F0F13) : const Color(0xFFF0EBE1),
+      // Forzamos un tema claro para esta página
+      backgroundColor: const Color(0xFFF0EEE9), // Blanco Ohtli forzado
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // Animated Background Elements
-          AnimatedBuilder(
-            animation: _bgController,
-            builder: (context, child) {
-              return Stack(
-                children: [
-                  Positioned(
-                    top: -200 + (50 * _bgController.value),
-                    left: -100 + (100 * _bgController.value),
-                    child: Container(
-                      width: 600,
-                      height: 600,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: OhtliColors.stormyTeal.withValues(alpha: 0.15),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: -300 + (80 * _bgController.value),
-                    right: -150 - (50 * _bgController.value),
-                    child: Container(
-                      width: 800,
-                      height: 800,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: OhtliColors.xoconostle.withValues(alpha: 0.1),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          
-          // Glassmorphism overlay
+          // Fondo animado de partículas
           Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-              child: Container(color: Colors.transparent),
-            ),
+            child: ParticlesBackground(),
           ),
 
           // Main Content
-          SafeArea(
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
+          Positioned.fill(
+            child: SafeArea(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(Icons.science_rounded, size: 32, color: OhtliColors.stormyTeal),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Ohtli Labs',
-                            style: GoogleFonts.outfit(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              color: isDark ? Colors.white : OhtliColors.onyx,
-                              letterSpacing: -0.5,
+                          Row(
+                            children: [
+                              SvgPicture.asset(
+                                'assets/logo.svg',
+                                height: 32,
+                                colorFilter: const ColorFilter.mode(Color(0xFF0A090C), BlendMode.srcIn),
+                              ),
+                            ],
+                          ),
+                          MouseRegion(
+                            onEnter: (_) => setState(() => _isHoveringLogin = true),
+                            onExit: (_) => setState(() => _isHoveringLogin = false),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(30),
+                                boxShadow: _isHoveringLogin
+                                    ? [BoxShadow(color: const Color(0xFF0A090C).withValues(alpha: 0.2), blurRadius: 12, offset: const Offset(0, 4))]
+                                    : null,
+                              ),
+                              child: ElevatedButton(
+                                onPressed: widget.onLoginRedirect,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0A090C),
+                                  foregroundColor: const Color(0xFFF0EEE9),
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.login_rounded, size: 16),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'iniciar sesión',
+                                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600, letterSpacing: 0.5),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      MouseRegion(
-                        onEnter: (_) => setState(() => _isHoveringLogin = true),
-                        onExit: (_) => setState(() => _isHoveringLogin = false),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: _isHoveringLogin
-                                ? [BoxShadow(color: OhtliColors.stormyTeal.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))]
-                                : [],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: widget.onLoginRedirect,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: OhtliColors.stormyTeal,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.login_rounded, size: 16),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'iniciar sesión',
-                                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, letterSpacing: 0.5),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                Expanded(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 24 : 48, vertical: 40),
+                    // Hero Section
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 24 : 48, vertical: 80),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: OhtliColors.xoconostle.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.3)),
-                            ),
-                            child: Text(
-                              'PROGRAMA EXPERIMENTAL',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: OhtliColors.xoconostle,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
                           Text(
-                            'El futuro de Ohtli,\nen tus manos.',
+                            'Creemos el futuro,\njuntos.',
                             textAlign: TextAlign.center,
-                            style: GoogleFonts.caprasimo(
+                            style: GoogleFonts.outfit(
                               fontSize: isMobile ? 48 : 84,
-                              color: isDark ? Colors.white : OhtliColors.onyx,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF0A090C),
                               height: 1.1,
+                              letterSpacing: -1.5,
                             ),
                           ),
                           const SizedBox(height: 24),
                           ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 600),
                             child: Text(
-                              'Ohtli Labs es nuestro espacio de creación e innovación. Prueba funcionalidades exclusivas antes que nadie, contribuye con mejoras a nuestros productos y desbloquea logros ocultos directamente en tu aplicación.',
+                              'Ohtli Labs es nuestro espacio de creación e innovación. Prueba las funcionalidades en las que estamos trabajando antes que nadie, ayúdanos a mejorarlas y desbloquea medallas exclusivas en tu perfil.',
                               textAlign: TextAlign.center,
-                              style: GoogleFonts.inter(
-                                fontSize: isMobile ? 16 : 20,
-                                color: isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.7),
-                                height: 1.6,
+                              style: GoogleFonts.outfit(
+                                fontSize: isMobile ? 18 : 22,
+                                fontWeight: FontWeight.w400,
+                                color: const Color(0xFF0A090C).withValues(alpha: 0.8),
+                                height: 1.5,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 48),
+                          const SizedBox(height: 80),
+                        ],
+                      ),
+                    ),
+
+                    // Experimentos Section (Dark Container)
+                    Container(
+                      width: double.infinity,
+                      decoration: const BoxDecoration(
+                        color: OhtliColors.cantera, // Bottom section in Cantera
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(40),
+                          topRight: Radius.circular(40),
+                        ),
+                      ),
+                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 24 : 64, vertical: 64),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Nuevos experimentos',
+                            style: GoogleFonts.outfit(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0A090C), // Onyx explicitly
+                            ),
+                          ),
+                          const SizedBox(height: 40),
                           Wrap(
-                            alignment: WrapAlignment.center,
                             spacing: 24,
                             runSpacing: 24,
+                            alignment: WrapAlignment.center,
                             children: [
-                              _buildFeatureCard(
-                                icon: Icons.rocket_launch_rounded,
-                                title: 'Nuevas Mejoras',
-                                desc: 'Sé el primero en experimentar herramientas inéditas.',
-                                isDark: isDark,
+                              _buildExperimentCard(
+                                title: 'Caza Lugares',
+                                desc: 'Dada una dirección específica, consolida información de lugares a través de múltiples fuentes de datos.',
+                                imageColor: OhtliColors.stormyTeal,
+                                icon: Icons.travel_explore_rounded,
                               ),
-                              _buildFeatureCard(
-                                icon: Icons.bug_report_rounded,
-                                title: 'Pruebas Directas',
-                                desc: 'Usa las funcionalidades en un entorno de pruebas seguro.',
-                                isDark: isDark,
+                              _buildExperimentCard(
+                                title: 'Descubre tu Vibe',
+                                desc: 'A través de diversas preguntas, te develamos tu "vibe" y los lugares en la ciudad que te podrían gustar.',
+                                imageColor: OhtliColors.xoconostle,
+                                icon: Icons.auto_awesome_rounded,
                               ),
-                              _buildFeatureCard(
-                                icon: Icons.emoji_events_rounded,
+                              _buildExperimentCard(
                                 title: 'Logros Únicos',
-                                desc: 'Gana medallas exclusivas por tu participación.',
-                                isDark: isDark,
+                                desc: 'Gana medallas exclusivas por tu participación en los experimentos y betas de Ohtli.',
+                                imageColor: OhtliColors.cempasuchil,
+                                icon: Icons.emoji_events_rounded,
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 64),
-                          MouseRegion(
-                            onEnter: (_) => setState(() => _isHoveringCta = true),
-                            onExit: (_) => setState(() => _isHoveringCta = false),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              transform: Matrix4.identity()..scale(_isHoveringCta ? 1.05 : 1.0),
-                              child: OutlinedButton(
-                                onPressed: widget.onLoginRedirect,
-                                style: OutlinedButton.styleFrom(
-                                  side: BorderSide(color: OhtliColors.stormyTeal, width: 2),
-                                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
-                                ),
-                                child: Text(
-                                  'Acceder al Laboratorio',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: OhtliColors.stormyTeal,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ),
-                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -263,45 +191,85 @@ class _LabLandingPageState extends State<LabLandingPage> with SingleTickerProvid
     );
   }
 
-  Widget _buildFeatureCard({required IconData icon, required String title, required String desc, required bool isDark}) {
+  Widget _buildExperimentCard({
+    required String title,
+    required String desc,
+    required Color imageColor,
+    required IconData icon,
+  }) {
     return Container(
-      width: 280,
-      padding: const EdgeInsets.all(24),
+      width: 320,
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.5),
+        color: const Color(0xFFF0EEE9), // Card background in CloudDancer (white/cream)
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.white,
-          width: 1.5,
-        ),
+        border: Border.all(color: const Color(0xFF0A090C).withValues(alpha: 0.1)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Imagen Placeholder
           Container(
-            padding: const EdgeInsets.all(12),
+            height: 160,
+            width: double.infinity,
             decoration: BoxDecoration(
-              color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [
+                  imageColor.withValues(alpha: 0.8),
+                  imageColor.withValues(alpha: 0.4),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
             ),
-            child: Icon(icon, color: OhtliColors.stormyTeal, size: 28),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            title,
-            style: GoogleFonts.outfit(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : OhtliColors.onyx,
+            child: Center(
+              child: Icon(icon, size: 64, color: const Color(0xFF0A090C).withValues(alpha: 0.5)),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            desc,
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              color: isDark ? Colors.white60 : OhtliColors.onyx.withValues(alpha: 0.6),
-              height: 1.5,
+          // Contenido
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF0A090C),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  desc,
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    color: const Color(0xFF0A090C).withValues(alpha: 0.7),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: widget.onLoginRedirect,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF0A090C),
+                      side: BorderSide(color: const Color(0xFF0A090C).withValues(alpha: 0.2)),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: Text(
+                      'Unirse al experimento',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
