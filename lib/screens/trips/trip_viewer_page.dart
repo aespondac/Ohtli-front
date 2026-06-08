@@ -142,11 +142,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
           });
         }
       } catch (e) {
-        setState(() {
-          _errorCode = 404;
-          _errorMessage = "Error al conectar con la base de datos: $e";
-          _isLoading = false;
-        });
+        final errorString = e.toString().toLowerCase();
+        if (errorString.contains('permission-denied') || errorString.contains('permission denied')) {
+          setState(() {
+            _errorCode = 403;
+            _errorMessage = "El aventurero ha decidido mantener esta bitácora bajo llave.";
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _errorCode = 404;
+            _errorMessage = "Error al conectar con la base de datos: $e";
+            _isLoading = false;
+          });
+        }
       }
     } else {
       setState(() {
@@ -221,10 +230,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _errorMessage = "Error al cargar los bloques de la historia: $e";
-          _isLoading = false;
-        });
+        final errorString = e.toString().toLowerCase();
+        if (errorString.contains('permission-denied') || errorString.contains('permission denied')) {
+          setState(() {
+            _errorCode = 403;
+            _errorMessage = "No tienes permiso para ver el contenido de este viaje.";
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _errorCode = 404;
+            _errorMessage = "Error al cargar los bloques de la historia: $e";
+            _isLoading = false;
+          });
+        }
       }
     }
   }

@@ -46,3 +46,6 @@ app.*.map.json
 
 # Firebase Web Secrets ignore rule
 firebase_config.json
+
+#node modules
+*/node_modules
