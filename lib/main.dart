@@ -234,7 +234,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     // Routing de Subdominios
     if (kIsWeb) {
       final hostname = html.window.location.hostname ?? '';
-      if (hostname.contains('lab.ohtli.quest')) {
+      if (hostname.contains('labs.ohtli.quest')) {
         _currentScreen = OhtliScreen.labLanding;
       } else if (hostname.contains('api.ohtli.quest')) {
         _currentScreen = OhtliScreen.apiLanding;
