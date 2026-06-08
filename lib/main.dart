@@ -21,6 +21,8 @@ import 'screens/register/mobile_register_page.dart';
 import 'screens/account/account_management_page.dart';
 import 'screens/trips/trip_viewer_page.dart';
 import 'screens/error_404_page.dart';
+import 'screens/lab/lab_landing_page.dart';
+import 'screens/api/api_landing_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -172,6 +174,8 @@ enum OhtliScreen {
   accountManagement, // Pantalla independiente de gestión de cuenta
   publicViewer, // Visor de viajes públicos / compartidos
   test404, // Temporal para visualizar el 404
+  labLanding, // Landing Page para lab.ohtli.quest
+  apiLanding, // Landing Page para api.ohtli.quest
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -227,16 +231,29 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
     // Check for Firebase Auth Action parameters in URL on startup
     final params = Uri.base.queryParameters;
-    if (params.containsKey('mode') && params.containsKey('oobCode')) {
-      _authMode = params['mode']!;
-      _oobCode = params['oobCode']!;
-      _currentScreen = OhtliScreen.authAction;
-    } else if (params.containsKey('tripId') && params.containsKey('authorId')) {
-      _publicTripId = params['tripId']!;
-      _publicAuthorId = params['authorId']!;
-      _currentScreen = OhtliScreen.publicViewer;
-    } else if (params.containsKey('test404')) {
-      _currentScreen = OhtliScreen.test404;
+    // Routing de Subdominios
+    if (kIsWeb) {
+      final hostname = html.window.location.hostname ?? '';
+      if (hostname.contains('lab.ohtli.quest')) {
+        _currentScreen = OhtliScreen.labLanding;
+      } else if (hostname.contains('api.ohtli.quest')) {
+        _currentScreen = OhtliScreen.apiLanding;
+      }
+    }
+
+    if (_currentScreen == OhtliScreen.underConstruction) {
+      // Si no fue capturado por subdominios, validamos los parámetros de la URL principal
+      if (params.containsKey('mode') && params.containsKey('oobCode')) {
+        _authMode = params['mode']!;
+        _oobCode = params['oobCode']!;
+        _currentScreen = OhtliScreen.authAction;
+      } else if (params.containsKey('tripId') && params.containsKey('authorId')) {
+        _publicTripId = params['tripId']!;
+        _publicAuthorId = params['authorId']!;
+        _currentScreen = OhtliScreen.publicViewer;
+      } else if (params.containsKey('test404')) {
+        _currentScreen = OhtliScreen.test404;
+      }
     }
 
     // Initialize connection status
@@ -276,7 +293,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         if (_currentScreen != OhtliScreen.home &&
             _currentScreen != OhtliScreen.authAction &&
             _currentScreen != OhtliScreen.accountManagement &&
-            _currentScreen != OhtliScreen.publicViewer) {
+            _currentScreen != OhtliScreen.publicViewer &&
+            _currentScreen != OhtliScreen.labLanding &&
+            _currentScreen != OhtliScreen.apiLanding) {
           _navigateTo(OhtliScreen.home);
         }
       } else {
@@ -388,6 +407,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.test404) {
       activeView = Error404Page(
         onExploreHome: () => _navigateTo(OhtliScreen.home),
+      );
+    } else if (_currentScreen == OhtliScreen.labLanding) {
+      activeView = LabLandingPage(
+        onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
+      );
+    } else if (_currentScreen == OhtliScreen.apiLanding) {
+      activeView = ApiLandingPage(
+        onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
       );
     } else if (isMobile) {
       switch (_currentScreen) {
