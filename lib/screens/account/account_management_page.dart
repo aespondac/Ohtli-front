@@ -1271,9 +1271,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     ),
                   ),
                   child: Text(
-                    isGoogleUser
-                        ? 'Re-autenticar y Eliminar'
-                        : 'Confirmar y Eliminar',
+                    'Confirmar y Eliminar',
                     style: GoogleFonts.inter(fontWeight: FontWeight.bold),
                   ),
                 ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../theme/colors.dart';
 
 class LabsTermsAndConditionsPage extends StatelessWidget {
   final VoidCallback onBack;
