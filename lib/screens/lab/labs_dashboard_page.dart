@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/gestures.dart';
+import 'dart:html' as html;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
 import '../../widgets/user_profile_helper.dart';
@@ -172,12 +175,33 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        'Acepto los Términos y Condiciones y comprendo que el software en Labs es experimental e inestable.',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: OhtliColors.onyx.withValues(alpha: 0.8),
-                          height: 1.4,
+                      child: RichText(
+                        text: TextSpan(
+                          text: 'Acepto los ',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: OhtliColors.onyx.withValues(alpha: 0.8),
+                            height: 1.4,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: 'Términos y Condiciones',
+                              style: GoogleFonts.inter(
+                                color: OhtliColors.stormyTeal,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () {
+                                  if (kIsWeb) {
+                                    html.window.open('/labs/tyc', '_blank');
+                                  }
+                                },
+                            ),
+                            const TextSpan(
+                              text: ' y comprendo que el software en Labs es experimental e inestable.',
+                            ),
+                          ],
                         ),
                       ),
                     ),

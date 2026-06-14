@@ -945,20 +945,29 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null && user.email != null) {
-        // Reauthenticate
-        final credential = EmailAuthProvider.credential(
-          email: user.email!,
-          password: currentPassword,
-        );
+        bool hasPassword = false;
+        for (final info in user.providerData) {
+          if (info.providerId == 'password') {
+            hasPassword = true;
+          }
+        }
 
-        await user.reauthenticateWithCredential(credential);
+        if (hasPassword) {
+          // Reauthenticate
+          final credential = EmailAuthProvider.credential(
+            email: user.email!,
+            password: currentPassword,
+          );
+          await user.reauthenticateWithCredential(credential);
+        }
+        
         await user.updatePassword(newPassword);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '¡Contraseña cambiada exitosamente!',
+                hasPassword ? '¡Contraseña cambiada exitosamente!' : '¡Contraseña creada exitosamente!',
                 style: GoogleFonts.inter(fontWeight: FontWeight.w500),
               ),
               backgroundColor: OhtliColors.stormyTeal,
@@ -982,6 +991,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           errorMessage = 'La contraseña actual es incorrecta.';
         } else if (e.code == 'weak-password') {
           errorMessage = 'La nueva contraseña es muy débil.';
+        } else if (e.code == 'requires-recent-login') {
+          errorMessage = 'Debes cerrar sesión y volver a entrar antes de poder crear una contraseña por primera vez.';
         }
       }
       if (mounted) {
@@ -1004,10 +1015,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    bool isGoogleUser = false;
+    bool hasPassword = false;
     for (final info in user.providerData) {
-      if (info.providerId == 'google.com') {
-        isGoogleUser = true;
+      if (info.providerId == 'password') {
+        hasPassword = true;
       }
     }
 
@@ -1059,13 +1070,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    if (isGoogleUser) ...[
+                    if (!hasPassword) ...[
                       Text(
-                        'Iniciaste sesión con Google. Presiona el botón de abajo para re-autenticarte de forma segura.',
+                        'Por seguridad, debes crear una contraseña en la sección de Seguridad antes de poder eliminar tu cuenta.',
                         style: GoogleFonts.inter(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w500,
-                          color: OhtliColors.onyx,
+                          color: OhtliColors.xoconostle,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -1122,25 +1133,37 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: isDeleting
-                      ? null
-                      : () async {
-                          if (!isGoogleUser &&
-                              !deleteFormKey.currentState!.validate()) {
-                            return;
-                          }
+                if (!hasPassword)
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      setState(() {
+                        _currentSection = AccountSection.security;
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: OhtliColors.stormyTeal,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text(
+                      'Ir a Seguridad',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                else
+                  ElevatedButton(
+                    onPressed: isDeleting
+                        ? null
+                        : () async {
+                            if (!deleteFormKey.currentState!.validate()) {
+                              return;
+                            }
 
-                          setDialogState(() => isDeleting = true);
+                            setDialogState(() => isDeleting = true);
 
-                          try {
-                            if (isGoogleUser) {
-                              // Google re-authentication
-                              final googleProvider = GoogleAuthProvider();
-                              await user.reauthenticateWithPopup(
-                                googleProvider,
-                              );
-                            } else {
+                            try {
                               // Email re-authentication
                               final credential = EmailAuthProvider.credential(
                                 email: user.email!,
@@ -1149,7 +1172,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               await user.reauthenticateWithCredential(
                                 credential,
                               );
-                            }
 
                             // Delete local storage keys securely
                             html.window.localStorage.remove(
@@ -2015,6 +2037,16 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
   // 2. Security subform
   Widget _buildSecurityForm() {
+    final user = FirebaseAuth.instance.currentUser;
+    bool hasPassword = false;
+    bool hasGoogle = false;
+    if (user != null) {
+      for (final info in user.providerData) {
+        if (info.providerId == 'password') hasPassword = true;
+        if (info.providerId == 'google.com') hasGoogle = true;
+      }
+    }
+
     return Card(
       elevation: 0,
       color: OhtliColors.inputBg,
@@ -2028,7 +2060,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Cambiar contraseña',
+                  hasPassword ? 'Cambiar contraseña' : 'Crear contraseña',
                   style: GoogleFonts.inter(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -2037,7 +2069,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Por seguridad, requerimos verificar tu contraseña actual antes de actualizarla.',
+                  hasPassword
+                      ? 'Por seguridad, requerimos verificar tu contraseña actual antes de actualizarla.'
+                      : 'Como te registraste con Google, puedes crear una contraseña para tu cuenta de Ohtli.',
                   style: GoogleFonts.inter(
                     fontSize: 12.5,
                     color: OhtliColors.onyx.withValues(alpha: 0.55),
@@ -2045,46 +2079,48 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 ),
                 const SizedBox(height: 24),
 
-                // Contraseña Actual
-                TextFormField(
-                  controller: _currentPasswordController,
-                  obscureText: _obscureCurrent,
-                  style: GoogleFonts.inter(
-                    color: OhtliColors.onyx,
-                    fontSize: 14,
-                  ),
-                  validator: (value) => value == null || value.isEmpty
-                      ? 'Ingresa tu contraseña actual'
-                      : null,
-                  decoration: InputDecoration(
-                    labelText: 'Contraseña Actual',
-                    labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withValues(alpha: 0.5),
+                if (hasPassword) ...[
+                  // Contraseña Actual
+                  TextFormField(
+                    controller: _currentPasswordController,
+                    obscureText: _obscureCurrent,
+                    style: GoogleFonts.inter(
+                      color: OhtliColors.onyx,
+                      fontSize: 14,
                     ),
-                    prefixIcon: const Icon(
-                      Icons.lock_outline_rounded,
-                      color: OhtliColors.stormyTeal,
-                      size: 20,
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureCurrent
-                            ? Icons.visibility_rounded
-                            : Icons.visibility_off_rounded,
-                        size: 18,
+                    validator: (value) => value == null || value.isEmpty
+                        ? 'Ingresa tu contraseña actual'
+                        : null,
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña Actual',
+                      labelStyle: GoogleFonts.inter(
+                        color: OhtliColors.onyx.withValues(alpha: 0.5),
                       ),
-                      onPressed: () =>
-                          setState(() => _obscureCurrent = !_obscureCurrent),
-                    ),
-                    filled: true,
-                    fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
+                      prefixIcon: const Icon(
+                        Icons.lock_outline_rounded,
+                        color: OhtliColors.stormyTeal,
+                        size: 20,
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureCurrent
+                              ? Icons.visibility_rounded
+                              : Icons.visibility_off_rounded,
+                          size: 18,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscureCurrent = !_obscureCurrent),
+                      ),
+                      filled: true,
+                      fillColor: OhtliColors.cloudDancer,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
 
                 // Nueva Contraseña
                 TextFormField(
@@ -2213,7 +2249,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                 ),
                               )
                             : Text(
-                                'Actualizar',
+                                hasPassword ? 'Actualizar' : 'Crear',
                                 style: GoogleFonts.inter(
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -2222,6 +2258,81 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     ),
                   ],
                 ),
+                
+                const SizedBox(height: 40),
+                Divider(color: OhtliColors.onyx.withValues(alpha: 0.1)),
+                const SizedBox(height: 24),
+                
+                Text(
+                  'Cuentas vinculadas',
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: OhtliColors.onyx,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                if (hasGoogle)
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Cuenta de Google vinculada',
+                        style: GoogleFonts.inter(
+                          color: OhtliColors.onyx.withValues(alpha: 0.8),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        final provider = GoogleAuthProvider();
+                        await FirebaseAuth.instance.currentUser?.linkWithPopup(provider);
+                        if (mounted) {
+                          setState(() {});
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Cuenta de Google vinculada exitosamente.'),
+                              backgroundColor: OhtliColors.stormyTeal,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error al vincular cuenta de Google: $e'),
+                              backgroundColor: OhtliColors.xoconostle,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: SvgPicture.network(
+                      'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg',
+                      width: 18,
+                      height: 18,
+                      placeholderBuilder: (context) => const Icon(Icons.g_mobiledata),
+                    ),
+                    label: Text(
+                      'Vincular cuenta de Google',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: OhtliColors.onyx,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.12)),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

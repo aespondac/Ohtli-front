@@ -3,6 +3,8 @@ import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:html' as html;
+import 'package:flutter/foundation.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/user_profile_helper.dart';
@@ -422,6 +424,37 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                 }
                                 return null;
                               },
+                            ),
+                            const SizedBox(height: 12),
+                            
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: RichText(
+                                textAlign: TextAlign.center,
+                                text: TextSpan(
+                                  text: 'Al registrarte aceptas nuestros ',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: OhtliColors.onyx.withValues(alpha: 0.6),
+                                  ),
+                                  children: [
+                                    TextSpan(
+                                      text: 'Términos y Condiciones',
+                                      style: GoogleFonts.inter(
+                                        color: OhtliColors.stormyTeal,
+                                        fontWeight: FontWeight.w600,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                      recognizer: TapGestureRecognizer()
+                                        ..onTap = () {
+                                          if (kIsWeb) {
+                                            html.window.open('/tyc', '_blank');
+                                          }
+                                        },
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 24),
 
