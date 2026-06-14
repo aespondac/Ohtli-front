@@ -22,6 +22,7 @@ import 'screens/account/account_management_page.dart';
 import 'screens/trips/trip_viewer_page.dart';
 import 'screens/error_404_page.dart';
 import 'screens/lab/lab_landing_page.dart';
+import 'screens/lab/labs_dashboard_page.dart';
 import 'screens/api/api_landing_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
@@ -175,6 +176,7 @@ enum OhtliScreen {
   publicViewer, // Visor de viajes públicos / compartidos
   test404, // Temporal para visualizar el 404
   labLanding, // Landing Page para lab.ohtli.quest
+  labsDashboard, // Dashboard interno de Labs (T&C y experimentos)
   apiLanding, // Landing Page para api.ohtli.quest
 }
 
@@ -195,6 +197,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   String _publicAuthorId = '';
   int _homeInitialIndex = 0;
   bool _isAuthInitialized = false;
+  bool _intentLabs = false;
 
   bool _isOnline = true;
   bool _showBanner = false;
@@ -297,11 +300,16 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           }
         }
 
-        if (_currentScreen != OhtliScreen.home &&
+        if (_currentScreen == OhtliScreen.labLanding) {
+          _navigateTo(OhtliScreen.labsDashboard);
+        } else if (_intentLabs) {
+          _intentLabs = false;
+          _navigateTo(OhtliScreen.labsDashboard);
+        } else if (_currentScreen != OhtliScreen.home &&
             _currentScreen != OhtliScreen.authAction &&
             _currentScreen != OhtliScreen.accountManagement &&
             _currentScreen != OhtliScreen.publicViewer &&
-            _currentScreen != OhtliScreen.labLanding &&
+            _currentScreen != OhtliScreen.labsDashboard &&
             _currentScreen != OhtliScreen.apiLanding) {
           _navigateTo(OhtliScreen.home);
         }
@@ -417,7 +425,20 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.labLanding) {
       activeView = LabLandingPage(
-        onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
+        onLoginRedirect: () {
+          setState(() {
+            _intentLabs = true;
+          });
+          _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+        },
+      );
+    } else if (_currentScreen == OhtliScreen.labsDashboard) {
+      activeView = LabsDashboardPage(
+        onBackToHome: () => _navigateTo(OhtliScreen.home),
+        onLogout: () async {
+          await FirebaseAuth.instance.signOut();
+          _navigateTo(OhtliScreen.underConstruction);
+        },
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(

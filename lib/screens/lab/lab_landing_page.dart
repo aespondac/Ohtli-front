@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
 import 'widgets/particles_background.dart';
-import 'widgets/lab_waitlist_dialog.dart';
 class LabLandingPage extends StatefulWidget {
   final VoidCallback onLoginRedirect;
 
@@ -68,14 +67,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                                     : null,
                               ),
                               child: ElevatedButton(
-                                onPressed: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (_) => LabWaitlistDialog(
-                                      onSuccess: widget.onLoginRedirect,
-                                    ),
-                                  );
-                                },
+                                onPressed: widget.onLoginRedirect,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF0A090C),
                                   foregroundColor: const Color(0xFFF0EEE9),
@@ -260,14 +252,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (_) => LabWaitlistDialog(
-                          onSuccess: widget.onLoginRedirect,
-                        ),
-                      );
-                    },
+                    onPressed: widget.onLoginRedirect,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF0A090C),
                       side: BorderSide(color: const Color(0xFF0A090C).withValues(alpha: 0.2)),
