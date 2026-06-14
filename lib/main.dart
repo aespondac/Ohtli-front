@@ -330,7 +330,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _navigateTo(OhtliScreen.home);
         }
       } else {
-        if (_currentScreen == OhtliScreen.home ||
+        if (_currentScreen == OhtliScreen.labsDashboard || _currentScreen == OhtliScreen.labsTermsAndConditions) {
+          _navigateTo(OhtliScreen.labLanding);
+        } else if (_currentScreen == OhtliScreen.home ||
             _currentScreen == OhtliScreen.accountManagement) {
           _navigateTo(OhtliScreen.underConstruction);
         }
@@ -450,10 +452,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.labsDashboard) {
       activeView = LabsDashboardPage(
-        onBackToHome: () => _navigateTo(OhtliScreen.home),
         onLogout: () async {
           await FirebaseAuth.instance.signOut();
-          _navigateTo(OhtliScreen.underConstruction);
+          _navigateTo(OhtliScreen.labLanding);
         },
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
