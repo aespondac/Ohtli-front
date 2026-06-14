@@ -13,10 +13,11 @@ class TermsAndConditionsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: OhtliColors.cloudDancer,
+      backgroundColor: const Color(0xFFF0EEE9),
       appBar: AppBar(
-        backgroundColor: OhtliColors.stormyTeal,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: const Color(0xFF0A090C),
         title: Text('Términos y Condiciones', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -37,7 +38,7 @@ class TermsAndConditionsPage extends StatelessWidget {
                   style: GoogleFonts.outfit(
                     fontSize: 32,
                     fontWeight: FontWeight.w800,
-                    color: OhtliColors.onyx,
+                    color: const Color(0xFF0A090C),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -45,7 +46,7 @@ class TermsAndConditionsPage extends StatelessWidget {
                   'Última actualización: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
                   style: GoogleFonts.inter(
                     fontSize: 14,
-                    color: OhtliColors.onyx.withValues(alpha: 0.6),
+                    color: const Color(0xFF0A090C).withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -86,13 +87,13 @@ class TermsAndConditionsPage extends StatelessWidget {
                   'Estos Términos y Condiciones se regirán e interpretarán de acuerdo con las leyes vigentes aplicables en la jurisdicción operativa principal de Ohtli, sin dar efecto a ningún principio de conflictos de leyes.',
                 ),
                 const SizedBox(height: 40),
-                Divider(color: OhtliColors.onyx.withValues(alpha: 0.2)),
+                Divider(color: const Color(0xFF0A090C).withValues(alpha: 0.2)),
                 const SizedBox(height: 24),
                 Text(
                   'Si tiene alguna pregunta sobre estos Términos y Condiciones, por favor contáctenos a través de los canales oficiales de soporte de Ohtli.',
                   style: GoogleFonts.inter(
                     fontSize: 16,
-                    color: OhtliColors.onyx.withValues(alpha: 0.8),
+                    color: const Color(0xFF0A090C).withValues(alpha: 0.8),
                     height: 1.5,
                   ),
                 ),
@@ -115,7 +116,7 @@ class TermsAndConditionsPage extends StatelessWidget {
             style: GoogleFonts.outfit(
               fontSize: 20,
               fontWeight: FontWeight.w700,
-              color: OhtliColors.onyx,
+              color: const Color(0xFF0A090C),
             ),
           ),
           const SizedBox(height: 12),
@@ -123,7 +124,7 @@ class TermsAndConditionsPage extends StatelessWidget {
             content,
             style: GoogleFonts.inter(
               fontSize: 16,
-              color: OhtliColors.onyx.withValues(alpha: 0.8),
+              color: const Color(0xFF0A090C).withValues(alpha: 0.8),
               height: 1.6,
             ),
           ),

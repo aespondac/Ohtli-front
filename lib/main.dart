@@ -330,7 +330,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _navigateTo(OhtliScreen.home);
         }
       } else {
-        if (_currentScreen == OhtliScreen.labsDashboard || _currentScreen == OhtliScreen.labsTermsAndConditions) {
+        if (_currentScreen == OhtliScreen.labsDashboard) {
           _navigateTo(OhtliScreen.labLanding);
         } else if (_currentScreen == OhtliScreen.home ||
             _currentScreen == OhtliScreen.accountManagement) {

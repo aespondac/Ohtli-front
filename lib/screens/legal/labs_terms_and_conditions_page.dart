@@ -13,11 +13,11 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: OhtliColors.cloudDancer, // Fondo claro para la legalidad de Labs
+      backgroundColor: const Color(0xFFF0EEE9), // Fondo claro para la legalidad de Labs
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: OhtliColors.onyx,
+        foregroundColor: const Color(0xFF0A090C),
         title: Text('Términos de Labs', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -38,7 +38,7 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
                   style: GoogleFonts.outfit(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: OhtliColors.onyx,
+                    color: const Color(0xFF0A090C),
                     height: 1.2,
                   ),
                 ),
@@ -47,7 +47,7 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
                   'Última actualización: Noviembre 2023',
                   style: GoogleFonts.inter(
                     fontSize: 14,
-                    color: OhtliColors.onyx.withValues(alpha: 0.6),
+                    color: const Color(0xFF0A090C).withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -84,13 +84,13 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
                   'Usted acepta expresamente defender, indemnizar y eximir a Ohtli de toda responsabilidad frente a cualquier reclamación, demanda, daño, obligación, pérdida, costo o gasto que surja directa o indirectamente de su uso de Ohtli Labs. En caso de que sus acciones causen daños directos, indirectos, tangibles o intangibles a terceros o a Ohtli, usted se compromete incondicionalmente a la reparación integral del daño, incluyendo la reposición monetaria, material o de cualquier otra índole requerida para subsanar los perjuicios causados.',
                 ),
                 const SizedBox(height: 40),
-                Divider(color: OhtliColors.onyx.withValues(alpha: 0.2)),
+                Divider(color: const Color(0xFF0A090C).withValues(alpha: 0.2)),
                 const SizedBox(height: 24),
                 Text(
                   'Si tiene dudas sobre el entorno de Labs, póngase en contacto con el equipo de ingeniería de Ohtli.',
                   style: GoogleFonts.inter(
                     fontSize: 16,
-                    color: OhtliColors.onyx.withValues(alpha: 0.8),
+                    color: const Color(0xFF0A090C).withValues(alpha: 0.8),
                     height: 1.5,
                   ),
                 ),
@@ -114,7 +114,7 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
             style: GoogleFonts.outfit(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: OhtliColors.onyx,
+              color: const Color(0xFF0A090C),
             ),
           ),
           const SizedBox(height: 12),
@@ -122,7 +122,7 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
             content,
             style: GoogleFonts.inter(
               fontSize: 15,
-              color: OhtliColors.onyx.withValues(alpha: 0.8),
+              color: const Color(0xFF0A090C).withValues(alpha: 0.8),
               height: 1.6,
             ),
           ),
