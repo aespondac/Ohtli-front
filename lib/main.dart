@@ -482,7 +482,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = MobileLoginPage(
             onBack: () => _navigateTo(OhtliScreen.mobileWelcome),
             onRegisterClick: () => _navigateTo(OhtliScreen.mobileRegister),
-            onLoginSuccess: () => _navigateTo(OhtliScreen.home),
+            onLoginSuccess: () {}, // Auth listener handles redirect
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );
@@ -491,14 +491,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = MobileRegisterPage(
             onBack: () => _navigateTo(OhtliScreen.mobileLogin),
             onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
-            onRegisterSuccess: () => _navigateTo(OhtliScreen.home),
+            onRegisterSuccess: () {}, // Auth listener handles redirect
           );
           break;
         default:
           activeView = MobileLoginPage(
             onBack: () => _navigateTo(OhtliScreen.mobileWelcome),
             onRegisterClick: () => _navigateTo(OhtliScreen.mobileRegister),
-            onLoginSuccess: () => _navigateTo(OhtliScreen.home),
+            onLoginSuccess: () {}, // Auth listener handles redirect
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );
@@ -509,7 +509,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = DesktopLoginPage(
             onBack: () => _navigateTo(OhtliScreen.underConstruction),
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
-            onLoginSuccess: () => _navigateTo(OhtliScreen.home),
+            onLoginSuccess: () {}, // Auth listener handles redirect
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );
@@ -518,14 +518,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = DesktopRegisterPage(
             onBack: () => _navigateTo(OhtliScreen.login),
             onLoginClick: () => _navigateTo(OhtliScreen.login),
-            onRegisterSuccess: () => _navigateTo(OhtliScreen.home),
+            onRegisterSuccess: () {}, // Auth listener handles redirect
           );
           break;
         default:
           activeView = DesktopLoginPage(
             onBack: () => _navigateTo(OhtliScreen.underConstruction),
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
-            onLoginSuccess: () => _navigateTo(OhtliScreen.home),
+            onLoginSuccess: () {}, // Auth listener handles redirect
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );

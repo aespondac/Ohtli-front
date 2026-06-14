@@ -12,12 +12,12 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A090C), // Fondo oscuro para Labs
+      backgroundColor: OhtliColors.cloudDancer, // Fondo claro para la legalidad de Labs
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: const Color(0xFFF0EEE9),
-        title: Text('Ohtli Labs', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        foregroundColor: OhtliColors.onyx,
+        title: Text('Términos de Labs', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: onBack,
@@ -35,17 +35,18 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
                 Text(
                   'Términos y Condiciones de Ohtli Labs',
                   style: GoogleFonts.outfit(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFFF0EEE9),
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: OhtliColors.onyx,
+                    height: 1.2,
                   ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Última actualización: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
+                  'Última actualización: Noviembre 2023',
                   style: GoogleFonts.inter(
                     fontSize: 14,
-                    color: const Color(0xFFF0EEE9).withValues(alpha: 0.6),
+                    color: OhtliColors.onyx.withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -82,13 +83,13 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
                   'Usted acepta expresamente defender, indemnizar y eximir a Ohtli de toda responsabilidad frente a cualquier reclamación, demanda, daño, obligación, pérdida, costo o gasto que surja directa o indirectamente de su uso de Ohtli Labs. En caso de que sus acciones causen daños directos, indirectos, tangibles o intangibles a terceros o a Ohtli, usted se compromete incondicionalmente a la reparación integral del daño, incluyendo la reposición monetaria, material o de cualquier otra índole requerida para subsanar los perjuicios causados.',
                 ),
                 const SizedBox(height: 40),
-                Divider(color: const Color(0xFFF0EEE9).withValues(alpha: 0.2)),
+                Divider(color: OhtliColors.onyx.withValues(alpha: 0.2)),
                 const SizedBox(height: 24),
                 Text(
                   'Si tiene dudas sobre el entorno de Labs, póngase en contacto con el equipo de ingeniería de Ohtli.',
                   style: GoogleFonts.inter(
                     fontSize: 16,
-                    color: const Color(0xFFF0EEE9).withValues(alpha: 0.8),
+                    color: OhtliColors.onyx.withValues(alpha: 0.8),
                     height: 1.5,
                   ),
                 ),
@@ -103,7 +104,7 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
 
   Widget _buildSection(String title, String content) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 32.0),
+      padding: const EdgeInsets.only(bottom: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -111,16 +112,16 @@ class LabsTermsAndConditionsPage extends StatelessWidget {
             title,
             style: GoogleFonts.outfit(
               fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFFF0EEE9),
+              fontWeight: FontWeight.w600,
+              color: OhtliColors.onyx,
             ),
           ),
           const SizedBox(height: 12),
           Text(
             content,
             style: GoogleFonts.inter(
-              fontSize: 16,
-              color: const Color(0xFFF0EEE9).withValues(alpha: 0.8),
+              fontSize: 15,
+              color: OhtliColors.onyx.withValues(alpha: 0.8),
               height: 1.6,
             ),
           ),

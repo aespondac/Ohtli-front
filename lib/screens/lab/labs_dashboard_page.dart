@@ -57,11 +57,11 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A090C), // Fondo oscuro para Labs
+      backgroundColor: OhtliColors.cloudDancer, // Fondo claro para Labs
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: const Color(0xFFF0EEE9),
+        foregroundColor: OhtliColors.onyx,
         title: Text('Ohtli Labs', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         leading: const SizedBox.shrink(), // Sin botón de atrás, LabsDashboard es la raíz
         leadingWidth: 0,
@@ -113,11 +113,11 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
           constraints: const BoxConstraints(maxWidth: 600),
           padding: const EdgeInsets.all(40),
           decoration: BoxDecoration(
-            color: const Color(0xFF0A090C),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0A090C).withValues(alpha: 0.2),
+                color: OhtliColors.onyx.withValues(alpha: 0.1),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               ),
@@ -130,7 +130,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: OhtliColors.stormyTeal.withValues(alpha: 0.2),
+                  color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.science_rounded, color: OhtliColors.stormyTeal, size: 32),
@@ -141,7 +141,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                 style: GoogleFonts.outfit(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFFF0EEE9),
+                  color: OhtliColors.onyx,
                   height: 1.1,
                 ),
               ),
@@ -150,7 +150,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                 'Al unirte a Ohtli Labs, obtienes acceso anticipado a nuestras funcionalidades experimentales. Estas herramientas están en fase de prueba, por lo que podrían ser inestables, presentar errores o ser eliminadas sin previo aviso.',
                 style: GoogleFonts.outfit(
                   fontSize: 16,
-                  color: const Color(0xFFF0EEE9).withValues(alpha: 0.7),
+                  color: OhtliColors.onyx.withValues(alpha: 0.7),
                   height: 1.5,
                 ),
               ),
@@ -167,7 +167,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                         value: _acceptedTerms,
                         onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
                         activeColor: OhtliColors.stormyTeal,
-                        side: BorderSide(color: const Color(0xFFF0EEE9).withValues(alpha: 0.3)),
+                        side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.3)),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                       ),
                     ),
@@ -177,7 +177,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                         'Acepto los Términos y Condiciones y comprendo que el software en Labs es experimental e inestable.',
                         style: GoogleFonts.inter(
                           fontSize: 14,
-                          color: const Color(0xFFF0EEE9).withValues(alpha: 0.8),
+                          color: OhtliColors.onyx.withValues(alpha: 0.8),
                           height: 1.4,
                         ),
                       ),
@@ -194,8 +194,8 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                   child: ElevatedButton(
                     onPressed: _isLoading || !_acceptedTerms ? null : _joinWaitlist,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF0EEE9),
-                      foregroundColor: const Color(0xFF0A090C),
+                      backgroundColor: OhtliColors.stormyTeal,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -206,7 +206,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                         ? const SizedBox(
                             height: 24,
                             width: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0A090C)),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
                         : Text(
                             'Aceptar y Unirme a Labs',
@@ -248,7 +248,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
               style: GoogleFonts.outfit(
                 fontSize: 32,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFFF0EEE9),
+                color: OhtliColors.onyx,
                 height: 1.1,
               ),
             ),
@@ -260,7 +260,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                 textAlign: TextAlign.center,
                 style: GoogleFonts.outfit(
                   fontSize: 18,
-                  color: const Color(0xFFF0EEE9).withValues(alpha: 0.7),
+                  color: OhtliColors.onyx.withValues(alpha: 0.7),
                   height: 1.5,
                 ),
               ),
@@ -271,8 +271,8 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
               icon: const Icon(Icons.logout),
               label: const Text('Cerrar sesión'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF0EEE9).withValues(alpha: 0.1),
-                foregroundColor: const Color(0xFFF0EEE9),
+                backgroundColor: OhtliColors.onyx.withValues(alpha: 0.1),
+                foregroundColor: OhtliColors.onyx,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 elevation: 0,
@@ -292,14 +292,14 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.science_rounded, color: Color(0xFFF0EEE9), size: 32),
+              const Icon(Icons.science_rounded, color: OhtliColors.stormyTeal, size: 32),
               const SizedBox(width: 16),
               Text(
                 '¡Bienvenido a Labs!',
                 style: GoogleFonts.outfit(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFFF0EEE9),
+                  color: OhtliColors.onyx,
                 ),
               ),
             ],
@@ -309,7 +309,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
             'Tienes acceso habilitado a los siguientes experimentos:',
             style: GoogleFonts.inter(
               fontSize: 16,
-              color: const Color(0xFFF0EEE9).withValues(alpha: 0.7),
+              color: OhtliColors.onyx.withValues(alpha: 0.7),
             ),
           ),
           const SizedBox(height: 48),
@@ -350,11 +350,11 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
       width: 300,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF16151A),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 16, offset: const Offset(0, 8)),
+          BoxShadow(color: color.withValues(alpha: 0.1), blurRadius: 16, offset: const Offset(0, 8)),
         ],
       ),
       child: Column(
@@ -366,9 +366,9 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
             child: Icon(icon, color: color, size: 32),
           ),
           const SizedBox(height: 24),
-          Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold, color: const Color(0xFFF0EEE9))),
+          Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold, color: OhtliColors.onyx)),
           const SizedBox(height: 8),
-          Text(desc, style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFFF0EEE9).withValues(alpha: 0.6))),
+          Text(desc, style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx.withValues(alpha: 0.6))),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
