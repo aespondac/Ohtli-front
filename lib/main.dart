@@ -24,6 +24,8 @@ import 'screens/error_404_page.dart';
 import 'screens/lab/lab_landing_page.dart';
 import 'screens/lab/labs_dashboard_page.dart';
 import 'screens/api/api_landing_page.dart';
+import 'screens/legal/terms_and_conditions_page.dart';
+import 'screens/legal/labs_terms_and_conditions_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -178,6 +180,8 @@ enum OhtliScreen {
   labLanding, // Landing Page para lab.ohtli.quest
   labsDashboard, // Dashboard interno de Labs (T&C y experimentos)
   apiLanding, // Landing Page para api.ohtli.quest
+  termsAndConditions, // Pantalla de TyC de Ohtli
+  labsTermsAndConditions, // Pantalla de TyC de Ohtli Labs
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -237,10 +241,18 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     // Routing de Subdominios
     if (kIsWeb) {
       final hostname = html.window.location.hostname ?? '';
+      final pathname = html.window.location.pathname ?? '';
+
       if (hostname.contains('labs.ohtli.quest')) {
-        _currentScreen = OhtliScreen.labLanding;
+        if (pathname.contains('/tyc')) {
+          _currentScreen = OhtliScreen.labsTermsAndConditions;
+        } else {
+          _currentScreen = OhtliScreen.labLanding;
+        }
       } else if (hostname.contains('api.ohtli.quest')) {
         _currentScreen = OhtliScreen.apiLanding;
+      } else if (pathname.contains('/tyc')) {
+        _currentScreen = OhtliScreen.termsAndConditions;
       }
     }
 
@@ -443,6 +455,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(
         onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
+      );
+    } else if (_currentScreen == OhtliScreen.termsAndConditions) {
+      activeView = TermsAndConditionsPage(
+        onBack: () => _navigateTo(OhtliScreen.underConstruction),
+      );
+    } else if (_currentScreen == OhtliScreen.labsTermsAndConditions) {
+      activeView = LabsTermsAndConditionsPage(
+        onBack: () => _navigateTo(OhtliScreen.labLanding),
       );
     } else if (isMobile) {
       switch (_currentScreen) {
