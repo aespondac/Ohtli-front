@@ -62,7 +62,6 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: OhtliColors.onyx,
-        title: Text('Ohtli Labs', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         leading: const SizedBox.shrink(), // Sin botón de atrás, LabsDashboard es la raíz
         leadingWidth: 0,
         actions: [
