@@ -71,7 +71,9 @@ class _LabLandingPageState extends State<LabLandingPage> {
                                 onPressed: () {
                                   showDialog(
                                     context: context,
-                                    builder: (_) => const LabWaitlistDialog(),
+                                    builder: (_) => LabWaitlistDialog(
+                                      onSuccess: widget.onLoginRedirect,
+                                    ),
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
@@ -261,7 +263,9 @@ class _LabLandingPageState extends State<LabLandingPage> {
                     onPressed: () {
                       showDialog(
                         context: context,
-                        builder: (_) => const LabWaitlistDialog(),
+                        builder: (_) => LabWaitlistDialog(
+                          onSuccess: widget.onLoginRedirect,
+                        ),
                       );
                     },
                     style: OutlinedButton.styleFrom(

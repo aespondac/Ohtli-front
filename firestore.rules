@@ -95,5 +95,11 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null;
     }
+
+    // Labs Waitlist Collection
+    match /labs_waitlist/{userId} {
+      // Users can read and create their own waitlist document
+      allow read, create: if request.auth != null && request.auth.uid == userId;
+    }
   }
 }

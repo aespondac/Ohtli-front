@@ -9,7 +9,12 @@ import '../../../theme/colors.dart';
 import '../../../widgets/user_profile_helper.dart';
 
 class LabWaitlistDialog extends StatefulWidget {
-  const LabWaitlistDialog({super.key});
+  final VoidCallback onSuccess;
+
+  const LabWaitlistDialog({
+    super.key,
+    required this.onSuccess,
+  });
 
   @override
   State<LabWaitlistDialog> createState() => _LabWaitlistDialogState();
@@ -46,6 +51,7 @@ class _LabWaitlistDialogState extends State<LabWaitlistDialog> {
           Future.delayed(const Duration(seconds: 3), () {
             if (mounted) {
               Navigator.of(context).pop();
+              widget.onSuccess();
             }
           });
         }
