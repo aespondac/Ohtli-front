@@ -241,17 +241,19 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     // Routing de Subdominios
     if (kIsWeb) {
       final hostname = html.window.location.hostname ?? '';
-      final pathname = html.window.location.pathname ?? '';
+      final path = Uri.base.path;
+      final fragment = Uri.base.fragment;
+      final isTyc = path.contains('/tyc') || fragment.contains('/tyc');
 
       if (hostname.contains('labs.ohtli.quest')) {
-        if (pathname.contains('/tyc')) {
+        if (isTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
         } else {
           _currentScreen = OhtliScreen.labLanding;
         }
       } else if (hostname.contains('api.ohtli.quest')) {
         _currentScreen = OhtliScreen.apiLanding;
-      } else if (pathname.contains('/tyc')) {
+      } else if (isTyc) {
         _currentScreen = OhtliScreen.termsAndConditions;
       }
     }
@@ -322,7 +324,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             _currentScreen != OhtliScreen.accountManagement &&
             _currentScreen != OhtliScreen.publicViewer &&
             _currentScreen != OhtliScreen.labsDashboard &&
-            _currentScreen != OhtliScreen.apiLanding) {
+            _currentScreen != OhtliScreen.apiLanding &&
+            _currentScreen != OhtliScreen.termsAndConditions &&
+            _currentScreen != OhtliScreen.labsTermsAndConditions) {
           _navigateTo(OhtliScreen.home);
         }
       } else {
