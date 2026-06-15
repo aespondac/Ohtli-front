@@ -40,7 +40,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://api.ohtli.quest/api/v0.1/osrm/route'),
+        Uri.parse('https://us-central1-yollotl-engine-api.cloudfunctions.net/api/v0.1/osrm/route'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'origin': {'lat': _origin!['lat'], 'lng': _origin!['lng']},
