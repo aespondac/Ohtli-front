@@ -40,7 +40,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://us-central1-yollotl-engine-api.cloudfunctions.net/api/v0.1/osrm/route'),
+        Uri.parse('https://api.ohtli.quest/api/osrm/route'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'origin': {'lat': _origin!['lat'], 'lng': _origin!['lng']},
@@ -75,7 +75,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.1)),
+        side: BorderSide(color: const Color(0xFF0A090C).withValues(alpha: 0.1)),
       ),
       color: Colors.white,
       child: InkWell(
@@ -87,7 +87,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
             children: [
               Icon(
                 address != null ? Icons.location_on : Icons.add_location_alt,
-                color: address != null ? OhtliColors.stormyTeal : OhtliColors.onyx.withValues(alpha: 0.4),
+                color: address != null ? OhtliColors.stormyTeal : const Color(0xFF0A090C).withValues(alpha: 0.4),
                 size: 28,
               ),
               const SizedBox(width: 16),
@@ -99,7 +99,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                       title,
                       style: GoogleFonts.outfit(
                         fontWeight: FontWeight.w600,
-                        color: OhtliColors.onyx.withValues(alpha: 0.7),
+                        color: const Color(0xFF0A090C).withValues(alpha: 0.7),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -108,7 +108,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                           ? '${address['street'] ?? 'Sin calle'}, ${address['suburb'] ?? ''}\nLat: ${address['lat']}, Lng: ${address['lng']}'
                           : 'Toca para seleccionar ubicación',
                       style: GoogleFonts.inter(
-                        color: address != null ? OhtliColors.onyx : OhtliColors.onyx.withValues(alpha: 0.4),
+                        color: address != null ? const Color(0xFF0A090C) : const Color(0xFF0A090C).withValues(alpha: 0.4),
                       ),
                     ),
                   ],
@@ -152,11 +152,12 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
     }
 
     return Scaffold(
-      backgroundColor: OhtliColors.cloudDancer,
+      backgroundColor: const Color(0xFFF0EEE9),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: OhtliColors.onyx,
+        foregroundColor: const Color(0xFF0A090C),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: widget.onBack,
@@ -176,7 +177,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
               style: GoogleFonts.outfit(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
-                color: OhtliColors.onyx,
+                color: const Color(0xFF0A090C),
               ),
             ),
             const SizedBox(height: 8),
@@ -184,7 +185,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
               'Prueba la integración del frontend con la API de Yollotl Engine para calcular rutas optimizadas usando el backend de OSRM.',
               style: GoogleFonts.inter(
                 fontSize: 16,
-                color: OhtliColors.onyx.withValues(alpha: 0.7),
+                color: const Color(0xFF0A090C).withValues(alpha: 0.7),
               ),
             ),
             const SizedBox(height: 32),
@@ -196,7 +197,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
               children: [
                 Text(
                   'Perfil de ruta:',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: const Color(0xFF0A090C)),
                 ),
                 const SizedBox(width: 16),
                 DropdownButton<String>(
