@@ -133,7 +133,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                   ),
                   child: Text(
                     _errorResponse,
-                    style: GoogleFonts.monospace(color: OhtliColors.xoconostle, fontSize: 14),
+                    style: GoogleFonts.firaCode(color: OhtliColors.xoconostle, fontSize: 14),
                   ),
                 ),
             ],
