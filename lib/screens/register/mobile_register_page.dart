@@ -394,7 +394,7 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
                                   recognizer: TapGestureRecognizer()
                                     ..onTap = () {
                                       if (kIsWeb) {
-                                        html.window.open('/tyc', '_blank');
+                                        html.window.open('/#/tyc', '_blank');
                                       }
                                     },
                                 ),

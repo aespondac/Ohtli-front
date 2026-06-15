@@ -448,7 +448,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                       recognizer: TapGestureRecognizer()
                                         ..onTap = () {
                                           if (kIsWeb) {
-                                            html.window.open('/tyc', '_blank');
+                                            html.window.open('/#/tyc', '_blank');
                                           }
                                         },
                                     ),

@@ -16,6 +16,7 @@ class TermsAndConditionsPage extends StatelessWidget {
       backgroundColor: const Color(0xFFF0EEE9),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         foregroundColor: const Color(0xFF0A090C),
         title: Text('Términos y Condiciones', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),

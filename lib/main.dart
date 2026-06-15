@@ -245,17 +245,20 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final hostname = html.window.location.hostname ?? '';
       final path = Uri.base.path;
       final fragment = Uri.base.fragment;
-      final isTyc = path.contains('/tyc') || fragment.contains('/tyc');
+      final isLabsTyc = path.contains('/labs/tyc') || fragment.contains('/labs/tyc');
+      final isAppTyc = path.contains('/tyc') || fragment.contains('/tyc');
 
-      if (hostname.contains('labs.ohtli.quest')) {
-        if (isTyc) {
+      if (isLabsTyc) {
+        _currentScreen = OhtliScreen.labsTermsAndConditions;
+      } else if (hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
+        if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
         } else {
           _currentScreen = OhtliScreen.labLanding;
         }
-      } else if (hostname.contains('api.ohtli.quest')) {
+      } else if (hostname.contains('api.ohtli.quest') || params.containsKey('testApi')) {
         _currentScreen = OhtliScreen.apiLanding;
-      } else if (isTyc) {
+      } else if (isAppTyc) {
         _currentScreen = OhtliScreen.termsAndConditions;
       }
     }
@@ -272,10 +275,6 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.publicViewer;
       } else if (params.containsKey('test404')) {
         _currentScreen = OhtliScreen.test404;
-      } else if (params.containsKey('testLab')) {
-        _currentScreen = OhtliScreen.labLanding;
-      } else if (params.containsKey('testApi')) {
-        _currentScreen = OhtliScreen.apiLanding;
       }
     }
 
