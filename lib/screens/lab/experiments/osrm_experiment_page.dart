@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../../theme/colors.dart';
 import '../../../widgets/address_picker_widget.dart';
+import '../../../widgets/osrm_map_widget.dart';
 
 class OsrmExperimentPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -242,7 +243,15 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                 child: Text(_errorText!, style: GoogleFonts.inter(color: Colors.red)),
               ),
             if (_resultText != null) ...[
-              Text('Respuesta del Motor (Ye):', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('Ruta Calculada (Mapa):', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              OsrmMapWidget(
+                origin: _origin!,
+                destination: _destination!,
+                routeCoordinates: jsonDecode(_resultText!)['routes'][0]['geometry']['coordinates'],
+              ),
+              const SizedBox(height: 32),
+              Text('Respuesta del Motor (JSON):', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
