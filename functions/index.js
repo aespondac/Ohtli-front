@@ -116,3 +116,42 @@ exports.serveTripMeta = functions.https.onRequest(async (req, res) => {
     res.redirect(302, `https://${req.hostname}/?tripId=${tripId}&authorId=${authorId}`);
   }
 });
+
+exports.apiGateway = functions.https.onRequest(async (req, res) => {
+  // Configuración de CORS
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  // Se asume que el backend Yollotl Engine está desplegado en Cloud Functions
+  // con el nombre 'api' en la misma región us-central1 (proyecto yollotl-engine-api).
+  const targetHost = 'https://us-central1-yollotl-engine-api.cloudfunctions.net';
+  
+  // Como el rewrite en Firebase Hosting incluye /api/..., usamos req.url o req.path directamente
+  const targetUrl = targetHost + req.url;
+
+  try {
+    const fetchResponse = await fetch(targetUrl, {
+      method: req.method,
+      headers: {
+        'Content-Type': req.get('Content-Type') || 'application/json',
+        'Accept': req.get('Accept') || '*/*',
+      },
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? req.rawBody : undefined
+    });
+
+    const data = await fetchResponse.text();
+    
+    // Copy some relevant headers back
+    res.set('Content-Type', fetchResponse.headers.get('Content-Type') || 'application/json');
+    res.status(fetchResponse.status).send(data);
+  } catch (error) {
+    console.error('API Gateway Error:', error);
+    res.status(500).send({ error: 'Gateway Error', details: error.toString() });
+  }
+});
