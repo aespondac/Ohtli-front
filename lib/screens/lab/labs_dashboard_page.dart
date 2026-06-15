@@ -11,10 +11,12 @@ import '../../widgets/user_profile_helper.dart';
 
 class LabsDashboardPage extends StatefulWidget {
   final VoidCallback onLogout;
+  final VoidCallback onTryOsrm;
 
   const LabsDashboardPage({
     super.key,
     required this.onLogout,
+    required this.onTryOsrm,
   });
 
   @override
@@ -352,6 +354,13 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                 icon: Icons.auto_awesome_rounded,
                 color: OhtliColors.xoconostle,
               ),
+              _buildExperimentCard(
+                title: 'Ruteo OSRM',
+                desc: 'Motor de ruteo experimental impulsado por OSRM y Ye.',
+                icon: Icons.directions_car_rounded,
+                color: const Color(0xFFE2711D),
+                onTap: widget.onTryOsrm,
+              ),
             ],
           )
         ],
@@ -368,7 +377,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
     );
   }
 
-  Widget _buildExperimentCard({required String title, required String desc, required IconData icon, required Color color}) {
+  Widget _buildExperimentCard({required String title, required String desc, required IconData icon, required Color color, VoidCallback? onTap}) {
     return Container(
       width: 300,
       padding: const EdgeInsets.all(24),
@@ -396,7 +405,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
+              onPressed: onTap ?? () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Experimento no disponible aún.')),
                 );

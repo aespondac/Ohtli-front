@@ -26,6 +26,7 @@ import 'screens/lab/labs_dashboard_page.dart';
 import 'screens/api/api_landing_page.dart';
 import 'screens/legal/terms_and_conditions_page.dart';
 import 'screens/legal/labs_terms_and_conditions_page.dart';
+import 'screens/lab/experiments/osrm_experiment_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -182,6 +183,7 @@ enum OhtliScreen {
   apiLanding, // Landing Page para api.ohtli.quest
   termsAndConditions, // Pantalla de TyC de Ohtli
   labsTermsAndConditions, // Pantalla de TyC de Ohtli Labs
+  labsOsrm, // Experimento de OSRM
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -326,7 +328,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             _currentScreen != OhtliScreen.labsDashboard &&
             _currentScreen != OhtliScreen.apiLanding &&
             _currentScreen != OhtliScreen.termsAndConditions &&
-            _currentScreen != OhtliScreen.labsTermsAndConditions) {
+            _currentScreen != OhtliScreen.labsTermsAndConditions &&
+            _currentScreen != OhtliScreen.labsOsrm) {
           _navigateTo(OhtliScreen.home);
         }
       } else {
@@ -456,6 +459,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           await FirebaseAuth.instance.signOut();
           _navigateTo(OhtliScreen.labLanding);
         },
+        onTryOsrm: () => _navigateTo(OhtliScreen.labsOsrm),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(
@@ -468,6 +472,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.labsTermsAndConditions) {
       activeView = LabsTermsAndConditionsPage(
         onBack: () => _navigateTo(OhtliScreen.labLanding),
+      );
+    } else if (_currentScreen == OhtliScreen.labsOsrm) {
+      activeView = OsrmExperimentPage(
+        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
       );
     } else if (isMobile) {
       switch (_currentScreen) {
