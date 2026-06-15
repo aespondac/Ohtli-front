@@ -12,11 +12,15 @@ import '../../widgets/user_profile_helper.dart';
 class LabsDashboardPage extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback onTryOsrm;
+  final VoidCallback onTryAgents;
+  final VoidCallback onTryApis;
 
   const LabsDashboardPage({
     super.key,
     required this.onLogout,
     required this.onTryOsrm,
+    required this.onTryAgents,
+    required this.onTryApis,
   });
 
   @override
@@ -354,6 +358,20 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                 desc: 'Te develamos tu "vibe" y lugares en la ciudad que te gustarían.',
                 icon: Icons.auto_awesome_rounded,
                 color: OhtliColors.xoconostle,
+              ),
+              _buildExperimentCard(
+                title: 'Agentes Individuales',
+                desc: 'Consolas I/O para probar directamente el Recolector, Comparador y Generador.',
+                icon: Icons.smart_toy_rounded,
+                color: const Color(0xFF6C5CE7), // Un morado tech
+                onTap: widget.onTryAgents,
+              ),
+              _buildExperimentCard(
+                title: 'APIs Satélite',
+                desc: 'Endpoints propios como OEP (Places), Vibe y generadores de itinerarios.',
+                icon: Icons.api_rounded,
+                color: const Color(0xFF00CEC9), // Un cyan tech
+                onTap: widget.onTryApis,
               ),
               _buildExperimentCard(
                 title: 'Ruteo OSRM',

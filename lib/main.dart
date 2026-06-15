@@ -27,6 +27,8 @@ import 'screens/api/api_landing_page.dart';
 import 'screens/legal/terms_and_conditions_page.dart';
 import 'screens/legal/labs_terms_and_conditions_page.dart';
 import 'screens/lab/experiments/osrm_experiment_page.dart';
+import 'screens/lab/experiments/agents_experiment_page.dart';
+import 'screens/lab/experiments/apis_experiment_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -184,6 +186,8 @@ enum OhtliScreen {
   termsAndConditions, // Pantalla de TyC de Ohtli
   labsTermsAndConditions, // Pantalla de TyC de Ohtli Labs
   labsOsrm, // Experimento de OSRM
+  labsAgents, // Experimento de Agentes
+  labsApis, // Experimento de APIs
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -246,10 +250,19 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final path = Uri.base.path;
       final fragment = Uri.base.fragment;
       final isLabsTyc = path.contains('/labs/tyc') || fragment.contains('/labs/tyc');
+      final isLabsOsrm = path.contains('/labs/osrm') || fragment.contains('/labs/osrm');
+      final isLabsAgents = path.contains('/labs/agents') || fragment.contains('/labs/agents');
+      final isLabsApis = path.contains('/labs/apis') || fragment.contains('/labs/apis');
       final isAppTyc = path.contains('/tyc') || fragment.contains('/tyc');
 
       if (isLabsTyc) {
         _currentScreen = OhtliScreen.labsTermsAndConditions;
+      } else if (isLabsOsrm) {
+        _currentScreen = OhtliScreen.labsOsrm;
+      } else if (isLabsAgents) {
+        _currentScreen = OhtliScreen.labsAgents;
+      } else if (isLabsApis) {
+        _currentScreen = OhtliScreen.labsApis;
       } else if (hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
         if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
@@ -459,6 +472,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _navigateTo(OhtliScreen.labLanding);
         },
         onTryOsrm: () => _navigateTo(OhtliScreen.labsOsrm),
+        onTryAgents: () => _navigateTo(OhtliScreen.labsAgents),
+        onTryApis: () => _navigateTo(OhtliScreen.labsApis),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(
@@ -474,6 +489,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.labsOsrm) {
       activeView = OsrmExperimentPage(
+        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+      );
+    } else if (_currentScreen == OhtliScreen.labsAgents) {
+      activeView = AgentsExperimentPage(
+        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+      );
+    } else if (_currentScreen == OhtliScreen.labsApis) {
+      activeView = ApisExperimentPage(
         onBack: () => _navigateTo(OhtliScreen.labsDashboard),
       );
     } else if (isMobile) {
