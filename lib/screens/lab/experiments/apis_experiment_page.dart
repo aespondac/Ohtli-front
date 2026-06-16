@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../../theme/colors.dart';
+import '../../../widgets/address_picker_widget.dart';
 
 class ApisExperimentPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -109,29 +110,80 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   }
 
   Widget _buildOepForm() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: TextField(
-            controller: _latController,
-            decoration: InputDecoration(labelText: 'Latitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _latController,
+                decoration: InputDecoration(labelText: 'Latitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: TextField(
+                controller: _lngController,
+                decoration: InputDecoration(labelText: 'Longitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: TextField(
+                controller: _radiusController,
+                decoration: InputDecoration(labelText: 'Radio (m)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: TextField(
-            controller: _lngController,
-            decoration: InputDecoration(labelText: 'Longitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: TextField(
-            controller: _radiusController,
-            decoration: InputDecoration(labelText: 'Radio (m)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
-            keyboardType: TextInputType.number,
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (ctx) => Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.all(16),
+                child: Container(
+                  width: 800,
+                  height: 700,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: AddressPickerWidget(
+                      onSave: (address) {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          if (address.containsKey('lat')) {
+                            _latController.text = address['lat'].toString();
+                          }
+                          if (address.containsKey('lng')) {
+                            _lngController.text = address['lng'].toString();
+                          }
+                        });
+                      },
+                      onCancel: () {
+                        Navigator.pop(ctx);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+          icon: const Icon(Icons.map_rounded),
+          label: const Text('Abrir Mapa para Seleccionar Coordenadas (CDMX)'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            side: const BorderSide(color: OhtliColors.cempasuchil),
+            foregroundColor: OhtliColors.cempasuchil,
           ),
         ),
       ],
