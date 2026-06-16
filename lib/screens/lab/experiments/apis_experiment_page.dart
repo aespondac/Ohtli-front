@@ -118,7 +118,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
             Expanded(
               child: TextField(
                 controller: _latController,
-                decoration: InputDecoration(labelText: 'Latitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+                style: TextStyle(color: OhtliColors.onyx),
+                decoration: InputDecoration(
+                  labelText: 'Latitud', 
+                  labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)), 
+                  filled: true, 
+                  fillColor: Colors.white
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
             ),
@@ -126,7 +133,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
             Expanded(
               child: TextField(
                 controller: _lngController,
-                decoration: InputDecoration(labelText: 'Longitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+                style: TextStyle(color: OhtliColors.onyx),
+                decoration: InputDecoration(
+                  labelText: 'Longitud', 
+                  labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)), 
+                  filled: true, 
+                  fillColor: Colors.white
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
             ),
@@ -134,7 +148,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
             Expanded(
               child: TextField(
                 controller: _radiusController,
-                decoration: InputDecoration(labelText: 'Radio (m)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+                style: TextStyle(color: OhtliColors.onyx),
+                decoration: InputDecoration(
+                  labelText: 'Radio (m)', 
+                  labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)), 
+                  filled: true, 
+                  fillColor: Colors.white
+                ),
                 keyboardType: TextInputType.number,
               ),
             ),
@@ -193,9 +214,11 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   Widget _buildTextForm(String label) {
     return TextField(
       controller: _textController,
+      style: TextStyle(color: OhtliColors.onyx),
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)),
         filled: true,
         fillColor: Colors.white,
       ),
@@ -333,19 +356,22 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
               children: [
                 Text(
                   'Dashboard Analítico (ETL & Vectorización)',
-                  style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold),
+                  style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Ejecuta exploraciones reales geolocalizadas y prueba la vectorización Vibe/Mood de Gemini.',
-                  style: GoogleFonts.inter(fontSize: 16, color: Colors.black54),
+                  style: GoogleFonts.inter(fontSize: 16, color: OhtliColors.onyx.withValues(alpha: 0.7)),
                 ),
                 const SizedBox(height: 32),
                 DropdownButtonFormField<String>(
                   value: _selectedMode,
+                  dropdownColor: Colors.white,
+                  style: TextStyle(color: OhtliColors.onyx),
                   decoration: InputDecoration(
                     labelText: 'Modo de Prueba',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)),
                     filled: true,
                     fillColor: Colors.white,
                   ),
