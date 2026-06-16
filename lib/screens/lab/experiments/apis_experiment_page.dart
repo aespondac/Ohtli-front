@@ -12,62 +12,94 @@ class ApisExperimentPage extends StatefulWidget {
   State<ApisExperimentPage> createState() => _ApisExperimentPageState();
 }
 
+import 'dart:convert';
+
 class _ApisExperimentPageState extends State<ApisExperimentPage> {
-  String _selectedApi = '/v1/api/oep';
-  final TextEditingController _payloadController = TextEditingController();
+  String _selectedMode = 'oep';
   bool _isLoading = false;
-  String _responseOutput = '';
-  bool _isError = false;
+  String _errorMessage = '';
+  
+  // OEP Controllers
+  final TextEditingController _latController = TextEditingController(text: '19.4326');
+  final TextEditingController _lngController = TextEditingController(text: '-99.1332');
+  final TextEditingController _radiusController = TextEditingController(text: '500');
+  
+  // Vibe & Mood Controllers
+  final TextEditingController _textController = TextEditingController();
+  
+  // Result States
+  Map<String, dynamic>? _explorationData;
+  List<dynamic>? _vectorResult;
 
-  final Map<String, String> _apiPayloads = {
-    '/v1/api/oep': '{\n  "poi_data": {\n    "name": "Palacio de Bellas Artes",\n    "tags": {"tourism": "museum"}\n  }\n}',
-    '/v1/api/vibe': '{\n  "vibe_description": "tranquilo, histórico, arquitectura clásica"\n}',
-    '/v1/api/mood': '{\n  "mood_description": "quiero relajarme y aprender cosas nuevas"\n}',
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _payloadController.text = _apiPayloads[_selectedApi]!;
-  }
-
-  void _onApiChanged(String? newValue) {
+  void _onModeChanged(String? newValue) {
     if (newValue != null) {
       setState(() {
-        _selectedApi = newValue;
-        _payloadController.text = _apiPayloads[newValue]!;
-        _responseOutput = '';
+        _selectedMode = newValue;
+        _errorMessage = '';
+        _explorationData = null;
+        _vectorResult = null;
+        
+        if (newValue == 'vibe') {
+          _textController.text = 'tranquilo, histórico, arquitectura clásica';
+        } else if (newValue == 'mood') {
+          _textController.text = 'quiero relajarme y aprender cosas nuevas';
+        }
       });
     }
   }
 
-  Future<void> _runApi() async {
+  Future<void> _runExperiment() async {
     setState(() {
       _isLoading = true;
-      _responseOutput = '';
-      _isError = false;
+      _errorMessage = '';
+      _explorationData = null;
+      _vectorResult = null;
     });
 
     try {
-      // In production, this would point to the Firebase Functions URL
-      // For the experiment, we'll use the custom domain or localhost if testing locally
-      final uri = Uri.parse('https://api.ohtli.quest$_selectedApi');
-      
+      String endpoint = '';
+      Map<String, dynamic> payload = {};
+
+      if (_selectedMode == 'oep') {
+        endpoint = '/v1/api/recolector/explore';
+        payload = {
+          "lat": double.tryParse(_latController.text) ?? 19.4326,
+          "lng": double.tryParse(_lngController.text) ?? -99.1332,
+          "radius": int.tryParse(_radiusController.text) ?? 500,
+          "max_pois": 15 // Límite seguro para visualización
+        };
+      } else if (_selectedMode == 'vibe') {
+        endpoint = '/v1/api/vibe';
+        payload = {"vibe_description": _textController.text};
+      } else if (_selectedMode == 'mood') {
+        endpoint = '/v1/api/mood';
+        payload = {"mood_description": _textController.text};
+      }
+
+      final uri = Uri.parse('https://api.ohtli.quest$endpoint');
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: _payloadController.text,
+        body: jsonEncode(payload),
       );
       
+      if (response.statusCode != 200) {
+        throw Exception('Server error ${response.statusCode}: ${response.body}');
+      }
+
+      final jsonResponse = jsonDecode(response.body);
+
       setState(() {
-        _responseOutput = response.body;
-        _isError = response.statusCode != 200;
+        if (_selectedMode == 'oep') {
+          _explorationData = jsonResponse['data'];
+        } else {
+          _vectorResult = jsonResponse['vector'];
+        }
       });
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isError = true;
-          _responseOutput = 'Error de Conexión API: $e\nAsegúrate de que el backend (Yollotl-engine) esté desplegado o corriendo localmente.';
+          _errorMessage = 'Error: $e';
         });
       }
     } finally {
@@ -75,6 +107,153 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Widget _buildOepForm() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _latController,
+            decoration: InputDecoration(labelText: 'Latitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: TextField(
+            controller: _lngController,
+            decoration: InputDecoration(labelText: 'Longitud', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+            keyboardType: TextInputType.numberWithOptions(decimal: true),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: TextField(
+            controller: _radiusController,
+            decoration: InputDecoration(labelText: 'Radio (m)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white),
+            keyboardType: TextInputType.number,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextForm(String label) {
+    return TextField(
+      controller: _textController,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+      maxLines: 3,
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Column(
+        children: [
+          Text(title, style: GoogleFonts.inter(fontSize: 12, color: Colors.black54)),
+          const SizedBox(height: 8),
+          Text(value, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOepResults() {
+    if (_explorationData == null) return const SizedBox();
+    
+    final stats = _explorationData!['stats'];
+    final results = _explorationData!['results'] as List;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Estadísticas de Extracción ETL', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildStatCard('OSM Encontrados', '${stats['osm_found']}', Colors.blue),
+            _buildStatCard('Hits Wikipedia', '${stats['wiki_enriched']}', Colors.purple),
+            _buildStatCard('Hits Foursquare', '${stats['foursquare_hits']}', Colors.orange),
+            _buildStatCard('Hits Google', '${stats['google_places_hits']}', Colors.red),
+            _buildStatCard('Ahorro Feedback', '${stats['skipped_by_feedback']}', Colors.green),
+          ],
+        ),
+        const SizedBox(height: 32),
+        Text('Recetas OEP y Vectores Muestra', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: results.length,
+          itemBuilder: (context, index) {
+            final poi = results[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 16),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
+              child: ExpansionTile(
+                title: Text(poi['name'], style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+                subtitle: Text('ID: ${poi['poi_id']}', style: GoogleFonts.inter(fontSize: 12, color: Colors.black54)),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Receta (Prompt Generado):', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: Colors.blue)),
+                        const SizedBox(height: 8),
+                        Text(poi['recipe'], style: GoogleFonts.inter(fontSize: 14)),
+                        const SizedBox(height: 16),
+                        Text('Muestra de Vector [0-4]:', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: Colors.purple)),
+                        const SizedBox(height: 8),
+                        Text(poi['vector_sample'].toString(), style: GoogleFonts.firaCode(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVectorResult() {
+    if (_vectorResult == null) return const SizedBox();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Vector Resultante (768D)', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          Text(_vectorResult.toString(), style: GoogleFonts.firaCode(fontSize: 14, color: Colors.black87)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -89,90 +268,80 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
           onPressed: widget.onBack,
         ),
         title: Text(
-          'Agente Recolector APIs',
+          'Pruebas del Recolector',
           style: GoogleFonts.outfit(color: const Color(0xFF0A090C), fontWeight: FontWeight.bold),
         ),
       ),
       body: Center(
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 800),
+          constraints: const BoxConstraints(maxWidth: 900),
           padding: const EdgeInsets.all(32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Pruebas de Vectorización',
-                style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Formalización de las APIs satélite del Agente Recolector (OEP, Vibe, Mood).',
-                style: GoogleFonts.inter(fontSize: 16, color: Colors.black54),
-              ),
-              const SizedBox(height: 32),
-              DropdownButtonFormField<String>(
-                value: _selectedApi,
-                decoration: InputDecoration(
-                  labelText: 'Selecciona la API a Probar',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Dashboard Analítico (ETL & Vectorización)',
+                  style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold),
                 ),
-                items: const [
-                  DropdownMenuItem(value: '/v1/api/oep', child: Text('OEP API (POI Recipe & Vector)')),
-                  DropdownMenuItem(value: '/v1/api/vibe', child: Text('Vibe API (Vector de Vibra)')),
-                  DropdownMenuItem(value: '/v1/api/mood', child: Text('Mood API (Vector de Estado de Ánimo)')),
-                ],
-                onChanged: _onApiChanged,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _payloadController,
-                decoration: InputDecoration(
-                  labelText: 'Payload (JSON)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white,
+                const SizedBox(height: 8),
+                Text(
+                  'Ejecuta exploraciones reales geolocalizadas y prueba la vectorización Vibe/Mood de Gemini.',
+                  style: GoogleFonts.inter(fontSize: 16, color: Colors.black54),
                 ),
-                maxLines: 6,
-                style: GoogleFonts.firaCode(fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _isLoading ? null : _runApi,
-                icon: _isLoading 
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.send_rounded),
-                label: const Text('Ejecutar Request a Gemini'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00CEC9),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                const SizedBox(height: 32),
+                DropdownButtonFormField<String>(
+                  value: _selectedMode,
+                  decoration: InputDecoration(
+                    labelText: 'Modo de Prueba',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'oep', child: Text('OEP (Exploración ETL Completa)')),
+                    DropdownMenuItem(value: 'vibe', child: Text('Vibe API (Vector de Personalidad)')),
+                    DropdownMenuItem(value: 'mood', child: Text('Mood API (Vector de Lugar Deseado)')),
+                  ],
+                  onChanged: _onModeChanged,
                 ),
-              ),
-              const SizedBox(height: 32),
-              if (_responseOutput.isNotEmpty)
-                Expanded(
-                  child: Container(
+                const SizedBox(height: 24),
+                
+                if (_selectedMode == 'oep') _buildOepForm()
+                else if (_selectedMode == 'vibe') _buildTextForm('Describe tu personalidad / Vibe')
+                else if (_selectedMode == 'mood') _buildTextForm('Describe qué tipo de lugar quieres visitar hoy'),
+                
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _runExperiment,
+                  icon: _isLoading 
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.rocket_launch_rounded),
+                  label: const Text('Ejecutar Prueba en Yollotl Engine'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00CEC9),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                
+                if (_errorMessage.isNotEmpty)
+                  Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _isError ? OhtliColors.xoconostle.withValues(alpha: 0.1) : Colors.white,
-                      border: Border.all(color: _isError ? OhtliColors.xoconostle : Colors.grey.shade300),
+                      color: OhtliColors.xoconostle.withOpacity(0.1),
+                      border: Border.all(color: OhtliColors.xoconostle),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        _responseOutput,
-                        style: GoogleFonts.firaCode(
-                          color: _isError ? OhtliColors.xoconostle : Colors.black87, 
-                          fontSize: 14
-                        ),
-                      ),
-                    ),
+                    child: Text(_errorMessage, style: GoogleFonts.firaCode(color: OhtliColors.xoconostle, fontSize: 14)),
                   ),
-                ),
-            ],
+                
+                if (_selectedMode == 'oep') _buildOepResults()
+                else _buildVectorResult(),
+              ],
+            ),
           ),
         ),
       ),
