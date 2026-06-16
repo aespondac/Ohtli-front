@@ -76,7 +76,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         payload = {"mood_description": _textController.text};
       }
 
-      final uri = Uri.parse('https://api.ohtli.quest$endpoint');
+      final uri = Uri.parse('https://api-xluju5gywq-uc.a.run.app$endpoint');
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
