@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../theme/colors.dart';
 import '../../../widgets/address_picker_widget.dart';
 
@@ -18,6 +19,9 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   String _selectedMode = 'oep';
   bool _isLoading = false;
   String _errorMessage = '';
+  
+  String _jobMessage = '';
+  double _jobProgress = 0.0;
   
   // OEP Controllers
   final TextEditingController _latController = TextEditingController(text: '19.4326');
@@ -38,6 +42,8 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         _errorMessage = '';
         _explorationData = null;
         _vectorResult = null;
+        _jobMessage = '';
+        _jobProgress = 0.0;
         
         if (newValue == 'vibe') {
           _textController.text = 'tranquilo, histórico, arquitectura clásica';
@@ -54,6 +60,8 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       _errorMessage = '';
       _explorationData = null;
       _vectorResult = null;
+      _jobMessage = 'Conectando con Yollotl Engine...';
+      _jobProgress = 0.0;
     });
 
     try {
@@ -89,22 +97,44 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
 
       final jsonResponse = jsonDecode(response.body);
 
-      setState(() {
-        if (_selectedMode == 'oep') {
-          _explorationData = jsonResponse['data'];
-        } else {
+      if (_selectedMode == 'oep') {
+        final jobId = jsonResponse['job_id'];
+        
+        FirebaseFirestore.instance
+            .collection('recolector_jobs')
+            .doc(jobId)
+            .snapshots()
+            .listen((snapshot) {
+          if (!mounted) return;
+          if (!snapshot.exists) return;
+          final data = snapshot.data();
+          if (data == null) return;
+          
+          setState(() {
+            _jobMessage = data['message'] ?? '';
+            _jobProgress = data['progress']?.toDouble() ?? 0.0;
+            
+            if (data['status'] == 'completed') {
+              _isLoading = false;
+              _explorationData = data['result'];
+            } else if (data['status'] == 'error') {
+              _isLoading = false;
+              _errorMessage = data['error_detail'] ?? 'Error desconocido en ETL';
+            }
+          });
+        });
+      } else {
+        setState(() {
           _vectorResult = jsonResponse['vector'];
-        }
-      });
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _errorMessage = 'Error: $e';
+          _isLoading = false;
         });
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
       }
     }
   }
@@ -401,6 +431,20 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                   ),
                 ),
+                const SizedBox(height: 16),
+                if (_isLoading && _selectedMode == 'oep')
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(
+                        value: _jobProgress / 100,
+                        backgroundColor: OhtliColors.cantera,
+                        valueColor: const AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(_jobMessage, style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx)),
+                    ],
+                  ),
                 const SizedBox(height: 32),
                 
                 if (_errorMessage.isNotEmpty)
