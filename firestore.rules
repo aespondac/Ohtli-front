@@ -101,5 +101,13 @@ service cloud.firestore {
       // Users can read and create their own waitlist document
       allow read, create: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Yollotl Engine Jobs (Async ETL & Agents)
+    match /recolector_jobs/{jobId} {
+      allow read: if true;
+    }
+    match /itinerary_jobs/{jobId} {
+      allow read: if true;
+    }
   }
 }

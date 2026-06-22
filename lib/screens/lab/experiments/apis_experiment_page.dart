@@ -99,30 +99,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
 
       if (_selectedMode == 'oep') {
         final jobId = jsonResponse['job_id'];
-        
-        FirebaseFirestore.instance
-            .collection('recolector_jobs')
-            .doc(jobId)
-            .snapshots()
-            .listen((snapshot) {
-          if (!mounted) return;
-          if (!snapshot.exists) return;
-          final data = snapshot.data();
-          if (data == null) return;
-          
-          setState(() {
-            _jobMessage = data['message'] ?? '';
-            _jobProgress = data['progress']?.toDouble() ?? 0.0;
-            
-            if (data['status'] == 'completed') {
-              _isLoading = false;
-              _explorationData = data['result'];
-            } else if (data['status'] == 'error') {
-              _isLoading = false;
-              _errorMessage = data['error_detail'] ?? 'Error desconocido en ETL';
-            }
-          });
-        });
+        _pollJobStatus(jobId);
       } else {
         setState(() {
           _vectorResult = jsonResponse['vector'];
@@ -136,6 +113,37 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _pollJobStatus(String jobId) async {
+    while (_isLoading && mounted) {
+      try {
+        final uri = Uri.parse('https://api-xluju5gywq-uc.a.run.app/v1/api/recolector/job/$jobId');
+        final response = await http.get(uri);
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (!mounted) return;
+          
+          setState(() {
+            _jobMessage = data['message'] ?? '';
+            _jobProgress = data['progress']?.toDouble() ?? 0.0;
+            
+            if (data['status'] == 'completed') {
+              _isLoading = false;
+              _explorationData = data['result'];
+            } else if (data['status'] == 'error') {
+              _isLoading = false;
+              _errorMessage = data['error_detail'] ?? 'Error desconocido en ETL';
+            }
+          });
+          
+          if (!_isLoading) break;
+        }
+      } catch (e) {
+        print("Polling error: $e");
+      }
+      await Future.delayed(const Duration(seconds: 1));
     }
   }
 
