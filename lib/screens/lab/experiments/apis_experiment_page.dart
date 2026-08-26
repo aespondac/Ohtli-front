@@ -162,7 +162,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                   labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)), 
                   filled: true, 
-                  fillColor: Colors.white
+                  fillColor: OhtliColors.inputBg
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
@@ -177,7 +177,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                   labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)), 
                   filled: true, 
-                  fillColor: Colors.white
+                  fillColor: OhtliColors.inputBg
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
@@ -192,7 +192,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                   labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)), 
                   filled: true, 
-                  fillColor: Colors.white
+                  fillColor: OhtliColors.inputBg
                 ),
                 keyboardType: TextInputType.number,
               ),
@@ -211,7 +211,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                   width: 800,
                   height: 700,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: OhtliColors.cloudDancer,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: ClipRRect(
@@ -258,7 +258,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: OhtliColors.inputBg,
       ),
       maxLines: 3,
     );
@@ -274,7 +274,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       ),
       child: Column(
         children: [
-          Text(title, style: GoogleFonts.inter(fontSize: 12, color: Colors.black54)),
+          Text(title, style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withValues(alpha: 0.7))),
           const SizedBox(height: 8),
           Text(value, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
         ],
@@ -315,13 +315,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
             return Card(
               margin: const EdgeInsets.only(bottom: 16),
               elevation: 0,
+              color: OhtliColors.inputBg,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.grey.shade300),
+                side: BorderSide(color: OhtliColors.cantera),
               ),
               child: ExpansionTile(
-                title: Text(poi['name'], style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-                subtitle: Text('ID: ${poi['poi_id']}', style: GoogleFonts.inter(fontSize: 12, color: Colors.black54)),
+                title: Text(poi['name'], style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: OhtliColors.onyx)),
+                subtitle: Text('ID: ${poi['poi_id']}', style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withValues(alpha: 0.7))),
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -330,11 +331,11 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                       children: [
                         Text('Receta (Prompt Generado):', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: Colors.blue)),
                         const SizedBox(height: 8),
-                        Text(poi['recipe'], style: GoogleFonts.inter(fontSize: 14)),
+                        Text(poi['recipe'], style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx)),
                         const SizedBox(height: 16),
                         Text('Muestra de Vector [0-4]:', style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: Colors.purple)),
                         const SizedBox(height: 8),
-                        Text(poi['vector_sample'].toString(), style: GoogleFonts.firaCode(fontSize: 12)),
+                        Text(poi['vector_sample'].toString(), style: GoogleFonts.firaCode(fontSize: 12, color: OhtliColors.onyx)),
                       ],
                     ),
                   ),
@@ -353,16 +354,16 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: OhtliColors.inputBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: OhtliColors.cantera),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Vector Resultante (768D)', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text('Vector Resultante (768D)', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: OhtliColors.onyx)),
           const SizedBox(height: 16),
-          Text(_vectorResult.toString(), style: GoogleFonts.firaCode(fontSize: 14, color: Colors.black87)),
+          Text(_vectorResult.toString(), style: GoogleFonts.firaCode(fontSize: 14, color: OhtliColors.onyx)),
         ],
       ),
     );
@@ -376,12 +377,12 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0A090C)),
+          icon: Icon(Icons.arrow_back, color: OhtliColors.onyx),
           onPressed: widget.onBack,
         ),
         title: Text(
           'Pruebas del Recolector',
-          style: GoogleFonts.outfit(color: const Color(0xFF0A090C), fontWeight: FontWeight.bold),
+          style: GoogleFonts.outfit(color: OhtliColors.onyx, fontWeight: FontWeight.bold),
         ),
       ),
       body: Center(
@@ -404,14 +405,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                 const SizedBox(height: 32),
                 DropdownButtonFormField<String>(
                   value: _selectedMode,
-                  dropdownColor: Colors.white,
+                  dropdownColor: OhtliColors.inputBg,
                   style: TextStyle(color: OhtliColors.onyx),
                   decoration: InputDecoration(
                     labelText: 'Modo de Prueba',
                     labelStyle: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.7)),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: OhtliColors.cantera)),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: OhtliColors.inputBg,
                   ),
                   items: const [
                     DropdownMenuItem(value: 'oep', child: Text('OEP (Exploración ETL Completa)')),
