@@ -370,10 +370,8 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: ThemeData.light(),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF0EEE9),
+    return Scaffold(
+      backgroundColor: OhtliColors.cloudDancer,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
