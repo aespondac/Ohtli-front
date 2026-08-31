@@ -14,6 +14,7 @@ class LabsDashboardPage extends StatefulWidget {
   final VoidCallback onTryOsrm;
   final VoidCallback onTryAgents;
   final VoidCallback onTryApis;
+  final VoidCallback onTryRecolector;
 
   const LabsDashboardPage({
     super.key,
@@ -21,6 +22,7 @@ class LabsDashboardPage extends StatefulWidget {
     required this.onTryOsrm,
     required this.onTryAgents,
     required this.onTryApis,
+    required this.onTryRecolector,
   });
 
   @override
@@ -352,6 +354,7 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                 desc: 'Consolida información de lugares a través de múltiples fuentes de datos.',
                 icon: Icons.travel_explore_rounded,
                 color: OhtliColors.stormyTeal,
+                onTap: widget.onTryRecolector,
               ),
               _buildExperimentCard(
                 title: 'Descubre tu Vibe',

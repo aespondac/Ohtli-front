@@ -26,6 +26,7 @@ import 'screens/lab/labs_dashboard_page.dart';
 import 'screens/api/api_landing_page.dart';
 import 'screens/legal/terms_and_conditions_page.dart';
 import 'screens/legal/labs_terms_and_conditions_page.dart';
+import 'screens/lab/experiments/recolector_experiment_page.dart';
 import 'screens/lab/experiments/osrm_experiment_page.dart';
 import 'screens/lab/experiments/agents_experiment_page.dart';
 import 'screens/lab/experiments/apis_experiment_page.dart';
@@ -188,6 +189,7 @@ enum OhtliScreen {
   labsOsrm, // Experimento de OSRM
   labsAgents, // Experimento de Agentes
   labsApis, // Experimento de APIs
+  labsRecolector, // Experimento de Caza Lugares (Recolector)
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -253,6 +255,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final isLabsOsrm = path.contains('/labs/osrm') || fragment.contains('/labs/osrm');
       final isLabsAgents = path.contains('/labs/agents') || fragment.contains('/labs/agents');
       final isLabsApis = path.contains('/labs/apis') || fragment.contains('/labs/apis');
+      final isLabsRecolector = path.contains('/labs/recolector') || fragment.contains('/labs/recolector');
       final isAppTyc = path.contains('/tyc') || fragment.contains('/tyc');
 
       if (isLabsTyc) {
@@ -263,6 +266,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.labsAgents;
       } else if (isLabsApis) {
         _currentScreen = OhtliScreen.labsApis;
+      } else if (isLabsRecolector) {
+        _currentScreen = OhtliScreen.labsRecolector;
       } else if (hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
         if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
@@ -474,6 +479,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         onTryOsrm: () => _navigateTo(OhtliScreen.labsOsrm),
         onTryAgents: () => _navigateTo(OhtliScreen.labsAgents),
         onTryApis: () => _navigateTo(OhtliScreen.labsApis),
+        onTryRecolector: () => _navigateTo(OhtliScreen.labsRecolector),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(
@@ -497,6 +503,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.labsApis) {
       activeView = ApisExperimentPage(
+        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+      );
+    } else if (_currentScreen == OhtliScreen.labsRecolector) {
+      activeView = RecolectorExperimentPage(
         onBack: () => _navigateTo(OhtliScreen.labsDashboard),
       );
     } else if (isMobile) {
