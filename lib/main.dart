@@ -30,6 +30,7 @@ import 'screens/lab/experiments/recolector_experiment_page.dart';
 import 'screens/lab/experiments/osrm_experiment_page.dart';
 import 'screens/lab/experiments/agents_experiment_page.dart';
 import 'screens/lab/experiments/apis_experiment_page.dart';
+import 'screens/onboarding/onboarding_wizard_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -190,6 +191,7 @@ enum OhtliScreen {
   labsAgents, // Experimento de Agentes
   labsApis, // Experimento de APIs
   labsRecolector, // Experimento de Caza Lugares (Recolector)
+  onboarding, // Flujo de Onboarding para recolectar gustos del turista
 }
 
 class MainNavigationController extends StatefulWidget {
@@ -346,8 +348,23 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             _currentScreen != OhtliScreen.apiLanding &&
             _currentScreen != OhtliScreen.termsAndConditions &&
             _currentScreen != OhtliScreen.labsTermsAndConditions &&
-            _currentScreen != OhtliScreen.labsOsrm) {
-          _navigateTo(OhtliScreen.home);
+            _currentScreen != OhtliScreen.labsOsrm &&
+            _currentScreen != OhtliScreen.onboarding) {
+          
+          // Verificar si el usuario ya completó el onboarding de identidad cultural
+          try {
+            final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+            final userData = userDoc.data();
+            final bool onboardingDone = userData != null && (userData['onboarding_completed'] == true);
+            if (!onboardingDone) {
+              _navigateTo(OhtliScreen.onboarding);
+            } else {
+              _navigateTo(OhtliScreen.home);
+            }
+          } catch (e) {
+            print("Error checking onboarding status: $e");
+            _navigateTo(OhtliScreen.home);
+          }
         }
       } else {
         if (_currentScreen == OhtliScreen.labsDashboard) {
@@ -508,6 +525,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.labsRecolector) {
       activeView = RecolectorExperimentPage(
         onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+      );
+    } else if (_currentScreen == OhtliScreen.onboarding) {
+      activeView = OnboardingWizardPage(
+        onCompleted: () => _navigateTo(OhtliScreen.home),
       );
     } else if (isMobile) {
       switch (_currentScreen) {
