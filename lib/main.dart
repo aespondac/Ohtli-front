@@ -31,6 +31,7 @@ import 'screens/lab/experiments/osrm_experiment_page.dart';
 import 'screens/lab/experiments/agents_experiment_page.dart';
 import 'screens/lab/experiments/apis_experiment_page.dart';
 import 'screens/onboarding/onboarding_wizard_page.dart';
+import 'screens/lab/experiments/taste_vector_experiment_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -191,6 +192,7 @@ enum OhtliScreen {
   labsAgents, // Experimento de Agentes
   labsApis, // Experimento de APIs
   labsRecolector, // Experimento de Caza Lugares (Recolector)
+  labsTasteVector, // Experimento de Vector de Gustos e Identidad Cultural
   onboarding, // Flujo de Onboarding para recolectar gustos del turista
 }
 
@@ -258,6 +260,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final isLabsAgents = path.contains('/labs/agents') || fragment.contains('/labs/agents');
       final isLabsApis = path.contains('/labs/apis') || fragment.contains('/labs/apis');
       final isLabsRecolector = path.contains('/labs/recolector') || fragment.contains('/labs/recolector');
+      final isLabsTaste = path.contains('/labs/taste') || fragment.contains('/labs/taste') || path.contains('/labs/vibe') || fragment.contains('/labs/vibe');
       final isAppTyc = path.contains('/tyc') || fragment.contains('/tyc');
 
       if (isLabsTyc) {
@@ -270,6 +273,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.labsApis;
       } else if (isLabsRecolector) {
         _currentScreen = OhtliScreen.labsRecolector;
+      } else if (isLabsTaste) {
+        _currentScreen = OhtliScreen.labsTasteVector;
       } else if (hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
         if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
@@ -497,6 +502,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         onTryAgents: () => _navigateTo(OhtliScreen.labsAgents),
         onTryApis: () => _navigateTo(OhtliScreen.labsApis),
         onTryRecolector: () => _navigateTo(OhtliScreen.labsRecolector),
+        onTryTasteVector: () => _navigateTo(OhtliScreen.labsTasteVector),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(
@@ -529,6 +535,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.onboarding) {
       activeView = OnboardingWizardPage(
         onCompleted: () => _navigateTo(OhtliScreen.home),
+      );
+    } else if (_currentScreen == OhtliScreen.labsTasteVector) {
+      activeView = TasteVectorExperimentPage(
+        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
       );
     } else if (isMobile) {
       switch (_currentScreen) {

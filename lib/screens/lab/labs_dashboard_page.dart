@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/gestures.dart';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
 import '../../widgets/user_profile_helper.dart';
 
@@ -15,6 +14,7 @@ class LabsDashboardPage extends StatefulWidget {
   final VoidCallback onTryAgents;
   final VoidCallback onTryApis;
   final VoidCallback onTryRecolector;
+  final VoidCallback onTryTasteVector;
 
   const LabsDashboardPage({
     super.key,
@@ -23,6 +23,7 @@ class LabsDashboardPage extends StatefulWidget {
     required this.onTryAgents,
     required this.onTryApis,
     required this.onTryRecolector,
+    required this.onTryTasteVector,
   });
 
   @override
@@ -357,10 +358,11 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> {
                 onTap: widget.onTryRecolector,
               ),
               _buildExperimentCard(
-                title: 'Descubre tu Vibe',
-                desc: 'Te develamos tu "vibe" y lugares en la ciudad que te gustarían.',
-                icon: Icons.auto_awesome_rounded,
+                title: 'Vector de Gustos & Vibe',
+                desc: 'Simula el onboarding, construye la receta semántica y genera el vector 768d.',
+                icon: Icons.fingerprint_rounded,
                 color: OhtliColors.xoconostle,
+                onTap: widget.onTryTasteVector,
               ),
               _buildExperimentCard(
                 title: 'Agentes Individuales',
