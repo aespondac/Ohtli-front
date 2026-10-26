@@ -128,11 +128,10 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
     return;
   }
 
-  // Se asume que el backend Yollotl Engine está desplegado en Cloud Functions
-  // con el nombre 'api' en la misma región us-central1 (proyecto yollotl-engine-api).
-  const targetHost = 'https://us-central1-yollotl-engine-api.cloudfunctions.net';
+  // El backend Yollotl Engine está desplegado en Cloud Run / Cloud Functions Gen2
+  const targetHost = 'https://api-xluju5gywq-uc.a.run.app';
   
-  // Como el rewrite en Firebase Hosting incluye /api/..., usamos req.url o req.path directamente
+  // Como el rewrite en Firebase Hosting incluye /api/... y /v1/..., usamos req.url o req.path directamente
   const targetUrl = targetHost + req.url;
 
   try {

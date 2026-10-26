@@ -360,12 +360,28 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             _currentScreen != OhtliScreen.labsTasteVector &&
             _currentScreen != OhtliScreen.onboarding) {
           
-          // Verificar si el usuario ya completó el onboarding de identidad cultural
+          // Verificar si el usuario ya completó el onboarding y cuenta con su taste_vector (768d)
           try {
             final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
             final userData = userDoc.data();
-            final bool onboardingDone = userData != null && (userData['onboarding_completed'] == true);
-            if (!onboardingDone) {
+            final rawVector = userData != null ? userData['taste_vector'] : null;
+            bool hasTasteVector = rawVector is List && rawVector.isNotEmpty;
+            final bool flagDone = userData != null && (userData['onboarding_completed'] == true);
+
+            // Si completó el wizard antes pero taste_vector quedó en null, sintetizarlo y guardarlo
+            if (flagDone && !hasTasteVector && userData['cultural_profile'] is Map) {
+              try {
+                final vec = await OnboardingWizardPage.synthesizeAndSaveProfile(
+                  user.uid,
+                  Map<String, dynamic>.from(userData['cultural_profile'] as Map),
+                );
+                hasTasteVector = vec.isNotEmpty;
+              } catch (backfillErr) {
+                print("Error backfilling taste_vector: $backfillErr");
+              }
+            }
+
+            if (!flagDone || !hasTasteVector) {
               _navigateTo(OhtliScreen.onboarding);
             } else {
               _navigateTo(OhtliScreen.home);

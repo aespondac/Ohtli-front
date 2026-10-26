@@ -155,8 +155,10 @@ class UserProfileHelper {
       'coverURL': currentData?['coverURL'] ?? oldData?['coverURL'] ?? '',
       'coverUrl': currentData?['coverUrl'] ?? oldData?['coverUrl'] ?? '',
       'onboarding_completed': currentData?['onboarding_completed'] ?? oldData?['onboarding_completed'] ?? false,
-      'taste_vector': currentData?['taste_vector'] ?? oldData?['taste_vector'],
-      'cultural_profile': currentData?['cultural_profile'] ?? oldData?['cultural_profile'],
+      if ((currentData?['taste_vector'] ?? oldData?['taste_vector']) != null)
+        'taste_vector': currentData?['taste_vector'] ?? oldData?['taste_vector'],
+      if ((currentData?['cultural_profile'] ?? oldData?['cultural_profile']) != null)
+        'cultural_profile': currentData?['cultural_profile'] ?? oldData?['cultural_profile'],
       'isDeleted': false,
       'deletedAt': null,
       'scheduledDeletionAt': null,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,6 +14,109 @@ class OnboardingWizardPage extends StatefulWidget {
     super.key,
     required this.onCompleted,
   });
+
+  static List<double> _buildDeterministic768dFallback(String recipeText) {
+    final List<double> raw = List<double>.filled(768, 0.0);
+    final bytes = utf8.encode(recipeText.toLowerCase());
+    int hash = 2166136261;
+    for (final b in bytes) {
+      hash ^= b;
+      hash = (hash * 16777619) & 0x7fffffff;
+    }
+    for (int i = 0; i < 768; i++) {
+      final int b = bytes.isEmpty ? 42 : bytes[i % bytes.length];
+      final double angle = ((hash + i * 31 + b * 17) % 10000) / 10000.0 * 2 * math.pi;
+      raw[i] = math.sin(angle) * 0.7 + math.cos(angle * 0.5) * 0.3;
+    }
+    double normSq = 0.0;
+    for (final v in raw) {
+      normSq += v * v;
+    }
+    final double norm = normSq > 0 ? math.sqrt(normSq) : 1.0;
+    return raw.map((v) => v / norm).toList();
+  }
+
+  /// Invokes Yollotl Engine (/v1/user/cultural-profile) to compute the 768d
+  /// text-embedding-004 taste vector and persists it directly into /users/{uid}.
+  static Future<List<double>> synthesizeAndSaveProfile(
+    String uid,
+    Map<String, dynamic> rawPayload, {
+    Map<String, String>? previewAxes,
+  }) async {
+    final Map<String, dynamic> payload = Map<String, dynamic>.from(rawPayload);
+    payload['user_id'] = uid;
+
+    const apiUrl = String.fromEnvironment(
+      'yollotlApiUrl',
+      defaultValue: 'https://api-xluju5gywq-uc.a.run.app',
+    );
+
+    List<double>? tasteVector;
+    String? tasteRecipe;
+    Map<String, dynamic>? tasteAxes;
+    String tasteModel = 'vertex_ai_text_embedding_004';
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$apiUrl/v1/user/cultural-profile'),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final rawVec = decoded['taste_vector'];
+          if (rawVec is List && rawVec.isNotEmpty) {
+            tasteVector = rawVec.map((e) => (e as num).toDouble()).toList();
+          }
+          if (decoded['recipe'] != null) {
+            tasteRecipe = decoded['recipe'].toString();
+          }
+          if (decoded['user_axes'] is Map) {
+            tasteAxes = Map<String, dynamic>.from(decoded['user_axes'] as Map);
+          }
+        }
+        print("Cultural profile 4-axis 768d vector synthesized via Yollotl Engine.");
+      }
+    } catch (httpError) {
+      print("Yollotl API call failed or offline, using deterministic 768d fallback: $httpError");
+    }
+
+    tasteAxes ??= previewAxes != null
+        ? Map<String, dynamic>.from(previewAxes)
+        : <String, dynamic>{
+            "vocacion_cultural": (payload['cultural_interests'] as List?)?.join(', ') ?? '',
+            "atmosfera_sensorial": (payload['atmosphere_preference'] as List?)?.join(', ') ?? '',
+            "dinamica_social": "${payload['social_companion'] ?? 'pareja'} / ${payload['discovery_style'] ?? 'equilibrado'}",
+            "entorno_urbano": "${payload['transport_preference'] ?? 'caminata'} (${payload['accessibility_needs'] ?? 'estandar'})",
+          };
+
+    tasteRecipe ??= tasteAxes.entries.map((e) => "[${e.key}]: ${e.value}").join("\n");
+
+    if (tasteVector == null || tasteVector.isEmpty) {
+      tasteVector = _buildDeterministic768dFallback(tasteRecipe);
+      tasteModel = 'deterministic_semantic_768d';
+    }
+
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+    await userRef.set({
+      "cultural_profile": payload,
+      "taste_axes": tasteAxes,
+      if (previewAxes != null) "taste_axes_preview": previewAxes,
+      "taste_recipe": tasteRecipe,
+      "taste_vector": tasteVector,
+      "taste_vector_dim": tasteVector.length,
+      "taste_model": tasteModel,
+      "onboarding_completed": true,
+      "taste_updated_at": FieldValue.serverTimestamp(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    return tasteVector;
+  }
 
   @override
   State<OnboardingWizardPage> createState() => _OnboardingWizardPageState();
@@ -77,6 +181,65 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadExistingSelectionsIfAny();
+  }
+
+  Future<void> _loadExistingSelectionsIfAny() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final data = doc.data();
+      final profile = data?['cultural_profile'];
+      if (profile is Map && mounted) {
+        setState(() {
+          if (profile['cultural_interests'] is List) {
+            _selectedCultural
+              ..clear()
+              ..addAll((profile['cultural_interests'] as List).map((e) => e.toString()));
+          }
+          if (profile['culinary_interests'] is List) {
+            _selectedCulinary
+              ..clear()
+              ..addAll((profile['culinary_interests'] as List).map((e) => e.toString()));
+          }
+          if (profile['atmosphere_preference'] is List) {
+            _selectedAtmosphere
+              ..clear()
+              ..addAll((profile['atmosphere_preference'] as List).map((e) => e.toString()));
+          }
+          if (profile['social_companion'] is String) {
+            _socialCompanion = profile['social_companion'];
+          }
+          if (profile['discovery_style'] is String) {
+            _discoveryStyle = profile['discovery_style'];
+          }
+          if (profile['preferred_time_window'] is String) {
+            _preferredTimeWindow = profile['preferred_time_window'];
+          }
+          if (profile['travel_pace'] is String) {
+            _travelPace = profile['travel_pace'];
+          }
+          if (profile['transport_preference'] is String) {
+            _transportPref = profile['transport_preference'];
+          }
+          if (profile['budget_tier'] is String) {
+            _budgetTier = profile['budget_tier'];
+          }
+          if (profile['accessibility_needs'] is String) {
+            _accessibilityNeeds = profile['accessibility_needs'];
+          }
+          if (profile['free_bio'] is String) {
+            _bioController.text = profile['free_bio'];
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
   void dispose() {
     _bioController.dispose();
     super.dispose();
@@ -132,7 +295,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
     setState(() {
       _isSynthesizing = true;
-      _synthesisMessage = "Alineando los 4 ejes ontológicos e invocando al motor Yollotl...";
+      _synthesisMessage = "Alineando los 4 ejes ontológicos e invocando al motor Yollotl (768d)...";
     });
 
     final payload = {
@@ -151,37 +314,15 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     };
 
     try {
-      const apiUrl = String.fromEnvironment(
-        'yollotlApiUrl',
-        defaultValue: 'https://api.ohtli.quest',
+      final vector = await OnboardingWizardPage.synthesizeAndSaveProfile(
+        user.uid,
+        payload,
+        previewAxes: _buildPreviewAxes(),
       );
 
-      try {
-        final response = await http
-            .post(
-              Uri.parse('$apiUrl/v1/user/cultural-profile'),
-              headers: {"Content-Type": "application/json"},
-              body: jsonEncode(payload),
-            )
-            .timeout(const Duration(seconds: 8));
-
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          print("Cultural profile 4-axis vector successfully created by Yollotl API.");
-        }
-      } catch (httpError) {
-        print("API endpoint call failed or offline, saving directly to Firestore: $httpError");
-      }
-
-      final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-      await userRef.set({
-        "cultural_profile": payload,
-        "taste_axes_preview": _buildPreviewAxes(),
-        "onboarding_completed": true,
-        "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
       setState(() {
-        _synthesisMessage = "¡Tu identidad viajera en 4 ejes ha sido tejida con éxito!";
+        _synthesisMessage =
+            "¡Vector de gusto (${vector.length} dimensiones) guardado en tu perfil!";
       });
 
       await Future.delayed(const Duration(milliseconds: 1200));
