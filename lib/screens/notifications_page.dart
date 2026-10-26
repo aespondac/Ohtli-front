@@ -306,7 +306,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     } else if (type == 'co_author_added') {
                       final isPlan = data['isPlan'] ?? false;
                       final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                      messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle". ✍️';
+                      messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
                     }
 
                     final initials = senderName

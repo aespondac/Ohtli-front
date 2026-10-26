@@ -53,3 +53,4 @@ run_local.sh
 */node_modules
 node_modules/
 ._*
+.firebase/

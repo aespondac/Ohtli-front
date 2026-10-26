@@ -462,7 +462,7 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
                                       children: [
                                         const Icon(Icons.text_fields_rounded, size: 14),
                                         const SizedBox(width: 8),
-                                        Text('📝 Texto', style: GoogleFonts.inter(fontSize: 11)),
+                                        Text('Texto', style: GoogleFonts.inter(fontSize: 11)),
                                       ],
                                     ),
                                   ),
@@ -472,7 +472,7 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
                                       children: [
                                         const Icon(Icons.tag_rounded, size: 14),
                                         const SizedBox(width: 8),
-                                        Text('🔢 Número', style: GoogleFonts.inter(fontSize: 11)),
+                                        Text('Número', style: GoogleFonts.inter(fontSize: 11)),
                                       ],
                                     ),
                                   ),
@@ -482,7 +482,7 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
                                       children: [
                                         const Icon(Icons.payments_rounded, size: 14, color: Colors.amber),
                                         const SizedBox(width: 8),
-                                        Text('💵 Dinero', style: GoogleFonts.inter(fontSize: 11)),
+                                        Text('Dinero', style: GoogleFonts.inter(fontSize: 11)),
                                       ],
                                     ),
                                   ),

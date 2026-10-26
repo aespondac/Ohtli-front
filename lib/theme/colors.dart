@@ -112,4 +112,28 @@ class OhtliColors {
         ? const Color(0xFF1E1E22) // Dark input background
         : const Color(0xFFDCD8CF); // Light cantera input background
   }
+
+  static Color get cardBg {
+    return OhtliSettings.instance.isDarkMode
+        ? const Color(0xFF1E1E22) // Dark card surface
+        : Colors.white; // Light card surface
+  }
+
+  static Color get cardBorder {
+    return OhtliSettings.instance.isDarkMode
+        ? const Color(0xFF2E2E34) // Dark subtle border
+        : const Color(0xFF0A090C).withValues(alpha: 0.08); // Light subtle border
+  }
+
+  static Color get innerCardBg {
+    return OhtliSettings.instance.isDarkMode
+        ? const Color(0xFF151518) // Dark inner card background
+        : const Color(0xFFF7F5F1); // Light inner card background
+  }
+
+  static Color get subtleText {
+    return OhtliSettings.instance.isDarkMode
+        ? const Color(0xFFF0EEE9).withValues(alpha: 0.65)
+        : const Color(0xFF0A090C).withValues(alpha: 0.65);
+  }
 }

@@ -1515,7 +1515,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       await _saveToCloudFirestore();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Co-autores actualizados y sincronizados con éxito. 👥', style: GoogleFonts.inter()),
+          content: Text('Co-autores actualizados y sincronizados con éxito.', style: GoogleFonts.inter()),
           backgroundColor: OhtliColors.stormyTeal,
         ),
       );

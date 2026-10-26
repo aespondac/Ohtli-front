@@ -32,6 +32,7 @@ import 'screens/lab/experiments/agents_experiment_page.dart';
 import 'screens/lab/experiments/apis_experiment_page.dart';
 import 'screens/onboarding/onboarding_wizard_page.dart';
 import 'screens/lab/experiments/taste_vector_experiment_page.dart';
+import 'screens/places/places_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'firebase_options.dart';
 
@@ -193,6 +194,7 @@ enum OhtliScreen {
   labsApis, // Experimento de APIs
   labsRecolector, // Experimento de Caza Lugares (Recolector)
   labsTasteVector, // Experimento de Vector de Gustos e Identidad Cultural
+  places, // Vista del catálogo de lugares indexados por el Agente Recolector
   onboarding, // Flujo de Onboarding para recolectar gustos del turista
 }
 
@@ -261,6 +263,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final isLabsApis = path.contains('/labs/apis') || fragment.contains('/labs/apis');
       final isLabsRecolector = path.contains('/labs/recolector') || fragment.contains('/labs/recolector');
       final isLabsTaste = path.contains('/labs/taste') || fragment.contains('/labs/taste') || path.contains('/labs/vibe') || fragment.contains('/labs/vibe');
+      final isPlaces = path.contains('/lugares') || fragment.contains('/lugares') || path.contains('/places') || fragment.contains('/places') || params.containsKey('lugares') || params.containsKey('places');
       final isAppTyc = path.contains('/tyc') || fragment.contains('/tyc');
 
       if (isLabsTyc) {
@@ -275,6 +278,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.labsRecolector;
       } else if (isLabsTaste) {
         _currentScreen = OhtliScreen.labsTasteVector;
+      } else if (isPlaces) {
+        _currentScreen = OhtliScreen.places;
       } else if (hostname.contains('lab.ohtli.quest') || hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
         if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
@@ -358,6 +363,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             _currentScreen != OhtliScreen.labsApis &&
             _currentScreen != OhtliScreen.labsRecolector &&
             _currentScreen != OhtliScreen.labsTasteVector &&
+            _currentScreen != OhtliScreen.places &&
             _currentScreen != OhtliScreen.onboarding) {
           
           // Verificar si el usuario ya completó el onboarding y cuenta con su taste_vector (768d)
@@ -559,6 +565,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.labsTasteVector) {
       activeView = TasteVectorExperimentPage(
         onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+      );
+    } else if (_currentScreen == OhtliScreen.places) {
+      activeView = PlacesPage(
+        showBackButton: true,
+        onBack: () => _navigateTo(OhtliScreen.home),
       );
     } else if (isMobile) {
       switch (_currentScreen) {

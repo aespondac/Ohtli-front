@@ -109,5 +109,16 @@ service cloud.firestore {
     match /itinerary_jobs/{jobId} {
       allow read: if true;
     }
+
+    // Points of Interest (POIs) - Production & Lab Sandbox indexed by Yollotl Recolector
+    match /pois/{poiId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /pois_lab/{poiId} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }

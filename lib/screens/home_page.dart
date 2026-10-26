@@ -17,6 +17,7 @@ import 'trips/trip_viewer_page.dart';
 import 'account/public_profile_page.dart';
 import 'friends_page.dart';
 import 'notifications_page.dart';
+import 'places/places_page.dart';
 
 // Pinned Stories Model & Constant
 class PinnedStory {
@@ -230,8 +231,11 @@ class _HomePageState extends State<HomePage> {
     if (_currentIndex == 3) {
       return const FriendsPage();
     }
-    if (_currentIndex == 4 || _currentIndex == 5) {
+    if (_currentIndex == 4) {
       return const ConstructionPage();
+    }
+    if (_currentIndex == 5) {
+      return const PlacesPage();
     }
     if (_currentIndex == 6) {
       return const NotificationsPage();
