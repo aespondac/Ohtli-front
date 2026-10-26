@@ -19,23 +19,30 @@ class OnboardingWizardPage extends StatefulWidget {
 }
 
 class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
+  static const int _totalSteps = 5;
   int _currentStep = 0;
   bool _isSynthesizing = false;
-  String _synthesisMessage = "El motor Yollotl está analizando tus gustos...";
+  String _synthesisMessage = "El motor Yollotl está alineando tus 4 ejes ontológicos...";
 
-  // Paso 1: Intereses Culturales
+  // Paso 1: Vocación Cultural
   final Set<String> _selectedCultural = {};
 
-  // Paso 2: Gastronomía y Atmósfera
+  // Paso 2: Gastronomía y Atmósfera Sensorial
   final Set<String> _selectedCulinary = {};
   final Set<String> _selectedAtmosphere = {};
 
-  // Paso 3: Ritmo y Movilidad
+  // Paso 3: Dinámica Social y Nivel de Descubrimiento
+  String _socialCompanion = "pareja";
+  String _discoveryStyle = "equilibrado";
+  String _preferredTimeWindow = "tarde";
+
+  // Paso 4: Ritmo, Movilidad, Presupuesto y Accesibilidad
   String _travelPace = "moderado";
   String _transportPref = "caminata";
   String _budgetTier = "medio";
+  String _accessibilityNeeds = "estandar";
 
-  // Paso 4: Bio / Texto libre
+  // Paso 5: Bio / Manifiesto libre
   final TextEditingController _bioController = TextEditingController();
 
   final List<Map<String, String>> _culturalOptions = [
@@ -43,11 +50,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     {"id": "arqueologia", "label": "Zonas Arqueológicas y Prehispánicas", "icon": "🏛️"},
     {"id": "museos_arte", "label": "Museos Clásicos y Contemporáneos", "icon": "🖼️"},
     {"id": "arquitectura_virreinal", "label": "Arquitectura Virreinal y Barroca", "icon": "⛪"},
-    {"id": "parques_bosques", "label": "Bosques y Áreas Verdes", "icon": "🌳"},
-    {"id": "teatros_foros", "label": "Teatros y Artes Escénicas", "icon": "🎭"},
-    {"id": "fotografia_urbana", "label": "Fotografía Urbana y Callejones", "icon": "📸"},
+    {"id": "parques_bosques", "label": "Bosques y Jardines Históricos", "icon": "🌳"},
+    {"id": "teatros_foros", "label": "Teatros, Cine de Arte y Foros", "icon": "🎭"},
+    {"id": "fotografia_urbana", "label": "Fotografía Urbana y Miradores", "icon": "📸"},
     {"id": "librerias_cafes", "label": "Librerías de Viejo y Tertulia", "icon": "📚"},
-    {"id": "mercados_artesanias", "label": "Mercados Tradicionales y Artesanías", "icon": "🏺"},
+    {"id": "mercados_artesanias", "label": "Mercados de Artesanías y Diseño", "icon": "🏺"},
     {"id": "musica_conciertos", "label": "Jazz, Sonideros y Música Viva", "icon": "🎷"},
   ];
 
@@ -62,10 +69,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   ];
 
   final List<Map<String, String>> _atmosphereOptions = [
-    {"id": "tranquilo_arbolado", "label": "Tranquilo y Arbolado", "icon": "🌿"},
-    {"id": "vibrante_concurrido", "label": "Vibrante y Llena de Vida", "icon": "⚡"},
-    {"id": "bohemio", "label": "Bohemio y Artístico", "icon": "🎨"},
-    {"id": "historico", "label": "Monumental e Histórico", "icon": "🏛️"},
+    {"id": "tranquilo_arbolado", "label": "Tranquilo, Silencioso y Arbolado", "icon": "🌿"},
+    {"id": "bohemio", "label": "Bohemio, Íntimo y Artístico", "icon": "🎨"},
+    {"id": "historico", "label": "Solemne, Monumental e Histórico", "icon": "🏛️"},
+    {"id": "vibrante_concurrido", "label": "Vibrante y Lleno de Vida Urbana", "icon": "⚡"},
+    {"id": "festivo_nocturno", "label": "Festivo, Musical y Social", "icon": "🎶"},
   ];
 
   @override
@@ -81,7 +89,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   }
 
   void _nextStep() {
-    if (_currentStep < 3) {
+    if (_currentStep < _totalSteps - 1) {
       setState(() => _currentStep++);
     } else {
       _finishOnboarding();
@@ -94,13 +102,37 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     }
   }
 
+  Map<String, String> _buildPreviewAxes() {
+    final cultLabels = _selectedCultural.isEmpty
+        ? "exploración cultural general"
+        : _selectedCultural.join(", ");
+    final culLabels = _selectedCulinary.isEmpty
+        ? "sabores tradicionales"
+        : _selectedCulinary.join(", ");
+    final atmoLabels = _selectedAtmosphere.isEmpty
+        ? "ambiente auténtico"
+        : _selectedAtmosphere.join(", ");
+    final bio = _bioController.text.trim();
+
+    return {
+      "Eje 1 • Vocación Cultural y Gastronómica":
+          "Afinidad por $cultLabels y experiencias en $culLabels.${bio.isNotEmpty ? ' \"$bio\"' : ''}",
+      "Eje 2 • Atmósfera y Experiencia Sensorial":
+          "Vibras $atmoLabels a un ritmo $_travelPace.",
+      "Eje 3 • Dinámica Social y Descubrimiento":
+          "Viaje en modalidad $_socialCompanion, enfoque $_discoveryStyle en franja $_preferredTimeWindow.",
+      "Eje 4 • Micro-Entorno y Caminabilidad":
+          "Prioridad de traslado: $_transportPref ($_accessibilityNeeds).",
+    };
+  }
+
   Future<void> _finishOnboarding() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     setState(() {
       _isSynthesizing = true;
-      _synthesisMessage = "Sintetizando tu perfil e invocando al motor Yollotl...";
+      _synthesisMessage = "Alineando los 4 ejes ontológicos e invocando al motor Yollotl...";
     });
 
     final payload = {
@@ -108,14 +140,17 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       "cultural_interests": _selectedCultural.toList(),
       "culinary_interests": _selectedCulinary.toList(),
       "atmosphere_preference": _selectedAtmosphere.toList(),
+      "social_companion": _socialCompanion,
+      "discovery_style": _discoveryStyle,
+      "preferred_time_window": _preferredTimeWindow,
       "travel_pace": _travelPace,
       "budget_tier": _budgetTier,
       "transport_preference": _transportPref,
+      "accessibility_needs": _accessibilityNeeds,
       "free_bio": _bioController.text.trim(),
     };
 
     try {
-      // 1. Invocar endpoint del backend Yollotl Engine para generar el embedding 768d
       const apiUrl = String.fromEnvironment(
         'yollotlApiUrl',
         defaultValue: 'https://api.ohtli.quest',
@@ -131,22 +166,22 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             .timeout(const Duration(seconds: 8));
 
         if (response.statusCode == 200 || response.statusCode == 201) {
-          print("Cultural profile vector successfully created by Yollotl API.");
+          print("Cultural profile 4-axis vector successfully created by Yollotl API.");
         }
       } catch (httpError) {
         print("API endpoint call failed or offline, saving directly to Firestore: $httpError");
       }
 
-      // 2. Persistencia en Cloud Firestore para asegurar que la app continúe
       final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
       await userRef.set({
         "cultural_profile": payload,
+        "taste_axes_preview": _buildPreviewAxes(),
         "onboarding_completed": true,
         "updatedAt": FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       setState(() {
-        _synthesisMessage = "¡Tu identidad viajera ha sido tejida con éxito!";
+        _synthesisMessage = "¡Tu identidad viajera en 4 ejes ha sido tejida con éxito!";
       });
 
       await Future.delayed(const Duration(milliseconds: 1200));
@@ -175,7 +210,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 820),
+            constraints: const BoxConstraints(maxWidth: 840),
             child: _isSynthesizing ? _buildLoadingView() : _buildWizardCard(),
           ),
         ),
@@ -234,7 +269,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              "Vector denso de 768 dimensiones • text-embedding-004",
+              "Ontología Puente de 4 Ejes • Vector 768d (text-embedding-004)",
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -261,7 +296,6 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Cabecera con indicador de progreso
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -287,7 +321,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      "Perfil del Turista",
+                      "Identidad Cultural en 4 Ejes",
                       style: GoogleFonts.inter(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -298,7 +332,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                   ],
                 ),
                 Text(
-                  "Paso ${_currentStep + 1} de 4",
+                  "Paso ${_currentStep + 1} de $_totalSteps",
                   style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -311,7 +345,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
-                value: (_currentStep + 1) / 4.0,
+                value: (_currentStep + 1) / _totalSteps,
                 backgroundColor: OhtliColors.cantera.withOpacity(0.4),
                 valueColor: const AlwaysStoppedAnimation<Color>(
                   OhtliColors.stormyTeal,
@@ -320,17 +354,13 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
               ),
             ),
             const SizedBox(height: 28),
-
-            // Contenido dinámico del paso actual
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: _buildStepContent(),
               ),
             ),
-
             const SizedBox(height: 24),
-            // Botones de Navegación
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -356,11 +386,15 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                 ElevatedButton.icon(
                   onPressed: _canProceed ? _nextStep : null,
                   icon: Icon(
-                    _currentStep == 3 ? Icons.check_circle : Icons.arrow_forward,
+                    _currentStep == _totalSteps - 1
+                        ? Icons.check_circle
+                        : Icons.arrow_forward,
                     size: 18,
                   ),
                   label: Text(
-                    _currentStep == 3 ? "Completar y Tejer Perfil" : "Siguiente",
+                    _currentStep == _totalSteps - 1
+                        ? "Completar y Tejer Vector 768d"
+                        : "Siguiente",
                     style: GoogleFonts.inter(fontWeight: FontWeight.bold),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -392,8 +426,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       case 1:
         return _buildCulinaryAtmosphereStep();
       case 2:
-        return _buildPaceMobilityStep();
+        return _buildSocialDiscoveryStep();
       case 3:
+        return _buildPaceMobilityStep();
+      case 4:
         return _buildBioStep();
       default:
         return const SizedBox.shrink();
@@ -405,7 +441,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "¿Qué te inspira de la Ciudad de México?",
+          "Eje 1: ¿Qué vocación cultural te inspira?",
           style: GoogleFonts.fraunces(
             fontSize: 26,
             fontWeight: FontWeight.bold,
@@ -414,7 +450,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          "Elige al menos 2 disciplinas y tipos de patrimonio que más despierten tu curiosidad.",
+          "Selecciona al menos 2 disciplinas artísticas o patrimoniales. Estas alimentan directamente el Eje 1 de tu vector para empatar con la vocación de cada recinto.",
           style: GoogleFonts.inter(fontSize: 14, color: Colors.black54),
         ),
         const SizedBox(height: 24),
@@ -463,7 +499,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Sabores y Atmósfera de Barrio",
+          "Ejes 1 y 2: Gastronomía y Atmósfera Sensorial",
           style: GoogleFonts.fraunces(
             fontSize: 26,
             fontWeight: FontWeight.bold,
@@ -472,7 +508,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          "Define los momentos gastronómicos y el ambiente urbano en el que te sientes más pleno.",
+          "Tus gustos culinarios y las vibras que buscas se comparan contra las reseñas destiladas de los visitantes en cada lugar.",
           style: GoogleFonts.inter(fontSize: 14, color: Colors.black54),
         ),
         const SizedBox(height: 20),
@@ -523,7 +559,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         ),
         const SizedBox(height: 28),
         Text(
-          "Atmósfera Predilecta",
+          "Atmósfera y Vibra Sensorial Predilecta",
           style: GoogleFonts.inter(
             fontSize: 15,
             fontWeight: FontWeight.w600,
@@ -571,12 +607,12 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
-  Widget _buildPaceMobilityStep() {
+  Widget _buildSocialDiscoveryStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Tu Ritmo, Movilidad y Presupuesto",
+          "Eje 3: Dinámica Social y Estilo de Descubrimiento",
           style: GoogleFonts.fraunces(
             fontSize: 26,
             fontWeight: FontWeight.bold,
@@ -585,10 +621,122 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          "Ajusta los parámetros operativos que usarán los algoritmos DEAP y OR-Tools.",
+          "No es lo mismo recorrer la ciudad en solitario que con niños o amigos de noche. Estos parámetros calibran la compatibilidad social de cada POI.",
           style: GoogleFonts.inter(fontSize: 14, color: Colors.black54),
         ),
         const SizedBox(height: 24),
+        Text(
+          "¿Con quién acostumbras recorrer la ciudad?",
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        const SizedBox(height: 10),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: "solo",
+              label: Text("Solo"),
+              icon: Icon(Icons.person_outline),
+            ),
+            ButtonSegment(
+              value: "pareja",
+              label: Text("En Pareja"),
+              icon: Icon(Icons.favorite_border),
+            ),
+            ButtonSegment(
+              value: "amigos",
+              label: Text("Amigos"),
+              icon: Icon(Icons.groups_outlined),
+            ),
+            ButtonSegment(
+              value: "familia",
+              label: Text("Familia"),
+              icon: Icon(Icons.family_restroom_outlined),
+            ),
+          ],
+          selected: {_socialCompanion},
+          onSelectionChanged: (val) => setState(() => _socialCompanion = val.first),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          "¿Qué tipo de hallazgos prefieres en la CDMX?",
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        const SizedBox(height: 10),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: "iconico",
+              label: Text("Íconos Imprescindibles"),
+              icon: Icon(Icons.account_balance_outlined),
+            ),
+            ButtonSegment(
+              value: "equilibrado",
+              label: Text("Híbrido Equilibrado"),
+              icon: Icon(Icons.auto_awesome_mosaic_outlined),
+            ),
+            ButtonSegment(
+              value: "joyas_ocultas",
+              label: Text("Joyas Ocultas de Barrio"),
+              icon: Icon(Icons.explore_outlined),
+            ),
+          ],
+          selected: {_discoveryStyle},
+          onSelectionChanged: (val) => setState(() => _discoveryStyle = val.first),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          "Franja Horaria Favorita",
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        const SizedBox(height: 10),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: "manana",
+              label: Text("Mañana"),
+              icon: Icon(Icons.wb_sunny_outlined),
+            ),
+            ButtonSegment(
+              value: "tarde",
+              label: Text("Tarde"),
+              icon: Icon(Icons.wb_twilight_outlined),
+            ),
+            ButtonSegment(
+              value: "noche",
+              label: Text("Noche"),
+              icon: Icon(Icons.nights_stay_outlined),
+            ),
+            ButtonSegment(
+              value: "jornada_completa",
+              label: Text("Todo el Día"),
+              icon: Icon(Icons.schedule_outlined),
+            ),
+          ],
+          selected: {_preferredTimeWindow},
+          onSelectionChanged: (val) => setState(() => _preferredTimeWindow = val.first),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaceMobilityStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "Eje 4 y Filtros Duros: Entorno, Ritmo y Presupuesto",
+          style: GoogleFonts.fraunces(
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+            color: OhtliColors.onyx,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "La caminabilidad alimenta el Eje 4 de tu vector, mientras que el presupuesto y la accesibilidad operan como restricciones exactas en DEAP y OR-Tools.",
+          style: GoogleFonts.inter(fontSize: 14, color: Colors.black54),
+        ),
+        const SizedBox(height: 22),
         Text(
           "Ritmo de la Jornada",
           style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
@@ -613,13 +761,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ),
           ],
           selected: {_travelPace},
-          onSelectionChanged: (val) {
-            setState(() => _travelPace = val.first);
-          },
+          onSelectionChanged: (val) => setState(() => _travelPace = val.first),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         Text(
-          "Preferencia de Desplazamiento",
+          "Preferencia de Desplazamiento Barrial",
           style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
         ),
         const SizedBox(height: 8),
@@ -632,7 +778,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ),
             ButtonSegment(
               value: "transporte_publico",
-              label: Text("Metro / Metrobús"),
+              label: Text("Metro / Ecobici"),
               icon: Icon(Icons.directions_subway),
             ),
             ButtonSegment(
@@ -642,13 +788,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ),
           ],
           selected: {_transportPref},
-          onSelectionChanged: (val) {
-            setState(() => _transportPref = val.first);
-          },
+          onSelectionChanged: (val) => setState(() => _transportPref = val.first),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         Text(
-          "Sensibilidad Presupuestal Habitual",
+          "Sensibilidad Presupuestal (Filtro Knapsack)",
           style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
         ),
         const SizedBox(height: 8),
@@ -656,12 +800,12 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           segments: const [
             ButtonSegment(
               value: "economico",
-              label: Text("Económico"),
+              label: Text("Económico (<\$250)"),
               icon: Icon(Icons.monetization_on_outlined),
             ),
             ButtonSegment(
               value: "medio",
-              label: Text("Medio"),
+              label: Text("Medio (<\$500)"),
               icon: Icon(Icons.account_balance_wallet_outlined),
             ),
             ButtonSegment(
@@ -671,20 +815,41 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ),
           ],
           selected: {_budgetTier},
-          onSelectionChanged: (val) {
-            setState(() => _budgetTier = val.first);
-          },
+          onSelectionChanged: (val) => setState(() => _budgetTier = val.first),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          "Requerimiento de Accesibilidad Motriz",
+          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: "estandar",
+              label: Text("Peatonal Estándar"),
+              icon: Icon(Icons.directions_walk_outlined),
+            ),
+            ButtonSegment(
+              value: "accesibilidad_universal",
+              label: Text("Accesibilidad Universal / Rampas"),
+              icon: Icon(Icons.accessible_outlined),
+            ),
+          ],
+          selected: {_accessibilityNeeds},
+          onSelectionChanged: (val) => setState(() => _accessibilityNeeds = val.first),
         ),
       ],
     );
   }
 
   Widget _buildBioStep() {
+    final previewAxes = _buildPreviewAxes();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Tu Esencia Viajera (Opcional)",
+          "Manifiesto Personal y Síntesis en 4 Ejes",
           style: GoogleFonts.fraunces(
             fontSize: 26,
             fontWeight: FontWeight.bold,
@@ -693,17 +858,19 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          "Cuéntanos en tus propias palabras qué hace inolvidable un recorrido para ti. El modelo de embeddings lo integrará a tu vector.",
+          "Añade cualquier matiz personal y revisa cómo tu perfil se alinea con la estructura de 4 ejes del Agente Recolector.",
           style: GoogleFonts.inter(fontSize: 14, color: Colors.black54),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
         TextField(
           controller: _bioController,
-          maxLines: 5,
-          maxLength: 300,
+          maxLines: 3,
+          maxLength: 280,
+          onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
-            hintText: "Ejemplo: Me fascina caminar por Coyoacán, encontrar librerías independientes y sentarme a tomar un café espresso en plazas tranquilas...",
-            hintStyle: GoogleFonts.inter(color: Colors.black38, fontSize: 14),
+            hintText:
+                "Ej.: Me fascina caminar por Coyoacán, encontrar librerías independientes y tomar un espresso en patios con bugambilias...",
+            hintStyle: GoogleFonts.inter(color: Colors.black38, fontSize: 13),
             filled: true,
             fillColor: OhtliColors.cloudDancer.withOpacity(0.5),
             border: OutlineInputBorder(
@@ -716,29 +883,46 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ),
           ),
         ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: OhtliColors.stormyTeal.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.2)),
+        const SizedBox(height: 12),
+        Text(
+          "Vista Previa de tu Receta Ontológica Espejo:",
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: OhtliColors.stormyTeal,
           ),
-          child: Row(
-            children: [
-              const Icon(Icons.auto_awesome, color: OhtliColors.stormyTeal, size: 24),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  "Tus selecciones se sintetizarán con IA y se guardarán en tu perfil como un vector matemático inmutable, respetando tu privacidad según la LFPDPPP.",
+        ),
+        const SizedBox(height: 8),
+        ...previewAxes.entries.map(
+          (entry) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: OhtliColors.cloudDancer.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: OhtliColors.cantera.withOpacity(0.8)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry.key,
                   style: GoogleFonts.inter(
-                    fontSize: 13,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
                     color: OhtliColors.stormyTeal,
-                    height: 1.4,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  entry.value,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: OhtliColors.onyx,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
