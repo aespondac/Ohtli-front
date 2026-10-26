@@ -275,7 +275,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.labsRecolector;
       } else if (isLabsTaste) {
         _currentScreen = OhtliScreen.labsTasteVector;
-      } else if (hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
+      } else if (hostname.contains('lab.ohtli.quest') || hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
         if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
         } else {
@@ -354,6 +354,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             _currentScreen != OhtliScreen.termsAndConditions &&
             _currentScreen != OhtliScreen.labsTermsAndConditions &&
             _currentScreen != OhtliScreen.labsOsrm &&
+            _currentScreen != OhtliScreen.labsAgents &&
+            _currentScreen != OhtliScreen.labsApis &&
+            _currentScreen != OhtliScreen.labsRecolector &&
+            _currentScreen != OhtliScreen.labsTasteVector &&
             _currentScreen != OhtliScreen.onboarding) {
           
           // Verificar si el usuario ya completó el onboarding de identidad cultural

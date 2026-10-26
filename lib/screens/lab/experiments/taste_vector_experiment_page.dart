@@ -7,7 +7,9 @@ import '../../../theme/colors.dart';
 import '../../onboarding/onboarding_wizard_page.dart';
 
 class TasteVectorExperimentPage extends StatefulWidget {
-  const TasteVectorExperimentPage({super.key});
+  final VoidCallback? onBack;
+
+  const TasteVectorExperimentPage({super.key, this.onBack});
 
   @override
   State<TasteVectorExperimentPage> createState() =>
@@ -870,8 +872,8 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: OhtliColors.onyx),
-          onPressed: () => Navigator.of(context).pop(),
+          icon: Icon(Icons.arrow_back, color: OhtliColors.onyx),
+          onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
         ),
         title: Row(
           children: [
