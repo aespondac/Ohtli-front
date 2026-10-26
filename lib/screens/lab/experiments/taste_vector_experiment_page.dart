@@ -869,10 +869,8 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       appBar: AppBar(
-        backgroundColor: OhtliColors.cardBg,
+        backgroundColor: Colors.white,
         elevation: 0,
-        scrolledUnderElevation: 1,
-        shadowColor: OhtliColors.cardBorder,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: OhtliColors.onyx),
           onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
@@ -882,7 +880,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: OhtliColors.xoconostle.withValues(alpha: 0.16),
+                color: OhtliColors.xoconostle.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -960,9 +958,9 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: OhtliColors.cardBg,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: OhtliColors.cardBorder),
+        border: Border.all(color: OhtliColors.cantera.withOpacity(0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1027,11 +1025,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
               return FilterChip(
                 label: Text(item.replaceAll("_", " ")),
                 selected: active,
-                backgroundColor: OhtliColors.innerCardBg,
-                selectedColor: OhtliColors.stormyTeal.withValues(alpha: 0.25),
-                side: BorderSide(
-                  color: active ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                ),
+                selectedColor: OhtliColors.stormyTeal.withOpacity(0.16),
                 labelStyle: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: active ? FontWeight.w600 : FontWeight.normal,
@@ -1065,11 +1059,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
               return FilterChip(
                 label: Text(item.replaceAll("_", " ")),
                 selected: active,
-                backgroundColor: OhtliColors.innerCardBg,
-                selectedColor: OhtliColors.xoconostle.withValues(alpha: 0.25),
-                side: BorderSide(
-                  color: active ? OhtliColors.xoconostle : OhtliColors.cardBorder,
-                ),
+                selectedColor: OhtliColors.xoconostle.withOpacity(0.16),
                 labelStyle: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: active ? FontWeight.w600 : FontWeight.normal,
@@ -1110,11 +1100,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
               return FilterChip(
                 label: Text(item.replaceAll("_", " ")),
                 selected: active,
-                backgroundColor: OhtliColors.innerCardBg,
-                selectedColor: OhtliColors.stormyTeal.withValues(alpha: 0.25),
-                side: BorderSide(
-                  color: active ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                ),
+                selectedColor: OhtliColors.stormyTeal.withOpacity(0.16),
                 labelStyle: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: active ? FontWeight.w600 : FontWeight.normal,
@@ -1134,20 +1120,14 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
           const SizedBox(height: 12),
           TextField(
             controller: _moodController,
-            style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx),
             onChanged: (_) => _generateTasteVectorAndMatch(),
             decoration: InputDecoration(
               labelText: "Mood Dinámico de Hoy (v_mood)",
-              labelStyle: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
+              labelStyle: GoogleFonts.inter(fontSize: 12),
               filled: true,
-              fillColor: OhtliColors.inputBg,
+              fillColor: OhtliColors.cloudDancer.withOpacity(0.4),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: OhtliColors.cardBorder),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: OhtliColors.cardBorder),
               ),
               isDense: true,
             ),
@@ -1156,7 +1136,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
             children: [
               Text(
                 "Peso Identidad α = ${_alphaFusion.toStringAsFixed(2)}",
-                style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText),
+                style: GoogleFonts.inter(fontSize: 11, color: Colors.black54),
               ),
               Expanded(
                 child: Slider(
@@ -1324,27 +1304,18 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
           width: 95,
           child: Text(
             label,
-            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ),
         Expanded(
           child: DropdownButtonFormField<String>(
             value: value,
             isDense: true,
-            dropdownColor: OhtliColors.cardBg,
-            style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
             decoration: InputDecoration(
-              filled: true,
-              fillColor: OhtliColors.inputBg,
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: OhtliColors.cardBorder),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: OhtliColors.cardBorder),
               ),
             ),
             items: items.entries
@@ -1353,7 +1324,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                     value: e.key,
                     child: Text(
                       e.value,
-                      style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx),
+                      style: GoogleFonts.inter(fontSize: 12),
                     ),
                   ),
                 )
@@ -1373,11 +1344,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         fontWeight: FontWeight.w600,
         color: OhtliColors.onyx,
       ),
-      backgroundColor: OhtliColors.innerCardBg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: OhtliColors.cardBorder),
-      ),
+      backgroundColor: OhtliColors.cloudDancer,
       onPressed: onTap,
     );
   }
@@ -1395,9 +1362,9 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         Container(
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: OhtliColors.cardBg,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: OhtliColors.cardBorder),
+            border: Border.all(color: OhtliColors.cantera.withOpacity(0.6)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1422,7 +1389,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: OhtliColors.stormyTeal.withValues(alpha: 0.16),
+                        color: OhtliColors.stormyTeal.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1441,7 +1408,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                 selectedPoi != null
                     ? "Comparando tu Perfil contra el OEP destilado de: ${selectedPoi['name']} (${selectedPoi['alcaldia']})"
                     : "Selecciona un POI del ranking inferior para inspeccionar la alineación eje por eje.",
-                style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.black54),
               ),
               const SizedBox(height: 16),
               if (_userAxes != null && selectedPoi != null)
@@ -1455,9 +1422,9 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         Container(
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: OhtliColors.cardBg,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: OhtliColors.cardBorder),
+            border: Border.all(color: OhtliColors.cantera.withOpacity(0.6)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1486,7 +1453,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
               const SizedBox(height: 6),
               Text(
                 "Haz clic en cualquier lugar para comparar sus 4 ejes semánticos arriba.",
-                style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.black54),
               ),
               const SizedBox(height: 14),
               ...List.generate(_rankedPois.length, (index) {
@@ -1501,13 +1468,13 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? OhtliColors.stormyTeal.withValues(alpha: 0.16)
-                          : OhtliColors.innerCardBg,
+                          ? OhtliColors.stormyTeal.withOpacity(0.08)
+                          : OhtliColors.cloudDancer.withOpacity(0.45),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isSelected
                             ? OhtliColors.stormyTeal
-                            : OhtliColors.cardBorder,
+                            : Colors.transparent,
                         width: 1.5,
                       ),
                     ),
@@ -1527,7 +1494,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                                     decoration: BoxDecoration(
                                       color: index < 3
                                           ? OhtliColors.stormyTeal
-                                          : (OhtliSettings.instance.isDarkMode ? Colors.white24 : Colors.black26),
+                                          : Colors.black26,
                                       shape: BoxShape.circle,
                                     ),
                                     child: Text(
@@ -1550,14 +1517,13 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                                           style: GoogleFonts.inter(
                                             fontWeight: FontWeight.w700,
                                             fontSize: 14,
-                                            color: OhtliColors.onyx,
                                           ),
                                         ),
                                         Text(
                                           "${poi["alcaldia"]} • ${poi["category"]} • \$${(poi["price_mxn"] as num).toStringAsFixed(0)} MXN • ${poi["stay_duration_mins"]} min",
                                           style: GoogleFonts.inter(
                                             fontSize: 11,
-                                            color: OhtliColors.subtleText,
+                                            color: Colors.black54,
                                           ),
                                         ),
                                       ],
@@ -1573,8 +1539,8 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                               ),
                               decoration: BoxDecoration(
                                 color: score > 0.72
-                                    ? OhtliColors.stormyTeal.withValues(alpha: 0.18)
-                                    : (OhtliSettings.instance.isDarkMode ? Colors.white12 : Colors.black12),
+                                    ? OhtliColors.stormyTeal.withOpacity(0.15)
+                                    : Colors.black12,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
@@ -1584,7 +1550,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                                   fontWeight: FontWeight.bold,
                                   color: score > 0.72
                                       ? OhtliColors.stormyTeal
-                                      : (OhtliSettings.instance.isDarkMode ? Colors.white70 : Colors.black87),
+                                      : Colors.black87,
                                 ),
                               ),
                             ),
@@ -1596,7 +1562,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                           child: LinearProgressIndicator(
                             value: score.clamp(0.0, 1.0),
                             minHeight: 6,
-                            backgroundColor: OhtliSettings.instance.isDarkMode ? Colors.white12 : Colors.black12,
+                            backgroundColor: Colors.black12,
                             valueColor: AlwaysStoppedAnimation<Color>(
                               score > 0.72
                                   ? OhtliColors.stormyTeal
@@ -1628,7 +1594,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: OhtliColors.xoconostle.withValues(alpha: 0.12),
+                      color: OhtliColors.xoconostle.withOpacity(0.06),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -1640,7 +1606,6 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                             style: GoogleFonts.inter(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: OhtliColors.onyx,
                             ),
                           ),
                         ),
@@ -1665,9 +1630,9 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         Container(
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: OhtliColors.cardBg,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: OhtliColors.cardBorder),
+            border: Border.all(color: OhtliColors.cantera.withOpacity(0.6)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1693,8 +1658,8 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                       height: 14,
                       decoration: BoxDecoration(
                         color: isPositive
-                            ? OhtliColors.stormyTeal.withValues(alpha: intensity)
-                            : OhtliColors.xoconostle.withValues(alpha: intensity),
+                            ? OhtliColors.stormyTeal.withOpacity(intensity)
+                            : OhtliColors.xoconostle.withOpacity(intensity),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     );
@@ -1759,9 +1724,9 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: OhtliColors.innerCardBg,
+          color: OhtliColors.cloudDancer.withOpacity(0.55),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: OhtliColors.cardBorder),
+          border: Border.all(color: OhtliColors.cantera.withOpacity(0.8)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1802,12 +1767,12 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: OhtliColors.stormyTeal,
+                          color: Colors.black45,
                         ),
                       ),
                       Text(
                         uText,
-                        style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.onyx),
+                        style: GoogleFonts.inter(fontSize: 11.5),
                       ),
                     ],
                   ),
@@ -1822,12 +1787,12 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: OhtliColors.subtleText,
+                          color: Colors.black45,
                         ),
                       ),
                       Text(
                         pText,
-                        style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.onyx),
+                        style: GoogleFonts.inter(fontSize: 11.5),
                       ),
                     ],
                   ),
