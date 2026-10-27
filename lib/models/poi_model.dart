@@ -49,6 +49,7 @@ class Poi {
   final double? replaceabilityScore;
   final double? ctrScore;
   final bool hasVector;
+  final List<double> embeddingVector;
 
   const Poi({
     required this.poiId,
@@ -79,6 +80,7 @@ class Poi {
     this.replaceabilityScore,
     this.ctrScore,
     this.hasVector = false,
+    this.embeddingVector = const [],
   });
 
   factory Poi.fromFirestore(DocumentSnapshot doc) {
@@ -135,6 +137,13 @@ class Poi {
     }
 
     final hasEmbedding = data.containsKey('embedding_vector') || data.containsKey('embedding');
+    final List<double> vectorList = [];
+    final rawVec = data['embedding_vector'] ?? data['embedding'];
+    if (rawVec is List) {
+      for (final v in rawVec) {
+        if (v is num) vectorList.add(v.toDouble());
+      }
+    }
 
     return Poi(
       poiId: (data['poi_id'] ?? fallbackId ?? '').toString(),
@@ -164,7 +173,8 @@ class Poi {
       resilienceScore: (data['resilience_score'] as num?)?.toDouble(),
       replaceabilityScore: (data['replaceability_score'] as num?)?.toDouble(),
       ctrScore: (data['ctr_score'] as num?)?.toDouble(),
-      hasVector: hasEmbedding,
+      hasVector: hasEmbedding || vectorList.isNotEmpty,
+      embeddingVector: vectorList,
     );
   }
 

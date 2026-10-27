@@ -12,11 +12,19 @@ import 'poi_detail_dialog.dart';
 class PoiCard extends StatefulWidget {
   final Poi poi;
   final VoidCallback? onTap;
+  final int? matchPercentage;
+  final String? customTag;
+  final double? width;
+  final double? height;
 
   const PoiCard({
     super.key,
     required this.poi,
     this.onTap,
+    this.matchPercentage,
+    this.customTag,
+    this.width,
+    this.height,
   });
 
   @override
@@ -63,6 +71,8 @@ class _PoiCardState extends State<PoiCard> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
+        width: widget.width,
+        height: widget.height,
         decoration: BoxDecoration(
           color: OhtliColors.cardBg,
           borderRadius: BorderRadius.circular(24),
@@ -89,7 +99,7 @@ class _PoiCardState extends State<PoiCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header: Category Badge + Price + Vector Badge
+                // Header: Category Badge + Price + Affinity/Vector Badge
                 Row(
                   children: [
                     Container(
@@ -132,7 +142,47 @@ class _PoiCardState extends State<PoiCard> {
                       ),
                     ),
                     const Spacer(),
-                    if (poi.hasVector)
+                    if (widget.matchPercentage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: OhtliColors.cempasuchil.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.auto_awesome_rounded, size: 11, color: OhtliColors.cempasuchil),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${widget.matchPercentage}%',
+                              style: GoogleFonts.outfit(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: OhtliColors.cempasuchil,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (widget.customTag != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: OhtliColors.stormyTeal.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          widget.customTag!,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: OhtliColors.stormyTeal,
+                          ),
+                        ),
+                      ),
+                    ] else if (poi.hasVector) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -155,6 +205,7 @@ class _PoiCardState extends State<PoiCard> {
                           ],
                         ),
                       ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 14),
