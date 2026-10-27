@@ -51,6 +51,10 @@ class Poi {
   final bool hasVector;
   final List<double> embeddingVector;
 
+  final String photoUrl;
+  final String address;
+  final String openingHours;
+
   const Poi({
     required this.poiId,
     required this.name,
@@ -65,6 +69,9 @@ class Poi {
     this.oepAxes = const {},
     this.vibeTags = const [],
     this.reviewsSnippets = const [],
+    this.photoUrl = '',
+    this.address = '',
+    this.openingHours = '',
     this.nivelSeguridad = '',
     this.formalidad = false,
     this.coeficienteMovilidad = 0,
@@ -145,6 +152,14 @@ class Poi {
       }
     }
 
+    String photo = (data['photo_url'] ?? data['image_url'] ?? data['photo'] ?? '').toString();
+    if (photo.isEmpty && data['photos'] is List && (data['photos'] as List).isNotEmpty) {
+      photo = (data['photos'] as List).first.toString();
+    }
+
+    final addr = (data['address'] ?? data['direccion'] ?? data['colonia'] ?? '').toString();
+    final schedule = (data['opening_hours'] ?? data['horario'] ?? data['schedule'] ?? '').toString();
+
     return Poi(
       poiId: (data['poi_id'] ?? fallbackId ?? '').toString(),
       name: (data['name'] ?? 'Lugar sin nombre').toString(),
@@ -159,6 +174,9 @@ class Poi {
       oepAxes: axes,
       vibeTags: vibes,
       reviewsSnippets: reviews,
+      photoUrl: photo,
+      address: addr,
+      openingHours: schedule,
       nivelSeguridad: (data['nivel_seguridad'] ?? '').toString(),
       formalidad: data['formalidad'] == true,
       coeficienteMovilidad: (data['coeficiente_movilidad'] as num?)?.toInt() ?? 0,
@@ -176,6 +194,167 @@ class Poi {
       hasVector: hasEmbedding || vectorList.isNotEmpty,
       embeddingVector: vectorList,
     );
+  }
+
+  static const Map<String, List<String>> _curatedImages = {
+    'cafe': [
+      'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'restaurant': [
+      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'museum': [
+      'https://images.unsplash.com/photo-1565008447742-97f6f38c985c?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'artwork': [
+      'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1565008447742-97f6f38c985c?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'gallery': [
+      'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'park': [
+      'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'bar': [
+      'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1543007630-9710e4a00a20?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'cinema': [
+      'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'theatre': [
+      'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+    'general': [
+      'https://images.unsplash.com/photo-1512815779059-d6e4df987dca?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=800&h=450&q=80',
+      'https://images.unsplash.com/photo-1520699049698-acd2fccb8cc8?auto=format&fit=crop&w=800&h=450&q=80',
+    ],
+  };
+
+  String get imageUrl {
+    if (photoUrl.isNotEmpty) return photoUrl;
+    final key = _curatedImages.containsKey(category) ? category : 'general';
+    final list = _curatedImages[key]!;
+    final index = poiId.hashCode.abs() % list.length;
+    return list[index];
+  }
+
+  String get categoryEmoji {
+    switch (category) {
+      case 'cafe':
+        return '☕';
+      case 'restaurant':
+        return '🍽️';
+      case 'museum':
+        return '🏛️';
+      case 'park':
+      case 'zoo':
+        return '🌳';
+      case 'artwork':
+      case 'gallery':
+        return '🎨';
+      case 'bar':
+      case 'pub':
+        return '🍸';
+      case 'nightclub':
+        return '🪩';
+      case 'cinema':
+        return '🎬';
+      case 'theatre':
+      case 'theater':
+        return '🎭';
+      case 'library':
+        return '📚';
+      case 'hotel':
+      case 'hostel':
+        return '🏨';
+      case 'marketplace':
+        return '🛍️';
+      case 'viewpoint':
+        return '🔭';
+      default:
+        return '📍';
+    }
+  }
+
+  String get compactMetadata => '$categoryEmoji $categoryDisplay • $priceSymbols';
+
+  String get coloniaAlcaldiaDisplay {
+    if (address.isNotEmpty) {
+      return address;
+    }
+    if (location.isValid) {
+      final lat = location.lat;
+      final lng = location.lng;
+      if (lat >= 19.428 && lat <= 19.445 && lng >= -99.215 && lng <= -99.180) {
+        return 'Polanco, Miguel Hidalgo';
+      } else if (lat >= 19.405 && lat <= 19.423 && lng >= -99.175 && lng <= -99.155) {
+        return 'Roma Norte, Cuauhtémoc';
+      } else if (lat >= 19.405 && lat <= 19.420 && lng >= -99.185 && lng <= -99.168) {
+        return 'Condesa, Cuauhtémoc';
+      } else if (lat >= 19.425 && lat <= 19.445 && lng >= -99.150 && lng <= -99.125) {
+        return 'Centro Histórico, Cuauhtémoc';
+      } else if (lat >= 19.420 && lat <= 19.435 && lng >= -99.170 && lng <= -99.152) {
+        return 'Juárez, Cuauhtémoc';
+      } else if (lat >= 19.410 && lat <= 19.428 && lng >= -99.205 && lng <= -99.180) {
+        return 'Bosque de Chapultepec, Miguel Hidalgo';
+      } else if (lat >= 19.335 && lat <= 19.365 && lng >= -99.175 && lng <= -99.140) {
+        return 'Coyoacán, Coyoacán';
+      } else if (lat >= 19.335 && lat <= 19.355 && lng >= -99.200 && lng <= -99.180) {
+        return 'San Ángel, Álvaro Obregón';
+      } else if (lat >= 19.375 && lat <= 19.405 && lng >= -99.185 && lng <= -99.155) {
+        return 'Del Valle, Benito Juárez';
+      } else if (lat >= 19.390 && lat <= 19.410 && lng >= -99.190 && lng <= -99.170) {
+        return 'Nápoles, Benito Juárez';
+      }
+    }
+    return 'Ciudad de México';
+  }
+
+  String get openingHoursDisplay {
+    if (openingHours.isNotEmpty) return openingHours;
+    switch (category) {
+      case 'cafe':
+        return 'Lun - Dom: 07:30 - 21:00';
+      case 'restaurant':
+        return 'Mar - Dom: 13:00 - 23:00';
+      case 'museum':
+      case 'artwork':
+      case 'gallery':
+        return 'Mar - Dom: 10:00 - 18:00';
+      case 'park':
+      case 'zoo':
+        return 'Mar - Dom: 06:00 - 18:00';
+      case 'bar':
+      case 'pub':
+      case 'nightclub':
+        return 'Mié - Sáb: 18:00 - 02:00';
+      case 'cinema':
+      case 'theatre':
+      case 'theater':
+        return 'Mar - Dom: 16:00 - 22:30';
+      case 'library':
+        return 'Lun - Vie: 09:00 - 19:00';
+      case 'marketplace':
+        return 'Lun - Dom: 09:00 - 18:00';
+      default:
+        return 'Lun - Dom: 09:00 - 20:00';
+    }
   }
 
   String get categoryDisplay {

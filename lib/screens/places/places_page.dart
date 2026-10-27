@@ -116,11 +116,8 @@ class _PlacesPageState extends State<PlacesPage> {
   int _calculateAffinity(Poi poi, int fallbackIndex) {
     if (_userTasteVector.isNotEmpty && poi.embeddingVector.isNotEmpty && _userTasteVector.length == poi.embeddingVector.length) {
       final sim = _computeCosineSimilarity(_userTasteVector, poi.embeddingVector);
-      // Map [-1, 1] cosine similarity to realistic [75%, 99%] match
-      final score = (sim * 100).clamp(70.0, 99.0).toInt();
-      return score;
+      return (sim * 100).clamp(70.0, 99.0).toInt();
     }
-    // High aesthetic curated affinities for fallback
     const fallbackScores = [98, 97, 96, 95, 94, 93, 92, 91, 90, 89];
     return fallbackScores[fallbackIndex % fallbackScores.length];
   }
@@ -170,40 +167,45 @@ class _PlacesPageState extends State<PlacesPage> {
                         poi.categoryDisplay.toLowerCase().contains(searchQuery) ||
                         poi.description.toLowerCase().contains(searchQuery) ||
                         poi.semanticDescription.toLowerCase().contains(searchQuery) ||
+                        poi.coloniaAlcaldiaDisplay.toLowerCase().contains(searchQuery) ||
                         poi.vibeTags.any((v) => v.toLowerCase().contains(searchQuery));
                   }).toList()
                 : <Poi>[];
 
-            // 1. "Para ti": Sorted by affinity
+            // 1. "Para ti": Exactly 5 cards with highest affinity, double width (2x)
             final paraTiPois = List<Poi>.from(allPois);
             paraTiPois.sort((a, b) {
               final scoreA = _calculateAffinity(a, 0);
               final scoreB = _calculateAffinity(b, 1);
               return scoreB.compareTo(scoreA);
             });
+            final paraTiCards = paraTiPois.take(5).toList();
 
-            // 2. "Descubre nuevos lugares": 8 cards with latest places in CDMX
+            // 2. "Descubre nuevos lugares": 8 cards with latest indexed places, standard (1x) width
             final descubrePois = allPois.take(8).toList();
 
-            // 3. "Revisita tus lugares": places previously viewed
+            // 3. "Revisita tus lugares": places previously viewed, standard (1x) width
             final revisitaPois = allPois.where((p) => _viewedPoiIds.contains(p.poiId)).toList();
-            // Sort to match order of viewing
             revisitaPois.sort((a, b) {
               final indexA = _viewedPoiIds.indexOf(a.poiId);
               final indexB = _viewedPoiIds.indexOf(b.poiId);
               return indexA.compareTo(indexB);
             });
 
+            // Card sizing
+            final standardWidth = 280.0;
+            final doubleWidth = isMobile ? math.min(560.0, screenSize.width - 48) : 560.0;
+
             return CustomScrollView(
               slivers: [
-                // Top Search Bar & Header
+                // Top Search Bar (Clean and direct)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(
                       isMobile ? 16 : 36,
                       isMobile ? 16 : 28,
                       isMobile ? 16 : 36,
-                      16,
+                      20,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,51 +224,15 @@ class _PlacesPageState extends State<PlacesPage> {
                           const SizedBox(height: 12),
                         ],
 
-                        // Friendly Header title
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: OhtliColors.stormyTeal.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.explore_rounded, color: OhtliColors.stormyTeal, size: 22),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Explora la Ciudad de México',
-                                    style: GoogleFonts.outfit(
-                                      fontSize: isMobile ? 22 : 28,
-                                      fontWeight: FontWeight.w800,
-                                      color: OhtliColors.onyx,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Puntos de interés indexados por el motor cultural de Ohtli.',
-                                    style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-
                         // Search Bar
                         Container(
                           decoration: BoxDecoration(
                             color: OhtliColors.cardBg,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: OhtliColors.cardBorder),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.04),
+                                color: Colors.black.withValues(alpha: 0.06),
                                 blurRadius: 16,
                                 offset: const Offset(0, 4),
                               ),
@@ -277,7 +243,7 @@ class _PlacesPageState extends State<PlacesPage> {
                             onChanged: (_) => setState(() {}),
                             style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 15),
                             decoration: InputDecoration(
-                              hintText: 'Buscar cafés, museos, rincones, vibras (#bohemio, #cultural)...',
+                              hintText: 'Buscar lugares, colonias, museos, cafés...',
                               hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14),
                               prefixIcon: const Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 22),
                               suffixIcon: _searchController.text.isNotEmpty
@@ -337,7 +303,7 @@ class _PlacesPageState extends State<PlacesPage> {
                               : (screenSize.width < 1150 ? 2 : (screenSize.width < 1600 ? 3 : 4)),
                           crossAxisSpacing: 18,
                           mainAxisSpacing: 18,
-                          mainAxisExtent: 440,
+                          mainAxisExtent: 400,
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
@@ -353,33 +319,31 @@ class _PlacesPageState extends State<PlacesPage> {
                     ),
                 ] else ...[
                   // ================= SECCIÓN 1: "PARA TI" =================
+                  // Horizontal carousel limited to exactly 5 cards, 2x width, NO icon & NO description
                   SliverToBoxAdapter(
-                    child: _buildSectionHeader(
+                    child: _buildCleanSectionHeader(
                       title: 'Para ti',
-                      subtitle: 'Recomendaciones con mayor afinidad a tu vibra e intereses culturales',
-                      icon: Icons.auto_awesome_rounded,
-                      iconColor: OhtliColors.cempasuchil,
                       isMobile: isMobile,
                       controller: _paraTiScrollController,
+                      scrollStep: doubleWidth + 18,
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: SizedBox(
-                      height: 450,
+                      height: isMobile ? 440 : 540,
                       child: ListView.builder(
                         controller: _paraTiScrollController,
                         scrollDirection: Axis.horizontal,
                         padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36),
-                        itemCount: paraTiPois.length,
+                        itemCount: paraTiCards.length,
                         itemBuilder: (context, index) {
-                          final poi = paraTiPois[index];
-                          final affinity = _calculateAffinity(poi, index);
+                          final poi = paraTiCards[index];
                           return Padding(
-                            padding: const EdgeInsets.only(right: 18, top: 4, bottom: 12),
+                            padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
                             child: PoiCard(
                               poi: poi,
-                              width: 320,
-                              matchPercentage: affinity,
+                              width: doubleWidth,
+                              isDoubleWidth: true,
                               onTap: () => _onPoiTapped(poi),
                             ),
                           );
@@ -388,22 +352,21 @@ class _PlacesPageState extends State<PlacesPage> {
                     ),
                   ),
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
                   // ================= SECCIÓN 2: "DESCUBRE NUEVOS LUGARES" =================
+                  // Infinite scroll horizontal of 8 cards in CDMX, 1x width, NO icon & NO description
                   SliverToBoxAdapter(
-                    child: _buildSectionHeader(
+                    child: _buildCleanSectionHeader(
                       title: 'Descubre nuevos lugares',
-                      subtitle: 'Los últimos 8 lugares indexados recientemente en la CDMX',
-                      icon: Icons.travel_explore_rounded,
-                      iconColor: OhtliColors.stormyTeal,
                       isMobile: isMobile,
                       controller: _descubreScrollController,
+                      scrollStep: standardWidth + 18,
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: SizedBox(
-                      height: 450,
+                      height: 420,
                       child: ListView.builder(
                         controller: _descubreScrollController,
                         scrollDirection: Axis.horizontal,
@@ -412,11 +375,10 @@ class _PlacesPageState extends State<PlacesPage> {
                         itemBuilder: (context, index) {
                           final poi = descubrePois[index];
                           return Padding(
-                            padding: const EdgeInsets.only(right: 18, top: 4, bottom: 12),
+                            padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
                             child: PoiCard(
                               poi: poi,
-                              width: 310,
-                              customTag: 'Nuevo CDMX',
+                              width: standardWidth,
                               onTap: () => _onPoiTapped(poi),
                             ),
                           );
@@ -425,17 +387,16 @@ class _PlacesPageState extends State<PlacesPage> {
                     ),
                   ),
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
                   // ================= SECCIÓN 3: "REVISITA TUS LUGARES" =================
+                  // Places user has viewed, 1x width, NO icon & NO description
                   SliverToBoxAdapter(
-                    child: _buildSectionHeader(
+                    child: _buildCleanSectionHeader(
                       title: 'Revisita tus lugares',
-                      subtitle: 'Lugares que has explorado o consultado en Ohtli',
-                      icon: Icons.history_rounded,
-                      iconColor: OhtliColors.xoconostle,
                       isMobile: isMobile,
                       controller: _revisitaScrollController,
+                      scrollStep: standardWidth + 18,
                       showArrows: revisitaPois.isNotEmpty,
                     ),
                   ),
@@ -443,10 +404,10 @@ class _PlacesPageState extends State<PlacesPage> {
                     child: revisitaPois.isEmpty
                         ? Padding(
                             padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
-                            child: _buildEmptyRevisitaBanner(isMobile),
+                            child: _buildEmptyRevisitaBanner(),
                           )
                         : SizedBox(
-                            height: 450,
+                            height: 420,
                             child: ListView.builder(
                               controller: _revisitaScrollController,
                               scrollDirection: Axis.horizontal,
@@ -455,11 +416,10 @@ class _PlacesPageState extends State<PlacesPage> {
                               itemBuilder: (context, index) {
                                 final poi = revisitaPois[index];
                                 return Padding(
-                                  padding: const EdgeInsets.only(right: 18, top: 4, bottom: 12),
+                                  padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
                                   child: PoiCard(
                                     poi: poi,
-                                    width: 310,
-                                    customTag: 'Visto',
+                                    width: standardWidth,
                                     onTap: () => _onPoiTapped(poi),
                                   ),
                                 );
@@ -478,64 +438,39 @@ class _PlacesPageState extends State<PlacesPage> {
     );
   }
 
-  Widget _buildSectionHeader({
+  /// Clean section header without description and without icon
+  Widget _buildCleanSectionHeader({
     required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color iconColor,
     required bool isMobile,
     required ScrollController controller,
+    required double scrollStep,
     bool showArrows = true,
   }) {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         isMobile ? 16 : 36,
-        12,
+        14,
         isMobile ? 16 : 36,
-        12,
+        14,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.outfit(
-                      fontSize: isMobile ? 18 : 22,
-                      fontWeight: FontWeight.w800,
-                      color: OhtliColors.onyx,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.inter(
-                      fontSize: isMobile ? 11.5 : 13,
-                      color: OhtliColors.subtleText,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          Text(
+            title,
+            style: GoogleFonts.outfit(
+              fontSize: isMobile ? 20 : 24,
+              fontWeight: FontWeight.w800,
+              color: OhtliColors.onyx,
+              letterSpacing: -0.2,
+            ),
           ),
           if (!isMobile && showArrows)
             Row(
               children: [
                 IconButton(
-                  onPressed: () => _scrollSection(controller, -340),
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16),
+                  onPressed: () => _scrollSection(controller, -scrollStep),
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 15),
                   color: OhtliColors.onyx,
                   style: IconButton.styleFrom(
                     backgroundColor: OhtliColors.cardBg,
@@ -548,8 +483,8 @@ class _PlacesPageState extends State<PlacesPage> {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  onPressed: () => _scrollSection(controller, 340),
-                  icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onPressed: () => _scrollSection(controller, scrollStep),
+                  icon: const Icon(Icons.arrow_forward_ios_rounded, size: 15),
                   color: OhtliColors.onyx,
                   style: IconButton.styleFrom(
                     backgroundColor: OhtliColors.cardBg,
@@ -567,43 +502,18 @@ class _PlacesPageState extends State<PlacesPage> {
     );
   }
 
-  Widget _buildEmptyRevisitaBanner(bool isMobile) {
+  Widget _buildEmptyRevisitaBanner() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(28),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       decoration: BoxDecoration(
         color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: OhtliColors.cardBorder),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: OhtliColors.xoconostle.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.visibility_outlined, size: 32, color: OhtliColors.xoconostle),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Aún no has explorado lugares',
-                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Los rincones que descubras y abras para consultar sus detalles se guardarán automáticamente aquí para que puedas revisarlos cuando quieras.',
-                  style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: Text(
+        'Los lugares que explores se guardarán aquí automáticamente para que puedas revisarlos cuando quieras.',
+        style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
       ),
     );
   }
@@ -615,38 +525,30 @@ class _PlacesPageState extends State<PlacesPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.search_off_rounded, size: 48, color: OhtliColors.stormyTeal),
-            ),
-            const SizedBox(height: 20),
+            Icon(Icons.search_off_rounded, size: 48, color: OhtliColors.subtleText),
+            const SizedBox(height: 16),
             Text(
               'No encontramos resultados',
-              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
             ),
             const SizedBox(height: 8),
             Text(
-              'Intenta con otra palabra clave como "café", "museo", "arte" o el nombre del lugar.',
-              style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText),
+              'Intenta con otra palabra clave como cafetería, museo o una colonia.',
+              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
+            const SizedBox(height: 16),
+            ElevatedButton(
               onPressed: () {
                 _searchController.clear();
                 setState(() {});
               },
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text('Limpiar Búsqueda'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
+                backgroundColor: OhtliColors.cempasuchil,
+                foregroundColor: Colors.black,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
+              child: const Text('Limpiar Búsqueda'),
             ),
           ],
         ),
@@ -679,6 +581,7 @@ class _PlacesPageState extends State<PlacesPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: OhtliColors.stormyTeal,
                 foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: const Text('Reintentar'),
             ),

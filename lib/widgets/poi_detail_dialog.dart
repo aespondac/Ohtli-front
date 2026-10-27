@@ -66,143 +66,133 @@ class PoiDetailDialog extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header with color banner and title
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
-              decoration: BoxDecoration(
-                color: poi.categoryColor.withValues(alpha: 0.12),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                border: Border(bottom: BorderSide(color: OhtliColors.cardBorder)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
+            // Header image banner
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                  child: AspectRatio(
+                    aspectRatio: isMobile ? 16 / 9 : 21 / 9,
+                    child: Image.network(
+                      poi.imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: poi.categoryColor.withValues(alpha: 0.15),
+                        child: Center(
+                          child: Icon(poi.categoryIcon, size: 48, color: poi.categoryColor),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Gradient overlay
+                Positioned.fill(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: poi.categoryColor.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(poi.categoryIcon, color: poi.categoryColor, size: 28),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: poi.categoryColor,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                poi.categoryDisplay.toUpperCase(),
-                                style: GoogleFonts.inter(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: OhtliColors.innerCardBg,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: OhtliColors.cardBorder),
-                              ),
-                              child: Text(
-                                poi.priceDisplay,
-                                style: GoogleFonts.inter(
-                                  color: OhtliColors.onyx,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            if (poi.hasVector) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.hub_rounded, size: 12, color: Color(0xFF10B981)),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Vector 768d',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: const Color(0xFF10B981),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          poi.name,
-                          style: GoogleFonts.outfit(
-                            fontSize: isMobile ? 20 : 24,
-                            fontWeight: FontWeight.w800,
-                            color: OhtliColors.onyx,
-                            height: 1.2,
-                          ),
-                        ),
-                        if (poi.location.isValid) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on_rounded, size: 14, color: OhtliColors.stormyTeal),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${poi.location.lat.toStringAsFixed(6)}, ${poi.location.lng.toStringAsFixed(6)}',
-                                style: GoogleFonts.firaCode(
-                                  fontSize: 12,
-                                  color: OhtliColors.subtleText,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap: () => _copyToClipboard(
-                                  context,
-                                  '${poi.location.lat}, ${poi.location.lng}',
-                                  'Coordenadas copiadas',
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(2),
-                                  child: Icon(Icons.copy_rounded, size: 14, color: OhtliColors.subtleText),
-                                ),
-                              ),
-                            ],
-                          ),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.3),
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.75),
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                  IconButton(
+                ),
+                // Close button top-right
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.close_rounded, color: OhtliColors.onyx),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
                     style: IconButton.styleFrom(
-                      backgroundColor: OhtliColors.innerCardBg,
+                      backgroundColor: Colors.black.withValues(alpha: 0.5),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
-                ],
-              ),
+                ),
+                // Badges and Title at bottom of banner
+                Positioned(
+                  bottom: 16,
+                  left: 20,
+                  right: 20,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: poi.categoryColor,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              poi.categoryDisplay.toUpperCase(),
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                            ),
+                            child: Text(
+                              poi.priceDisplay,
+                              style: GoogleFonts.inter(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        poi.name,
+                        style: GoogleFonts.outfit(
+                          fontSize: isMobile ? 22 : 26,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on_rounded, size: 14, color: Colors.white70),
+                          const SizedBox(width: 4),
+                          Text(
+                            poi.coloniaAlcaldiaDisplay,
+                            style: GoogleFonts.inter(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(width: 12),
+                          const Icon(Icons.access_time_rounded, size: 13, color: Colors.white70),
+                          const SizedBox(width: 4),
+                          Text(
+                            poi.openingHoursDisplay,
+                            style: GoogleFonts.inter(fontSize: 11.5, color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
 
             // Scrollable Content
