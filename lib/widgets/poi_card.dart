@@ -9,6 +9,9 @@ import 'poi_detail_dialog.dart';
 class PoiCard extends StatefulWidget {
   final Poi poi;
   final VoidCallback? onTap;
+  final VoidCallback? onCreateRoute;
+  final VoidCallback? onToggleSave;
+  final bool isSaved;
   final double? width;
   final double? height;
   final bool isDoubleWidth;
@@ -17,6 +20,9 @@ class PoiCard extends StatefulWidget {
     super.key,
     required this.poi,
     this.onTap,
+    this.onCreateRoute,
+    this.onToggleSave,
+    this.isSaved = false,
     this.width,
     this.height,
     this.isDoubleWidth = false,
@@ -61,7 +67,12 @@ class _PoiCardState extends State<PoiCard> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
-            onTap: widget.onTap ?? () => PoiDetailDialog.show(context, poi),
+            onTap: widget.onTap ?? () => PoiDetailDialog.show(
+              context,
+              poi,
+              isSaved: widget.isSaved,
+              onCreateRoute: widget.onCreateRoute,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -104,7 +115,7 @@ class _PoiCardState extends State<PoiCard> {
                           );
                         },
                       ),
-                      // Subtle gradient overlay for polish
+                      // Subtle gradient overlay for contrast
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -123,6 +134,28 @@ class _PoiCardState extends State<PoiCard> {
                           ),
                         ),
                       ),
+                      // Bookmark toggle button on image
+                      if (widget.onToggleSave != null)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: InkWell(
+                            onTap: widget.onToggleSave,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                widget.isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                                color: widget.isSaved ? OhtliColors.cempasuchil : Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -237,38 +270,135 @@ class _PoiCardState extends State<PoiCard> {
 
                       const SizedBox(height: 14),
 
-                      // Solid Action CTA Button with wide click area & accent color
-                      SizedBox(
-                        width: double.infinity,
-                        height: 40,
-                        child: ElevatedButton(
-                          onPressed: widget.onTap ?? () => PoiDetailDialog.show(context, poi),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: OhtliColors.cempasuchil,
-                            foregroundColor: const Color(0xFF1A120B),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'Ver detalles',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.2,
+                      // CTA Buttons Row: Primary "Crea una ruta" + "Ver detalles"
+                      widget.isDoubleWidth
+                          ? Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: SizedBox(
+                                    height: 40,
+                                    child: ElevatedButton.icon(
+                                      onPressed: widget.onCreateRoute ??
+                                          () => PoiDetailDialog.show(
+                                                context,
+                                                poi,
+                                                isSaved: widget.isSaved,
+                                              ),
+                                      icon: const Icon(Icons.alt_route_rounded, size: 16),
+                                      label: Text(
+                                        'Crea una ruta desde aquí',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: OhtliColors.cempasuchil,
+                                        foregroundColor: const Color(0xFF1A120B),
+                                        elevation: 0,
+                                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Icon(Icons.arrow_forward_rounded, size: 15),
-                            ],
-                          ),
-                        ),
-                      ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  flex: 2,
+                                  child: SizedBox(
+                                    height: 40,
+                                    child: OutlinedButton(
+                                      onPressed: widget.onTap ??
+                                          () => PoiDetailDialog.show(
+                                                context,
+                                                poi,
+                                                isSaved: widget.isSaved,
+                                              ),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: OhtliColors.onyx,
+                                        side: BorderSide(color: OhtliColors.cardBorder),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Detalles',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 38,
+                                  child: ElevatedButton.icon(
+                                    onPressed: widget.onCreateRoute ??
+                                        () => PoiDetailDialog.show(
+                                              context,
+                                              poi,
+                                              isSaved: widget.isSaved,
+                                            ),
+                                    icon: const Icon(Icons.alt_route_rounded, size: 15),
+                                    label: Text(
+                                      'Crear ruta desde aquí',
+                                      style: GoogleFonts.outfit(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: OhtliColors.cempasuchil,
+                                      foregroundColor: const Color(0xFF1A120B),
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 34,
+                                  child: TextButton(
+                                    onPressed: widget.onTap ??
+                                        () => PoiDetailDialog.show(
+                                              context,
+                                              poi,
+                                              isSaved: widget.isSaved,
+                                            ),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: OhtliColors.stormyTeal,
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Ver detalles',
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Icon(Icons.arrow_forward_rounded, size: 13),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                     ],
                   ),
                 ),

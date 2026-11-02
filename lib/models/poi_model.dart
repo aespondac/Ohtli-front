@@ -326,6 +326,66 @@ class Poi {
     return 'Ciudad de México';
   }
 
+  /// Clean narrative for visitor reading without internal technical labels
+  String get cleanNarrative {
+    String text = semanticDescription.isNotEmpty ? semanticDescription : description;
+    if (text.isEmpty && editorialSummary.isNotEmpty) {
+      text = editorialSummary;
+    }
+
+    if (text.contains('Reseña Inmersiva (OEP AI):')) {
+      final parts = text.split('Reseña Inmersiva (OEP AI):');
+      if (parts.length > 1 && parts[1].trim().isNotEmpty) {
+        text = parts[1].trim();
+      }
+    } else if (text.contains('Reseña Inmersiva:')) {
+      final parts = text.split('Reseña Inmersiva:');
+      if (parts.length > 1 && parts[1].trim().isNotEmpty) {
+        text = parts[1].trim();
+      }
+    } else {
+      // Remove lines starting with "Lugar:", "Categoría:", "Costo:", "Vibras", "Contexto"
+      final lines = text.split('\n');
+      final cleanLines = lines.where((l) {
+        final lower = l.trim().toLowerCase();
+        return !lower.startsWith('lugar:') &&
+            !lower.startsWith('categoría:') &&
+            !lower.startsWith('categoria:') &&
+            !lower.startsWith('costo:') &&
+            !lower.startsWith('vibras') &&
+            !lower.startsWith('contexto urbano') &&
+            !lower.startsWith('formalidad') &&
+            !lower.startsWith('seguridad');
+      }).toList();
+      text = cleanLines.join('\n').trim();
+    }
+
+    if (text.isEmpty) {
+      text = 'Un rincón fascinante de la Ciudad de México para descubrir su historia, arquitectura y vida cotidiana.';
+    }
+    return text;
+  }
+
+  String get priceRangeEstimate {
+    if (priceMxnAvg != null && priceMxnAvg! > 0) {
+      return '\$${priceMxnAvg!.toStringAsFixed(0)} MXN aprox.';
+    }
+    switch (priceLevel) {
+      case 0:
+        return 'Entrada libre / Gratis';
+      case 1:
+        return 'Económico (~ \$50 - \$120 MXN)';
+      case 2:
+        return 'Moderado (~ \$150 - \$300 MXN)';
+      case 3:
+        return 'Costoso (~ \$350 - \$600 MXN)';
+      case 4:
+        return 'Exclusivo (+ \$700 MXN)';
+      default:
+        return 'Asequible';
+    }
+  }
+
   String get openingHoursDisplay {
     if (openingHours.isNotEmpty) return openingHours;
     switch (category) {

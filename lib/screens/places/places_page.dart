@@ -7,10 +7,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:uuid/uuid.dart';
 import '../../theme/colors.dart';
 import '../../models/poi_model.dart';
+import '../../models/trip_model.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/poi_detail_dialog.dart';
+import '../trips/trip_editor_page.dart';
 
 class PlacesPage extends StatefulWidget {
   final VoidCallback? onBack;
@@ -30,8 +33,10 @@ class _PlacesPageState extends State<PlacesPage> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _paraTiScrollController = ScrollController();
   final ScrollController _descubreScrollController = ScrollController();
+  final ScrollController _misLugaresScrollController = ScrollController();
   final ScrollController _revisitaScrollController = ScrollController();
 
+  List<String> _savedPoiIds = [];
   List<String> _viewedPoiIds = [];
   List<double> _userTasteVector = [];
   bool _isLoadingUserTaste = true;
@@ -39,6 +44,7 @@ class _PlacesPageState extends State<PlacesPage> {
   @override
   void initState() {
     super.initState();
+    _loadSavedPlaces();
     _loadViewedPlaces();
     _loadUserTasteVector();
   }
@@ -48,8 +54,37 @@ class _PlacesPageState extends State<PlacesPage> {
     _searchController.dispose();
     _paraTiScrollController.dispose();
     _descubreScrollController.dispose();
+    _misLugaresScrollController.dispose();
     _revisitaScrollController.dispose();
     super.dispose();
+  }
+
+  void _loadSavedPlaces() {
+    if (kIsWeb) {
+      try {
+        final saved = html.window.localStorage['ohtli_saved_pois'];
+        if (saved != null && saved.isNotEmpty) {
+          _savedPoiIds = saved.split(',').where((id) => id.trim().isNotEmpty).toList();
+        }
+      } catch (_) {}
+    }
+  }
+
+  void _toggleSavePoi(String poiId) {
+    if (poiId.isEmpty) return;
+    setState(() {
+      if (_savedPoiIds.contains(poiId)) {
+        _savedPoiIds.remove(poiId);
+      } else {
+        _savedPoiIds.insert(0, poiId);
+      }
+    });
+
+    if (kIsWeb) {
+      try {
+        html.window.localStorage['ohtli_saved_pois'] = _savedPoiIds.join(',');
+      } catch (_) {}
+    }
   }
 
   void _loadViewedPlaces() {
@@ -124,7 +159,115 @@ class _PlacesPageState extends State<PlacesPage> {
 
   void _onPoiTapped(Poi poi) {
     _recordPlaceViewed(poi.poiId);
-    PoiDetailDialog.show(context, poi);
+    PoiDetailDialog.show(
+      context,
+      poi,
+      isSaved: _savedPoiIds.contains(poi.poiId),
+      onSaveToggle: (saved) {
+        setState(() {
+          if (saved) {
+            if (!_savedPoiIds.contains(poi.poiId)) _savedPoiIds.insert(0, poi.poiId);
+          } else {
+            _savedPoiIds.remove(poi.poiId);
+          }
+        });
+      },
+      onCreateRoute: () => _createRouteFromPlace(poi),
+    );
+  }
+
+  Future<void> _createRouteFromPlace(Poi poi) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Inicia sesión para crear una ruta desde ${poi.name}.',
+            style: GoogleFonts.inter(color: Colors.white),
+          ),
+          backgroundColor: OhtliColors.stormyTeal,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final tripId = const Uuid().v4();
+      final now = DateTime.now();
+
+      final initialPlace = PlaceSection(
+        id: 'sec_${now.millisecondsSinceEpoch}_0',
+        title: poi.name,
+        description: poi.cleanNarrative,
+        rating: 5,
+        mainPhotoUrl: poi.imageUrl,
+        secondaryPhotoUrls: [],
+        cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),
+        currency: 'MXN',
+      );
+
+      final newTrip = Trip(
+        id: tripId,
+        userId: user.uid,
+        title: 'Ruta desde ${poi.name}',
+        description: 'Itinerario cultural comenzando en ${poi.name}, ${poi.coloniaAlcaldiaDisplay}.',
+        coverUrl: poi.imageUrl,
+        status: 'draft',
+        visibility: 'private',
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final content = TripContent(sections: [initialPlace]);
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('trips')
+          .doc(tripId)
+          .set(newTrip.toMap());
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('trips')
+          .doc(tripId)
+          .collection('details')
+          .doc('content')
+          .set(content.toMap());
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ruta creada. Abriendo editor...',
+              style: GoogleFonts.inter(color: Colors.white),
+            ),
+            backgroundColor: OhtliColors.cempasuchil,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TripEditorPage(trip: newTrip),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al crear la ruta: $e'),
+            backgroundColor: OhtliColors.xoconostle,
+          ),
+        );
+      }
+    }
   }
 
   void _scrollSection(ScrollController controller, double offset) {
@@ -166,7 +309,7 @@ class _PlacesPageState extends State<PlacesPage> {
                     return poi.name.toLowerCase().contains(searchQuery) ||
                         poi.categoryDisplay.toLowerCase().contains(searchQuery) ||
                         poi.description.toLowerCase().contains(searchQuery) ||
-                        poi.semanticDescription.toLowerCase().contains(searchQuery) ||
+                        poi.cleanNarrative.toLowerCase().contains(searchQuery) ||
                         poi.coloniaAlcaldiaDisplay.toLowerCase().contains(searchQuery) ||
                         poi.vibeTags.any((v) => v.toLowerCase().contains(searchQuery));
                   }).toList()
@@ -184,7 +327,15 @@ class _PlacesPageState extends State<PlacesPage> {
             // 2. "Descubre nuevos lugares": 8 cards with latest indexed places, standard (1x) width
             final descubrePois = allPois.take(8).toList();
 
-            // 3. "Revisita tus lugares": places previously viewed, standard (1x) width
+            // 3. "Mis lugares": Lugares que el usuario guardó / marcó como favoritos
+            final misLugaresPois = allPois.where((p) => _savedPoiIds.contains(p.poiId)).toList();
+            misLugaresPois.sort((a, b) {
+              final indexA = _savedPoiIds.indexOf(a.poiId);
+              final indexB = _savedPoiIds.indexOf(b.poiId);
+              return indexA.compareTo(indexB);
+            });
+
+            // 4. "Revisita tus lugares": Historial de lugares que ha consultado
             final revisitaPois = allPois.where((p) => _viewedPoiIds.contains(p.poiId)).toList();
             revisitaPois.sort((a, b) {
               final indexA = _viewedPoiIds.indexOf(a.poiId);
@@ -303,13 +454,17 @@ class _PlacesPageState extends State<PlacesPage> {
                               : (screenSize.width < 1150 ? 2 : (screenSize.width < 1600 ? 3 : 4)),
                           crossAxisSpacing: 18,
                           mainAxisSpacing: 18,
-                          mainAxisExtent: 400,
+                          mainAxisExtent: 440,
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
                             final poi = searchResults[index];
+                            final isSaved = _savedPoiIds.contains(poi.poiId);
                             return PoiCard(
                               poi: poi,
+                              isSaved: isSaved,
+                              onToggleSave: () => _toggleSavePoi(poi.poiId),
+                              onCreateRoute: () => _createRouteFromPlace(poi),
                               onTap: () => _onPoiTapped(poi),
                             );
                           },
@@ -319,7 +474,7 @@ class _PlacesPageState extends State<PlacesPage> {
                     ),
                 ] else ...[
                   // ================= SECCIÓN 1: "PARA TI" =================
-                  // Horizontal carousel limited to exactly 5 cards, 2x width, NO icon & NO description
+                  // Horizontal carousel limited to exactly 5 cards, 2x width
                   SliverToBoxAdapter(
                     child: _buildCleanSectionHeader(
                       title: 'Para ti',
@@ -330,7 +485,7 @@ class _PlacesPageState extends State<PlacesPage> {
                   ),
                   SliverToBoxAdapter(
                     child: SizedBox(
-                      height: isMobile ? 440 : 540,
+                      height: isMobile ? 480 : 540,
                       child: ListView.builder(
                         controller: _paraTiScrollController,
                         scrollDirection: Axis.horizontal,
@@ -338,12 +493,16 @@ class _PlacesPageState extends State<PlacesPage> {
                         itemCount: paraTiCards.length,
                         itemBuilder: (context, index) {
                           final poi = paraTiCards[index];
+                          final isSaved = _savedPoiIds.contains(poi.poiId);
                           return Padding(
                             padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
                             child: PoiCard(
                               poi: poi,
                               width: doubleWidth,
                               isDoubleWidth: true,
+                              isSaved: isSaved,
+                              onToggleSave: () => _toggleSavePoi(poi.poiId),
+                              onCreateRoute: () => _createRouteFromPlace(poi),
                               onTap: () => _onPoiTapped(poi),
                             ),
                           );
@@ -355,7 +514,7 @@ class _PlacesPageState extends State<PlacesPage> {
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
                   // ================= SECCIÓN 2: "DESCUBRE NUEVOS LUGARES" =================
-                  // Infinite scroll horizontal of 8 cards in CDMX, 1x width, NO icon & NO description
+                  // 8 cards in CDMX, 1x width
                   SliverToBoxAdapter(
                     child: _buildCleanSectionHeader(
                       title: 'Descubre nuevos lugares',
@@ -366,7 +525,7 @@ class _PlacesPageState extends State<PlacesPage> {
                   ),
                   SliverToBoxAdapter(
                     child: SizedBox(
-                      height: 420,
+                      height: 440,
                       child: ListView.builder(
                         controller: _descubreScrollController,
                         scrollDirection: Axis.horizontal,
@@ -374,11 +533,15 @@ class _PlacesPageState extends State<PlacesPage> {
                         itemCount: descubrePois.length,
                         itemBuilder: (context, index) {
                           final poi = descubrePois[index];
+                          final isSaved = _savedPoiIds.contains(poi.poiId);
                           return Padding(
                             padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
                             child: PoiCard(
                               poi: poi,
                               width: standardWidth,
+                              isSaved: isSaved,
+                              onToggleSave: () => _toggleSavePoi(poi.poiId),
+                              onCreateRoute: () => _createRouteFromPlace(poi),
                               onTap: () => _onPoiTapped(poi),
                             ),
                           );
@@ -389,8 +552,52 @@ class _PlacesPageState extends State<PlacesPage> {
 
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
-                  // ================= SECCIÓN 3: "REVISITA TUS LUGARES" =================
-                  // Places user has viewed, 1x width, NO icon & NO description
+                  // ================= SECCIÓN 3: "MIS LUGARES" (ANTES DEL HISTORIAL) =================
+                  // Lugares guardados por el usuario
+                  SliverToBoxAdapter(
+                    child: _buildCleanSectionHeader(
+                      title: 'Mis lugares',
+                      isMobile: isMobile,
+                      controller: _misLugaresScrollController,
+                      scrollStep: standardWidth + 18,
+                      showArrows: misLugaresPois.isNotEmpty,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: misLugaresPois.isEmpty
+                        ? Padding(
+                            padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
+                            child: _buildEmptyMisLugaresBanner(),
+                          )
+                        : SizedBox(
+                            height: 440,
+                            child: ListView.builder(
+                              controller: _misLugaresScrollController,
+                              scrollDirection: Axis.horizontal,
+                              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36),
+                              itemCount: misLugaresPois.length,
+                              itemBuilder: (context, index) {
+                                final poi = misLugaresPois[index];
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
+                                  child: PoiCard(
+                                    poi: poi,
+                                    width: standardWidth,
+                                    isSaved: true,
+                                    onToggleSave: () => _toggleSavePoi(poi.poiId),
+                                    onCreateRoute: () => _createRouteFromPlace(poi),
+                                    onTap: () => _onPoiTapped(poi),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                  ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+
+                  // ================= SECCIÓN 4: "REVISITA TUS LUGARES" (HISTORIAL) =================
+                  // Historial de lugares consultados
                   SliverToBoxAdapter(
                     child: _buildCleanSectionHeader(
                       title: 'Revisita tus lugares',
@@ -407,7 +614,7 @@ class _PlacesPageState extends State<PlacesPage> {
                             child: _buildEmptyRevisitaBanner(),
                           )
                         : SizedBox(
-                            height: 420,
+                            height: 440,
                             child: ListView.builder(
                               controller: _revisitaScrollController,
                               scrollDirection: Axis.horizontal,
@@ -415,11 +622,15 @@ class _PlacesPageState extends State<PlacesPage> {
                               itemCount: revisitaPois.length,
                               itemBuilder: (context, index) {
                                 final poi = revisitaPois[index];
+                                final isSaved = _savedPoiIds.contains(poi.poiId);
                                 return Padding(
                                   padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
                                   child: PoiCard(
                                     poi: poi,
                                     width: standardWidth,
+                                    isSaved: isSaved,
+                                    onToggleSave: () => _toggleSavePoi(poi.poiId),
+                                    onCreateRoute: () => _createRouteFromPlace(poi),
                                     onTap: () => _onPoiTapped(poi),
                                   ),
                                 );
@@ -497,6 +708,30 @@ class _PlacesPageState extends State<PlacesPage> {
                 ),
               ],
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyMisLugaresBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: OhtliColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.bookmark_border_rounded, size: 24, color: OhtliColors.cempasuchil),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              'Guarda tus rincones favoritos tocando el ícono de marcador en cualquier tarjeta o modal para tenerlos a mano.',
+              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
+            ),
+          ),
         ],
       ),
     );
