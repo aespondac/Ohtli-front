@@ -196,6 +196,79 @@ class Poi {
     );
   }
 
+  static const Set<String> _blockedPoiIds = {
+    '2005860965',
+    'osm_2005860965',
+  };
+
+  static const Set<String> _genericNames = {
+    '',
+    'lugar',
+    'lugar sin nombre',
+    'sin nombre',
+    'poi',
+    'unnamed',
+    'n/a',
+    'null',
+    'none',
+  };
+
+  static const Set<String> _blockedCategories = {
+    'entrance',
+    'barrier',
+    'parking',
+    'parking_entrance',
+    'parking_space',
+    'toilets',
+    'atm',
+    'bank',
+    'fuel',
+    'waste_basket',
+    'recycling',
+    'bench',
+    'shelter',
+    'telephone',
+    'post_box',
+    'vending_machine',
+    'charging_station',
+    'bicycle_parking',
+    'taxi',
+    'information',
+  };
+
+  static final RegExp _infrastructureNameRegex = RegExp(
+    r'('
+    r'\b(s[oó]lo\s+entrada|only\s+entrance|s[oó]lo\s+salida|only\s+exit|no\s+exit|no\s+entry|sin\s+salida|entrada\s+y\s+salida|staff\s+only)\b|'
+    r'^(entrada|salida|acceso|puerta|port[oó]n|reja|barrera|torniquetes?|caseta|vigilancia|taquillas?|estacionamiento|parking|ba[ñn]os?|sanitarios?|wc|cajero|atm|m[oó]dulo\s+de\s+informaci[oó]n|informaci[oó]n|mapa|letrero|and[eé]n)(\b|\s|:|-|/)|'
+    r'\b(entrada\s+principal|entrada\s+peatonal|entrada\s+vehicular|entrada\s+norte|entrada\s+sur|entrada\s+este|entrada\s+oeste|entrada\s+poniente|entrada\s+oriente|'
+    r'acceso\s+peatonal|acceso\s+vehicular|acceso\s+principal|acceso\s+norte|acceso\s+sur|acceso\s+este|acceso\s+oeste|acceso\s+poniente|acceso\s+oriente|'
+    r'puerta\s+\d+|acceso\s+\d+|entrada\s+\d+|gate\s+\d+|main\s+entrance|pedestrian\s+entrance|vehicle\s+entrance)\b'
+    r')',
+    caseSensitive: false,
+  );
+
+  static bool isValidPoiNameAndId(String name, [String poiId = '', String category = '']) {
+    final cleanId = poiId.trim();
+    if (_blockedPoiIds.contains(cleanId)) return false;
+
+    final cleanName = name.trim();
+    if (cleanName.length < 3) return false;
+    if (_genericNames.contains(cleanName.toLowerCase())) return false;
+    if (_infrastructureNameRegex.hasMatch(cleanName)) return false;
+
+    final cleanCat = category.trim().toLowerCase();
+    if (cleanCat.isNotEmpty && _blockedCategories.contains(cleanCat)) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Determina si este POI corresponde a un recinto cultural/recreativo real
+  /// y NO a un acceso físico perimetral (entrance=yes), puerta o nodo de infraestructura.
+  bool get isValidCulturalPlace {
+    return isValidPoiNameAndId(name, poiId, category);
+  }
+
   static const Map<String, List<String>> _curatedImages = {
     'cafe': [
       'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&h=450&q=80',

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import '../../../theme/colors.dart';
+import '../../../models/poi_model.dart';
 import '../../places/places_page.dart';
 import '../widgets/lab_experiment_shell.dart';
 
@@ -349,7 +350,14 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
         final message = data['message'] ?? '';
 
         if (status == 'completed' && data.containsKey('result')) {
-          final results = data['result']['results'] as List? ?? [];
+          final rawResults = data['result']['results'] as List? ?? [];
+          final results = rawResults.where((r) {
+            if (r is! Map) return false;
+            final id = (r['poi_id'] ?? '').toString();
+            final name = (r['name'] ?? '').toString();
+            final cat = (r['category'] ?? '').toString();
+            return Poi.isValidPoiNameAndId(name, id, cat);
+          }).toList();
           return _buildResults(results);
         }
 

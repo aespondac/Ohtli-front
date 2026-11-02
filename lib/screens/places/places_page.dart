@@ -298,7 +298,10 @@ class _PlacesPageState extends State<PlacesPage> {
             }
 
             final docs = snapshot.data?.docs ?? [];
-            final allPois = docs.map((d) => Poi.fromFirestore(d)).toList();
+            final allPois = docs
+                .map((d) => Poi.fromFirestore(d))
+                .where((poi) => poi.isValidCulturalPlace)
+                .toList();
 
             final searchQuery = _searchController.text.trim().toLowerCase();
             final isSearching = searchQuery.isNotEmpty;
@@ -324,8 +327,8 @@ class _PlacesPageState extends State<PlacesPage> {
             });
             final paraTiCards = paraTiPois.take(5).toList();
 
-            // 2. "Descubre nuevos lugares": 8 cards with latest indexed places, standard (1x) width
-            final descubrePois = allPois.take(8).toList();
+            // 2. "Descubre nuevos lugares": Todos los lugares indexados en la CDMX para scroll horizontal continuo
+            final descubrePois = List<Poi>.from(allPois);
 
             // 3. "Mis lugares": Lugares que el usuario guardó / marcó como favoritos
             final misLugaresPois = allPois.where((p) => _savedPoiIds.contains(p.poiId)).toList();

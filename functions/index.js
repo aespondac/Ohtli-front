@@ -117,6 +117,46 @@ exports.serveTripMeta = functions.https.onRequest(async (req, res) => {
   }
 });
 
+const INFRASTRUCTURE_NAME_REGEX = /(\b(s[oó]lo\s+entrada|only\s+entrance|s[oó]lo\s+salida|only\s+exit|no\s+exit|no\s+entry|sin\s+salida|entrada\s+y\s+salida|staff\s+only)\b|^(entrada|salida|acceso|puerta|port[oó]n|reja|barrera|torniquetes?|caseta|vigilancia|taquillas?|estacionamiento|parking|ba[ñn]os?|sanitarios?|wc|cajero|atm|m[oó]dulo\s+de\s+informaci[oó]n|informaci[oó]n|mapa|letrero|and[eé]n)(\b|\s|:|-|\/)|\b(entrada\s+principal|entrada\s+peatonal|entrada\s+vehicular|acceso\s+peatonal|acceso\s+vehicular|acceso\s+principal|puerta\s+\d+|acceso\s+\d+|entrada\s+\d+|gate\s+\d+|main\s+entrance)\b)/i;
+
+const BLOCKED_POI_IDS = new Set(['2005860965', 'osm_2005860965']);
+const GENERIC_POI_NAMES = new Set(['', 'lugar', 'lugar sin nombre', 'sin nombre', 'poi', 'unnamed', 'n/a', 'null', 'none']);
+
+async function purgeInvalidPoisInLocalFirestore() {
+  const db = admin.firestore();
+  const purged = { pois: [], pois_lab: [] };
+  for (const colName of ['pois', 'pois_lab']) {
+    try {
+      const colRef = db.collection(colName);
+      for (const blockedId of ['osm_2005860965', '2005860965']) {
+        const snap = await colRef.doc(blockedId).get();
+        if (snap.exists) {
+          await colRef.doc(blockedId).delete();
+          purged[colName].push(blockedId);
+        }
+      }
+      const allDocs = await colRef.get();
+      for (const doc of allDocs.docs) {
+        const data = doc.data() || {};
+        const name = String(data.name || '').trim();
+        const tags = data.tags || {};
+        const isInvalidId = BLOCKED_POI_IDS.has(doc.id) || BLOCKED_POI_IDS.has(String(data.poi_id || '').trim());
+        const isInvalidName = name.length < 3 || GENERIC_POI_NAMES.has(name.toLowerCase()) || INFRASTRUCTURE_NAME_REGEX.test(name);
+        const hasEntranceOrBarrier = Boolean(tags.entrance || tags.barrier);
+        if (isInvalidId || isInvalidName || hasEntranceOrBarrier) {
+          await colRef.doc(doc.id).delete();
+          if (!purged[colName].includes(doc.id)) {
+            purged[colName].push(doc.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`Error purging ${colName}:`, err);
+    }
+  }
+  return purged;
+}
+
 exports.apiGateway = functions.https.onRequest(async (req, res) => {
   // Configuración de CORS
   res.set('Access-Control-Allow-Origin', '*');
@@ -126,6 +166,11 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).send('');
     return;
+  }
+
+  let localPurged = null;
+  if (req.path.includes('/recolector/cleanup') || req.path.includes('/recolector/replicate')) {
+    localPurged = await purgeInvalidPoisInLocalFirestore();
   }
 
   // El backend Yollotl Engine está desplegado en Cloud Run / Cloud Functions Gen2
@@ -148,9 +193,21 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
     
     // Copy some relevant headers back
     res.set('Content-Type', fetchResponse.headers.get('Content-Type') || 'application/json');
+    if (localPurged && req.path.includes('/recolector/cleanup')) {
+      try {
+        const parsed = JSON.parse(data);
+        parsed.local_firestore_purged = localPurged;
+        res.status(fetchResponse.status).send(JSON.stringify(parsed));
+        return;
+      } catch (_) {}
+    }
     res.status(fetchResponse.status).send(data);
   } catch (error) {
     console.error('API Gateway Error:', error);
+    if (localPurged) {
+      res.status(200).send({ status: 'local_only_success', local_firestore_purged: localPurged });
+      return;
+    }
     res.status(500).send({ error: 'Gateway Error', details: error.toString() });
   }
 });
