@@ -240,7 +240,7 @@ class _HomePageState extends State<HomePage> {
     if (_currentIndex == 6) {
       return const NotificationsPage();
     }
-    return _buildMainContent(isMobile);
+    return const PlacesPage();
   }
 
   @override
@@ -465,6 +465,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildMainContent(bool isMobile) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
     

@@ -5,6 +5,7 @@ import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
@@ -18,11 +19,13 @@ import '../trips/trip_editor_page.dart';
 class PlacesPage extends StatefulWidget {
   final VoidCallback? onBack;
   final bool showBackButton;
+  final VoidCallback? onLoginClick;
 
   const PlacesPage({
     super.key,
     this.onBack,
     this.showBackButton = false,
+    this.onLoginClick,
   });
 
   @override
@@ -39,7 +42,6 @@ class _PlacesPageState extends State<PlacesPage> {
   List<String> _savedPoiIds = [];
   List<String> _viewedPoiIds = [];
   List<double> _userTasteVector = [];
-  bool _isLoadingUserTaste = true;
 
   @override
   void initState() {
@@ -130,7 +132,7 @@ class _PlacesPageState extends State<PlacesPage> {
       } catch (_) {}
     }
     if (mounted) {
-      setState(() => _isLoadingUserTaste = false);
+      setState(() {});
     }
   }
 
@@ -187,6 +189,13 @@ class _PlacesPageState extends State<PlacesPage> {
           ),
           backgroundColor: OhtliColors.stormyTeal,
           behavior: SnackBarBehavior.floating,
+          action: widget.onLoginClick != null
+              ? SnackBarAction(
+                  label: 'Iniciar sesión',
+                  textColor: OhtliColors.cempasuchil,
+                  onPressed: widget.onLoginClick!,
+                )
+              : null,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
@@ -293,7 +302,7 @@ class _PlacesPageState extends State<PlacesPage> {
               return _buildErrorState(snapshot.error.toString());
             }
 
-            if (snapshot.connectionState == ConnectionState.waiting && _isLoadingUserTaste) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
             }
 
@@ -376,6 +385,32 @@ class _PlacesPageState extends State<PlacesPage> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                        ] else if (FirebaseAuth.instance.currentUser == null) ...[
+                          Row(
+                            children: [
+                              SvgPicture.asset(
+                                'assets/logo.svg',
+                                height: 24,
+                                fit: BoxFit.contain,
+                                colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
+                              ),
+                              const Spacer(),
+                              if (widget.onLoginClick != null)
+                                ElevatedButton(
+                                  onPressed: widget.onLoginClick,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: OhtliColors.stormyTeal,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                                  ),
+                                  child: const Text('Iniciar sesión'),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
                         ],
 
                         // Search Bar

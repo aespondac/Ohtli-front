@@ -82,20 +82,23 @@ jobs:
           channelId: live
           projectId: othli-497404
 
-      # 8. Deploy Firebase Functions (optional/non-blocking)
-      - name: Deploy Firebase Functions
+      # 8. Deploy Firebase Rules & Functions
+      - name: Deploy Firebase Rules and Functions
         continue-on-error: true
         run: |
           npm install -g firebase-tools
+          
+          # Write service account JSON to a temporary file
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_OTHLI_497404 }}' > service_account.json
+          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/service_account.json
+          
+          # Deploy firestore rules to ensure pois security rules are active
+          firebase deploy --only firestore:rules --project=othli-497404 --force || echo "Firestore rules deploy skipped."
           
           # Install dependencies inside functions
           cd functions
           npm ci || npm install
           cd ..
-          
-          # Write service account JSON to a temporary file
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_OTHLI_497404 }}' > service_account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/service_account.json
           
           # Deploy functions using Firebase CLI
           firebase deploy --only functions --project=othli-497404 --force || echo "Functions deploy skipped or not configured."

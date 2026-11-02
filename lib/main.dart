@@ -207,7 +207,7 @@ class MainNavigationController extends StatefulWidget {
 }
 
 class _MainNavigationControllerState extends State<MainNavigationController> {
-  OhtliScreen _currentScreen = OhtliScreen.underConstruction;
+  OhtliScreen _currentScreen = OhtliScreen.places;
   late StreamSubscription<User?> _authSubscription;
   String _oobCode = '';
   String _authMode = '';
@@ -293,7 +293,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       }
     }
 
-    if (_currentScreen == OhtliScreen.underConstruction) {
+    if (_currentScreen == OhtliScreen.places) {
       // Si no fue capturado por subdominios, validamos los parámetros de la URL principal
       if (params.containsKey('mode') && params.containsKey('oobCode')) {
         _authMode = params['mode']!;
@@ -402,7 +402,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _navigateTo(OhtliScreen.labLanding);
         } else if (_currentScreen == OhtliScreen.home ||
             _currentScreen == OhtliScreen.accountManagement) {
-          _navigateTo(OhtliScreen.underConstruction);
+          _navigateTo(OhtliScreen.places);
         }
       }
     });
@@ -472,7 +472,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.home) {
       activeView = HomePage(
         initialIndex: _homeInitialIndex,
-        onLogout: () => _navigateTo(OhtliScreen.underConstruction),
+        onLogout: () => _navigateTo(OhtliScreen.places),
         onNavigateToAccount: () {
           setState(() {
             _homeInitialIndex = 0; // standard reset
@@ -490,7 +490,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         },
         onLogout: () async {
           try {
-            _navigateTo(OhtliScreen.underConstruction);
+            _navigateTo(OhtliScreen.places);
             await FirebaseAuth.instance.signOut();
           } catch (e) {
             print("Error al cerrar sesión: $e");
@@ -567,15 +567,19 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         onBack: () => _navigateTo(OhtliScreen.labsDashboard),
       );
     } else if (_currentScreen == OhtliScreen.places) {
+      final user = FirebaseAuth.instance.currentUser;
       activeView = PlacesPage(
-        showBackButton: true,
-        onBack: () => _navigateTo(OhtliScreen.home),
+        showBackButton: user != null,
+        onBack: user != null ? () => _navigateTo(OhtliScreen.home) : null,
+        onLoginClick: () {
+          _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+        },
       );
     } else if (isMobile) {
       switch (_currentScreen) {
         case OhtliScreen.mobileWelcome:
           activeView = MobileWelcomePage(
-            onBack: () => _navigateTo(OhtliScreen.underConstruction),
+            onBack: () => _navigateTo(OhtliScreen.places),
             onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
             onJoinClick: () => _navigateTo(OhtliScreen.mobileRegister),
           );
@@ -609,7 +613,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       switch (_currentScreen) {
         case OhtliScreen.login:
           activeView = DesktopLoginPage(
-            onBack: () => _navigateTo(OhtliScreen.underConstruction),
+            onBack: () => _navigateTo(OhtliScreen.places),
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
             onLoginSuccess: () {}, // Auth listener handles redirect
             onForgotPasswordClick: () =>
@@ -625,7 +629,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           break;
         default:
           activeView = DesktopLoginPage(
-            onBack: () => _navigateTo(OhtliScreen.underConstruction),
+            onBack: () => _navigateTo(OhtliScreen.places),
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
             onLoginSuccess: () {}, // Auth listener handles redirect
             onForgotPasswordClick: () =>
