@@ -240,7 +240,7 @@ class _HomePageState extends State<HomePage> {
     if (_currentIndex == 6) {
       return const NotificationsPage();
     }
-    return const PlacesPage();
+    return _buildMainContent(isMobile);
   }
 
   @override
