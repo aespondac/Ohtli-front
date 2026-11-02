@@ -772,37 +772,19 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _openInMaps,
-                                icon: const Icon(Icons.map_rounded, size: 16),
-                                label: const Text('Google Maps'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: OhtliColors.onyx,
-                                  side: BorderSide(color: OhtliColors.cardBorder),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              ),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _openInMaps,
+                            icon: const Icon(Icons.map_rounded, size: 16),
+                            label: const Text('Ver en Google Maps'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: OhtliColors.onyx,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              side: BorderSide(color: OhtliColors.cardBorder),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: _toggleSave,
-                              icon: Icon(
-                                _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                                color: _isSaved ? OhtliColors.cempasuchil : OhtliColors.onyx,
-                              ),
-                              tooltip: _isSaved ? 'Guardado' : 'Guardar',
-                              style: IconButton.styleFrom(
-                                backgroundColor: OhtliColors.cardBg,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  side: BorderSide(color: OhtliColors.cardBorder),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ],
                     )
@@ -818,23 +800,6 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                             side: BorderSide(color: OhtliColors.cardBorder),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // Quick Save toggle
-                        IconButton(
-                          onPressed: _toggleSave,
-                          icon: Icon(
-                            _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                            color: _isSaved ? OhtliColors.cempasuchil : OhtliColors.onyx,
-                          ),
-                          tooltip: _isSaved ? 'Guardado en Mis lugares' : 'Guardar en Mis lugares',
-                          style: IconButton.styleFrom(
-                            backgroundColor: OhtliColors.cardBg,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: OhtliColors.cardBorder),
-                            ),
                           ),
                         ),
                         const Spacer(),

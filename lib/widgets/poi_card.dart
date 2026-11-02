@@ -270,135 +270,38 @@ class _PoiCardState extends State<PoiCard> {
 
                       const SizedBox(height: 14),
 
-                      // CTA Buttons Row: Primary "Crea una ruta" + "Ver detalles"
-                      widget.isDoubleWidth
-                          ? Row(
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: SizedBox(
-                                    height: 40,
-                                    child: ElevatedButton.icon(
-                                      onPressed: widget.onCreateRoute ??
-                                          () => PoiDetailDialog.show(
-                                                context,
-                                                poi,
-                                                isSaved: widget.isSaved,
-                                              ),
-                                      icon: const Icon(Icons.alt_route_rounded, size: 16),
-                                      label: Text(
-                                        'Crea una ruta desde aquí',
-                                        style: GoogleFonts.outfit(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: OhtliColors.cempasuchil,
-                                        foregroundColor: const Color(0xFF1A120B),
-                                        elevation: 0,
-                                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                    ),
+                      // CTA Button: "Crear ruta desde aquí"
+                      SizedBox(
+                        width: double.infinity,
+                        height: 40,
+                        child: ElevatedButton.icon(
+                          onPressed: widget.onCreateRoute ??
+                              () => PoiDetailDialog.show(
+                                    context,
+                                    poi,
+                                    isSaved: widget.isSaved,
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  flex: 2,
-                                  child: SizedBox(
-                                    height: 40,
-                                    child: OutlinedButton(
-                                      onPressed: widget.onTap ??
-                                          () => PoiDetailDialog.show(
-                                                context,
-                                                poi,
-                                                isSaved: widget.isSaved,
-                                              ),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: OhtliColors.onyx,
-                                        side: BorderSide(color: OhtliColors.cardBorder),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'Detalles',
-                                        style: GoogleFonts.outfit(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Column(
-                              children: [
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 38,
-                                  child: ElevatedButton.icon(
-                                    onPressed: widget.onCreateRoute ??
-                                        () => PoiDetailDialog.show(
-                                              context,
-                                              poi,
-                                              isSaved: widget.isSaved,
-                                            ),
-                                    icon: const Icon(Icons.alt_route_rounded, size: 15),
-                                    label: Text(
-                                      'Crear ruta desde aquí',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: OhtliColors.cempasuchil,
-                                      foregroundColor: const Color(0xFF1A120B),
-                                      elevation: 0,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 34,
-                                  child: TextButton(
-                                    onPressed: widget.onTap ??
-                                        () => PoiDetailDialog.show(
-                                              context,
-                                              poi,
-                                              isSaved: widget.isSaved,
-                                            ),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: OhtliColors.stormyTeal,
-                                      padding: EdgeInsets.zero,
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          'Ver detalles',
-                                          style: GoogleFonts.outfit(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Icon(Icons.arrow_forward_rounded, size: 13),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          icon: const Icon(Icons.alt_route_rounded, size: 16),
+                          label: Text(
+                            widget.isDoubleWidth
+                                ? 'Crea una ruta desde este punto'
+                                : 'Crear ruta desde aquí',
+                            style: GoogleFonts.outfit(
+                              fontSize: widget.isDoubleWidth ? 13.5 : 12.5,
+                              fontWeight: FontWeight.w800,
                             ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: OhtliColors.cempasuchil,
+                            foregroundColor: const Color(0xFF1A120B),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
