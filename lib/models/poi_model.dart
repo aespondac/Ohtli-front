@@ -98,8 +98,9 @@ class Poi {
   factory Poi.fromMap(Map<String, dynamic> data, [String? fallbackId]) {
     final locData = data['location'];
     PoiLocation loc;
-    if (locData is Map<String, dynamic>) {
-      loc = PoiLocation.fromMap(locData);
+    if (locData is Map) {
+      final m = Map<String, dynamic>.from(locData);
+      loc = PoiLocation.fromMap(m);
     } else if (locData is GeoPoint) {
       loc = PoiLocation(lat: locData.latitude, lng: locData.longitude);
     } else {

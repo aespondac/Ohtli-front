@@ -319,6 +319,7 @@ class _PlacesPageState extends State<PlacesPage> {
             final searchResults = isSearching
                 ? allPois.where((poi) {
                     return poi.name.toLowerCase().contains(searchQuery) ||
+                        poi.poiId.toLowerCase().contains(searchQuery) ||
                         poi.categoryDisplay.toLowerCase().contains(searchQuery) ||
                         poi.description.toLowerCase().contains(searchQuery) ||
                         poi.cleanNarrative.toLowerCase().contains(searchQuery) ||
