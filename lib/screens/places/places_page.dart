@@ -1,9 +1,11 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
 import 'dart:math' as math;
+import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -34,6 +36,7 @@ class PlacesPage extends StatefulWidget {
 
 class _PlacesPageState extends State<PlacesPage> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _paraTiScrollController = ScrollController();
   final ScrollController _descubreScrollController = ScrollController();
   final ScrollController _misLugaresScrollController = ScrollController();
@@ -43,22 +46,100 @@ class _PlacesPageState extends State<PlacesPage> {
   List<String> _viewedPoiIds = [];
   List<double> _userTasteVector = [];
 
+  bool _isLoadingPois = true;
+  String? _poisError;
+  List<Poi> _allPois = [];
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
     _loadSavedPlaces();
     _loadViewedPlaces();
     _loadUserTasteVector();
+    _fetchPois();
+
+    _searchController.addListener(() {
+      final q = _searchController.text.trim().toLowerCase();
+      if (q != _searchQuery) {
+        setState(() {
+          _searchQuery = q;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _paraTiScrollController.dispose();
     _descubreScrollController.dispose();
     _misLugaresScrollController.dispose();
     _revisitaScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchPois({bool forceRefresh = false}) async {
+    if (!mounted) return;
+    setState(() {
+      if (_allPois.isEmpty) _isLoadingPois = true;
+      _poisError = null;
+    });
+
+    try {
+      const apiUrl = String.fromEnvironment(
+        'yollotlApiUrl',
+        defaultValue: 'https://api.ohtli.quest',
+      );
+      final uri = Uri.parse('$apiUrl/v1/pois${forceRefresh ? "?refresh=true" : ""}');
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map && decoded['pois'] is List) {
+          final list = (decoded['pois'] as List)
+              .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
+              .where((p) => p.isValidCulturalPlace)
+              .toList();
+
+          if (list.isNotEmpty && mounted) {
+            setState(() {
+              _allPois = list;
+              _isLoadingPois = false;
+            });
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching POIs from Yollotl Engine API: $e. Fallback to Firestore.');
+    }
+
+    // Fallback de contingencia a Firestore
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('pois').get();
+      final list = snapshot.docs
+          .map((d) => Poi.fromFirestore(d))
+          .where((p) => p.isValidCulturalPlace)
+          .toList();
+
+      if (mounted) {
+        setState(() {
+          _allPois = list;
+          _isLoadingPois = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPois = false;
+          if (_allPois.isEmpty) {
+            _poisError = e.toString();
+          }
+        });
+      }
+    }
   }
 
   void _loadSavedPlaces() {
@@ -292,171 +373,176 @@ class _PlacesPageState extends State<PlacesPage> {
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 768;
 
+    if (_isLoadingPois && _allPois.isEmpty) {
+      return Scaffold(
+        backgroundColor: OhtliColors.cloudDancer,
+        body: const Center(
+          child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+        ),
+      );
+    }
+
+    if (_poisError != null && _allPois.isEmpty) {
+      return Scaffold(
+        backgroundColor: OhtliColors.cloudDancer,
+        body: SafeArea(
+          child: _buildErrorState(_poisError!),
+        ),
+      );
+    }
+
+    final allPois = _allPois;
+    final isSearching = _searchQuery.isNotEmpty;
+
+    // Search filter
+    final searchResults = isSearching
+        ? allPois.where((poi) {
+            return poi.name.toLowerCase().contains(_searchQuery) ||
+                poi.poiId.toLowerCase().contains(_searchQuery) ||
+                poi.categoryDisplay.toLowerCase().contains(_searchQuery) ||
+                poi.description.toLowerCase().contains(_searchQuery) ||
+                poi.cleanNarrative.toLowerCase().contains(_searchQuery) ||
+                poi.coloniaAlcaldiaDisplay.toLowerCase().contains(_searchQuery) ||
+                poi.vibeTags.any((v) => v.toLowerCase().contains(_searchQuery));
+          }).toList()
+        : <Poi>[];
+
+    // 1. "Para ti": Exactly 5 cards with highest affinity, double width (2x)
+    final paraTiPois = List<Poi>.from(allPois);
+    paraTiPois.sort((a, b) {
+      final scoreA = _calculateAffinity(a, 0);
+      final scoreB = _calculateAffinity(b, 1);
+      return scoreB.compareTo(scoreA);
+    });
+    final paraTiCards = paraTiPois.take(5).toList();
+
+    // 2. "Descubre nuevos lugares": Todos los lugares indexados en la CDMX para scroll horizontal continuo
+    final descubrePois = List<Poi>.from(allPois);
+
+    // 3. "Mis lugares": Lugares que el usuario guardó / marcó como favoritos
+    final misLugaresPois = allPois.where((p) => _savedPoiIds.contains(p.poiId)).toList();
+    misLugaresPois.sort((a, b) {
+      final indexA = _savedPoiIds.indexOf(a.poiId);
+      final indexB = _savedPoiIds.indexOf(b.poiId);
+      return indexA.compareTo(indexB);
+    });
+
+    // 4. "Revisita tus lugares": Historial de lugares que ha consultado
+    final revisitaPois = allPois.where((p) => _viewedPoiIds.contains(p.poiId)).toList();
+    revisitaPois.sort((a, b) {
+      final indexA = _viewedPoiIds.indexOf(a.poiId);
+      final indexB = _viewedPoiIds.indexOf(b.poiId);
+      return indexA.compareTo(indexB);
+    });
+
+    // Card sizing
+    final standardWidth = 280.0;
+    final doubleWidth = isMobile ? math.min(560.0, screenSize.width - 48) : 560.0;
+
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('pois').snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return _buildErrorState(snapshot.error.toString());
-            }
-
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
-            }
-
-            final docs = snapshot.data?.docs ?? [];
-            final allPois = docs
-                .map((d) => Poi.fromFirestore(d))
-                .where((poi) => poi.isValidCulturalPlace)
-                .toList();
-
-            final searchQuery = _searchController.text.trim().toLowerCase();
-            final isSearching = searchQuery.isNotEmpty;
-
-            // Search filter
-            final searchResults = isSearching
-                ? allPois.where((poi) {
-                    return poi.name.toLowerCase().contains(searchQuery) ||
-                        poi.poiId.toLowerCase().contains(searchQuery) ||
-                        poi.categoryDisplay.toLowerCase().contains(searchQuery) ||
-                        poi.description.toLowerCase().contains(searchQuery) ||
-                        poi.cleanNarrative.toLowerCase().contains(searchQuery) ||
-                        poi.coloniaAlcaldiaDisplay.toLowerCase().contains(searchQuery) ||
-                        poi.vibeTags.any((v) => v.toLowerCase().contains(searchQuery));
-                  }).toList()
-                : <Poi>[];
-
-            // 1. "Para ti": Exactly 5 cards with highest affinity, double width (2x)
-            final paraTiPois = List<Poi>.from(allPois);
-            paraTiPois.sort((a, b) {
-              final scoreA = _calculateAffinity(a, 0);
-              final scoreB = _calculateAffinity(b, 1);
-              return scoreB.compareTo(scoreA);
-            });
-            final paraTiCards = paraTiPois.take(5).toList();
-
-            // 2. "Descubre nuevos lugares": Todos los lugares indexados en la CDMX para scroll horizontal continuo
-            final descubrePois = List<Poi>.from(allPois);
-
-            // 3. "Mis lugares": Lugares que el usuario guardó / marcó como favoritos
-            final misLugaresPois = allPois.where((p) => _savedPoiIds.contains(p.poiId)).toList();
-            misLugaresPois.sort((a, b) {
-              final indexA = _savedPoiIds.indexOf(a.poiId);
-              final indexB = _savedPoiIds.indexOf(b.poiId);
-              return indexA.compareTo(indexB);
-            });
-
-            // 4. "Revisita tus lugares": Historial de lugares que ha consultado
-            final revisitaPois = allPois.where((p) => _viewedPoiIds.contains(p.poiId)).toList();
-            revisitaPois.sort((a, b) {
-              final indexA = _viewedPoiIds.indexOf(a.poiId);
-              final indexB = _viewedPoiIds.indexOf(b.poiId);
-              return indexA.compareTo(indexB);
-            });
-
-            // Card sizing
-            final standardWidth = 280.0;
-            final doubleWidth = isMobile ? math.min(560.0, screenSize.width - 48) : 560.0;
-
-            return CustomScrollView(
-              slivers: [
-                // Top Search Bar (Clean and direct)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      isMobile ? 16 : 36,
-                      isMobile ? 16 : 28,
-                      isMobile ? 16 : 36,
-                      20,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (widget.showBackButton && widget.onBack != null) ...[
-                          TextButton.icon(
-                            onPressed: widget.onBack,
-                            icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                            label: const Text('Volver'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: OhtliColors.stormyTeal,
-                              padding: EdgeInsets.zero,
-                              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ] else if (FirebaseAuth.instance.currentUser == null) ...[
-                          Row(
-                            children: [
-                              SvgPicture.asset(
-                                'assets/logo.svg',
-                                height: 24,
-                                fit: BoxFit.contain,
-                                colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-                              ),
-                              const Spacer(),
-                              if (widget.onLoginClick != null)
-                                ElevatedButton(
-                                  onPressed: widget.onLoginClick,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: OhtliColors.stormyTeal,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
-                                  ),
-                                  child: const Text('Iniciar sesión'),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Search Bar
-                        Container(
-                          decoration: BoxDecoration(
-                            color: OhtliColors.cardBg,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: OhtliColors.cardBorder),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.06),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: (_) => setState(() {}),
-                            style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 15),
-                            decoration: InputDecoration(
-                              hintText: 'Buscar lugares, colonias, museos, cafés...',
-                              hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14),
-                              prefixIcon: const Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 22),
-                              suffixIcon: _searchController.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear_rounded, size: 20),
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        setState(() {});
-                                      },
-                                    )
-                                  : null,
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+        child: CustomScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          slivers: [
+            // Top Search Bar (Clean and direct)
+            SliverToBoxAdapter(
+              key: const ValueKey('places_top_bar'),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  isMobile ? 16 : 36,
+                  isMobile ? 16 : 28,
+                  isMobile ? 16 : 36,
+                  20,
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.showBackButton && widget.onBack != null) ...[
+                      TextButton.icon(
+                        onPressed: widget.onBack,
+                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                        label: const Text('Volver'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: OhtliColors.stormyTeal,
+                          padding: EdgeInsets.zero,
+                          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ] else if (FirebaseAuth.instance.currentUser == null) ...[
+                      Row(
+                        children: [
+                          SvgPicture.asset(
+                            'assets/logo.svg',
+                            height: 24,
+                            fit: BoxFit.contain,
+                            colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
+                          ),
+                          const Spacer(),
+                          if (widget.onLoginClick != null)
+                            ElevatedButton(
+                              onPressed: widget.onLoginClick,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: OhtliColors.stormyTeal,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                              ),
+                              child: const Text('Iniciar sesión'),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                    ],
 
-                // If user is searching, display Search Results Grid
-                if (isSearching) ...[
+                    // Search Bar
+                    Container(
+                      key: const ValueKey('places_search_box'),
+                      decoration: BoxDecoration(
+                        color: OhtliColors.cardBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: OhtliColors.cardBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: TextField(
+                        key: const ValueKey('places_search_field'),
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 15),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar lugares, colonias, museos, cafés...',
+                          hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14),
+                          prefixIcon: const Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 22),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded, size: 20),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _searchFocusNode.requestFocus();
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // If user is searching, display Search Results Grid
+            if (isSearching) ...[
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
@@ -681,11 +767,9 @@ class _PlacesPageState extends State<PlacesPage> {
                   const SliverToBoxAdapter(child: SizedBox(height: 60)),
                 ],
               ],
-            );
-          },
-        ),
-      ),
-    );
+            ),
+          ),
+        );
   }
 
   /// Clean section header without description and without icon
@@ -851,7 +935,7 @@ class _PlacesPageState extends State<PlacesPage> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () => setState(() {}),
+              onPressed: () => _fetchPois(forceRefresh: true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: OhtliColors.stormyTeal,
                 foregroundColor: Colors.white,
