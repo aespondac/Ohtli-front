@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
@@ -32,7 +33,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
   bool _obscurePassword = true;
   bool _isGoogleHovering = false;
   bool _isSubmitHovering = false;
-  bool _rememberSession = false;
+  bool _rememberSession = true;
   bool _isLoading = false;
 
   @override
@@ -130,16 +131,14 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
         googleProvider,
       );
 
-      // Initialize/verify user document in Cloud Firestore with restore support
+      // Initialize/verify user document in Cloud Firestore in background
       final user = credential.user;
       if (user != null) {
-        try {
-          await UserProfileHelper.syncAndRestoreProfile(user);
-        } catch (fsError) {
+        unawaited(UserProfileHelper.syncAndRestoreProfile(user).catchError((fsError) {
           print(
             "Error checking/initializing Firestore user document upon Google Sign In: $fsError",
           );
-        }
+        }));
       }
 
       if (mounted) {

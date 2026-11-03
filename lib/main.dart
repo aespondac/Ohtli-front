@@ -92,6 +92,15 @@ void main() async {
     } catch (e) {
       print("Firestore persistence already enabled or not supported: $e");
     }
+
+    // Ensure default Firebase Auth persistence on Web is LOCAL (IndexedDB)
+    if (kIsWeb) {
+      try {
+        await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      } catch (e) {
+        print("Firebase Auth persistence initialization error: $e");
+      }
+    }
   } catch (e) {
     print("Firebase initialization error: $e");
   }
@@ -335,68 +344,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       }
 
       if (user != null) {
-        // If the user signed in through Labs Waitlist, DO NOT create an app profile.
-        // Waitlist-specific sync logic is handled directly in LabWaitlistDialog.
-        if (_currentScreen != OhtliScreen.labLanding && _currentScreen != OhtliScreen.apiLanding) {
-          try {
-            await UserProfileHelper.syncAndRestoreProfile(user);
-          } catch (e) {
-            print("Error syncing profile in main auth state listener: $e");
-          }
-        }
-
-        if (_currentScreen == OhtliScreen.labLanding) {
-          _navigateTo(OhtliScreen.labsDashboard);
-        } else if (_intentLabs) {
-          _intentLabs = false;
-          _navigateTo(OhtliScreen.labsDashboard);
-        } else if (_currentScreen != OhtliScreen.home &&
-            _currentScreen != OhtliScreen.authAction &&
-            _currentScreen != OhtliScreen.accountManagement &&
-            _currentScreen != OhtliScreen.publicViewer &&
-            _currentScreen != OhtliScreen.labsDashboard &&
-            _currentScreen != OhtliScreen.apiLanding &&
-            _currentScreen != OhtliScreen.termsAndConditions &&
-            _currentScreen != OhtliScreen.labsTermsAndConditions &&
-            _currentScreen != OhtliScreen.labsOsrm &&
-            _currentScreen != OhtliScreen.labsAgents &&
-            _currentScreen != OhtliScreen.labsApis &&
-            _currentScreen != OhtliScreen.labsRecolector &&
-            _currentScreen != OhtliScreen.labsTasteVector &&
-            _currentScreen != OhtliScreen.places &&
-            _currentScreen != OhtliScreen.onboarding) {
-          
-          // Verificar si el usuario ya completó el onboarding y cuenta con su taste_vector (768d)
-          try {
-            final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-            final userData = userDoc.data();
-            final rawVector = userData != null ? userData['taste_vector'] : null;
-            bool hasTasteVector = rawVector is List && rawVector.isNotEmpty;
-            final bool flagDone = userData != null && (userData['onboarding_completed'] == true);
-
-            // Si completó el wizard antes pero taste_vector quedó en null, sintetizarlo y guardarlo
-            if (flagDone && !hasTasteVector && userData['cultural_profile'] is Map) {
-              try {
-                final vec = await OnboardingWizardPage.synthesizeAndSaveProfile(
-                  user.uid,
-                  Map<String, dynamic>.from(userData['cultural_profile'] as Map),
-                );
-                hasTasteVector = vec.isNotEmpty;
-              } catch (backfillErr) {
-                print("Error backfilling taste_vector: $backfillErr");
-              }
-            }
-
-            if (!flagDone || !hasTasteVector) {
-              _navigateTo(OhtliScreen.onboarding);
-            } else {
-              _navigateTo(OhtliScreen.home);
-            }
-          } catch (e) {
-            print("Error checking onboarding status: $e");
-            _navigateTo(OhtliScreen.home);
-          }
-        }
+        await _handlePostAuthRedirect(user);
       } else {
         if (_currentScreen == OhtliScreen.labsDashboard) {
           _navigateTo(OhtliScreen.labLanding);
@@ -406,6 +354,84 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         }
       }
     });
+  }
+
+  void _onAuthSuccess() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _handlePostAuthRedirect(user);
+    } else {
+      _navigateTo(OhtliScreen.home);
+    }
+  }
+
+  Future<void> _handlePostAuthRedirect(User user) async {
+    // 1. Sincronizar perfil en segundo plano sin bloquear la experiencia de navegación del usuario
+    if (_currentScreen != OhtliScreen.labLanding && _currentScreen != OhtliScreen.apiLanding) {
+      unawaited(UserProfileHelper.syncAndRestoreProfile(user).catchError((e) {
+        print("Error syncing profile in background: $e");
+      }));
+    }
+
+    if (_currentScreen == OhtliScreen.labLanding) {
+      _navigateTo(OhtliScreen.labsDashboard);
+      return;
+    } else if (_intentLabs) {
+      _intentLabs = false;
+      _navigateTo(OhtliScreen.labsDashboard);
+      return;
+    }
+
+    // Pantallas donde la sesión autenticada se mantiene sin forzar redirección
+    if (_currentScreen == OhtliScreen.home ||
+        _currentScreen == OhtliScreen.authAction ||
+        _currentScreen == OhtliScreen.accountManagement ||
+        _currentScreen == OhtliScreen.publicViewer ||
+        _currentScreen == OhtliScreen.labsDashboard ||
+        _currentScreen == OhtliScreen.apiLanding ||
+        _currentScreen == OhtliScreen.termsAndConditions ||
+        _currentScreen == OhtliScreen.labsTermsAndConditions ||
+        _currentScreen == OhtliScreen.labsOsrm ||
+        _currentScreen == OhtliScreen.labsAgents ||
+        _currentScreen == OhtliScreen.labsApis ||
+        _currentScreen == OhtliScreen.labsRecolector ||
+        _currentScreen == OhtliScreen.labsTasteVector ||
+        _currentScreen == OhtliScreen.onboarding) {
+      return;
+    }
+
+    // 2. Verificar si el usuario ya completó el onboarding con timeout para evitar bloqueos
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get()
+          .timeout(const Duration(seconds: 4));
+      final userData = userDoc.data();
+      final rawVector = userData != null ? userData['taste_vector'] : null;
+      bool hasTasteVector = rawVector is List && rawVector.isNotEmpty;
+      final bool flagDone = userData != null && (userData['onboarding_completed'] == true);
+
+      // Si completó el wizard antes pero taste_vector quedó en null, sintetizarlo en background
+      if (flagDone && !hasTasteVector && userData['cultural_profile'] is Map) {
+        unawaited(OnboardingWizardPage.synthesizeAndSaveProfile(
+          user.uid,
+          Map<String, dynamic>.from(userData['cultural_profile'] as Map),
+        ).catchError((backfillErr) {
+          print("Error backfilling taste_vector: $backfillErr");
+          return <double>[];
+        }));
+      }
+
+      if (!flagDone) {
+        _navigateTo(OhtliScreen.onboarding);
+      } else {
+        _navigateTo(OhtliScreen.home);
+      }
+    } catch (e) {
+      print("Error or timeout checking onboarding status: $e");
+      _navigateTo(OhtliScreen.home);
+    }
   }
 
   @override
@@ -588,7 +614,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = MobileLoginPage(
             onBack: () => _navigateTo(OhtliScreen.mobileWelcome),
             onRegisterClick: () => _navigateTo(OhtliScreen.mobileRegister),
-            onLoginSuccess: () {}, // Auth listener handles redirect
+            onLoginSuccess: _onAuthSuccess,
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );
@@ -597,14 +623,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = MobileRegisterPage(
             onBack: () => _navigateTo(OhtliScreen.mobileLogin),
             onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
-            onRegisterSuccess: () {}, // Auth listener handles redirect
+            onRegisterSuccess: _onAuthSuccess,
           );
           break;
         default:
           activeView = MobileLoginPage(
             onBack: () => _navigateTo(OhtliScreen.mobileWelcome),
             onRegisterClick: () => _navigateTo(OhtliScreen.mobileRegister),
-            onLoginSuccess: () {}, // Auth listener handles redirect
+            onLoginSuccess: _onAuthSuccess,
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );
@@ -615,7 +641,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = DesktopLoginPage(
             onBack: () => _navigateTo(OhtliScreen.underConstruction),
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
-            onLoginSuccess: () {}, // Auth listener handles redirect
+            onLoginSuccess: _onAuthSuccess,
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );
@@ -624,14 +650,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           activeView = DesktopRegisterPage(
             onBack: () => _navigateTo(OhtliScreen.login),
             onLoginClick: () => _navigateTo(OhtliScreen.login),
-            onRegisterSuccess: () {}, // Auth listener handles redirect
+            onRegisterSuccess: _onAuthSuccess,
           );
           break;
         default:
           activeView = DesktopLoginPage(
             onBack: () => _navigateTo(OhtliScreen.underConstruction),
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
-            onLoginSuccess: () {}, // Auth listener handles redirect
+            onLoginSuccess: _onAuthSuccess,
             onForgotPasswordClick: () =>
                 _navigateTo(OhtliScreen.forgotPassword),
           );

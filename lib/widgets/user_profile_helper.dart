@@ -14,7 +14,7 @@ class UserProfileHelper {
       final response = await html.HttpRequest.request(
         url,
         responseType: 'arraybuffer',
-      );
+      ).timeout(const Duration(seconds: 3));
       final responseBuffer = response.response as ByteBuffer;
       return responseBuffer.asUint8List();
     } catch (e) {

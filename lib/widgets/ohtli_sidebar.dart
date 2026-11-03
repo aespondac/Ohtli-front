@@ -56,7 +56,6 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
   bool _isHoveringMisViajes = false;
   bool _isHoveringPerfil = false;
   bool _isHoveringAmigos = false;
-  bool _isHoveringLogros = false;
   bool _isHoveringLugares = false;
   bool _isHoveringNotificaciones = false;
   bool _isHoveringLogout = false;
@@ -484,14 +483,6 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
             index: 3,
             isHovered: _isHoveringAmigos,
             onHover: (hovered) => setState(() => _isHoveringAmigos = hovered),
-          ),
-          _buildSidebarItem(
-            icon: Icons.emoji_events_outlined,
-            activeIcon: Icons.emoji_events,
-            label: 'Logros',
-            index: 4,
-            isHovered: _isHoveringLogros,
-            onHover: (hovered) => setState(() => _isHoveringLogros = hovered),
           ),
           _buildSidebarItem(
             icon: Icons.place_outlined,

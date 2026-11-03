@@ -378,16 +378,13 @@ class _HomePageState extends State<HomePage> {
                   ? 1
                   : (_currentIndex == 0
                       ? 2
-                      : (_currentIndex == 4
-                          ? 3
-                          : (_currentIndex == 5 ? 4 : 2)))),
+                      : (_currentIndex == 5 ? 3 : 2))),
           onTap: (index) {
             setState(() {
               if (index == 0) _currentIndex = 1; // Mis Viajes
               if (index == 1) _currentIndex = 2; // Perfil
               if (index == 2) _currentIndex = 0; // Explorar
-              if (index == 3) _currentIndex = 4; // Logros
-              if (index == 4) _currentIndex = 5; // Lugares
+              if (index == 3) _currentIndex = 5; // Lugares
             });
           },
           backgroundColor: colorSidebar,
@@ -427,11 +424,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               label: 'Explorar',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.emoji_events_outlined),
-              activeIcon: Icon(Icons.emoji_events),
-              label: 'Logros',
             ),
             const BottomNavigationBarItem(
               icon: Icon(Icons.place_outlined),
