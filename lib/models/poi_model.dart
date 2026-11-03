@@ -161,14 +161,20 @@ class Poi {
     final addr = (data['address'] ?? data['direccion'] ?? data['colonia'] ?? '').toString();
     final schedule = (data['opening_hours'] ?? data['horario'] ?? data['schedule'] ?? '').toString();
 
+    final poiName = (data['name'] ?? 'Lugar sin nombre').toString();
+    final poiCat = (data['category'] ?? 'general').toString().toLowerCase();
+    final rawPriceLvl = (data['price_level'] as num?)?.toInt() ?? 1;
+    final rawPriceMxn = (data['price_mxn_avg'] as num?)?.toDouble();
+    final resolvedPriceLvl = inferPriceLevel(poiName, poiCat, rawPriceLvl, rawPriceMxn);
+
     return Poi(
       poiId: (data['poi_id'] ?? fallbackId ?? '').toString(),
-      name: (data['name'] ?? 'Lugar sin nombre').toString(),
-      category: (data['category'] ?? 'general').toString().toLowerCase(),
+      name: poiName,
+      category: poiCat,
       subcategories: subcats,
       location: loc,
-      priceLevel: (data['price_level'] as num?)?.toInt() ?? 1,
-      priceMxnAvg: (data['price_mxn_avg'] as num?)?.toDouble(),
+      priceLevel: resolvedPriceLvl,
+      priceMxnAvg: rawPriceMxn,
       description: (data['description'] ?? '').toString(),
       editorialSummary: (data['editorial_summary'] ?? '').toString(),
       semanticDescription: (data['semantic_description'] ?? '').toString(),
@@ -195,6 +201,81 @@ class Poi {
       hasVector: hasEmbedding || vectorList.isNotEmpty,
       embeddingVector: vectorList,
     );
+  }
+
+  /// Corrige el fallback histórico donde price_level era siempre 1 cuando no había price_mxn_avg.
+  static int inferPriceLevel(String name, String category, int rawLevel, double? priceMxnAvg) {
+    if (rawLevel != 1 || priceMxnAvg != null) {
+      return rawLevel.clamp(0, 4);
+    }
+    final n = name.trim().toLowerCase();
+    final c = category.trim().toLowerCase();
+
+    const paidLookouts = ['mirador 360', 'miralto', 'torre latino', 'cetro'];
+    final isPaidLookout = paidLookouts.any((k) => n.contains(k));
+    if (!isPaidLookout) {
+      if (const {'park', 'garden', 'nature_reserve', 'artwork', 'monument', 'memorial', 'library', 'community_centre', 'viewpoint'}.contains(c)) {
+        return 0;
+      }
+      const freeKeywords = [
+        'parque', 'jardín', 'jardin', 'alameda', 'bosque', 'plaza ', 'plazuela',
+        'glorieta', 'kiosco', 'quiosco', 'camellón', 'monumento', 'escultura',
+        'mural', 'estatua', 'biblioteca', 'zócalo', 'zoológico de chapultepec',
+        'museo soumaya', 'palacio postal', 'casa del lago',
+      ];
+      if (freeKeywords.any((k) => n.contains(k))) return 0;
+    }
+
+    const tier4 = [
+      'pujol', 'quintonil', 'sud 777', 'maximo bistrot', 'máximo bistrot',
+      'contramar', 'entremar', 'rosetta', 'limosneros', 'azulísimo', 'azulisimo',
+      'azul histórico', 'azul condesa', 'miralto', 'bellini', 'balcón del zócalo',
+      'au pied de cochon', 'nobu', 'ling ling', 'suntory', 'hunan',
+      'hacienda de los morales', 'rosanegra', 'chambao', 'sonora prime',
+      'mochomos', 'cuerno', 'ryoshi', 'hotaru', 'handshake', 'limantour',
+      'fifty mils', 'dulce patria', 'guzina oaxaca', 'nicos', 'sartoria',
+      'meroma', 'havre 77', 'la docena', 'lardo',
+    ];
+    if (tier4.any((k) => n.contains(k))) return 4;
+
+    const tier3 = [
+      "fisher's", 'fishers', 'sonora grill', 'puerto madero', 'cambalache',
+      'rincón argentino', 'la buena barra', 'negroni', 'huset', 'páramo',
+      'broka', 'maque', 'peltre', 'ojo de agua', 'ojo de noche',
+      'terraza catedral', 'terraza cha cha', 'supra', 'toledo rooftop',
+      'balmori', 'vigneron', 'cariñito', 'ladyboy', 'soul la roma',
+      'belmondo', 'mog', 'marcello', 'el diez', 'mirador 360', 'petra',
+      'kuili', 'the lamb', 'yu yu', 'departamento', 'patrick miller',
+      'auditorio nacional', 'palacio de bellas artes', 'teatro telcel',
+      'teatro insurgentes', 'acuario inbursa', 'papalote', 'six flags',
+      'pinche gringo', 'cancino', 'ardente', 'olive garden', 'cheesecake factory',
+      'pf chang', 'bistro', 'bistró', 'trattoria', 'osteria', 'rooftop',
+      'terraza', 'steakhouse', 'wine bar', 'speakeasy',
+    ];
+    if (tier3.any((k) => n.contains(k))) return 3;
+    if (const {'nightclub', 'biergarten', 'music_venue', 'theme_park', 'aquarium'}.contains(c)) {
+      return 3;
+    }
+
+    const tier1 = [
+      'tacos', 'taco ', 'taquería', 'taqueria', 'mexitaco', 'taco naco', 'taco santo',
+      'tortas', 'tortería', 'torteria', 'fonda', 'cocina económica', 'cocina central',
+      'comida corrida', 'antojitos', 'quesadillas', 'gorditas', 'tlacoyos', 'tamales',
+      'pozole', 'birria', 'carnitas', 'barbacoa', 'machetes', 'chalupería',
+      'elotes', 'esquites', 'churros', 'nevería', 'helados', 'michoacana',
+      'pulquería', 'pulqueria', 'expendio de pulque', 'duelistas', 'jarocho',
+      'el huequito', 'los especiales', 'los güeros', 'los gueros', 'streetfood',
+      'mcdonald', 'burger king', 'kfc', 'subway', 'el globo', 'mercado',
+    ];
+    if (tier1.any((k) => n.contains(k))) return 1;
+    if (const {'fast_food', 'food_court', 'ice_cream', 'marketplace', 'bakery', 'pastry', 'museum'}.contains(c)) {
+      return 1;
+    }
+
+    if (const {'restaurant', 'bar', 'pub', 'cinema', 'theatre', 'theater', 'cafe', 'coffee', 'books', 'gallery', 'arts_centre', 'art'}.contains(c)) {
+      return 2;
+    }
+    return 1;
   }
 
   static const Set<String> _blockedPoiIds = {
