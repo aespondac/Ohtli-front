@@ -533,7 +533,7 @@ class _TripCardState extends State<TripCard> {
                       ),
                       const SizedBox(width: 8),
                       Tooltip(
-                        message: 'Exportar itinerario en PDF con código QR',
+                        message: 'Generar PDF',
                         child: ElevatedButton.icon(
                           onPressed: _isExportingPdf ? null : () => _handlePdfExport(context),
                           icon: _isExportingPdf
@@ -550,7 +550,7 @@ class _TripCardState extends State<TripCard> {
                                   size: 15,
                                 ),
                           label: Text(
-                            'PDF con QR',
+                            'Generar PDF',
                             style: GoogleFonts.inter(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -628,7 +628,7 @@ class _TripCardState extends State<TripCard> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Exportar PDF con QR',
+                                  'Generar PDF',
                                   style: GoogleFonts.inter(
                                     fontSize: 13,
                                     color: OhtliColors.onyx,
@@ -803,7 +803,7 @@ class _TripCardState extends State<TripCard> {
                       ),
                       const SizedBox(width: 6),
                       Tooltip(
-                        message: 'Descargar PDF con QR',
+                        message: 'Generar PDF',
                         child: ElevatedButton.icon(
                           onPressed: _isExportingPdf ? null : () => _handlePdfExport(context),
                           icon: _isExportingPdf
@@ -820,7 +820,7 @@ class _TripCardState extends State<TripCard> {
                                   size: 14,
                                 ),
                           label: Text(
-                            'PDF',
+                            'Generar PDF',
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
@@ -897,7 +897,7 @@ class _TripCardState extends State<TripCard> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Exportar PDF con QR',
+                                  'Generar PDF',
                                   style: GoogleFonts.inter(
                                     fontSize: 12,
                                     color: OhtliColors.onyx,

@@ -799,7 +799,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
                   label: Text(
-                    'Descargar PDF',
+                    'Generar PDF',
                     style: GoogleFonts.inter(fontWeight: FontWeight.bold),
                   ),
                 )
@@ -822,7 +822,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: IconButton(
-              tooltip: 'Exportar a PDF con QR',
+              tooltip: 'Generar PDF',
               icon: _isExportingPdf
                   ? const SizedBox(
                       width: 16,
@@ -1456,7 +1456,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                               )
                             : const Icon(Icons.picture_as_pdf_rounded, size: 16),
                         label: Text(
-                          _isExportingPdf ? 'Generando PDF...' : 'Exportar a PDF con QR',
+                          _isExportingPdf ? 'Generando PDF...' : 'Generar PDF',
                           style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                         style: ElevatedButton.styleFrom(
