@@ -17,6 +17,7 @@ import '../account/public_profile_page.dart';
 import 'trip_editor_page.dart';
 import '../error_404_page.dart';
 import '../error_403_page.dart';
+import '../../services/pdf_export_service.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -47,8 +48,80 @@ class _TripViewerPageState extends State<TripViewerPage> {
   List<Map<String, dynamic>> _coAuthorsProfiles = [];
   String _authorActiveTitleName = 'Viajero';
   bool _isLoading = true;
+  bool _isExportingPdf = false;
   String? _errorMessage;
   int? _errorCode;
+
+  Future<void> _exportPdf({bool printOnly = false}) async {
+    if (_trip == null || _sections.isEmpty) return;
+
+    setState(() => _isExportingPdf = true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                printOnly
+                    ? 'Preparando vista de impresión del itinerario...'
+                    : 'Generando documento PDF editorial con código QR...',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: OhtliColors.stormyTeal,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    try {
+      final authorName = _authorProfile?['displayName'] ?? 'Viajero Ohtli';
+      final coAuthorNames = _trip!.coAuthorNames;
+      final qrBaseUrl = '${Uri.base.origin}/?tripId=${_trip!.id}&authorId=${_trip!.userId}';
+
+      if (printOnly) {
+        await PdfExportService.printTripPdf(
+          trip: _trip!,
+          sections: _sections,
+          authorName: authorName,
+          coAuthors: coAuthorNames,
+          qrBaseUrl: qrBaseUrl,
+        );
+      } else {
+        await PdfExportService.downloadTripPdf(
+          trip: _trip!,
+          sections: _sections,
+          authorName: authorName,
+          coAuthors: coAuthorNames,
+          qrBaseUrl: qrBaseUrl,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al exportar el itinerario: $e'),
+            backgroundColor: OhtliColors.xoconostle,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingPdf = false);
+      }
+    }
+  }
 
 
 
@@ -538,7 +611,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final bool showTopNavbar = widget.isPublicLink;
     final bool isOwner = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
     final bool isCoAuthor = currentUser != null && _trip != null && _trip!.coAuthorIds.contains(currentUser.uid);
-    final bool isPlan = _trip != null && _trip!.travelDate != null;
     final bool showErrataButton = isOwner || isCoAuthor;
     final bool canEdit = isOwner || (isCoAuthor && _trip != null && _trip!.status == 'draft');
 
@@ -718,7 +790,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 style: GoogleFonts.inter(fontWeight: FontWeight.bold),
               ),
             )
-          : null,
+          : (!isLocked && _sections.isNotEmpty
+              ? FloatingActionButton.extended(
+                  onPressed: _isExportingPdf ? null : () => _exportPdf(),
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                  label: Text(
+                    'Descargar PDF',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                  ),
+                )
+              : null),
     );
   }
 
@@ -733,6 +818,24 @@ class _TripViewerPageState extends State<TripViewerPage> {
       backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
       elevation: 0.5,
       actions: [
+        if (_trip != null && _sections.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: IconButton(
+              tooltip: 'Exportar a PDF con QR',
+              icon: _isExportingPdf
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
+                      ),
+                    )
+                  : const Icon(Icons.picture_as_pdf_outlined, color: OhtliColors.stormyTeal, size: 20),
+              onPressed: _isExportingPdf ? null : () => _exportPdf(),
+            ),
+          ),
         if (isLoggedIn)
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
@@ -1243,10 +1346,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final String title = _trip?.title ?? 'Sin Título';
     final String desc = _trip?.description ?? '';
 
-    final String authorName = _authorProfile?['displayName'] ?? 'Viajero Ohtli';
-    final String? authorPhoto = _authorProfile?['photoURL'];
-    final String authorRole = _authorActiveTitleName;
-
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1336,6 +1435,54 @@ class _TripViewerPageState extends State<TripViewerPage> {
                         const SizedBox(width: 32),
                         _buildAuthorWidget(isDark),
                       ],
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 10,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _isExportingPdf ? null : () => _exportPdf(),
+                        icon: _isExportingPdf
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.picture_as_pdf_rounded, size: 16),
+                        label: Text(
+                          _isExportingPdf ? 'Generando PDF...' : 'Exportar a PDF con QR',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OhtliColors.stormyTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isExportingPdf ? null : () => _exportPdf(printOnly: true),
+                        icon: const Icon(Icons.print_rounded, size: 16),
+                        label: Text(
+                          'Imprimir',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: isDark ? Colors.white70 : OhtliColors.onyx,
+                          side: BorderSide(
+                            color: isDark ? Colors.white24 : OhtliColors.onyx.withValues(alpha: 0.25),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
                     ],
                   ),
                 ],
