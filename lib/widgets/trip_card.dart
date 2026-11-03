@@ -4,13 +4,17 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import '../theme/colors.dart';
 import '../models/trip_model.dart';
+import '../services/trip_service.dart';
+import '../services/pdf_export_service.dart';
 import 'ohtli_markdown_renderer.dart';
 import 'interactive_3d_card.dart';
 
-class TripCard extends StatelessWidget {
+class TripCard extends StatefulWidget {
   final Trip trip;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
@@ -32,6 +36,13 @@ class TripCard extends StatelessWidget {
     this.disable3D = false,
   });
 
+  @override
+  State<TripCard> createState() => _TripCardState();
+}
+
+class _TripCardState extends State<TripCard> {
+  bool _isExportingPdf = false;
+
   String _formatSpanishDate(DateTime date) {
     final months = [
       'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -44,8 +55,8 @@ class TripCard extends StatelessWidget {
     final String baseUrl = kIsWeb 
         ? "${Uri.base.scheme}://${Uri.base.host}${Uri.base.port != 80 && Uri.base.port != 443 && Uri.base.port != 0 ? ':${Uri.base.port}' : ''}/"
         : 'https://ohtli.quest/';
-    final String tripUrl = '${baseUrl}viajes/${trip.userId}/${trip.id}';
-    final String shareMessage = '¡Mira mi viaje "${trip.title}" en Ohtli! $tripUrl';
+    final String tripUrl = '${baseUrl}viajes/${widget.trip.userId}/${widget.trip.id}';
+    final String shareMessage = '¡Mira mi viaje "${widget.trip.title}" en Ohtli! $tripUrl';
 
     if (kIsWeb) {
       Clipboard.setData(ClipboardData(text: tripUrl)).then((_) {
@@ -70,6 +81,135 @@ class TripCard extends StatelessWidget {
     }
   }
 
+  Future<void> _handlePdfExport(BuildContext context) async {
+    if (_isExportingPdf) return;
+    setState(() => _isExportingPdf = true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Generando PDF editorial de "${widget.trip.title}"...',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: OhtliColors.stormyTeal,
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+
+    try {
+      // 1. Obtener contenido y secciones del viaje
+      final tripContent = await TripService().getTripContent(widget.trip.userId, widget.trip.id);
+      final sections = tripContent?.sections ?? [];
+
+      if (!context.mounted) return;
+
+      if (sections.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'El viaje no tiene paradas o secciones cargadas para exportar.',
+              style: GoogleFonts.inter(color: Colors.white),
+            ),
+            backgroundColor: OhtliColors.xoconostle,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+        setState(() => _isExportingPdf = false);
+        return;
+      }
+
+      // 2. Determinar nombre del autor
+      String authorName = widget.addedByName ?? '';
+      if (authorName.isEmpty) {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null && currentUser.uid == widget.trip.userId) {
+          authorName = currentUser.displayName ?? 'Viajero Ohtli';
+        } else {
+          try {
+            final authorDoc = await FirebaseFirestore.instance.collection('users').doc(widget.trip.userId).get();
+            if (authorDoc.exists) {
+              authorName = (authorDoc.data()?['displayName'] as String?) ?? 'Viajero Ohtli';
+            }
+          } catch (_) {}
+        }
+      }
+      if (authorName.isEmpty) authorName = 'Viajero Ohtli';
+
+      // 3. Base URL para QR
+      final String baseUrl = kIsWeb
+          ? "${Uri.base.scheme}://${Uri.base.host}${Uri.base.port != 80 && Uri.base.port != 443 && Uri.base.port != 0 ? ':${Uri.base.port}' : ''}/"
+          : 'https://ohtli.quest/';
+      final String qrBaseUrl = '${baseUrl}?tripId=${widget.trip.id}&authorId=${widget.trip.userId}';
+
+      // 4. Descargar PDF interactivo con QR
+      await PdfExportService.downloadTripPdf(
+        trip: widget.trip,
+        sections: sections,
+        authorName: authorName,
+        coAuthors: widget.trip.coAuthorNames,
+        qrBaseUrl: qrBaseUrl,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '¡PDF de "${widget.trip.title}" descargado con éxito!',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: OhtliColors.stormyTeal,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error al exportar el viaje a PDF: $e',
+              style: GoogleFonts.inter(color: Colors.white),
+            ),
+            backgroundColor: OhtliColors.xoconostle,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingPdf = false);
+      }
+    }
+  }
+
   void _showDeleteConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -87,7 +227,7 @@ class TripCard extends StatelessWidget {
             ),
           ),
           content: Text(
-            'Esta acción no se puede deshacer. Se eliminarán permanentemente el viaje "${trip.title}", todos sus planes y las fotos asociadas.',
+            'Esta acción no se puede deshacer. Se eliminarán permanentemente el viaje "${widget.trip.title}", todos sus planes y las fotos asociadas.',
             style: GoogleFonts.inter(
               color: OhtliColors.onyx.withValues(alpha: 0.8),
             ),
@@ -107,7 +247,7 @@ class TripCard extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                onDelete();
+                widget.onDelete();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: OhtliColors.xoconostle,
@@ -131,7 +271,7 @@ class TripCard extends StatelessWidget {
   }
 
   Widget _buildCoverImage({required bool isHorizontal}) {
-    final bool hasCover = trip.coverUrl.isNotEmpty;
+    final bool hasCover = widget.trip.coverUrl.isNotEmpty;
 
     final border = isHorizontal
         ? const BorderRadius.horizontal(left: Radius.circular(24))
@@ -139,9 +279,9 @@ class TripCard extends StatelessWidget {
 
     Widget imageWidget;
     if (hasCover) {
-      if (trip.coverUrl.startsWith('data:image') || trip.coverUrl.startsWith('data:')) {
+      if (widget.trip.coverUrl.startsWith('data:image') || widget.trip.coverUrl.startsWith('data:')) {
         try {
-          final String base64Data = trip.coverUrl.split(',').last;
+          final String base64Data = widget.trip.coverUrl.split(',').last;
           imageWidget = Image.memory(
             base64Decode(base64Data),
             fit: BoxFit.cover,
@@ -151,7 +291,7 @@ class TripCard extends StatelessWidget {
         }
       } else {
         imageWidget = CachedNetworkImage(
-          imageUrl: trip.coverUrl,
+          imageUrl: widget.trip.coverUrl,
           fit: BoxFit.cover,
           fadeInDuration: const Duration(milliseconds: 300),
           placeholder: (context, url) => Container(
@@ -191,7 +331,7 @@ class TripCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    trip.visibility == 'public'
+                    widget.trip.visibility == 'public'
                         ? Icons.public_rounded
                         : Icons.lock_outline_rounded,
                     color: Colors.white,
@@ -199,7 +339,7 @@ class TripCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    trip.visibility == 'public' ? 'Público' : 'Privado',
+                    widget.trip.visibility == 'public' ? 'Público' : 'Privado',
                     style: GoogleFonts.inter(
                       color: Colors.white,
                       fontSize: 9,
@@ -211,7 +351,7 @@ class TripCard extends StatelessWidget {
             ),
           ),
           // "Añadido por" badge for co-authored trips
-          if (addedByName != null) 
+          if (widget.addedByName != null) 
             Positioned(
               bottom: 8,
               left: 8,
@@ -225,10 +365,10 @@ class TripCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (addedByPhotoURL != null && addedByPhotoURL!.isNotEmpty)
+                    if (widget.addedByPhotoURL != null && widget.addedByPhotoURL!.isNotEmpty)
                       CircleAvatar(
                         radius: 9,
-                        backgroundImage: NetworkImage(addedByPhotoURL!),
+                        backgroundImage: NetworkImage(widget.addedByPhotoURL!),
                         backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.3),
                       )
                     else
@@ -236,14 +376,14 @@ class TripCard extends StatelessWidget {
                         radius: 9,
                         backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.5),
                         child: Text(
-                          addedByName!.isNotEmpty ? addedByName![0].toUpperCase() : '?',
+                          widget.addedByName!.isNotEmpty ? widget.addedByName![0].toUpperCase() : '?',
                           style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                       ),
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'Añadido por $addedByName',
+                        'Añadido por ${widget.addedByName}',
                         style: GoogleFonts.inter(
                           color: Colors.white,
                           fontSize: 9,
@@ -335,7 +475,7 @@ class TripCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        trip.title,
+                        widget.trip.title,
                         style: GoogleFonts.inter(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -346,8 +486,8 @@ class TripCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       OhtliMarkdownText(
-                        text: trip.description.isNotEmpty 
-                            ? trip.description 
+                        text: widget.trip.description.isNotEmpty 
+                            ? widget.trip.description 
                             : 'Sin descripción del viaje.',
                         style: GoogleFonts.inter(
                           fontSize: 13,
@@ -368,7 +508,7 @@ class TripCard extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Creado: ${_formatSpanishDate(trip.createdAt)}',
+                              'Creado: ${_formatSpanishDate(widget.trip.createdAt)}',
                               style: GoogleFonts.inter(
                                 fontSize: 10,
                                 color: OhtliColors.onyx.withValues(alpha: 0.4),
@@ -379,7 +519,7 @@ class TripCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
+                              'Viaje: ${widget.trip.travelDate != null ? _formatSpanishDate(widget.trip.travelDate!) : "Sin fecha definida"}',
                               style: GoogleFonts.inter(
                                 fontSize: 11,
                                 color: OhtliColors.onyx.withValues(alpha: 0.65),
@@ -391,6 +531,61 @@ class TripCard extends StatelessWidget {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      if (widget.trip.status == 'published') ...[
+                        Tooltip(
+                          message: 'Exportar itinerario en PDF con código QR',
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _isExportingPdf ? null : () => _handlePdfExport(context),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Ink(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: OhtliColors.stormyTeal.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: OhtliColors.stormyTeal.withValues(alpha: 0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_isExportingPdf)
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
+                                        ),
+                                      )
+                                    else
+                                      const Icon(
+                                        Icons.picture_as_pdf_rounded,
+                                        size: 15,
+                                        color: OhtliColors.stormyTeal,
+                                      ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      'PDF con QR',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: OhtliColors.stormyTeal,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       PopupMenuButton<String>(
                         icon: const Icon(
                           Icons.more_vert_rounded,
@@ -403,12 +598,14 @@ class TripCard extends StatelessWidget {
                         color: isDark ? const Color(0xFF25252A) : Colors.white,
                         onSelected: (value) {
                           if (value == 'edit') {
-                            onEdit();
+                            widget.onEdit();
+                          } else if (value == 'pdf') {
+                            _handlePdfExport(context);
                           } else if (value == 'share') {
                             _handleShare(context);
                           } else if (value == 'errata') {
-                            if (onFeDeErratas != null) {
-                              onFeDeErratas!();
+                            if (widget.onFeDeErratas != null) {
+                              widget.onFeDeErratas!();
                             }
                           } else if (value == 'delete') {
                             _showDeleteConfirmation(context);
@@ -420,14 +617,14 @@ class TripCard extends StatelessWidget {
                             child: Row(
                               children: [
                                 Icon(
-                                  trip.status == 'published'
+                                  widget.trip.status == 'published'
                                       ? Icons.visibility_rounded
                                       : Icons.edit_outlined,
                                   size: 18,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  trip.status == 'published' ? 'Ver' : 'Editar',
+                                  widget.trip.status == 'published' ? 'Ver' : 'Editar',
                                   style: GoogleFonts.inter(
                                     fontSize: 13,
                                     color: OhtliColors.onyx,
@@ -436,7 +633,28 @@ class TripCard extends StatelessWidget {
                               ],
                             ),
                           ),
-                          if (trip.status == 'published')
+                          if (widget.trip.status == 'published')
+                            PopupMenuItem<String>(
+                              value: 'pdf',
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.picture_as_pdf_rounded,
+                                    size: 18,
+                                    color: OhtliColors.stormyTeal,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Exportar PDF con QR',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      color: OhtliColors.onyx,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (widget.trip.status == 'published')
                             PopupMenuItem<String>(
                               value: 'errata',
                               child: Row(
@@ -547,7 +765,7 @@ class TripCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        trip.title,
+                        widget.trip.title,
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -558,8 +776,8 @@ class TripCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       OhtliMarkdownText(
-                        text: trip.description.isNotEmpty 
-                            ? trip.description 
+                        text: widget.trip.description.isNotEmpty 
+                            ? widget.trip.description 
                             : 'Sin descripción del viaje.',
                         style: GoogleFonts.inter(
                           fontSize: 11,
@@ -578,24 +796,82 @@ class TripCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Creado: ${_formatSpanishDate(trip.createdAt)}',
+                              'Creado: ${_formatSpanishDate(widget.trip.createdAt)}',
                               style: GoogleFonts.inter(
                                 fontSize: 9,
                                 color: OhtliColors.onyx.withValues(alpha: 0.4),
                                 fontWeight: FontWeight.w500,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              'Viaje: ${trip.travelDate != null ? _formatSpanishDate(trip.travelDate!) : "Sin fecha definida"}',
+                              'Viaje: ${widget.trip.travelDate != null ? _formatSpanishDate(widget.trip.travelDate!) : "Sin fecha definida"}',
                               style: GoogleFonts.inter(
                                 fontSize: 10,
                                 color: OhtliColors.onyx.withValues(alpha: 0.65),
                                 fontWeight: FontWeight.w600,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      if (widget.trip.status == 'published') ...[
+                        Tooltip(
+                          message: 'Descargar PDF con QR',
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _isExportingPdf ? null : () => _handlePdfExport(context),
+                              borderRadius: BorderRadius.circular(10),
+                              child: Ink(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: OhtliColors.stormyTeal.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: OhtliColors.stormyTeal.withValues(alpha: 0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_isExportingPdf)
+                                      const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
+                                        ),
+                                      )
+                                    else
+                                      const Icon(
+                                        Icons.picture_as_pdf_rounded,
+                                        size: 14,
+                                        color: OhtliColors.stormyTeal,
+                                      ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'PDF',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: OhtliColors.stormyTeal,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                      ],
                       PopupMenuButton<String>(
                         icon: const Icon(
                           Icons.more_vert_rounded,
@@ -608,12 +884,14 @@ class TripCard extends StatelessWidget {
                         color: isDark ? const Color(0xFF25252A) : Colors.white,
                         onSelected: (value) {
                           if (value == 'edit') {
-                            onEdit();
+                            widget.onEdit();
+                          } else if (value == 'pdf') {
+                            _handlePdfExport(context);
                           } else if (value == 'share') {
                             _handleShare(context);
                           } else if (value == 'errata') {
-                            if (onFeDeErratas != null) {
-                              onFeDeErratas!();
+                            if (widget.onFeDeErratas != null) {
+                              widget.onFeDeErratas!();
                             }
                           } else if (value == 'delete') {
                             _showDeleteConfirmation(context);
@@ -625,14 +903,14 @@ class TripCard extends StatelessWidget {
                             child: Row(
                               children: [
                                 Icon(
-                                  trip.status == 'published'
+                                  widget.trip.status == 'published'
                                       ? Icons.visibility_rounded
                                       : Icons.edit_outlined,
                                   size: 16,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  trip.status == 'published' ? 'Ver' : 'Editar',
+                                  widget.trip.status == 'published' ? 'Ver' : 'Editar',
                                   style: GoogleFonts.inter(
                                     fontSize: 12,
                                     color: OhtliColors.onyx,
@@ -641,7 +919,28 @@ class TripCard extends StatelessWidget {
                               ],
                             ),
                           ),
-                          if (trip.status == 'published')
+                          if (widget.trip.status == 'published')
+                            PopupMenuItem<String>(
+                              value: 'pdf',
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.picture_as_pdf_rounded,
+                                    size: 16,
+                                    color: OhtliColors.stormyTeal,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Exportar PDF con QR',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      color: OhtliColors.onyx,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (widget.trip.status == 'published')
                             PopupMenuItem<String>(
                               value: 'errata',
                               child: Row(
@@ -716,19 +1015,19 @@ class TripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
-    final content = isHorizontal
+    final content = widget.isHorizontal
         ? _buildHorizontalLayout(context, isDark)
         : _buildVerticalLayout(context, isDark);
         
-    if (disable3D) {
+    if (widget.disable3D) {
       return GestureDetector(
-        onTap: onEdit,
+        onTap: widget.onEdit,
         child: content,
       );
     }
     
     return Interactive3DCard(
-      onTap: onEdit,
+      onTap: widget.onEdit,
       isDark: isDark,
       child: content,
     );
