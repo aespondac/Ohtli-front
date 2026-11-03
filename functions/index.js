@@ -193,6 +193,12 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
     
     // Copy some relevant headers back
     res.set('Content-Type', fetchResponse.headers.get('Content-Type') || 'application/json');
+    const cacheControl = fetchResponse.headers.get('Cache-Control');
+    if (cacheControl) {
+      res.set('Cache-Control', cacheControl);
+    } else if (req.path.startsWith('/v1/pois') && req.method === 'GET') {
+      res.set('Cache-Control', 'public, max-age=180, s-maxage=300');
+    }
     if (localPurged && req.path.includes('/recolector/cleanup')) {
       try {
         const parsed = JSON.parse(data);
