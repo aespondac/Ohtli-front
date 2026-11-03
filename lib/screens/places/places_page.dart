@@ -55,6 +55,59 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   List<Poi> _allPois = [];
   String _searchQuery = '';
 
+  int? _selectedPriceFilter;
+  String? _selectedCategoryFilter;
+
+  static const List<Map<String, String>> _categoryFilters = [
+    {'id': 'all', 'label': 'Todos', 'emoji': '✨'},
+    {'id': 'restaurant', 'label': 'Restaurantes', 'emoji': '🍽️'},
+    {'id': 'cafe', 'label': 'Cafeterías', 'emoji': '☕'},
+    {'id': 'fast_food', 'label': 'Comida Rápida', 'emoji': '🍔'},
+    {'id': 'bakery', 'label': 'Panaderías', 'emoji': '🥐'},
+    {'id': 'museum_art', 'label': 'Museos y Arte', 'emoji': '🏛️'},
+    {'id': 'bar_pub', 'label': 'Bares y Cantinas', 'emoji': '🍸'},
+    {'id': 'books_shop', 'label': 'Librerías y Tiendas', 'emoji': '📚'},
+    {'id': 'park', 'label': 'Parques y Miradores', 'emoji': '🌳'},
+    {'id': 'culture', 'label': 'Teatro y Cultura', 'emoji': '🎭'},
+    {'id': 'attraction', 'label': 'Atracciones', 'emoji': '🎡'},
+  ];
+
+  bool _matchesPrice(Poi poi, int priceLevel) {
+    if (priceLevel == 1) {
+      return poi.priceLevel <= 1;
+    }
+    return poi.priceLevel == priceLevel;
+  }
+
+  bool _matchesCategory(Poi poi, String categoryKey) {
+    if (categoryKey == 'all') return true;
+    final cat = poi.category.toLowerCase().trim();
+    switch (categoryKey) {
+      case 'restaurant':
+        return cat == 'restaurant';
+      case 'cafe':
+        return cat == 'cafe' || cat == 'coffee' || cat == 'internet_cafe';
+      case 'fast_food':
+        return cat == 'fast_food';
+      case 'bakery':
+        return cat == 'bakery' || cat == 'pastry' || cat == 'ice_cream';
+      case 'museum_art':
+        return cat == 'museum' || cat == 'artwork' || cat == 'gallery' || cat == 'arts_centre';
+      case 'bar_pub':
+        return cat == 'bar' || cat == 'pub' || cat == 'nightclub';
+      case 'books_shop':
+        return cat == 'books' || cat == 'book_store' || cat == 'department_store' || cat == 'marketplace' || cat == 'market';
+      case 'park':
+        return cat == 'park' || cat == 'viewpoint' || cat == 'zoo';
+      case 'culture':
+        return cat == 'theatre' || cat == 'theater' || cat == 'cinema' || cat == 'library' || cat == 'community_centre' || cat == 'cultural_centre';
+      case 'attraction':
+        return cat == 'attraction' || cat == 'tourist_attraction' || cat == 'theme_park';
+      default:
+        return cat == categoryKey.toLowerCase();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -445,18 +498,30 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     }
 
     final allPois = _allPois;
-    final isSearching = _searchQuery.isNotEmpty;
+    final isFiltering = _searchQuery.isNotEmpty || _selectedPriceFilter != null || _selectedCategoryFilter != null;
 
-    // Search filter
-    final searchResults = isSearching
+    // Filter results across text, price, and category
+    final searchResults = isFiltering
         ? allPois.where((poi) {
-            return poi.name.toLowerCase().contains(_searchQuery) ||
-                poi.poiId.toLowerCase().contains(_searchQuery) ||
-                poi.categoryDisplay.toLowerCase().contains(_searchQuery) ||
-                poi.description.toLowerCase().contains(_searchQuery) ||
-                poi.cleanNarrative.toLowerCase().contains(_searchQuery) ||
-                poi.coloniaAlcaldiaDisplay.toLowerCase().contains(_searchQuery) ||
-                poi.vibeTags.any((v) => v.toLowerCase().contains(_searchQuery));
+            // Price filter
+            if (_selectedPriceFilter != null && !_matchesPrice(poi, _selectedPriceFilter!)) {
+              return false;
+            }
+            // Category filter
+            if (_selectedCategoryFilter != null && !_matchesCategory(poi, _selectedCategoryFilter!)) {
+              return false;
+            }
+            // Text search
+            if (_searchQuery.isNotEmpty) {
+              return poi.name.toLowerCase().contains(_searchQuery) ||
+                  poi.poiId.toLowerCase().contains(_searchQuery) ||
+                  poi.categoryDisplay.toLowerCase().contains(_searchQuery) ||
+                  poi.description.toLowerCase().contains(_searchQuery) ||
+                  poi.cleanNarrative.toLowerCase().contains(_searchQuery) ||
+                  poi.coloniaAlcaldiaDisplay.toLowerCase().contains(_searchQuery) ||
+                  poi.vibeTags.any((v) => v.toLowerCase().contains(_searchQuery));
+            }
+            return true;
           }).toList()
         : <Poi>[];
 
@@ -589,29 +654,40 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                         ),
                       ),
                     ),
+                    _buildFilterBar(isMobile),
                   ],
                 ),
               ),
             ),
 
-            // If user is searching, display Search Results Grid
-            if (isSearching) ...[
+            // If user is searching or filtering, display Filtered Results Grid
+            if (isFiltering) ...[
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
                       child: Row(
                         children: [
                           Text(
-                            'Resultados para "${_searchController.text}" (${searchResults.length})',
+                            _searchQuery.isNotEmpty
+                                ? 'Resultados para "${_searchController.text}" (${searchResults.length})'
+                                : 'Lugares encontrados (${searchResults.length})',
                             style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
                           ),
                           const Spacer(),
-                          TextButton(
+                          TextButton.icon(
                             onPressed: () {
                               _searchController.clear();
-                              setState(() {});
+                              setState(() {
+                                _selectedPriceFilter = null;
+                                _selectedCategoryFilter = null;
+                              });
                             },
-                            child: const Text('Ver todas las secciones'),
+                            icon: const Icon(Icons.clear_all_rounded, size: 16),
+                            label: const Text('Ver todas las secciones'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: OhtliColors.stormyTeal,
+                              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                            ),
                           ),
                         ],
                       ),
@@ -640,6 +716,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                             final isSaved = _savedPoiIds.contains(poi.poiId);
                             return PoiCard(
                               poi: poi,
+                              height: 440,
                               isSaved: isSaved,
                               onToggleSave: () => _toggleSavePoi(poi.poiId),
                               onCreateRoute: () => _createRouteFromPlace(poi),
@@ -677,6 +754,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                             child: PoiCard(
                               poi: poi,
                               width: doubleWidth,
+                              height: isMobile ? 460 : 520,
                               isDoubleWidth: true,
                               isSaved: isSaved,
                               onToggleSave: () => _toggleSavePoi(poi.poiId),
@@ -717,6 +795,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                             child: PoiCard(
                               poi: poi,
                               width: standardWidth,
+                              height: 420,
                               isSaved: isSaved,
                               onToggleSave: () => _toggleSavePoi(poi.poiId),
                               onCreateRoute: () => _createRouteFromPlace(poi),
@@ -761,6 +840,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                                   child: PoiCard(
                                     poi: poi,
                                     width: standardWidth,
+                                    height: 420,
                                     isSaved: true,
                                     onToggleSave: () => _toggleSavePoi(poi.poiId),
                                     onCreateRoute: () => _createRouteFromPlace(poi),
@@ -806,6 +886,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                                   child: PoiCard(
                                     poi: poi,
                                     width: standardWidth,
+                                    height: 420,
                                     isSaved: isSaved,
                                     onToggleSave: () => _toggleSavePoi(poi.poiId),
                                     onCreateRoute: () => _createRouteFromPlace(poi),
@@ -1210,5 +1291,203 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         ),
       ),
     );
+  }
+
+  Widget _buildFilterBar(bool isMobile) {
+    final prices = [
+      {'level': 1, 'symbol': '\$', 'label': 'Económico'},
+      {'level': 2, 'symbol': '\$\$', 'label': 'Moderado'},
+      {'level': 3, 'symbol': '\$\$\$', 'label': 'Costoso'},
+      {'level': 4, 'symbol': '\$\$\$\$', 'label': 'Exclusivo'},
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Row 1: Filtro de Precio
+          Row(
+            children: [
+              Text(
+                'Precio:',
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: OhtliColors.onyx,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      // Chip "Todos" para precio
+                      _buildFilterChip(
+                        label: 'Todos',
+                        isSelected: _selectedPriceFilter == null,
+                        onTap: () {
+                          setState(() => _selectedPriceFilter = null);
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      ...prices.map((p) {
+                        final level = p['level'] as int;
+                        final symbol = p['symbol'] as String;
+                        final isSelected = _selectedPriceFilter == level;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: _buildFilterChip(
+                            label: symbol,
+                            tooltip: p['label'] as String,
+                            isSelected: isSelected,
+                            onTap: () {
+                              setState(() {
+                                if (_selectedPriceFilter == level) {
+                                  _selectedPriceFilter = null;
+                                } else {
+                                  _selectedPriceFilter = level;
+                                }
+                              });
+                            },
+                          ),
+                        );
+                      }),
+                      if (_selectedPriceFilter != null || _selectedCategoryFilter != null || _searchQuery.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _selectedPriceFilter = null;
+                              _selectedCategoryFilter = null;
+                              _searchController.clear();
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.xoconostle.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.close_rounded, size: 14, color: OhtliColors.xoconostle),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Limpiar filtros',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: OhtliColors.xoconostle,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Row 2: Filtro de Tipo / Categoría
+          Row(
+            children: [
+              Text(
+                'Tipo:',
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: OhtliColors.onyx,
+                ),
+              ),
+              const SizedBox(width: 22),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _categoryFilters.map((cat) {
+                      final id = cat['id']!;
+                      final isSelected = (_selectedCategoryFilter == null && id == 'all') ||
+                          (_selectedCategoryFilter == id);
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _buildFilterChip(
+                          label: '${cat['emoji']} ${cat['label']}',
+                          isSelected: isSelected,
+                          onTap: () {
+                            setState(() {
+                              if (id == 'all' || _selectedCategoryFilter == id) {
+                                _selectedCategoryFilter = null;
+                              } else {
+                                _selectedCategoryFilter = id;
+                              }
+                            });
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    String? tooltip,
+  }) {
+    final chip = InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
+            width: isSelected ? 1.5 : 1.0,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: OhtliColors.stormyTeal.withValues(alpha: 0.25),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? Colors.white : OhtliColors.onyx,
+          ),
+        ),
+      ),
+    );
+
+    if (tooltip != null) {
+      return Tooltip(message: tooltip, child: chip);
+    }
+    return chip;
   }
 }

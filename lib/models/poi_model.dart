@@ -410,11 +410,20 @@ class Poi {
   }
 
   String get categoryEmoji {
-    switch (category) {
+    final cat = category.toLowerCase().trim();
+    switch (cat) {
       case 'cafe':
+      case 'coffee':
         return '☕';
       case 'restaurant':
         return '🍽️';
+      case 'fast_food':
+        return '🍔';
+      case 'bakery':
+      case 'pastry':
+        return '🥐';
+      case 'ice_cream':
+        return '🍦';
       case 'museum':
         return '🏛️';
       case 'park':
@@ -422,6 +431,7 @@ class Poi {
         return '🌳';
       case 'artwork':
       case 'gallery':
+      case 'arts_centre':
         return '🎨';
       case 'bar':
       case 'pub':
@@ -434,14 +444,26 @@ class Poi {
       case 'theater':
         return '🎭';
       case 'library':
+      case 'books':
+      case 'book_store':
         return '📚';
+      case 'department_store':
+      case 'marketplace':
+      case 'market':
+        return '🛍️';
+      case 'attraction':
+      case 'theme_park':
+        return '✨';
+      case 'viewpoint':
+        return '🔭';
+      case 'community_centre':
+      case 'cultural_centre':
+        return '🏛️';
+      case 'internet_cafe':
+        return '💻';
       case 'hotel':
       case 'hostel':
         return '🏨';
-      case 'marketplace':
-        return '🛍️';
-      case 'viewpoint':
-        return '🔭';
       default:
         return '📍';
     }
@@ -610,11 +632,21 @@ class Poi {
   }
 
   String get categoryDisplay {
-    switch (category) {
+    final cat = category.toLowerCase().trim();
+    switch (cat) {
       case 'cafe':
+      case 'coffee':
         return 'Cafetería';
       case 'restaurant':
         return 'Restaurante';
+      case 'fast_food':
+        return 'Comida Rápida';
+      case 'bakery':
+        return 'Panadería';
+      case 'pastry':
+        return 'Pastelería';
+      case 'ice_cream':
+        return 'Heladería';
       case 'museum':
         return 'Museo';
       case 'park':
@@ -629,36 +661,70 @@ class Poi {
       case 'bar':
         return 'Bar / Cantina';
       case 'pub':
-        return 'Pub';
+        return 'Pub / Cervecería';
       case 'nightclub':
         return 'Club Nocturno';
       case 'zoo':
         return 'Zoológico';
       case 'theme_park':
-        return 'Atracción / Parque Temático';
+        return 'Parque Temático';
       case 'gallery':
         return 'Galería de Arte';
+      case 'arts_centre':
+        return 'Centro de las Artes';
+      case 'community_centre':
+        return 'Centro Comunitario';
+      case 'cultural_centre':
+        return 'Centro Cultural';
       case 'library':
         return 'Biblioteca';
+      case 'books':
+      case 'book_store':
+        return 'Librería';
+      case 'department_store':
+        return 'Tienda Departamental';
       case 'hotel':
         return 'Hotel';
       case 'hostel':
         return 'Hostal';
       case 'marketplace':
+      case 'market':
         return 'Mercado Tradicional';
       case 'viewpoint':
         return 'Mirador';
+      case 'attraction':
+      case 'tourist_attraction':
+        return 'Atracción Turística';
+      case 'internet_cafe':
+        return 'Cibercafé';
+      case 'car_parts':
+        return 'Refaccionaria / Autopartes';
       default:
-        return category.isEmpty ? 'Punto de Interés' : '${category[0].toUpperCase()}${category.substring(1)}';
+        if (cat.isEmpty) return 'Punto de Interés';
+        // Formatear cualquier categoría en snake_case o kebab-case a palabras limpias
+        return cat
+            .split(RegExp(r'[_\-\s]+'))
+            .where((w) => w.isNotEmpty)
+            .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+            .join(' ');
     }
   }
 
   IconData get categoryIcon {
-    switch (category) {
+    final cat = category.toLowerCase().trim();
+    switch (cat) {
       case 'cafe':
+      case 'coffee':
         return Icons.local_cafe_rounded;
       case 'restaurant':
         return Icons.restaurant_rounded;
+      case 'fast_food':
+        return Icons.fastfood_rounded;
+      case 'bakery':
+      case 'pastry':
+        return Icons.bakery_dining_rounded;
+      case 'ice_cream':
+        return Icons.icecream_rounded;
       case 'museum':
         return Icons.museum_rounded;
       case 'park':
@@ -678,32 +744,54 @@ class Poi {
       case 'zoo':
         return Icons.pets_rounded;
       case 'theme_park':
+      case 'attraction':
         return Icons.attractions_rounded;
       case 'gallery':
+      case 'arts_centre':
         return Icons.photo_library_rounded;
       case 'library':
+      case 'books':
+      case 'book_store':
         return Icons.menu_book_rounded;
+      case 'department_store':
+        return Icons.store_mall_directory_rounded;
       case 'hotel':
       case 'hostel':
         return Icons.hotel_rounded;
       case 'marketplace':
+      case 'market':
         return Icons.storefront_rounded;
       case 'viewpoint':
         return Icons.visibility_rounded;
+      case 'community_centre':
+      case 'cultural_centre':
+        return Icons.apartment_rounded;
+      case 'internet_cafe':
+        return Icons.devices_rounded;
       default:
         return Icons.place_rounded;
     }
   }
 
   Color get categoryColor {
-    switch (category) {
+    final cat = category.toLowerCase().trim();
+    switch (cat) {
       case 'cafe':
+      case 'coffee':
         return const Color(0xFF8D6E63);
       case 'restaurant':
         return OhtliColors.cempasuchil;
+      case 'fast_food':
+        return const Color(0xFFE65100);
+      case 'bakery':
+      case 'pastry':
+        return const Color(0xFFD84315);
+      case 'ice_cream':
+        return const Color(0xFF00897B);
       case 'museum':
       case 'artwork':
       case 'gallery':
+      case 'arts_centre':
         return OhtliColors.xoconostle;
       case 'park':
       case 'zoo':
@@ -716,9 +804,20 @@ class Poi {
       case 'theatre':
       case 'theater':
         return const Color(0xFFC2185B);
+      case 'books':
+      case 'book_store':
+      case 'library':
+        return const Color(0xFF00695C);
+      case 'department_store':
+      case 'marketplace':
+      case 'market':
+        return const Color(0xFF3949AB);
       case 'hotel':
       case 'hostel':
         return const Color(0xFF1976D2);
+      case 'attraction':
+      case 'theme_park':
+        return const Color(0xFFF57C00);
       default:
         return OhtliColors.stormyTeal;
     }
