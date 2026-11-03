@@ -407,6 +407,11 @@ class Poi {
       text = editorialSummary;
     }
 
+    if (text.isEmpty) {
+      return 'Un rincón fascinante de la Ciudad de México para descubrir su historia, arquitectura y vida cotidiana.';
+    }
+
+    // 1. Extraer reseña inmersiva legacy si existe el marcador
     if (text.contains('Reseña Inmersiva (OEP AI):')) {
       final parts = text.split('Reseña Inmersiva (OEP AI):');
       if (parts.length > 1 && parts[1].trim().isNotEmpty) {
@@ -417,27 +422,59 @@ class Poi {
       if (parts.length > 1 && parts[1].trim().isNotEmpty) {
         text = parts[1].trim();
       }
-    } else {
-      // Remove lines starting with "Lugar:", "Categoría:", "Costo:", "Vibras", "Contexto"
-      final lines = text.split('\n');
-      final cleanLines = lines.where((l) {
-        final lower = l.trim().toLowerCase();
-        return !lower.startsWith('lugar:') &&
-            !lower.startsWith('categoría:') &&
-            !lower.startsWith('categoria:') &&
-            !lower.startsWith('costo:') &&
-            !lower.startsWith('vibras') &&
-            !lower.startsWith('contexto urbano') &&
-            !lower.startsWith('formalidad') &&
-            !lower.startsWith('seguridad');
-      }).toList();
-      text = cleanLines.join('\n').trim();
     }
 
-    if (text.isEmpty) {
-      text = 'Un rincón fascinante de la Ciudad de México para descubrir su historia, arquitectura y vida cotidiana.';
+    // 2. Formato por 4 Ejes Ontológicos (EJE 1: Vocación, EJE 2: Atmósfera, EJE 3: Dinámica, EJE 4: Entorno)
+    final axisRegex = RegExp(r'\[EJE\s*\d+[^\]]*\]:\s*', caseSensitive: false);
+    if (axisRegex.hasMatch(text)) {
+      final rawSegments = text.split(axisRegex);
+      final cleanSegments = rawSegments
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+
+      if (cleanSegments.length >= 4) {
+        // Párrafo 1: Vocación + Atmósfera (Identidad y vibra)
+        final p1 = '${cleanSegments[0]} ${cleanSegments[1]}';
+        // Párrafo 2: Dinámica social + Micro-entorno (Experiencia de visita y barrio)
+        final p2 = '${cleanSegments[2]} ${cleanSegments[3]}';
+        return '$p1\n\n$p2';
+      } else if (cleanSegments.isNotEmpty) {
+        return cleanSegments.join('\n\n');
+      }
     }
-    return text;
+
+    // 3. Limpieza de líneas técnicas de metadatos o prefijos de base de datos
+    final lines = text.split('\n');
+    final cleanLines = <String>[];
+    for (final line in lines) {
+      final lower = line.trim().toLowerCase();
+      if (lower.isEmpty) continue;
+      if (lower.startsWith('lugar:') ||
+          lower.startsWith('categoría:') ||
+          lower.startsWith('categoria:') ||
+          lower.startsWith('costo:') ||
+          lower.startsWith('vibras') ||
+          lower.startsWith('contexto urbano') ||
+          lower.startsWith('formalidad') ||
+          lower.startsWith('seguridad') ||
+          lower.startsWith('siapem') ||
+          lower.startsWith('fgj') ||
+          lower.startsWith('[eje') ||
+          lower.startsWith('eje 1:') ||
+          lower.startsWith('eje 2:') ||
+          lower.startsWith('eje 3:') ||
+          lower.startsWith('eje 4:')) {
+        continue;
+      }
+      cleanLines.add(line.trim());
+    }
+
+    final result = cleanLines.join('\n\n').trim();
+    if (result.isEmpty) {
+      return 'Un rincón fascinante de la Ciudad de México para descubrir su historia, arquitectura y vida cotidiana.';
+    }
+    return result;
   }
 
   String get priceRangeEstimate {
