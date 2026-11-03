@@ -532,60 +532,44 @@ class _TripCardState extends State<TripCard> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (widget.trip.status == 'published') ...[
-                        Tooltip(
-                          message: 'Exportar itinerario en PDF con código QR',
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _isExportingPdf ? null : () => _handlePdfExport(context),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Ink(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: OhtliColors.stormyTeal.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: OhtliColors.stormyTeal.withValues(alpha: 0.3),
-                                    width: 1,
+                      Tooltip(
+                        message: 'Exportar itinerario en PDF con código QR',
+                        child: ElevatedButton.icon(
+                          onPressed: _isExportingPdf ? null : () => _handlePdfExport(context),
+                          icon: _isExportingPdf
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   ),
+                                )
+                              : const Icon(
+                                  Icons.picture_as_pdf_rounded,
+                                  size: 15,
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (_isExportingPdf)
-                                      const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
-                                        ),
-                                      )
-                                    else
-                                      const Icon(
-                                        Icons.picture_as_pdf_rounded,
-                                        size: 15,
-                                        color: OhtliColors.stormyTeal,
-                                      ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      'PDF con QR',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: OhtliColors.stormyTeal,
-                                        letterSpacing: 0.2,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                          label: Text(
+                            'PDF con QR',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
                             ),
                           ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: OhtliColors.stormyTeal,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
                         ),
-                        const SizedBox(width: 4),
-                      ],
+                      ),
+                      const SizedBox(width: 4),
                       PopupMenuButton<String>(
                         icon: const Icon(
                           Icons.more_vert_rounded,
@@ -633,27 +617,26 @@ class _TripCardState extends State<TripCard> {
                               ],
                             ),
                           ),
-                          if (widget.trip.status == 'published')
-                            PopupMenuItem<String>(
-                              value: 'pdf',
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.picture_as_pdf_rounded,
-                                    size: 18,
-                                    color: OhtliColors.stormyTeal,
+                          PopupMenuItem<String>(
+                            value: 'pdf',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.picture_as_pdf_rounded,
+                                  size: 18,
+                                  color: OhtliColors.stormyTeal,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Exportar PDF con QR',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: OhtliColors.onyx,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Exportar PDF con QR',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 13,
-                                      color: OhtliColors.onyx,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
+                          ),
                           if (widget.trip.status == 'published')
                             PopupMenuItem<String>(
                               value: 'errata',
@@ -819,59 +802,43 @@ class _TripCardState extends State<TripCard> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      if (widget.trip.status == 'published') ...[
-                        Tooltip(
-                          message: 'Descargar PDF con QR',
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _isExportingPdf ? null : () => _handlePdfExport(context),
-                              borderRadius: BorderRadius.circular(10),
-                              child: Ink(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: OhtliColors.stormyTeal.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: OhtliColors.stormyTeal.withValues(alpha: 0.3),
-                                    width: 1,
+                      Tooltip(
+                        message: 'Descargar PDF con QR',
+                        child: ElevatedButton.icon(
+                          onPressed: _isExportingPdf ? null : () => _handlePdfExport(context),
+                          icon: _isExportingPdf
+                              ? const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   ),
+                                )
+                              : const Icon(
+                                  Icons.picture_as_pdf_rounded,
+                                  size: 14,
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (_isExportingPdf)
-                                      const SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
-                                        ),
-                                      )
-                                    else
-                                      const Icon(
-                                        Icons.picture_as_pdf_rounded,
-                                        size: 14,
-                                        color: OhtliColors.stormyTeal,
-                                      ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'PDF',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: OhtliColors.stormyTeal,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                          label: Text(
+                            'PDF',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: OhtliColors.stormyTeal,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
                         ),
-                        const SizedBox(width: 2),
-                      ],
+                      ),
+                      const SizedBox(width: 2),
                       PopupMenuButton<String>(
                         icon: const Icon(
                           Icons.more_vert_rounded,
@@ -919,27 +886,26 @@ class _TripCardState extends State<TripCard> {
                               ],
                             ),
                           ),
-                          if (widget.trip.status == 'published')
-                            PopupMenuItem<String>(
-                              value: 'pdf',
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.picture_as_pdf_rounded,
-                                    size: 16,
-                                    color: OhtliColors.stormyTeal,
+                          PopupMenuItem<String>(
+                            value: 'pdf',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.picture_as_pdf_rounded,
+                                  size: 16,
+                                  color: OhtliColors.stormyTeal,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Exportar PDF con QR',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: OhtliColors.onyx,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Exportar PDF con QR',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: OhtliColors.onyx,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
+                          ),
                           if (widget.trip.status == 'published')
                             PopupMenuItem<String>(
                               value: 'errata',

@@ -985,7 +985,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 168px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 168.0;
+        : (cardWidth * 9 / 16) + 176.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -1063,7 +1063,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 168.0;
+        : (cardWidth * 9 / 16) + 176.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
