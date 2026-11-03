@@ -34,13 +34,17 @@ class PlacesPage extends StatefulWidget {
   State<PlacesPage> createState() => _PlacesPageState();
 }
 
-class _PlacesPageState extends State<PlacesPage> {
+class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateMixin {
+  static List<Poi> _globalPoisCache = [];
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _paraTiScrollController = ScrollController();
   final ScrollController _descubreScrollController = ScrollController();
   final ScrollController _misLugaresScrollController = ScrollController();
   final ScrollController _revisitaScrollController = ScrollController();
+
+  AnimationController? _shimmerController;
 
   List<String> _savedPoiIds = [];
   List<String> _viewedPoiIds = [];
@@ -54,9 +58,26 @@ class _PlacesPageState extends State<PlacesPage> {
   @override
   void initState() {
     super.initState();
+
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+
     _loadSavedPlaces();
     _loadViewedPlaces();
     _loadUserTasteVector();
+
+    // 1. In-memory cache: instantáneo (0ms) al regresar de pestañas o vistas
+    if (_globalPoisCache.isNotEmpty) {
+      _allPois = List<Poi>.from(_globalPoisCache);
+      _isLoadingPois = false;
+    } else {
+      // 2. LocalStorage cache: instantáneo (0ms) al recargar página
+      _loadCachedPoisFromLocalStorage();
+    }
+
+    // 3. Stale-While-Revalidate: refresco silencioso en segundo plano
     _fetchPois();
 
     _searchController.addListener(() {
@@ -69,8 +90,33 @@ class _PlacesPageState extends State<PlacesPage> {
     });
   }
 
+  void _loadCachedPoisFromLocalStorage() {
+    if (kIsWeb) {
+      try {
+        final cached = html.window.localStorage['ohtli_cached_pois_v2'];
+        if (cached != null && cached.isNotEmpty) {
+          final decoded = jsonDecode(cached);
+          if (decoded is List) {
+            final list = decoded
+                .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
+                .where((p) => p.isValidCulturalPlace)
+                .toList();
+            if (list.isNotEmpty) {
+              _allPois = list;
+              _globalPoisCache = list;
+              _isLoadingPois = false;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error loading cached POIs from localStorage: $e');
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _shimmerController?.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _paraTiScrollController.dispose();
@@ -82,10 +128,12 @@ class _PlacesPageState extends State<PlacesPage> {
 
   Future<void> _fetchPois({bool forceRefresh = false}) async {
     if (!mounted) return;
-    setState(() {
-      if (_allPois.isEmpty) _isLoadingPois = true;
-      _poisError = null;
-    });
+    if (_allPois.isEmpty) {
+      setState(() {
+        _isLoadingPois = true;
+        _poisError = null;
+      });
+    }
 
     try {
       const apiUrl = String.fromEnvironment(
@@ -98,16 +146,25 @@ class _PlacesPageState extends State<PlacesPage> {
       if (response.statusCode == 200) {
         final decoded = jsonDecode(utf8.decode(response.bodyBytes));
         if (decoded is Map && decoded['pois'] is List) {
-          final list = (decoded['pois'] as List)
+          final rawList = decoded['pois'] as List;
+          final list = rawList
               .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
               .where((p) => p.isValidCulturalPlace)
               .toList();
 
           if (list.isNotEmpty && mounted) {
+            _globalPoisCache = list;
             setState(() {
               _allPois = list;
               _isLoadingPois = false;
             });
+
+            // Guardar en localStorage para recargas instantáneas posteriores
+            if (kIsWeb) {
+              try {
+                html.window.localStorage['ohtli_cached_pois_v2'] = jsonEncode(rawList);
+              } catch (_) {}
+            }
             return;
           }
         }
@@ -125,6 +182,7 @@ class _PlacesPageState extends State<PlacesPage> {
           .toList();
 
       if (mounted) {
+        _globalPoisCache = list;
         setState(() {
           _allPois = list;
           _isLoadingPois = false;
@@ -374,12 +432,7 @@ class _PlacesPageState extends State<PlacesPage> {
     final isMobile = screenSize.width < 768;
 
     if (_isLoadingPois && _allPois.isEmpty) {
-      return Scaffold(
-        backgroundColor: OhtliColors.cloudDancer,
-        body: const Center(
-          child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
-        ),
-      );
+      return _buildSkeletonView(isMobile, screenSize);
     }
 
     if (_poisError != null && _allPois.isEmpty) {
@@ -944,6 +997,216 @@ class _PlacesPageState extends State<PlacesPage> {
               child: const Text('Reintentar'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShimmerBox({
+    required double width,
+    required double height,
+    double borderRadius = 8,
+  }) {
+    if (_shimmerController == null) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE2E8F0),
+          borderRadius: BorderRadius.circular(borderRadius),
+        ),
+      );
+    }
+    return AnimatedBuilder(
+      animation: _shimmerController!,
+      builder: (context, child) {
+        final v = _shimmerController!.value;
+        return Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(borderRadius),
+            gradient: LinearGradient(
+              begin: Alignment(-1.5 + (v * 3.0), -0.2),
+              end: Alignment(0.5 + (v * 3.0), 0.2),
+              colors: const [
+                Color(0xFFE8EEF3),
+                Color(0xFFF8FAFC),
+                Color(0xFFE8EEF3),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSkeletonCard(double width) {
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: OhtliColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: _buildShimmerBox(
+                width: double.infinity,
+                height: double.infinity,
+                borderRadius: 0,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _buildShimmerBox(width: 80, height: 18, borderRadius: 12),
+                      const Spacer(),
+                      _buildShimmerBox(width: 24, height: 24, borderRadius: 12),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildShimmerBox(width: width * 0.7, height: 20, borderRadius: 6),
+                  const SizedBox(height: 8),
+                  _buildShimmerBox(width: width * 0.45, height: 14, borderRadius: 6),
+                  const SizedBox(height: 14),
+                  _buildShimmerBox(width: double.infinity, height: 12, borderRadius: 4),
+                  const SizedBox(height: 6),
+                  _buildShimmerBox(width: width * 0.8, height: 12, borderRadius: 4),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildShimmerBox(width: 50, height: 16, borderRadius: 6),
+                      _buildShimmerBox(width: 90, height: 32, borderRadius: 8),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonView(bool isMobile, Size screenSize) {
+    final standardWidth = 280.0;
+    final doubleWidth = isMobile ? math.min(560.0, screenSize.width - 48) : 560.0;
+
+    return Scaffold(
+      backgroundColor: OhtliColors.cloudDancer,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              isMobile ? 16 : 36,
+              isMobile ? 16 : 28,
+              isMobile ? 16 : 36,
+              40,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top placeholder / title
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildShimmerBox(width: 140, height: 28, borderRadius: 8),
+                    _buildShimmerBox(width: 100, height: 36, borderRadius: 20),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // Search bar shimmer placeholder
+                _buildShimmerBox(
+                  width: double.infinity,
+                  height: 52,
+                  borderRadius: 16,
+                ),
+                const SizedBox(height: 36),
+
+                // Section 1: "Para ti" skeleton
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildShimmerBox(width: 120, height: 24, borderRadius: 6),
+                    Row(
+                      children: [
+                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
+                        const SizedBox(width: 8),
+                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: isMobile ? 480 : 540,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: 3,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
+                        child: _buildSkeletonCard(doubleWidth),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Section 2: "Descubre nuevos lugares" skeleton
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildShimmerBox(width: 220, height: 24, borderRadius: 6),
+                    Row(
+                      children: [
+                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
+                        const SizedBox(width: 8),
+                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 480,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: 4,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
+                        child: _buildSkeletonCard(standardWidth),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
