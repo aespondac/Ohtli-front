@@ -157,6 +157,14 @@ class UserProfileHelper {
       'onboarding_completed': currentData?['onboarding_completed'] ?? oldData?['onboarding_completed'] ?? false,
       if ((currentData?['taste_vector'] ?? oldData?['taste_vector']) != null)
         'taste_vector': currentData?['taste_vector'] ?? oldData?['taste_vector'],
+      if ((currentData?['taste_axes'] ?? oldData?['taste_axes']) != null)
+        'taste_axes': currentData?['taste_axes'] ?? oldData?['taste_axes'],
+      if ((currentData?['taste_recipe'] ?? oldData?['taste_recipe']) != null)
+        'taste_recipe': currentData?['taste_recipe'] ?? oldData?['taste_recipe'],
+      if ((currentData?['taste_vector_dim'] ?? oldData?['taste_vector_dim']) != null)
+        'taste_vector_dim': currentData?['taste_vector_dim'] ?? oldData?['taste_vector_dim'],
+      if ((currentData?['taste_model'] ?? oldData?['taste_model']) != null)
+        'taste_model': currentData?['taste_model'] ?? oldData?['taste_model'],
       if ((currentData?['cultural_profile'] ?? oldData?['cultural_profile']) != null)
         'cultural_profile': currentData?['cultural_profile'] ?? oldData?['cultural_profile'],
       'isDeleted': false,

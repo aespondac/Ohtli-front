@@ -101,19 +101,26 @@ class OnboardingWizardPage extends StatefulWidget {
       tasteModel = 'deterministic_semantic_768d';
     }
 
-    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
-    await userRef.set({
-      "cultural_profile": payload,
-      "taste_axes": tasteAxes,
-      if (previewAxes != null) "taste_axes_preview": previewAxes,
-      "taste_recipe": tasteRecipe,
-      "taste_vector": tasteVector,
-      "taste_vector_dim": tasteVector.length,
-      "taste_model": tasteModel,
-      "onboarding_completed": true,
-      "taste_updated_at": FieldValue.serverTimestamp(),
-      "updatedAt": FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    try {
+      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+      await userRef.set({
+        "cultural_profile": payload,
+        "taste_axes": tasteAxes,
+        if (previewAxes != null) "taste_axes_preview": previewAxes,
+        "taste_recipe": tasteRecipe,
+        "taste_vector": tasteVector,
+        "taste_vector_dim": tasteVector.length,
+        "taste_model": tasteModel,
+        "onboarding_completed": true,
+        "taste_updated_at": FieldValue.serverTimestamp(),
+        "updatedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      print("Client-side Firestore user document synchronized successfully.");
+    } catch (fsWriteErr) {
+      print(
+        "Client-side direct Firestore write warning (backend dual-write guarantees persistence): $fsWriteErr",
+      );
+    }
 
     return tasteVector;
   }
