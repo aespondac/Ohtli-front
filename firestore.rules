@@ -108,6 +108,23 @@ service cloud.firestore {
     }
     match /itinerary_jobs/{jobId} {
       allow read: if true;
+      allow create: if request.auth != null && (
+        (!('user_id' in request.resource.data) && !('userId' in request.resource.data)) ||
+        ('user_id' in request.resource.data && request.resource.data.user_id == request.auth.uid) ||
+        ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid)
+      );
+      allow update: if request.auth != null && (
+        (!('user_id' in resource.data) && !('userId' in resource.data)) ||
+        ('user_id' in resource.data && resource.data.user_id == request.auth.uid) ||
+        ('userId' in resource.data && resource.data.userId == request.auth.uid) ||
+        ('user_id' in request.resource.data && request.resource.data.user_id == request.auth.uid) ||
+        ('userId' in request.resource.data && request.resource.data.userId == request.auth.uid)
+      );
+      allow delete: if request.auth != null && (
+        (!('user_id' in resource.data) && !('userId' in resource.data)) ||
+        ('user_id' in resource.data && resource.data.user_id == request.auth.uid) ||
+        ('userId' in resource.data && resource.data.userId == request.auth.uid)
+      );
     }
 
     // Points of Interest (POIs) - Production & Lab Sandbox indexed by Yollotl Recolector

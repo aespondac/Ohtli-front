@@ -23,6 +23,7 @@ class TripPlannerDialog extends StatefulWidget {
   final Poi? initialOriginPoi;
   final VoidCallback? onManualPlanSelected;
   final List<Map<String, dynamic>>? initialGeneratedOptions;
+  final String? initialActiveJobId;
   final String? originName;
 
   const TripPlannerDialog({
@@ -30,6 +31,7 @@ class TripPlannerDialog extends StatefulWidget {
     this.initialOriginPoi,
     this.onManualPlanSelected,
     this.initialGeneratedOptions,
+    this.initialActiveJobId,
     this.originName,
   });
 
@@ -38,6 +40,7 @@ class TripPlannerDialog extends StatefulWidget {
     Poi? initialOriginPoi,
     VoidCallback? onManualPlanSelected,
     List<Map<String, dynamic>>? initialGeneratedOptions,
+    String? initialActiveJobId,
     String? originName,
   }) {
     showDialog(
@@ -47,6 +50,7 @@ class TripPlannerDialog extends StatefulWidget {
         initialOriginPoi: initialOriginPoi,
         onManualPlanSelected: onManualPlanSelected,
         initialGeneratedOptions: initialGeneratedOptions,
+        initialActiveJobId: initialActiveJobId,
         originName: originName,
       ),
     );
@@ -132,7 +136,12 @@ class _TripPlannerDialogState extends State<TripPlannerDialog> {
       _originSearchController.text = _selectedOriginName;
     }
 
-    if (widget.initialGeneratedOptions != null && widget.initialGeneratedOptions!.isNotEmpty) {
+    if (widget.initialActiveJobId != null && widget.initialActiveJobId!.isNotEmpty) {
+      _activeJobId = widget.initialActiveJobId;
+      _selectedOriginName = widget.originName ?? 'CDMX';
+      _currentStep = PlannerStep.blackboardProcessing;
+      _listenToBlackboardJob(widget.initialActiveJobId!);
+    } else if (widget.initialGeneratedOptions != null && widget.initialGeneratedOptions!.isNotEmpty) {
       _generatedOptions = widget.initialGeneratedOptions!;
       _selectedOriginName = widget.originName ?? 'CDMX';
       _currentStep = PlannerStep.routeTriadCarousel;

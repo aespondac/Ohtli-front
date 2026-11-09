@@ -845,7 +845,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                             stream: FirebaseFirestore.instance
                                 .collection('itinerary_jobs')
                                 .where('user_id', isEqualTo: _userId)
-                                .where('status', isEqualTo: 'completed')
                                 .snapshots(),
                             builder: (context, aiSnap) {
                               final List<QueryDocumentSnapshot> aiJobs = (aiSnap.hasData)
@@ -920,201 +919,425 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   ) {
     if (aiJobs.isEmpty) return const SizedBox.shrink();
 
+    final generatingJobs = <QueryDocumentSnapshot>[];
+    final completedJobs = <QueryDocumentSnapshot>[];
+
+    for (final doc in aiJobs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final status = (data['status'] ?? '').toString();
+      final res = data['result'] as Map<String, dynamic>? ?? {};
+      final options = (res['options'] as List<dynamic>?) ?? [];
+
+      if (status == 'completed' && options.isNotEmpty) {
+        completedJobs.add(doc);
+      } else if (status != 'failed') {
+        generatingJobs.add(doc);
+      }
+    }
+
+    if (generatingJobs.isEmpty && completedJobs.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.stormyTeal.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: SvgPicture.asset(
-                    'assets/icon_isologo.svg',
-                    width: 16,
-                    height: 16,
-                    colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
+        // ==========================================
+        // 1. JOBS EN PROCESO DE GENERACIÓN CON IA
+        // ==========================================
+        if (generatingJobs.isNotEmpty) ...[
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: OhtliColors.cempasuchil,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Generando con IA (En Progreso)',
+                style: GoogleFonts.outfit(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : OhtliColors.onyx,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: OhtliColors.cempasuchil.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: OhtliColors.cempasuchil.withOpacity(0.4)),
+                ),
+                child: Text(
+                  '${generatingJobs.length} EN CURSO',
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: OhtliColors.cempasuchil,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  'Tríadas Generadas con IA',
-                  style: GoogleFonts.outfit(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: OhtliColors.onyx,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.stormyTeal,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${aiJobs.length} LISTAS',
-                    style: GoogleFonts.inter(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                      color: Colors.white,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'El Sistema Multiagente está analizando opciones y trazando tu recorrido en segundo plano.',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: isDark ? Colors.white60 : OhtliColors.onyx.withOpacity(0.55),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Column(
+            children: generatingJobs.map((doc) => _buildGeneratingJobCard(doc, isDark)).toList(),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        // ==========================================
+        // 2. TRÍADAS COMPLETADAS Y LISTAS
+        // ==========================================
+        if (completedJobs.isNotEmpty) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.stormyTeal.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SvgPicture.asset(
+                      'assets/icon_isologo.svg',
+                      width: 16,
+                      height: 16,
+                      colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Explora y compara las 3 multirutas en cualquier momento antes de elegir tu favorita.',
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            color: OhtliColors.onyx.withOpacity(0.55),
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Tarjetas de Tríadas
-        Column(
-          children: aiJobs.map((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final req = data['request'] as Map<String, dynamic>? ?? {};
-            final originName = (req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
-            final budget = (req['budget'] as num?)?.toDouble() ?? 500.0;
-            final res = data['result'] as Map<String, dynamic>? ?? {};
-            final options = (res['options'] as List<dynamic>?)
-                    ?.map((e) => Map<String, dynamic>.from(e as Map))
-                    .toList() ??
-                [];
-
-            if (options.isEmpty) return const SizedBox.shrink();
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: OhtliColors.stormyTeal.withOpacity(0.35),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Tríadas Generadas con IA',
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : OhtliColors.onyx,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.stormyTeal,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${completedJobs.length} LISTAS',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ],
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(Icons.auto_awesome_rounded, color: OhtliColors.stormyTeal, size: 22),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Explora y compara las 3 multirutas en cualquier momento antes de elegir tu favorita.',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: isDark ? Colors.white60 : OhtliColors.onyx.withOpacity(0.55),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Tarjetas de Tríadas Listas
+          Column(
+            children: completedJobs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final req = data['request'] as Map<String, dynamic>? ?? {};
+              final originName = (req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
+              final budget = (req['budget'] as num?)?.toDouble() ?? 500.0;
+              final res = data['result'] as Map<String, dynamic>? ?? {};
+              final options = (res['options'] as List<dynamic>?)
+                      ?.map((e) => Map<String, dynamic>.from(e as Map))
+                      .toList() ??
+                  [];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: OhtliColors.stormyTeal.withOpacity(0.35),
+                    width: 1.2,
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Tríada: $originName',
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white : OhtliColors.onyx,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: OhtliColors.stormyTeal.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(Icons.auto_awesome_rounded, color: OhtliColors.stormyTeal, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Tríada: $originName',
+                            style: GoogleFonts.outfit(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : OhtliColors.onyx,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          const SizedBox(height: 3),
+                          Text(
+                            '3 multirutas temáticas calculadas · Presupuesto \$${budget.toStringAsFixed(0)} MXN',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: isDark ? Colors.white70 : OhtliColors.subtleText,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: options.take(3).map((opt) {
+                              final theme = (opt['theme'] ?? opt['editorial_headline'] ?? 'Ruta').toString();
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: OhtliColors.stormyTeal.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  theme.length > 25 ? '${theme.substring(0, 23)}...' : theme,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: OhtliColors.stormyTeal,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        TripPlannerDialog.show(
+                          context,
+                          initialGeneratedOptions: options,
+                          originName: originName,
+                        );
+                      },
+                      icon: const Icon(Icons.movie_filter_rounded, size: 16),
+                      label: Text(
+                        'Explorar Tríada',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: Icon(
+                        Icons.delete_outline_rounded,
+                        size: 18,
+                        color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
+                      ),
+                      tooltip: 'Descartar tríada',
+                      onPressed: () {
+                        FirebaseFirestore.instance.collection('itinerary_jobs').doc(doc.id).delete();
+                      },
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildGeneratingJobCard(QueryDocumentSnapshot doc, bool isDark) {
+    final data = doc.data() as Map<String, dynamic>;
+    final req = data['request'] as Map<String, dynamic>? ?? {};
+    final originName = (req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
+    final progress = (data['progress_percent'] as num?)?.toInt() ?? 20;
+    final agent = (data['current_agent'] ?? 'comparador').toString();
+
+    String agentStageText;
+    if (agent.toLowerCase().contains('comparador')) {
+      agentStageText = 'Agente Comparador calibrando afinidad cultural...';
+    } else if (agent.toLowerCase().contains('generador')) {
+      agentStageText = 'Agente Generador trazando multirutas y topología...';
+    } else if (agent.toLowerCase().contains('recomendador')) {
+      agentStageText = 'Agente Recomendador enriqueciendo narrativa y presupuesto...';
+    } else {
+      agentStageText = 'Yollotl Engine procesando Pizarrón...';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: OhtliColors.cempasuchil.withOpacity(0.4),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: OhtliColors.cempasuchil.withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Generando plan: $originName',
+                            style: GoogleFonts.outfit(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : OhtliColors.onyx,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(width: 8),
                         Text(
-                          '3 multirutas temáticas calculadas · Presupuesto \$${budget.toStringAsFixed(0)} MXN',
+                          '$progress%',
                           style: GoogleFonts.inter(
                             fontSize: 12,
-                            color: isDark ? Colors.white70 : OhtliColors.subtleText,
+                            fontWeight: FontWeight.w800,
+                            color: OhtliColors.cempasuchil,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: options.take(3).map((opt) {
-                            final theme = (opt['theme'] ?? opt['editorial_headline'] ?? 'Ruta').toString();
-                            return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: OhtliColors.stormyTeal.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                theme.length > 25 ? '${theme.substring(0, 23)}...' : theme,
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: OhtliColors.stormyTeal,
-                                ),
-                              ),
-                            );
-                          }).toList(),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      TripPlannerDialog.show(
-                        context,
-                        initialGeneratedOptions: options,
-                        originName: originName,
-                      );
-                    },
-                    icon: const Icon(Icons.movie_filter_rounded, size: 16),
-                    label: Text(
-                      'Explorar Tríada',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                    const SizedBox(height: 2),
+                    Text(
+                      agentStageText,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: isDark ? Colors.white60 : OhtliColors.subtleText,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: OhtliColors.stormyTeal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    icon: Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
-                    ),
-                    tooltip: 'Descartar tríada',
-                    onPressed: () {
-                      FirebaseFirestore.instance.collection('itinerary_jobs').doc(doc.id).delete();
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 20),
-      ],
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: () {
+                  TripPlannerDialog.show(
+                    context,
+                    initialActiveJobId: doc.id,
+                    originName: originName,
+                  );
+                },
+                icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                label: Text(
+                  'Ver en vivo',
+                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 16,
+                  color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
+                ),
+                tooltip: 'Cancelar generación',
+                onPressed: () {
+                  FirebaseFirestore.instance.collection('itinerary_jobs').doc(doc.id).delete();
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (progress.clamp(5, 100)) / 100.0,
+              minHeight: 4,
+              backgroundColor: OhtliColors.cempasuchil.withOpacity(0.12),
+              valueColor: const AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
