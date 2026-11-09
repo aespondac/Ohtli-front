@@ -16,6 +16,7 @@ import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/poi_detail_dialog.dart';
+import '../../widgets/trip_planner_dialog.dart';
 import '../trips/trip_editor_page.dart';
 
 class PlacesPage extends StatefulWidget {
@@ -370,7 +371,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     );
   }
 
-  Future<void> _createRouteFromPlace(Poi poi) async {
+  void _createRouteFromPlace(Poi poi) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -393,6 +394,17 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       );
       return;
     }
+
+    TripPlannerDialog.show(
+      context,
+      initialOriginPoi: poi,
+      onManualPlanSelected: () => _createManualRouteFromPlace(poi),
+    );
+  }
+
+  Future<void> _createManualRouteFromPlace(Poi poi) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
     try {
       final tripId = const Uuid().v4();

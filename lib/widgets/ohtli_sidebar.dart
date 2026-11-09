@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/colors.dart';
+import 'trip_planner_dialog.dart';
 
 class OhtliSidebar extends StatefulWidget {
   final int currentIndex; // 0: Inicio, 1: Mis Viajes, 2: Account/Mi Cuenta (non-tab)
@@ -348,6 +349,91 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
     );
   }
 
+  Widget _buildPlanTripCtaButton() {
+    final isCollapsed = _isCollapsed;
+    Widget ctaContent;
+
+    if (isCollapsed) {
+      ctaContent = Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: OhtliColors.stormyTeal,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: OhtliColors.stormyTeal.withOpacity(0.35),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(10),
+        child: SvgPicture.asset(
+          'assets/icon_isologo.svg',
+          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+        ),
+      );
+      ctaContent = Tooltip(
+        message: 'Planea un viaje',
+        child: ctaContent,
+      );
+    } else {
+      ctaContent = Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: OhtliColors.stormyTeal,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: OhtliColors.stormyTeal.withOpacity(0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            SvgPicture.asset(
+              'assets/icon_isologo.svg',
+              width: 18,
+              height: 18,
+              colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Planea un viaje',
+                style: GoogleFonts.outfit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 15),
+          ],
+        ),
+      );
+    }
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          TripPlannerDialog.show(
+            context,
+            onManualPlanSelected: () => widget.onTabSelected(1),
+          );
+        },
+        child: ctaContent,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _syncProfilePic();
@@ -452,6 +538,10 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
             ),
 
           const SizedBox(height: 16),
+          // Botón destacado: Planea un viaje (con isologo Ohtli)
+          _buildPlanTripCtaButton(),
+          const SizedBox(height: 8),
+
           _buildSidebarItem(
             icon: 'assets/icon_isologo.svg',
             activeIcon: 'assets/icon_isologo.svg',

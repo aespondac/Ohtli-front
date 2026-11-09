@@ -18,6 +18,7 @@ import 'account/public_profile_page.dart';
 import 'friends_page.dart';
 import 'notifications_page.dart';
 import 'places/places_page.dart';
+import '../widgets/trip_planner_dialog.dart';
 
 // Pinned Stories Model & Constant
 class PinnedStory {
@@ -371,6 +372,23 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         body: _buildBody(isMobile),
+        floatingActionButton: FloatingActionButton(
+          heroTag: 'fab_plan_trip_mobile',
+          onPressed: () {
+            TripPlannerDialog.show(
+              context,
+              onManualPlanSelected: () => setState(() => _currentIndex = 1),
+            );
+          },
+          backgroundColor: OhtliColors.stormyTeal,
+          elevation: 6,
+          child: SvgPicture.asset(
+            'assets/icon_isologo.svg',
+            width: 22,
+            height: 22,
+            colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+          ),
+        ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _currentIndex == 1
               ? 0
@@ -438,6 +456,32 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: OhtliColors.cloudDancer,
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab_plan_trip_desktop',
+        onPressed: () {
+          TripPlannerDialog.show(
+            context,
+            onManualPlanSelected: () => setState(() => _currentIndex = 1),
+          );
+        },
+        backgroundColor: OhtliColors.stormyTeal,
+        elevation: 6,
+        icon: SvgPicture.asset(
+          'assets/icon_isologo.svg',
+          width: 20,
+          height: 20,
+          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+        ),
+        label: Text(
+          'Planea un viaje',
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: Colors.white,
+            letterSpacing: 0.3,
+          ),
+        ),
+      ),
       body: Row(
         children: [
           // ========= SIDEBAR =========
