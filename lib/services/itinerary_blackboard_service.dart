@@ -25,6 +25,7 @@ class ItineraryBlackboardService {
     Map<String, double>? destination,
     String topology = 'radio',
     required String moodText,
+    String? originName,
     List<double>? customTasteVector,
   }) async {
     final jobId = 'job_${const Uuid().v4()}';
@@ -54,11 +55,17 @@ class ItineraryBlackboardService {
       }
     }
 
+    final effectiveOriginName = (originName != null && originName.trim().isNotEmpty)
+        ? originName.trim()
+        : 'Ciudad de México';
+
     final payload = {
       'job_id': jobId,
       'user_id': userId,
+      'userId': userId,
       'budget': budget,
       'origin': origin,
+      'origin_name': effectiveOriginName,
       'destination': destination ?? origin,
       'topology': topology,
       'mood_vector': tasteVec, // El backend fusiona taste con mood_text
@@ -71,11 +78,14 @@ class ItineraryBlackboardService {
     final initState = {
       'job_id': jobId,
       'user_id': userId,
+      'userId': userId,
+      'origin_name': effectiveOriginName,
       'status': 'processing',
       'current_agent': 'comparador',
       'progress_percent': 15,
       'request': payload,
       'created_at': FieldValue.serverTimestamp(),
+      'updated_at': FieldValue.serverTimestamp(),
       'steps': {
         'comparador': {'status': 'running', 'started_at': nowUtc.toIso8601String()},
         'generador': {'status': 'pending'},
@@ -87,6 +97,7 @@ class ItineraryBlackboardService {
 
     try {
       await _firestore.collection('itinerary_jobs').doc(jobId).set(initState);
+      debugPrint('[BlackboardService] Job registrado exitosamente en Firestore: $jobId');
     } catch (e) {
       debugPrint('[BlackboardService] Error registrando init_state en Firestore: $e');
     }

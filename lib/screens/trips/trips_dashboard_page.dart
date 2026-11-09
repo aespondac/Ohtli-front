@@ -844,12 +844,36 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('itinerary_jobs')
-                                .where('user_id', isEqualTo: _userId)
                                 .snapshots(),
                             builder: (context, aiSnap) {
-                              final List<QueryDocumentSnapshot> aiJobs = (aiSnap.hasData)
-                                  ? aiSnap.data!.docs
-                                  : [];
+                              final currentUid = _userId ?? FirebaseAuth.instance.currentUser?.uid;
+                              final List<QueryDocumentSnapshot> aiJobs = [];
+
+                              if (aiSnap.hasData && currentUid != null) {
+                                for (final doc in aiSnap.data!.docs) {
+                                  final data = doc.data() as Map<String, dynamic>? ?? {};
+                                  final docUid = (data['user_id'] ??
+                                          data['userId'] ??
+                                          (data['request'] is Map
+                                              ? (data['request']['user_id'] ?? data['request']['userId'])
+                                              : null))
+                                      ?.toString();
+                                  if (docUid == currentUid) {
+                                    aiJobs.add(doc);
+                                  }
+                                }
+
+                                aiJobs.sort((a, b) {
+                                  final aData = a.data() as Map<String, dynamic>;
+                                  final bData = b.data() as Map<String, dynamic>;
+                                  final aTime = aData['created_at'];
+                                  final bTime = bData['created_at'];
+                                  if (aTime is Timestamp && bTime is Timestamp) {
+                                    return bTime.compareTo(aTime);
+                                  }
+                                  return 0;
+                                });
+                              }
 
                               if (draftTrips.isEmpty && unopenedSurprises.isEmpty && aiJobs.isEmpty) {
                                 return _buildTripsList(
@@ -1067,7 +1091,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             children: completedJobs.map((doc) {
               final data = doc.data() as Map<String, dynamic>;
               final req = data['request'] as Map<String, dynamic>? ?? {};
-              final originName = (req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
+              final originName = (data['origin_name'] ?? req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
               final budget = (req['budget'] as num?)?.toDouble() ?? 500.0;
               final res = data['result'] as Map<String, dynamic>? ?? {};
               final options = (res['options'] as List<dynamic>?)
@@ -1201,7 +1225,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   Widget _buildGeneratingJobCard(QueryDocumentSnapshot doc, bool isDark) {
     final data = doc.data() as Map<String, dynamic>;
     final req = data['request'] as Map<String, dynamic>? ?? {};
-    final originName = (req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
+    final originName = (data['origin_name'] ?? req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
     final progress = (data['progress_percent'] as num?)?.toInt() ?? 20;
     final agent = (data['current_agent'] ?? 'comparador').toString();
 

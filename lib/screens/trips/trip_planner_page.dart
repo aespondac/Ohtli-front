@@ -202,10 +202,15 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     });
 
     try {
+      final originTitle = _originSearchController.text.trim().isNotEmpty
+          ? _originSearchController.text.trim()
+          : (widget.originName ?? 'Ciudad de México');
+
       final jobId = await _blackboardService.requestItineraryJob(
         userId: user.uid,
         budget: _budgetMxn,
         origin: coords,
+        originName: originTitle,
         topology: _selectedTopology,
         moodText: effectiveMood,
       );
