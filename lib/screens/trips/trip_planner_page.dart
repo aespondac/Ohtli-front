@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
 import 'dart:async';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -78,6 +79,77 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   double _budgetMxn = 450.0;
   String _selectedMood = 'Bohemio y Cafés';
   String _selectedTopology = 'anillo'; // anillo, radio, elipse
+  DateTime _selectedTravelDate = DateTime.now().add(const Duration(days: 1));
+
+  String _formatDate(DateTime d) {
+    const months = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    const weekdays = [
+      'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'
+    ];
+    final dayName = weekdays[d.weekday - 1];
+    final monthName = months[d.month - 1];
+    return '$dayName, ${d.day} de $monthName de ${d.year}';
+  }
+
+  DateTime _getNextWeekend() {
+    final now = DateTime.now();
+    int daysUntilSaturday = (DateTime.saturday - now.weekday + 7) % 7;
+    if (daysUntilSaturday == 0) daysUntilSaturday = 7;
+    return now.add(Duration(days: daysUntilSaturday));
+  }
+
+  Future<void> _pickTravelDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedTravelDate.isBefore(now) ? now : _selectedTravelDate,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: OhtliColors.stormyTeal,
+              onPrimary: Colors.white,
+              onSurface: OhtliColors.onyx,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _selectedTravelDate = picked);
+    }
+  }
+
+  Widget _buildQuickDateChip(String label, DateTime targetDate) {
+    final isSelected = _selectedTravelDate.year == targetDate.year &&
+        _selectedTravelDate.month == targetDate.month &&
+        _selectedTravelDate.day == targetDate.day;
+
+    return ActionChip(
+      label: Text(label),
+      labelStyle: GoogleFonts.inter(
+        fontSize: 11,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+        color: isSelected ? Colors.white : OhtliColors.onyx,
+      ),
+      backgroundColor: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder.withOpacity(0.2),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
+        ),
+      ),
+      onPressed: () {
+        setState(() => _selectedTravelDate = targetDate);
+      },
+    );
+  }
 
   // Blackboard / SMA State
   String? _activeJobId;
@@ -213,6 +285,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         originName: originTitle,
         topology: _selectedTopology,
         moodText: effectiveMood,
+        travelDate: _selectedTravelDate,
       );
 
       _activeJobId = jobId;
@@ -288,6 +361,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         userId: user.uid,
         chosenOption: option,
         defaultTitle: 'Ruta Ohtli IA',
+        travelDate: _selectedTravelDate,
       );
 
       if (_activeJobId != null) {
@@ -900,8 +974,95 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Ajusta el estilo de experiencia deseado. Nuestro Sistema Multiagente optimizará la tríada basándose en estos parámetros.',
+          'Ajusta el estilo de experiencia deseado. Nuestro Sistema Multiagente optimizará tus opciones de viaje basándose en estos parámetros.',
           style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
+        ),
+        const SizedBox(height: 24),
+
+        // Fecha del Viaje
+        Text(
+          'FECHA DEL VIAJE',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.0,
+            color: OhtliColors.subtleText,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: OhtliColors.innerCardBg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: OhtliColors.cardBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: OhtliColors.stormyTeal.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.calendar_today_rounded, color: OhtliColors.stormyTeal, size: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _formatDate(_selectedTravelDate),
+                            style: GoogleFonts.outfit(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: OhtliColors.onyx,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Fecha programada para el itinerario',
+                            style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  TextButton.icon(
+                    onPressed: _pickTravelDate,
+                    icon: const Icon(Icons.edit_calendar_rounded, size: 16, color: OhtliColors.stormyTeal),
+                    label: Text(
+                      'Cambiar',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.stormyTeal),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      backgroundColor: OhtliColors.stormyTeal.withOpacity(0.08),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // Chips de acceso rápido
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildQuickDateChip('Hoy', DateTime.now()),
+                  _buildQuickDateChip('Mañana', DateTime.now().add(const Duration(days: 1))),
+                  _buildQuickDateChip('Este Fin de Semana', _getNextWeekend()),
+                  _buildQuickDateChip('En 1 semana', DateTime.now().add(const Duration(days: 7))),
+                ],
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 24),
 
@@ -1088,7 +1249,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Calcular Tríada de Multirutas', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold)),
+                  Text('Calcular Opciones de Viaje', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(width: 8),
                   const Icon(Icons.arrow_forward_rounded, size: 16),
                 ],
@@ -1309,7 +1470,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'ELIGE TU MULTIRUTA TEMÁTICA',
+                'ELIGE TU OPCIÓN DE VIAJE',
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
@@ -1502,42 +1663,49 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                           final i = entry.key;
                           final stop = entry.value as Map<String, dynamic>;
                           final stopName = (stop['name'] ?? 'Lugar').toString();
-                          return Container(
-                            margin: const EdgeInsets.only(right: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${i + 1}. ',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: OhtliColors.stormyTeal,
+                          return InkWell(
+                            onTap: () => _showRouteMapAndChronologyDialog(option, index),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${i + 1}. ',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: OhtliColors.stormyTeal,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  stopName.length > 20 ? '${stopName.substring(0, 18)}...' : stopName,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500,
+                                  Text(
+                                    stopName.length > 20 ? '${stopName.substring(0, 18)}...' : stopName,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           );
                         }).toList(),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
 
-                    // Botón Principal Píldora Cinematográfica ("Elegir esta ruta")
-                    Row(
+                    // Botones de Acción
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         ElevatedButton.icon(
                           onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
@@ -1561,16 +1729,38 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                             backgroundColor: Colors.white,
                             foregroundColor: Colors.black,
                             padding: EdgeInsets.symmetric(
-                              horizontal: isMobile ? 18 : 26,
-                              vertical: isMobile ? 12 : 16,
+                              horizontal: isMobile ? 16 : 22,
+                              vertical: isMobile ? 12 : 15,
                             ),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                             elevation: 8,
                           ),
                         ),
-                        const SizedBox(width: 12),
-
-                        // Botón Alternativa: Guardar en Planes
+                        ElevatedButton.icon(
+                          onPressed: () => _showRouteMapAndChronologyDialog(option, index),
+                          icon: const Icon(Icons.map_rounded, color: Colors.white, size: 16),
+                          label: Text(
+                            'Ver Mapa y Cronología',
+                            style: GoogleFonts.inter(
+                              fontSize: isMobile ? 12 : 13,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.18),
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 14 : 18,
+                              vertical: isMobile ? 12 : 15,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              side: BorderSide(color: Colors.white.withOpacity(0.35)),
+                            ),
+                            elevation: 0,
+                          ),
+                        ),
                         IconButton(
                           onPressed: () {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1595,6 +1785,509 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showRouteMapAndChronologyDialog(Map<String, dynamic> option, int index) {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final title = (option['editorial_headline'] ?? option['theme'] ?? 'Ruta ${index + 1}').toString();
+    final summary = (option['narrative_summary'] ?? '').toString();
+    final cost = (option['total_cost_mxn'] as num?)?.toDouble() ?? 250.0;
+    final timeMins = (option['estimated_time_mins'] as num?)?.toInt() ?? 180;
+    final List<dynamic> rawStops = option['route'] ?? [];
+    final List<dynamic> rawNarrations = option['stops_narration'] ?? [];
+
+    final int hours = timeMins ~/ 60;
+    final int minutes = timeMins % 60;
+    final String timeStr = hours > 0 ? '$hours h $minutes min' : '$minutes min';
+
+    const mapsApiKey = String.fromEnvironment('mapsApiKey');
+    const apiKey = String.fromEnvironment('apiKey');
+    final activeKey = mapsApiKey.isNotEmpty ? mapsApiKey : apiKey;
+
+    final markers = StringBuffer();
+    final path = StringBuffer('&path=color:0x2F6B6Bff|weight:5');
+    final waypointNames = <String>[];
+
+    for (int i = 0; i < rawStops.length; i++) {
+      final s = rawStops[i] as Map<String, dynamic>;
+      final label = (i + 1).toString();
+      double? lat = (s['lat'] as num?)?.toDouble();
+      double? lng = (s['lng'] as num?)?.toDouble();
+      if (lat == null && s['location'] is Map) {
+        lat = (s['location']['lat'] as num?)?.toDouble();
+        lng = (s['location']['lng'] as num?)?.toDouble();
+      }
+
+      if (lat != null && lng != null) {
+        markers.write('&markers=color:0xE26D5C|label:$label|$lat,$lng');
+        path.write('|$lat,$lng');
+        waypointNames.add('$lat,$lng');
+      } else {
+        final stopName = Uri.encodeComponent('${s['name'] ?? 'Lugar'}, CDMX');
+        markers.write('&markers=color:0xE26D5C|label:$label|$stopName');
+        waypointNames.add(stopName);
+      }
+    }
+
+    final staticMapUrl = activeKey.isNotEmpty
+        ? 'https://maps.googleapis.com/maps/api/staticmap?size=900x420&scale=2&maptype=roadmap$path$markers&key=$activeKey'
+        : '';
+
+    String googleMapsDirectionsUrl = '';
+    if (waypointNames.isNotEmpty) {
+      final origin = waypointNames.first;
+      final destination = waypointNames.last;
+      final waypoints = waypointNames.length > 2
+          ? waypointNames.sublist(1, waypointNames.length - 1).join('|')
+          : '';
+      googleMapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination' +
+          (waypoints.isNotEmpty ? '&waypoints=$waypoints' : '') +
+          '&travelmode=walking';
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final isMobile = MediaQuery.of(ctx).size.width < 768;
+
+        return Dialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          insetPadding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 16 : 40,
+            vertical: isMobile ? 24 : 40,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 820, maxHeight: 780),
+            child: Column(
+              children: [
+                // Header del Dialog
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: OhtliColors.stormyTeal,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'OPCIÓN ${index + 1} · ${(option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase()}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.0,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              title,
+                              style: GoogleFonts.outfit(
+                                fontSize: isMobile ? 18 : 22,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : OhtliColors.onyx,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : OhtliColors.onyx),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+
+                // Contenido Scrollable
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Badges de Metadatos
+                        Row(
+                          children: [
+                            _buildDialogMetaPill(Icons.schedule_rounded, timeStr, isDark),
+                            const SizedBox(width: 8),
+                            _buildDialogMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN', isDark),
+                            const SizedBox(width: 8),
+                            _buildDialogMetaPill(Icons.place_rounded, '${rawStops.length} paradas', isDark),
+                          ],
+                        ),
+                        if (summary.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            summary,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: isDark ? Colors.white70 : OhtliColors.subtleText,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+
+                        // Sección: Mapa de la Ruta
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Mapa de la Ruta',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : OhtliColors.onyx,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (googleMapsDirectionsUrl.isNotEmpty)
+                              TextButton.icon(
+                                onPressed: () {
+                                  html.window.open(googleMapsDirectionsUrl, '_blank');
+                                },
+                                icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                                label: Text(
+                                  'Abrir en Google Maps',
+                                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: OhtliColors.stormyTeal,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Visual del Mapa
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: staticMapUrl.isNotEmpty
+                              ? Image.network(
+                                  staticMapUrl,
+                                  width: double.infinity,
+                                  height: isMobile ? 200 : 260,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      _buildFallbackOptionMap(rawStops, isDark),
+                                )
+                              : _buildFallbackOptionMap(rawStops, isDark),
+                        ),
+                        const SizedBox(height: 28),
+
+                        // Sección: Cronología del Recorrido
+                        Row(
+                          children: [
+                            const Icon(Icons.timeline_rounded, color: OhtliColors.cempasuchil, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Cronología de Paradas',
+                              style: GoogleFonts.outfit(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : OhtliColors.onyx,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Timeline vertical
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: rawStops.length,
+                          itemBuilder: (context, idx) {
+                            final stop = rawStops[idx] as Map<String, dynamic>;
+                            final stopName = (stop['name'] ?? 'Parada ${idx + 1}').toString();
+                            final isLast = idx == rawStops.length - 1;
+                            final arrival = stop['arrival_time']?.toString();
+                            final departure = stop['departure_time']?.toString();
+                            final timeLabel = arrival != null
+                                ? '$arrival${departure != null ? " - $departure" : ""}'
+                                : 'Parada ${idx + 1}';
+                            final stopPrice = (stop['price_mxn'] as num?)?.toDouble() ?? 0.0;
+                            final photo = (stop['photo_url'] ?? stop['main_photo_url'] ?? '').toString();
+
+                            String desc = '';
+                            if (idx < rawNarrations.length && rawNarrations[idx] != null) {
+                              final n = rawNarrations[idx];
+                              if (n is Map) {
+                                desc = (n['narration'] ?? n['why'] ?? '').toString();
+                              } else {
+                                desc = n.toString();
+                              }
+                            }
+                            if (desc.isEmpty) {
+                              desc = (stop['semantic_description'] ?? '').toString();
+                            }
+
+                            return IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Columna Izquierda: Número y línea conectora
+                                  Column(
+                                    children: [
+                                      Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          color: OhtliColors.stormyTeal,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: OhtliColors.stormyTeal.withOpacity(0.3),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            '${idx + 1}',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      if (!isLast)
+                                        Expanded(
+                                          child: Container(
+                                            width: 2,
+                                            color: OhtliColors.stormyTeal.withOpacity(0.25),
+                                            margin: const EdgeInsets.symmetric(vertical: 4),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 14),
+
+                                  // Columna Derecha: Detalle
+                                  Expanded(
+                                    child: Padding(
+                                      padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(14),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF26262B) : OhtliColors.innerCardBg,
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: isDark ? Colors.white12 : OhtliColors.cardBorder,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            if (photo.isNotEmpty)
+                                              ClipRRect(
+                                                borderRadius: BorderRadius.circular(10),
+                                                child: Image.network(
+                                                  photo,
+                                                  width: 56,
+                                                  height: 56,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error, stackTrace) =>
+                                                      const SizedBox.shrink(),
+                                                ),
+                                              ),
+                                            if (photo.isNotEmpty) const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          stopName,
+                                                          style: GoogleFonts.outfit(
+                                                            fontSize: 15,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: isDark ? Colors.white : OhtliColors.onyx,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: OhtliColors.cempasuchil.withOpacity(0.12),
+                                                          borderRadius: BorderRadius.circular(6),
+                                                        ),
+                                                        child: Text(
+                                                          timeLabel,
+                                                          style: GoogleFonts.inter(
+                                                            fontSize: 10,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: OhtliColors.cempasuchil,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  if (stopPrice > 0) ...[
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      '\$${stopPrice.toStringAsFixed(0)} MXN',
+                                                      style: GoogleFonts.inter(
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: OhtliColors.stormyTeal,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                  if (desc.isNotEmpty) ...[
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      desc,
+                                                      style: GoogleFonts.inter(
+                                                        fontSize: 12,
+                                                        color: isDark ? Colors.white60 : OhtliColors.subtleText,
+                                                        height: 1.35,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+
+                // Footer de Acciones
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: Text(
+                          'Cerrar',
+                          style: GoogleFonts.inter(
+                            color: isDark ? Colors.white60 : OhtliColors.subtleText,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: _isSavingTrip
+                            ? null
+                            : () {
+                                Navigator.of(ctx).pop();
+                                _chooseRouteAndCreateTrip(option);
+                              },
+                        icon: const Icon(Icons.check_circle_rounded, size: 18),
+                        label: Text(
+                          'Elegir esta opción (\$${cost.toStringAsFixed(0)} MXN)',
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OhtliColors.stormyTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFallbackOptionMap(List<dynamic> stops, bool isDark) {
+    return Container(
+      width: double.infinity,
+      height: 200,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141416) : OhtliColors.innerCardBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.route_rounded, color: OhtliColors.stormyTeal, size: 36),
+            const SizedBox(height: 8),
+            Text(
+              'Ruta secuencial con ${stops.length} paradas programadas',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : OhtliColors.onyx,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDialogMetaPill(IconData icon, String label, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF26262B) : OhtliColors.innerCardBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isDark ? Colors.white12 : OhtliColors.cardBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: OhtliColors.stormyTeal),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : OhtliColors.onyx,
+            ),
+          ),
+        ],
       ),
     );
   }

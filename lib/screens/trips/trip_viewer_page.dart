@@ -1,3 +1,5 @@
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -626,6 +628,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildRouteMapAndChronologySection(isDark, isDesktop),
                   ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -653,7 +656,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     bool isLocked = false;
 
     if (isSurpriseForMe) {
-      final bool isAuthor = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
+      final bool isAuthor = _trip!.userId == currentUser.uid;
       isLocked = _checkIsLocked(_trip!, isSurpriseForMe, isAuthor);
       
       if (isLocked) {
@@ -2246,4 +2249,313 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
+  Widget _buildRouteMapAndChronologySection(bool isDark, bool isDesktop) {
+    final places = _sections.whereType<PlaceSection>().toList();
+    if (places.isEmpty) return const SizedBox.shrink();
+
+    const mapsApiKey = String.fromEnvironment('mapsApiKey');
+    const apiKey = String.fromEnvironment('apiKey');
+    final activeKey = mapsApiKey.isNotEmpty ? mapsApiKey : apiKey;
+
+    final markers = StringBuffer();
+    final path = StringBuffer('&path=color:0x2F6B6Bff|weight:5');
+    final waypointNames = <String>[];
+
+    for (int i = 0; i < places.length; i++) {
+      final p = places[i];
+      final label = (i + 1).toString();
+      if (p.lat != null && p.lng != null) {
+        markers.write('&markers=color:0xE26D5C|label:$label|${p.lat},${p.lng}');
+        path.write('|${p.lat},${p.lng}');
+        waypointNames.add('${p.lat},${p.lng}');
+      } else {
+        final encodedName = Uri.encodeComponent('${p.title}, CDMX');
+        markers.write('&markers=color:0xE26D5C|label:$label|$encodedName');
+        waypointNames.add(encodedName);
+      }
+    }
+
+    final staticMapUrl = activeKey.isNotEmpty
+        ? 'https://maps.googleapis.com/maps/api/staticmap?size=900x420&scale=2&maptype=roadmap$path$markers&key=$activeKey'
+        : '';
+
+    String googleMapsDirectionsUrl = '';
+    if (waypointNames.isNotEmpty) {
+      final origin = waypointNames.first;
+      final destination = waypointNames.last;
+      final waypoints = waypointNames.length > 2
+          ? waypointNames.sublist(1, waypointNames.length - 1).join('|')
+          : '';
+      googleMapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination' +
+          (waypoints.isNotEmpty ? '&waypoints=$waypoints' : '') +
+          '&travelmode=walking';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 28),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white12 : OhtliColors.cardBorder,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.25 : 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header de la sección
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.stormyTeal.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mapa de la Ruta',
+                        style: GoogleFonts.outfit(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : OhtliColors.onyx,
+                        ),
+                      ),
+                      Text(
+                        '${places.length} paradas organizadas cronológicamente',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: isDark ? Colors.white60 : OhtliColors.subtleText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              if (googleMapsDirectionsUrl.isNotEmpty)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    html.window.open(googleMapsDirectionsUrl, '_blank');
+                  },
+                  icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                  label: Text(
+                    isDesktop ? 'Abrir en Google Maps' : 'Abrir Mapa',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: OhtliColors.stormyTeal,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // Contenedor visual del mapa
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: staticMapUrl.isNotEmpty
+                ? Image.network(
+                    staticMapUrl,
+                    width: double.infinity,
+                    height: isDesktop ? 300 : 220,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => _buildFallbackMapVisual(places, isDark),
+                  )
+                : _buildFallbackMapVisual(places, isDark),
+          ),
+          const SizedBox(height: 24),
+
+          // Título de la Cronología
+          Row(
+            children: [
+              const Icon(Icons.timeline_rounded, color: OhtliColors.cempasuchil, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Cronología del Recorrido',
+                style: GoogleFonts.outfit(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : OhtliColors.onyx,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Lista de paradas de la cronología
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: places.length,
+            itemBuilder: (context, idx) {
+              final p = places[idx];
+              final isLast = idx == places.length - 1;
+              final timeStr = p.arrivalTime != null ? '${p.arrivalTime}${p.departureTime != null ? " - ${p.departureTime}" : ""}' : 'Parada ${idx + 1}';
+
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Columna izquierda: Número y línea conectora
+                    Column(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: OhtliColors.stormyTeal,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: OhtliColors.stormyTeal.withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${idx + 1}',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (!isLast)
+                          Expanded(
+                            child: Container(
+                              width: 2,
+                              color: OhtliColors.stormyTeal.withOpacity(0.25),
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 14),
+
+                    // Columna derecha: Detalles de la parada
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    p.title,
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.white : OhtliColors.onyx,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: OhtliColors.cempasuchil.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    timeStr,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: OhtliColors.cempasuchil,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (p.cost > 0) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                '\$${p.cost.toStringAsFixed(0)} ${p.currency}',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: OhtliColors.stormyTeal,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 4),
+                            Text(
+                              p.description,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                color: isDark ? Colors.white60 : OhtliColors.subtleText,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFallbackMapVisual(List<PlaceSection> places, bool isDark) {
+    return Container(
+      width: double.infinity,
+      height: 200,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141416) : OhtliColors.innerCardBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.route_rounded, color: OhtliColors.stormyTeal, size: 36),
+            const SizedBox(height: 8),
+            Text(
+              'Ruta secuencial con ${places.length} paradas programadas',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : OhtliColors.onyx,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

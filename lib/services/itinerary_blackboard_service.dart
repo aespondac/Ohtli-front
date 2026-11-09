@@ -27,6 +27,7 @@ class ItineraryBlackboardService {
     required String moodText,
     String? originName,
     List<double>? customTasteVector,
+    DateTime? travelDate,
   }) async {
     final jobId = 'job_${const Uuid().v4()}';
     final nowUtc = DateTime.now().toUtc();
@@ -71,6 +72,7 @@ class ItineraryBlackboardService {
       'mood_vector': tasteVec, // El backend fusiona taste con mood_text
       'vibe_vector': tasteVec,
       'mood_text': moodText,
+      'travel_date': travelDate?.toIso8601String(),
       'created_at': nowUtc.toIso8601String(),
     };
 
@@ -83,6 +85,7 @@ class ItineraryBlackboardService {
       'status': 'processing',
       'current_agent': 'comparador',
       'progress_percent': 15,
+      'travel_date': travelDate?.toIso8601String(),
       'request': payload,
       'created_at': FieldValue.serverTimestamp(),
       'updated_at': FieldValue.serverTimestamp(),
@@ -252,6 +255,15 @@ class ItineraryBlackboardService {
         stopDesc = stop['semantic_description'] ?? 'Parada recomendada por afinidad cultural.';
       }
 
+      double? lat = (stop['lat'] as num?)?.toDouble();
+      double? lng = (stop['lng'] as num?)?.toDouble();
+      if (lat == null && stop['location'] is Map) {
+        lat = (stop['location']['lat'] as num?)?.toDouble();
+        lng = (stop['location']['lng'] as num?)?.toDouble();
+      }
+      final arrivalTime = stop['arrival_time']?.toString();
+      final departureTime = stop['departure_time']?.toString();
+
       sections.add(
         PlaceSection(
           id: 'sec_${const Uuid().v4()}',
@@ -262,6 +274,10 @@ class ItineraryBlackboardService {
           secondaryPhotoUrls: [],
           cost: (stop['price_mxn'] as num?)?.toDouble() ?? 0.0,
           currency: 'MXN',
+          lat: lat,
+          lng: lng,
+          arrivalTime: arrivalTime,
+          departureTime: departureTime,
         ),
       );
     }

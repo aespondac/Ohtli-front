@@ -845,7 +845,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                             width,
                           ),
 
-                          // --- TAB: PLANES (Borradores & Tríadas IA) ---
+                          // --- TAB: PLANES (Borradores & Opciones de Viaje IA) ---
                           StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance
                                 .collection('itinerary_jobs')
@@ -884,7 +884,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                 return _buildTripsList(
                                   [], 
                                   'Tu libreta de caminos está vacía.',
-                                  'Crea tu primer plan o genera una tríada con IA para comenzar a diseñar tu ruta.',
+                                  'Crea tu primer plan o genera opciones de viaje con IA para comenzar a diseñar tu ruta.',
                                   crossAxisCount, 
                                   padding,
                                   width,
@@ -954,12 +954,19 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     for (final doc in aiJobs) {
       final data = doc.data() as Map<String, dynamic>;
       final status = (data['status'] ?? '').toString();
+      final progress = (data['progress_percent'] as num?)?.toInt() ?? 0;
       final res = data['result'] as Map<String, dynamic>? ?? {};
       final options = (res['options'] as List<dynamic>?) ?? [];
+      final hasCreatedTrip = data['created_trip_id'] != null || status == 'chosen';
 
-      if (status == 'completed' && options.isNotEmpty) {
+      // Si la opción ya fue elegida y convertida a viaje, NO debe aparecer como en curso
+      if (hasCreatedTrip) {
+        continue;
+      }
+
+      if ((status == 'completed' || progress >= 100 || options.isNotEmpty) && options.isNotEmpty) {
         completedJobs.add(doc);
-      } else if (status != 'failed') {
+      } else if (status != 'failed' && status != 'error') {
         generatingJobs.add(doc);
       }
     }
@@ -1030,7 +1037,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         ],
 
         // ==========================================
-        // 2. TRÍADAS COMPLETADAS Y LISTAS
+        // 2. OPCIONES DE VIAJE COMPLETADAS Y LISTAS
         // ==========================================
         if (completedJobs.isNotEmpty) ...[
           Row(
@@ -1053,7 +1060,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Tríadas Generadas con IA',
+                    'Opciones de Viaje con IA',
                     style: GoogleFonts.outfit(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1083,7 +1090,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Explora y compara las 3 multirutas en cualquier momento antes de elegir tu favorita.',
+            'Explora y compara las 3 opciones de viaje en cualquier momento antes de elegir tu favorita.',
             style: GoogleFonts.inter(
               fontSize: 12,
               color: isDark ? Colors.white60 : OhtliColors.onyx.withOpacity(0.55),
@@ -1091,7 +1098,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           ),
           const SizedBox(height: 14),
 
-          // Tarjetas de Tríadas Listas
+          // Tarjetas de Opciones Listas
           Column(
             children: completedJobs.map((doc) {
               final data = doc.data() as Map<String, dynamic>;
@@ -1139,7 +1146,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Tríada: $originName',
+                            'Opciones para: $originName',
                             style: GoogleFonts.outfit(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -1150,7 +1157,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            '3 multirutas temáticas calculadas · Presupuesto \$${budget.toStringAsFixed(0)} MXN',
+                            '3 opciones de ruta temáticas calculadas · Presupuesto \$${budget.toStringAsFixed(0)} MXN',
                             style: GoogleFonts.inter(
                               fontSize: 12,
                               color: isDark ? Colors.white70 : OhtliColors.subtleText,
@@ -1191,9 +1198,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           originName: originName,
                         );
                       },
-                      icon: const Icon(Icons.movie_filter_rounded, size: 16),
+                      icon: const Icon(Icons.explore_rounded, size: 16),
                       label: Text(
-                        'Explorar Tríada',
+                        'Ver opciones de viaje',
                         style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -1211,7 +1218,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                         size: 18,
                         color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
                       ),
-                      tooltip: 'Descartar tríada',
+                      tooltip: 'Descartar opciones',
                       onPressed: () {
                         FirebaseFirestore.instance.collection('itinerary_jobs').doc(doc.id).delete();
                       },

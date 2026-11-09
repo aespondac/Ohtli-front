@@ -203,6 +203,10 @@ class PlaceSection extends TripSection {
   final List<String> secondaryPhotoUrls;
   final double cost;
   final String currency;
+  final double? lat;
+  final double? lng;
+  final String? arrivalTime;
+  final String? departureTime;
 
   PlaceSection({
     required super.id,
@@ -213,9 +217,20 @@ class PlaceSection extends TripSection {
     required this.secondaryPhotoUrls,
     this.cost = 0.0,
     this.currency = 'MXN',
+    this.lat,
+    this.lng,
+    this.arrivalTime,
+    this.departureTime,
   }) : super(type: 'place');
 
   factory PlaceSection.fromMap(Map<String, dynamic> data) {
+    double? parsedLat = (data['lat'] as num?)?.toDouble();
+    double? parsedLng = (data['lng'] as num?)?.toDouble();
+    if (parsedLat == null && data['location'] is Map) {
+      parsedLat = (data['location']['lat'] as num?)?.toDouble();
+      parsedLng = (data['location']['lng'] as num?)?.toDouble();
+    }
+
     return PlaceSection(
       id: data['id'] ?? '',
       title: data['title'] ?? '',
@@ -225,6 +240,10 @@ class PlaceSection extends TripSection {
       secondaryPhotoUrls: List<String>.from(data['secondaryPhotoUrls'] ?? []),
       cost: (data['cost'] as num?)?.toDouble() ?? 0.0,
       currency: data['currency'] ?? 'MXN',
+      lat: parsedLat,
+      lng: parsedLng,
+      arrivalTime: data['arrivalTime'] ?? data['arrival_time'],
+      departureTime: data['departureTime'] ?? data['departure_time'],
     );
   }
 
@@ -240,6 +259,11 @@ class PlaceSection extends TripSection {
       'secondaryPhotoUrls': secondaryPhotoUrls,
       'cost': cost,
       'currency': currency,
+      'lat': lat,
+      'lng': lng,
+      if (lat != null && lng != null) 'location': {'lat': lat, 'lng': lng},
+      'arrivalTime': arrivalTime,
+      'departureTime': departureTime,
     };
   }
 }
