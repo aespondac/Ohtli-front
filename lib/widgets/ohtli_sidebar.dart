@@ -414,7 +414,6 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
                 ),
               ),
             ),
-            const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 15),
           ],
         ),
       );
