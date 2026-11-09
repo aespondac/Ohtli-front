@@ -17,6 +17,7 @@ import '../../services/trip_service.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/gift_wrapped_card.dart';
+import '../../services/itinerary_blackboard_service.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 import 'trip_editor_page.dart';
@@ -31,6 +32,7 @@ class TripsDashboardPage extends StatefulWidget {
 
 class _TripsDashboardPageState extends State<TripsDashboardPage> {
   final TripService _tripService = TripService();
+  final ItineraryBlackboardService _blackboardService = ItineraryBlackboardService();
   String? _userId = FirebaseAuth.instance.currentUser?.uid;
 
   // Cache for author profiles (co-authored trips)
@@ -92,6 +94,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         _isLoading = true;
       });
     }
+
+    // Sincronizar y recuperar jobs calculados en segundo plano por Yollotl Engine
+    _blackboardService.syncUserJobsFromBackend(uid);
 
     _ownedSub = _tripService.getTripsStream(uid).listen((trips) {
       if (mounted) {

@@ -135,6 +135,60 @@ class ItineraryBlackboardService {
     return _firestore.collection('itinerary_jobs').doc(jobId).snapshots();
   }
 
+  /// Consulta directa y recuperable de un job tanto en Firestore como en Yollotl Engine
+  Future<Map<String, dynamic>?> fetchJobDirect(String jobId) async {
+    try {
+      final doc = await _firestore.collection('itinerary_jobs').doc(jobId).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        if (data['status'] == 'completed') return data;
+      }
+    } catch (e) {
+      debugPrint('[BlackboardService] Error leyendo job de Firestore: $e');
+    }
+
+    // Consultar a los endpoints REST de Yollotl Engine
+    for (final base in [_primaryApiUrl, _secondaryApiUrl]) {
+      try {
+        final res = await http.get(Uri.parse('$base/v1/itinerary/$jobId')).timeout(const Duration(seconds: 4));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          // Replicar en Firestore para persistencia local y trazabilidad
+          try {
+            await _firestore.collection('itinerary_jobs').doc(jobId).set(data, SetOptions(merge: true));
+          } catch (_) {}
+          return data;
+        }
+      } catch (err) {
+        debugPrint('[BlackboardService] Falló fetchJobDirect contra $base: $err');
+      }
+    }
+    return null;
+  }
+
+  /// Sincroniza y recupera todos los jobs del usuario desde el motor de agentes hacia Firestore
+  Future<void> syncUserJobsFromBackend(String userId) async {
+    for (final base in [_primaryApiUrl, _secondaryApiUrl]) {
+      try {
+        final res = await http.get(Uri.parse('$base/v1/itinerary/user/$userId')).timeout(const Duration(seconds: 5));
+        if (res.statusCode == 200) {
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          final jobs = body['jobs'] as List<dynamic>? ?? [];
+          for (final j in jobs) {
+            final jobMap = Map<String, dynamic>.from(j as Map);
+            final jId = jobMap['job_id']?.toString();
+            if (jId != null && jId.isNotEmpty) {
+              await _firestore.collection('itinerary_jobs').doc(jId).set(jobMap, SetOptions(merge: true));
+            }
+          }
+          break;
+        }
+      } catch (err) {
+        debugPrint('[BlackboardService] syncUserJobsFromBackend falló contra $base: $err');
+      }
+    }
+  }
+
   /// Notifica al usuario en la campana de la app si minimizó el modal
   Future<void> notifyIfBackground({
     required String userId,
