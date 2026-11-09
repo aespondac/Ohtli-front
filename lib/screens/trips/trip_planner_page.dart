@@ -163,6 +163,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   PageController? _triadPageController;
   double _currentViewportFraction = 0.88;
   int _activeCarouselIndex = 0;
+  bool _isDetailExpanded = false;
 
   PageController _getTriadPageController(double targetFraction) {
     if (_triadPageController == null || (_currentViewportFraction - targetFraction).abs() > 0.01) {
@@ -1476,23 +1477,115 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
-    // Cálculo responsivo de escala cinematográfica:
-    // En pantallas grandes (desktop), la tarjeta central mide ~780-840px de ancho y las
-    // tarjetas laterales tienen un preview amplio y visible (~180-300px) en vez de recortes minúsculos.
+    // Escala amplia: en desktop la opción ocupa entre 80% y 88% del ancho de pantalla
     final double targetFraction = isMobile
-        ? 0.90
+        ? 0.92
         : (screenWidth < 1100
-            ? 0.74
-            : (840.0 / screenWidth).clamp(0.46, 0.68));
+            ? 0.88
+            : (screenWidth < 1500 ? 0.84 : 0.80));
+
+    // Si está en modo Detalle Expandido: queda SOLAMENTE la opción principal
+    if (_isDetailExpanded) {
+      final selectedOption = _generatedOptions[_activeCarouselIndex];
+      final maxContentWidth = isMobile ? double.infinity : (screenWidth * 0.84).clamp(760.0, 1280.0);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Barra de controles para volver al selector de las 3 opciones
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxContentWidth),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() => _isDetailExpanded = false);
+                    },
+                    icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                    label: Text(
+                      'Ver las ${_generatedOptions.length} opciones de viaje',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: OhtliColors.stormyTeal,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => setState(() => _isDetailExpanded = false),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: OhtliColors.stormyTeal.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Colapsar detalle',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: OhtliColors.stormyTeal,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.keyboard_arrow_down_rounded, color: OhtliColors.stormyTeal, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 1. Tarjeta Única Principal
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: maxContentWidth,
+              maxHeight: isMobile ? 540 : 540,
+            ),
+            child: _buildRouteCard(
+              selectedOption,
+              true,
+              isMobile,
+              _activeCarouselIndex,
+              isExpanded: true,
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // 2. Detalle completo integrado en la página (Mapa y Cronología)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxContentWidth),
+            child: _buildInPageExpandedDetail(selectedOption, _activeCarouselIndex, isMobile),
+          ),
+
+          const SizedBox(height: 48),
+        ],
+      );
+    }
 
     final controller = _getTriadPageController(targetFraction);
+    final headerMaxWidth = isMobile ? double.infinity : (screenWidth * targetFraction).clamp(760.0, 1300.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Indicador superior / Controles
+        // Indicador superior / Controles alineados al ancho de la tarjeta
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 880),
+          constraints: BoxConstraints(maxWidth: headerMaxWidth),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: Row(
@@ -1551,7 +1644,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
           ),
         ),
 
-        // Carrusel cinematográfico con controles flotantes en Desktop
+        // Carrusel cinematográfico amplio
         Stack(
           alignment: Alignment.center,
           children: [
@@ -1583,7 +1676,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                             );
                           }
                         },
-                        child: _buildRouteCard(option, isFocused, isMobile, index),
+                        child: _buildRouteCard(
+                          option,
+                          isFocused,
+                          isMobile,
+                          index,
+                          isExpanded: false,
+                        ),
                       ),
                     ),
                   );
@@ -1671,8 +1770,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     Map<String, dynamic> option,
     bool isFocused,
     bool isMobile,
-    int index,
-  ) {
+    int index, {
+    bool isExpanded = false,
+  }) {
     final title = (option['editorial_headline'] ?? option['theme'] ?? 'Ruta ${index + 1}').toString();
     final summary = (option['narrative_summary'] ?? '').toString();
     final cost = (option['total_cost_mxn'] as num?)?.toDouble() ?? 250.0;
@@ -1697,9 +1797,17 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
       },
       onVerticalDragEnd: (details) {
         final velocity = details.primaryVelocity ?? 0;
-        // Si el usuario desliza hacia arriba (velocidad negativa o arrastre acumulado hacia arriba)
+        // Si el usuario desliza hacia arriba (velocidad negativa o arrastre acumulado hacia arriba) -> expande detalle
         if (velocity < -120 || verticalDragDelta < -35) {
-          _showRouteMapAndChronologyDialog(option, index);
+          if (!_isDetailExpanded) {
+            setState(() => _isDetailExpanded = true);
+          }
+        }
+        // Si el usuario desliza hacia abajo -> colapsa detalle si estaba expandido
+        else if (velocity > 120 || verticalDragDelta > 35) {
+          if (_isDetailExpanded) {
+            setState(() => _isDetailExpanded = false);
+          }
         }
         verticalDragDelta = 0;
       },
@@ -1732,14 +1840,14 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               ),
             ),
 
-            // 2. Gradiente Cinematográfico equilibrado (suave arriba para el badge, oscuro abajo para el texto)
+            // 2. Gradiente Cinematográfico equilibrado
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.black.withOpacity(0.55),
-                      Colors.black.withOpacity(0.10),
+                      Colors.black.withOpacity(0.60),
+                      Colors.black.withOpacity(0.12),
                       Colors.black.withOpacity(0.70),
                       Colors.black.withOpacity(0.96),
                     ],
@@ -1751,7 +1859,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               ),
             ),
 
-            // 3. Barra Superior (Distribuida en la parte alta de la tarjeta)
+            // 3. Barra Superior (Badges a la izquierda, Chevron arriba al centro, Bookmark a la derecha)
             Positioned(
               top: isMobile ? 16 : 22,
               left: isMobile ? 16 : 24,
@@ -1797,6 +1905,37 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                       ),
                     ],
                   ),
+
+                  // Chevron en la parte de arriba
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _isDetailExpanded = !_isDetailExpanded;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.50),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+
                   IconButton(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1817,7 +1956,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               ),
             ),
 
-            // 4. Contenido Inferior (Título, Metadatos, Sinopsis, Paradas y Acciones)
+            // 4. Contenido Inferior (Metadatos, Título, Sinopsis, Paradas y Acciones)
             Positioned(
               left: isMobile ? 16 : 24,
               right: isMobile ? 16 : 24,
@@ -1852,7 +1991,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Sinopsis Narrativa (máximo 2 líneas legibles)
+                  // Sinopsis Narrativa
                   if (summary.isNotEmpty)
                     Text(
                       summary,
@@ -1875,7 +2014,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                         final stop = entry.value as Map<String, dynamic>;
                         final stopName = (stop['name'] ?? 'Lugar').toString();
                         return InkWell(
-                          onTap: () => _showRouteMapAndChronologyDialog(option, index),
+                          onTap: () {
+                            setState(() => _isDetailExpanded = true);
+                          },
                           borderRadius: BorderRadius.circular(6),
                           child: Container(
                             margin: const EdgeInsets.only(right: 6),
@@ -1909,39 +2050,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                           ),
                         );
                       }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Indicador de Deslizar hacia arriba
-                  Center(
-                    child: InkWell(
-                      onTap: () => _showRouteMapAndChronologyDialog(option, index),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.40),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withOpacity(0.18)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 18),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Desliza hacia arriba para ver el detalle completo',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -1982,10 +2090,18 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                         ),
                       ),
                       ElevatedButton.icon(
-                        onPressed: () => _showRouteMapAndChronologyDialog(option, index),
-                        icon: const Icon(Icons.map_rounded, color: Colors.white, size: 16),
+                        onPressed: () {
+                          setState(() {
+                            _isDetailExpanded = true;
+                          });
+                        },
+                        icon: Icon(
+                          isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.map_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
                         label: Text(
-                          'Ver Mapa y Cronología',
+                          isExpanded ? 'Ver Mapa y Cronología abajo' : 'Ver Mapa y Cronología',
                           style: GoogleFonts.inter(
                             fontSize: isMobile ? 12 : 13,
                             fontWeight: FontWeight.bold,
@@ -2018,7 +2134,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   );
 }
 
-  void _showRouteMapAndChronologyDialog(Map<String, dynamic> option, int index) {
+  // ==========================================
+  // DETALLE COMPLETO EXPANDIDO EN LA PÁGINA (MAPA + CRONOLOGÍA)
+  // ==========================================
+  Widget _buildInPageExpandedDetail(Map<String, dynamic> option, int index, bool isMobile) {
     final isDark = OhtliSettings.instance.isDarkMode;
     final title = (option['editorial_headline'] ?? option['theme'] ?? 'Ruta ${index + 1}').toString();
     final summary = (option['narrative_summary'] ?? '').toString();
@@ -2071,428 +2190,384 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
       final waypoints = waypointNames.length > 2
           ? waypointNames.sublist(1, waypointNames.length - 1).join('|')
           : '';
-      googleMapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination' +
-          (waypoints.isNotEmpty ? '&waypoints=$waypoints' : '') +
-          '&travelmode=walking';
+      final waypointsParam = waypoints.isNotEmpty ? '&waypoints=$waypoints' : '';
+      googleMapsDirectionsUrl =
+          'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination$waypointsParam&travelmode=walking';
     }
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withOpacity(0.65),
-      builder: (ctx) {
-        final isMobile = MediaQuery.of(ctx).size.width < 768;
-
-        return Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: 880,
-              maxHeight: MediaQuery.of(ctx).size.height * 0.92,
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.35),
-                    blurRadius: 30,
-                    offset: const Offset(0, -6),
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white12 : OhtliColors.cardBorder,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      padding: EdgeInsets.all(isMobile ? 18 : 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Encabezado
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.stormyTeal,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'OPCIÓN ${index + 1}',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'ITINERARIO Y MAPA COMPLETO',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: OhtliColors.stormyTeal,
+                    ),
                   ),
                 ],
               ),
-              child: Column(
-                children: [
-                  // Píldora de arrastre / Handle
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 44,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.white24 : Colors.black12,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
+              IconButton(
+                onPressed: () => setState(() => _isDetailExpanded = false),
+                icon: const Icon(Icons.close_fullscreen_rounded, size: 20),
+                tooltip: 'Colapsar y volver al selector',
+                color: isDark ? Colors.white70 : OhtliColors.onyx,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
 
-                  // Header del modal con botón cerrar
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 12, 16, 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: OhtliColors.stormyTeal,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                'OPCIÓN ${index + 1} · ${(option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase()}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.0,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              title,
-                              style: GoogleFonts.outfit(
-                                fontSize: isMobile ? 18 : 22,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : OhtliColors.onyx,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : OhtliColors.onyx),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-
-                // Contenido Scrollable
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Badges de Metadatos
-                        Row(
-                          children: [
-                            _buildDialogMetaPill(Icons.schedule_rounded, timeStr, isDark),
-                            const SizedBox(width: 8),
-                            _buildDialogMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN', isDark),
-                            const SizedBox(width: 8),
-                            _buildDialogMetaPill(Icons.place_rounded, '${rawStops.length} paradas', isDark),
-                          ],
-                        ),
-                        if (summary.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          Text(
-                            summary,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              color: isDark ? Colors.white70 : OhtliColors.subtleText,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 24),
-
-                        // Sección: Mapa de la Ruta
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Mapa de la Ruta',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.bold,
-                                    color: isDark ? Colors.white : OhtliColors.onyx,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (googleMapsDirectionsUrl.isNotEmpty)
-                              TextButton.icon(
-                                onPressed: () {
-                                  html.window.open(googleMapsDirectionsUrl, '_blank');
-                                },
-                                icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                                label: Text(
-                                  'Abrir en Google Maps',
-                                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: OhtliColors.stormyTeal,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Visual del Mapa
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: staticMapUrl.isNotEmpty
-                              ? Image.network(
-                                  staticMapUrl,
-                                  width: double.infinity,
-                                  height: isMobile ? 200 : 260,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      _buildFallbackOptionMap(rawStops, isDark),
-                                )
-                              : _buildFallbackOptionMap(rawStops, isDark),
-                        ),
-                        const SizedBox(height: 28),
-
-                        // Sección: Cronología del Recorrido
-                        Row(
-                          children: [
-                            const Icon(Icons.timeline_rounded, color: OhtliColors.cempasuchil, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Cronología de Paradas',
-                              style: GoogleFonts.outfit(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : OhtliColors.onyx,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Timeline vertical
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: rawStops.length,
-                          itemBuilder: (context, idx) {
-                            final stop = rawStops[idx] as Map<String, dynamic>;
-                            final stopName = (stop['name'] ?? 'Parada ${idx + 1}').toString();
-                            final isLast = idx == rawStops.length - 1;
-                            final arrival = stop['arrival_time']?.toString();
-                            final departure = stop['departure_time']?.toString();
-                            final timeLabel = arrival != null
-                                ? '$arrival${departure != null ? " - $departure" : ""}'
-                                : 'Parada ${idx + 1}';
-                            final stopPrice = (stop['price_mxn'] as num?)?.toDouble() ?? 0.0;
-                            final photo = (stop['photo_url'] ?? stop['main_photo_url'] ?? '').toString();
-
-                            String desc = '';
-                            if (idx < rawNarrations.length && rawNarrations[idx] != null) {
-                              final n = rawNarrations[idx];
-                              if (n is Map) {
-                                desc = (n['narration'] ?? n['why'] ?? '').toString();
-                              } else {
-                                desc = n.toString();
-                              }
-                            }
-                            if (desc.isEmpty) {
-                              desc = (stop['semantic_description'] ?? '').toString();
-                            }
-
-                            return IntrinsicHeight(
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Columna Izquierda: Número y línea conectora
-                                  Column(
-                                    children: [
-                                      Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          color: OhtliColors.stormyTeal,
-                                          shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: OhtliColors.stormyTeal.withOpacity(0.3),
-                                              blurRadius: 6,
-                                              offset: const Offset(0, 2),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            '${idx + 1}',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      if (!isLast)
-                                        Expanded(
-                                          child: Container(
-                                            width: 2,
-                                            color: OhtliColors.stormyTeal.withOpacity(0.25),
-                                            margin: const EdgeInsets.symmetric(vertical: 4),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(width: 14),
-
-                                  // Columna Derecha: Detalle
-                                  Expanded(
-                                    child: Padding(
-                                      padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(14),
-                                        decoration: BoxDecoration(
-                                          color: isDark ? const Color(0xFF26262B) : OhtliColors.innerCardBg,
-                                          borderRadius: BorderRadius.circular(16),
-                                          border: Border.all(
-                                            color: isDark ? Colors.white12 : OhtliColors.cardBorder,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            if (photo.isNotEmpty)
-                                              ClipRRect(
-                                                borderRadius: BorderRadius.circular(10),
-                                                child: Image.network(
-                                                  photo,
-                                                  width: 56,
-                                                  height: 56,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (context, error, stackTrace) =>
-                                                      const SizedBox.shrink(),
-                                                ),
-                                              ),
-                                            if (photo.isNotEmpty) const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      Expanded(
-                                                        child: Text(
-                                                          stopName,
-                                                          style: GoogleFonts.outfit(
-                                                            fontSize: 15,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: isDark ? Colors.white : OhtliColors.onyx,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                        decoration: BoxDecoration(
-                                                          color: OhtliColors.cempasuchil.withOpacity(0.12),
-                                                          borderRadius: BorderRadius.circular(6),
-                                                        ),
-                                                        child: Text(
-                                                          timeLabel,
-                                                          style: GoogleFonts.inter(
-                                                            fontSize: 10,
-                                                            fontWeight: FontWeight.w700,
-                                                            color: OhtliColors.cempasuchil,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  if (stopPrice > 0) ...[
-                                                    const SizedBox(height: 2),
-                                                    Text(
-                                                      '\$${stopPrice.toStringAsFixed(0)} MXN',
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w600,
-                                                        color: OhtliColors.stormyTeal,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                  if (desc.isNotEmpty) ...[
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      desc,
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 12,
-                                                        color: isDark ? Colors.white60 : OhtliColors.subtleText,
-                                                        height: 1.35,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const Divider(height: 1),
-
-                // Footer de Acciones
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: Text(
-                          'Cerrar',
-                          style: GoogleFonts.inter(
-                            color: isDark ? Colors.white60 : OhtliColors.subtleText,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: _isSavingTrip
-                            ? null
-                            : () {
-                                Navigator.of(ctx).pop();
-                                _chooseRouteAndCreateTrip(option);
-                              },
-                        icon: const Icon(Icons.check_circle_rounded, size: 18),
-                        label: Text(
-                          'Elegir esta opción (\$${cost.toStringAsFixed(0)} MXN)',
-                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: OhtliColors.stormyTeal,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          Text(
+            title,
+            style: GoogleFonts.outfit(
+              fontSize: isMobile ? 20 : 24,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : OhtliColors.onyx,
             ),
           ),
-        ),
-      );
-    },
+          const SizedBox(height: 12),
+
+          // Badges de Metadatos
+          Row(
+            children: [
+              _buildDialogMetaPill(Icons.schedule_rounded, timeStr, isDark),
+              const SizedBox(width: 8),
+              _buildDialogMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN', isDark),
+              const SizedBox(width: 8),
+              _buildDialogMetaPill(Icons.place_rounded, '${rawStops.length} paradas', isDark),
+            ],
+          ),
+          if (summary.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              summary,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: isDark ? Colors.white70 : OhtliColors.subtleText,
+                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 28),
+
+          // Sección: Mapa de la Ruta
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Mapa de la Ruta',
+                    style: GoogleFonts.outfit(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : OhtliColors.onyx,
+                    ),
+                  ),
+                ],
+              ),
+              if (googleMapsDirectionsUrl.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () {
+                    html.window.open(googleMapsDirectionsUrl, '_blank');
+                  },
+                  icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                  label: Text(
+                    'Abrir en Google Maps',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: OhtliColors.stormyTeal,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Visual del Mapa
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: staticMapUrl.isNotEmpty
+                ? Image.network(
+                    staticMapUrl,
+                    width: double.infinity,
+                    height: isMobile ? 220 : 320,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildFallbackOptionMap(rawStops, isDark),
+                  )
+                : _buildFallbackOptionMap(rawStops, isDark),
+          ),
+          const SizedBox(height: 32),
+
+          // Sección: Cronología del Recorrido
+          Row(
+            children: [
+              const Icon(Icons.timeline_rounded, color: OhtliColors.cempasuchil, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Cronología de Paradas',
+                style: GoogleFonts.outfit(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : OhtliColors.onyx,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Timeline vertical de paradas
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: rawStops.length,
+            itemBuilder: (context, idx) {
+              final stop = rawStops[idx] as Map<String, dynamic>;
+              final stopName = (stop['name'] ?? 'Parada ${idx + 1}').toString();
+              final isLast = idx == rawStops.length - 1;
+              final arrival = stop['arrival_time']?.toString();
+              final departure = stop['departure_time']?.toString();
+              final timeLabel = arrival != null
+                  ? '$arrival${departure != null ? " - $departure" : ""}'
+                  : 'Parada ${idx + 1}';
+              final stopPrice = (stop['price_mxn'] as num?)?.toDouble() ?? 0.0;
+              final photo = (stop['photo_url'] ?? stop['main_photo_url'] ?? '').toString();
+
+              String desc = '';
+              if (idx < rawNarrations.length && rawNarrations[idx] != null) {
+                final n = rawNarrations[idx];
+                if (n is Map) {
+                  desc = (n['narration'] ?? n['why'] ?? '').toString();
+                } else {
+                  desc = n.toString();
+                }
+              }
+              if (desc.isEmpty) {
+                desc = (stop['semantic_description'] ?? '').toString();
+              }
+
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Columna Izquierda: Número y línea conectora
+                    Column(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: OhtliColors.stormyTeal,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: OhtliColors.stormyTeal.withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${idx + 1}',
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (!isLast)
+                          Expanded(
+                            child: Container(
+                              width: 2,
+                              color: OhtliColors.stormyTeal.withOpacity(0.25),
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 14),
+
+                    // Columna Derecha: Detalle de Parada
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF26262B) : OhtliColors.innerCardBg,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isDark ? Colors.white12 : OhtliColors.cardBorder,
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (photo.isNotEmpty)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.network(
+                                    photo,
+                                    width: 60,
+                                    height: 60,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                              if (photo.isNotEmpty) const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            stopName,
+                                            style: GoogleFonts.outfit(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: isDark ? Colors.white : OhtliColors.onyx,
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: OhtliColors.cempasuchil.withOpacity(0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            timeLabel,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: OhtliColors.cempasuchil,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (stopPrice > 0) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '\$${stopPrice.toStringAsFixed(0)} MXN',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: OhtliColors.stormyTeal,
+                                        ),
+                                      ),
+                                    ],
+                                    if (desc.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        desc,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: isDark ? Colors.white60 : OhtliColors.subtleText,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 28),
+
+          // Botón inferior grande para elegir esta ruta
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
+              icon: _isSavingTrip
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              label: Text(
+                _isSavingTrip ? 'Creando viaje...' : 'Elegir esta ruta (\$${cost.toStringAsFixed(0)} MXN)',
+                style: GoogleFonts.outfit(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: OhtliColors.stormyTeal,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                elevation: 4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
-
   Widget _buildFallbackOptionMap(List<dynamic> stops, bool isDark) {
     return Container(
       width: double.infinity,
