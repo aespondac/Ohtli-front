@@ -1686,8 +1686,25 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     final int minutes = timeMins % 60;
     final String timeStr = hours > 0 ? '$hours h $minutes min' : '$minutes min';
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    double verticalDragDelta = 0;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: (details) {
+        if (details.primaryDelta != null) {
+          verticalDragDelta += details.primaryDelta!;
+        }
+      },
+      onVerticalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        // Si el usuario desliza hacia arriba (velocidad negativa o arrastre acumulado hacia arriba)
+        if (velocity < -120 || verticalDragDelta < -35) {
+          _showRouteMapAndChronologyDialog(option, index);
+        }
+        verticalDragDelta = 0;
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
@@ -1894,7 +1911,40 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                       }).toList(),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
+
+                  // Indicador de Deslizar hacia arriba
+                  Center(
+                    child: InkWell(
+                      onTap: () => _showRouteMapAndChronologyDialog(option, index),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.40),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withOpacity(0.18)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 18),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Desliza hacia arriba para ver el detalle completo',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
 
                   // Botones de Acción
                   Wrap(
@@ -1964,8 +2014,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   void _showRouteMapAndChronologyDialog(Map<String, dynamic> option, int index) {
     final isDark = OhtliSettings.instance.isDarkMode;
@@ -2025,28 +2076,53 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
           '&travelmode=walking';
     }
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withOpacity(0.65),
       builder: (ctx) {
         final isMobile = MediaQuery.of(ctx).size.width < 768;
 
-        return Dialog(
-          backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          insetPadding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 16 : 40,
-            vertical: isMobile ? 24 : 40,
-          ),
+        return Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 820, maxHeight: 780),
-            child: Column(
-              children: [
-                // Header del Dialog
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
+            constraints: BoxConstraints(
+              maxWidth: 880,
+              maxHeight: MediaQuery.of(ctx).size.height * 0.92,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.35),
+                    blurRadius: 30,
+                    offset: const Offset(0, -6),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Píldora de arrastre / Handle
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // Header del modal con botón cerrar
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 12, 16, 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2411,8 +2487,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               ],
             ),
           ),
-        );
-      },
+        ),
+      );
+    },
     );
   }
 
