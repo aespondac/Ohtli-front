@@ -13,6 +13,7 @@ import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../services/itinerary_blackboard_service.dart';
 import '../../theme/colors.dart';
+import '../../widgets/osrm_map_widget.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
 import 'trip_viewer_page.dart';
 import 'trip_editor_page.dart';
@@ -2837,75 +2838,30 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         ],
         const SizedBox(height: 24),
 
-          // Sección: Mapa de la Ruta
+          // Sección: Mapa de la Ruta con OpenStreetMap & OSRM
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Mapa de la Ruta',
-                    style: GoogleFonts.outfit(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : OhtliColors.onyx,
-                    ),
-                  ),
-                ],
-              ),
-              if (googleMapsDirectionsUrl.isNotEmpty)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    html.window.open(googleMapsDirectionsUrl, '_blank');
-                  },
-                  icon: const Icon(Icons.navigation_rounded, size: 14, color: Colors.white),
-                  label: Text(
-                    'Abrir en Google Maps',
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.stormyTeal,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
+              const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Mapa de la Ruta',
+                style: GoogleFonts.outfit(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : OhtliColors.onyx,
                 ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
 
-          // Visual del Mapa con Soporte para Google Maps Static API y Fallback Vectorial Cartográfico
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: staticMapUrl.isNotEmpty
-                ? Image.network(
-                    staticMapUrl,
-                    width: double.infinity,
-                    height: isMobile ? 240 : 340,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        width: double.infinity,
-                        height: isMobile ? 240 : 340,
-                        color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
-                        child: const Center(
-                          child: SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: OhtliColors.stormyTeal,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) =>
-                        _buildVectorRouteMapCanvas(rawStops, validCoords, isDark, isMobile, googleMapsDirectionsUrl),
-                  )
-                : _buildVectorRouteMapCanvas(rawStops, validCoords, isDark, isMobile, googleMapsDirectionsUrl),
+          // Visor cartográfico oficial OpenStreetMap & OSRM
+          OsrmMapWidget(
+            stops: rawStops,
+            routeGeometry: (option['osm_route_geometry'] as List<dynamic>?) ??
+                (option['osm_route'] is Map ? (option['osm_route']['coordinates'] as List<dynamic>?) : null),
+            height: isMobile ? 260 : 360,
+            isDark: isDark,
           ),
           const SizedBox(height: 32),
 

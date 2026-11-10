@@ -13,6 +13,7 @@ import '../../widgets/ohtli_place_photo_stack.dart';
 import '../../widgets/ohtli_markdown_renderer.dart';
 import '../../services/markdown_helpers.dart';
 import '../../widgets/ohtli_sidebar.dart';
+import '../../widgets/osrm_map_widget.dart';
 import '../home_page.dart';
 import '../account/account_management_page.dart';
 import '../account/public_profile_page.dart';
@@ -2370,18 +2371,18 @@ class _TripViewerPageState extends State<TripViewerPage> {
           ),
           const SizedBox(height: 18),
 
-          // Contenedor visual del mapa
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: staticMapUrl.isNotEmpty
-                ? Image.network(
-                    staticMapUrl,
-                    width: double.infinity,
-                    height: isDesktop ? 300 : 220,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => _buildFallbackMapVisual(places, isDark),
-                  )
-                : _buildFallbackMapVisual(places, isDark),
+          // Contenedor visual del mapa con OpenStreetMap & OSRM
+          OsrmMapWidget(
+            stops: places.map((p) => {
+              'name': p.title,
+              'lat': p.lat,
+              'lng': p.lng,
+              'arrival_time': p.time,
+              'category': p.category,
+              'price_mxn': p.priceMxn,
+            }).toList(),
+            height: isDesktop ? 320 : 240,
+            isDark: isDark,
           ),
           const SizedBox(height: 24),
 
