@@ -2815,13 +2815,18 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
           const SizedBox(height: 12),
 
           // Badges de Metadatos
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _buildDialogMetaPill(Icons.schedule_rounded, timeStr, isDark),
-              const SizedBox(width: 8),
               _buildDialogMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN', isDark),
-              const SizedBox(width: 8),
               _buildDialogMetaPill(Icons.place_rounded, '${rawStops.length} paradas', isDark),
+              _buildDialogMetaPill(
+                Icons.directions_walk_rounded,
+                '${((option['total_walking_km'] as num?)?.toDouble() ?? (option['osm_route'] is Map ? (option['osm_route']['total_distance_km'] as num?)?.toDouble() : null) ?? 0.0).toStringAsFixed(1)} km a pie',
+                isDark,
+              ),
             ],
           ),
         ],

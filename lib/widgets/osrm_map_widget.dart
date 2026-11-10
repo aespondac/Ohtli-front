@@ -532,17 +532,14 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF00B894),
-                            shape: BoxShape.circle,
-                          ),
+                        const Icon(
+                          Icons.directions_walk_rounded,
+                          size: 15,
+                          color: Color(0xFF00B894),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Text(
-                          'OpenStreetMap & OSRM',
+                          'Caminando · OpenStreetMap & OSRM',
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
