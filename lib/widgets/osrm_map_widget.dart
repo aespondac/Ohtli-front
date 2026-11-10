@@ -14,7 +14,10 @@ import '../theme/colors.dart';
 /// Web Mercator (EPSG:3857), superponiendo el trazado vectorial calle por calle de OSRM
 /// y los marcadores numerados de las paradas con la paleta de diseño de Ohtli.
 class OsrmMapWidget extends StatefulWidget {
-  final List<dynamic> stops;
+  final List<dynamic>? stops;
+  final Map<String, dynamic>? origin;
+  final Map<String, dynamic>? destination;
+  final List<dynamic>? routeCoordinates; // Array of [lng, lat]
   final List<dynamic>? routeGeometry; // Lista de [lat, lng] o [[lat, lng], ...]
   final double height;
   final bool isDark;
@@ -23,10 +26,13 @@ class OsrmMapWidget extends StatefulWidget {
 
   const OsrmMapWidget({
     super.key,
-    required this.stops,
+    this.stops,
+    this.origin,
+    this.destination,
+    this.routeCoordinates,
     this.routeGeometry,
     this.height = 320,
-    required this.isDark,
+    this.isDark = false,
     this.title,
     this.onResetView,
   });
@@ -63,7 +69,11 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
   @override
   void didUpdateWidget(covariant OsrmMapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.stops != widget.stops || oldWidget.routeGeometry != widget.routeGeometry) {
+    if (oldWidget.stops != widget.stops ||
+        oldWidget.origin != widget.origin ||
+        oldWidget.destination != widget.destination ||
+        oldWidget.routeCoordinates != widget.routeCoordinates ||
+        oldWidget.routeGeometry != widget.routeGeometry) {
       _processCoordinatesAndFitBounds();
     }
   }
@@ -72,9 +82,30 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
     _parsedStops = [];
     _parsedPath = [];
 
+    // Determinar la lista efectiva de paradas
+    final effectiveStops = <dynamic>[];
+    if (widget.stops != null && widget.stops!.isNotEmpty) {
+      effectiveStops.addAll(widget.stops!);
+    } else {
+      if (widget.origin != null) {
+        effectiveStops.add({
+          'name': 'Origen',
+          'lat': widget.origin!['lat'] ?? widget.origin!['latitude'],
+          'lng': widget.origin!['lng'] ?? widget.origin!['longitude'],
+        });
+      }
+      if (widget.destination != null) {
+        effectiveStops.add({
+          'name': 'Destino',
+          'lat': widget.destination!['lat'] ?? widget.destination!['latitude'],
+          'lng': widget.destination!['lng'] ?? widget.destination!['longitude'],
+        });
+      }
+    }
+
     // 1. Extraer paradas válidas
-    for (int i = 0; i < widget.stops.length; i++) {
-      final s = widget.stops[i];
+    for (int i = 0; i < effectiveStops.length; i++) {
+      final s = effectiveStops[i];
       if (s is! Map) continue;
       final m = Map<String, dynamic>.from(s);
 
@@ -104,8 +135,9 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
     }
 
     // 2. Extraer o interpolar la geometría de ruta OSRM (OpenStreetMap)
-    if (widget.routeGeometry != null && widget.routeGeometry!.isNotEmpty) {
-      for (final pt in widget.routeGeometry!) {
+    final effectiveGeometry = widget.routeGeometry ?? widget.routeCoordinates;
+    if (effectiveGeometry != null && effectiveGeometry.isNotEmpty) {
+      for (final pt in effectiveGeometry) {
         if (pt is List && pt.length >= 2) {
           final p0 = (pt[0] as num).toDouble();
           final p1 = (pt[1] as num).toDouble();
