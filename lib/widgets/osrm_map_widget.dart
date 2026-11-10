@@ -23,6 +23,7 @@ class OsrmMapWidget extends StatefulWidget {
   final bool isDark;
   final String? title;
   final VoidCallback? onResetView;
+  final void Function(Map<String, dynamic> stop)? onStopSelected;
 
   const OsrmMapWidget({
     super.key,
@@ -35,6 +36,7 @@ class OsrmMapWidget extends StatefulWidget {
     this.isDark = false,
     this.title,
     this.onResetView,
+    this.onStopSelected,
   });
 
   @override
@@ -416,90 +418,94 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
                           left: offset.dx - 18,
                           top: offset.dy - 38,
                           child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
                             onEnter: (_) => setState(() => _hoveredStopIndex = idx),
                             onExit: (_) => setState(() => _hoveredStopIndex = null),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Callout flotante en hover
-                                if (isHovered)
-                                  Container(
-                                    margin: const EdgeInsets.only(bottom: 6),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                    decoration: BoxDecoration(
-                                      color: (widget.isDark ? const Color(0xFF1E1E22) : Colors.white)
-                                          .withOpacity(0.95),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: OhtliColors.cempasuchil,
-                                        width: 1.2,
+                            child: GestureDetector(
+                              onTap: () => widget.onStopSelected?.call(stop),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Callout flotante en hover
+                                  if (isHovered)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 6),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                      decoration: BoxDecoration(
+                                        color: (widget.isDark ? const Color(0xFF1E1E22) : Colors.white)
+                                            .withOpacity(0.95),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: OhtliColors.cempasuchil,
+                                          width: 1.2,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.2),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
                                       ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            stopName,
+                                            style: GoogleFonts.outfit(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: widget.isDark ? Colors.white : OhtliColors.onyx,
+                                            ),
+                                          ),
+                                          if (time.isNotEmpty)
+                                            Text(
+                                              time,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 10,
+                                                color: OhtliColors.cempasuchil,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+
+                                  // Pin físico Ohtli
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: OhtliColors.cempasuchil,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2.5),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.2),
+                                          color: OhtliColors.cempasuchil.withOpacity(0.4),
                                           blurRadius: 8,
+                                          spreadRadius: 1,
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.25),
+                                          blurRadius: 6,
                                           offset: const Offset(0, 3),
                                         ),
                                       ],
                                     ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          stopName,
-                                          style: GoogleFonts.outfit(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: widget.isDark ? Colors.white : OhtliColors.onyx,
-                                          ),
+                                    child: Center(
+                                      child: Text(
+                                        '$stopNumber',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
                                         ),
-                                        if (time.isNotEmpty)
-                                          Text(
-                                            time,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 10,
-                                              color: OhtliColors.cempasuchil,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-
-                                // Pin físico Ohtli
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: OhtliColors.cempasuchil,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2.5),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: OhtliColors.cempasuchil.withOpacity(0.4),
-                                        blurRadius: 8,
-                                        spreadRadius: 1,
-                                      ),
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.25),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      '$stopNumber',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         );
