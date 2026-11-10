@@ -2,6 +2,8 @@
 
 import 'dart:async';
 import 'dart:html' as html;
+import 'dart:math' as math;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -1477,12 +1479,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     // Escala amplia: en desktop la opción ocupa entre 80% y 88% del ancho de pantalla
     final double targetFraction = isMobile
         ? 0.92
         : (screenWidth < 1100
             ? 0.88
             : (screenWidth < 1500 ? 0.84 : 0.80));
+
+    // Alto al 90% del viewport solicitado por el usuario
+    final double carouselCardHeight = isMobile
+        ? (screenHeight * 0.86).clamp(520.0, 720.0)
+        : (screenHeight * 0.90).clamp(640.0, 960.0);
 
     // Si está en modo Detalle Expandido: queda SOLAMENTE la opción principal
     if (_isDetailExpanded) {
@@ -1553,7 +1562,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
           ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: maxContentWidth,
-              maxHeight: isMobile ? 540 : 540,
+              maxHeight: isMobile ? 480 : 540,
             ),
             child: _buildRouteCard(
               selectedOption,
@@ -1580,189 +1589,199 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     final controller = _getTriadPageController(targetFraction);
     final headerMaxWidth = isMobile ? double.infinity : (screenWidth * targetFraction).clamp(760.0, 1300.0);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Indicador superior / Controles alineados al ancho de la tarjeta
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: headerMaxWidth),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'ELIGE TU OPCIÓN DE VIAJE',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                        color: OhtliColors.onyx.withOpacity(0.7),
+    return Listener(
+      onPointerSignal: (pointerSignal) {
+        if (pointerSignal is PointerScrollEvent) {
+          // Si el usuario hace scroll hacia arriba o hacia abajo en la pantalla (scrollwheel o trackpad)
+          if (pointerSignal.scrollDelta.dy.abs() > 8 && !_isDetailExpanded) {
+            setState(() => _isDetailExpanded = true);
+          }
+        }
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Indicador superior / Controles alineados al ancho de la tarjeta
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: headerMaxWidth),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ELIGE TU OPCIÓN DE VIAJE',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: OhtliColors.onyx.withOpacity(0.7),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Alternativas temáticas diseñadas por IA (${_activeCarouselIndex + 1} de ${_generatedOptions.length})',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: OhtliColors.subtleText,
+                      const SizedBox(height: 2),
+                      Text(
+                        'Alternativas temáticas diseñadas por IA (${_activeCarouselIndex + 1} de ${_generatedOptions.length})',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: OhtliColors.subtleText,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  // Paginador interactivo
+                  Row(
+                    children: List.generate(_generatedOptions.length, (idx) {
+                      final isSelected = _activeCarouselIndex == idx;
+                      return InkWell(
+                        onTap: () {
+                          controller.animateToPage(
+                            idx,
+                            duration: const Duration(milliseconds: 350),
+                            curve: Curves.easeOutCubic,
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(4),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: isSelected ? 28 : 10,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Carrusel cinematográfico amplio con altura al 90% del viewport
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                height: carouselCardHeight,
+                child: PageView.builder(
+                  controller: controller,
+                  itemCount: _generatedOptions.length,
+                  onPageChanged: (idx) {
+                    setState(() => _activeCarouselIndex = idx);
+                  },
+                  itemBuilder: (context, index) {
+                    final option = _generatedOptions[index];
+                    final isFocused = _activeCarouselIndex == index;
+                    return AnimatedScale(
+                      scale: isFocused ? 1.0 : 0.88,
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeOutCubic,
+                      child: AnimatedOpacity(
+                        opacity: isFocused ? 1.0 : 0.52,
+                        duration: const Duration(milliseconds: 350),
+                        child: GestureDetector(
+                          onTap: () {
+                            if (!isFocused) {
+                              controller.animateToPage(
+                                index,
+                                duration: const Duration(milliseconds: 350),
+                                curve: Curves.easeOutCubic,
+                              );
+                            }
+                          },
+                          child: _buildRouteCard(
+                            option,
+                            isFocused,
+                            isMobile,
+                            index,
+                            isExpanded: false,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                // Paginador interactivo
-                Row(
-                  children: List.generate(_generatedOptions.length, (idx) {
-                    final isSelected = _activeCarouselIndex == idx;
-                    return InkWell(
+              ),
+
+              // Flecha Izquierda (Desktop)
+              if (!isMobile && _activeCarouselIndex > 0)
+                Positioned(
+                  left: 20,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
                       onTap: () {
-                        controller.animateToPage(
-                          idx,
+                        controller.previousPage(
                           duration: const Duration(milliseconds: 350),
                           curve: Curves.easeOutCubic,
                         );
                       },
-                      borderRadius: BorderRadius.circular(4),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: isSelected ? 28 : 10,
-                        height: 8,
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        width: 48,
+                        height: 48,
                         decoration: BoxDecoration(
-                          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                          borderRadius: BorderRadius.circular(4),
+                          color: Colors.black.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.2)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
+                        child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
                       ),
-                    );
-                  }),
+                    ),
+                  ),
                 ),
-              ],
-            ),
+
+              // Flecha Derecha (Desktop)
+              if (!isMobile && _activeCarouselIndex < _generatedOptions.length - 1)
+                Positioned(
+                  right: 20,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        controller.nextPage(
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeOutCubic,
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white.withOpacity(0.2)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ),
-
-        // Carrusel cinematográfico amplio
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox(
-              height: isMobile ? 540 : 540,
-              child: PageView.builder(
-                controller: controller,
-                itemCount: _generatedOptions.length,
-                onPageChanged: (idx) {
-                  setState(() => _activeCarouselIndex = idx);
-                },
-                itemBuilder: (context, index) {
-                  final option = _generatedOptions[index];
-                  final isFocused = _activeCarouselIndex == index;
-                  return AnimatedScale(
-                    scale: isFocused ? 1.0 : 0.88,
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeOutCubic,
-                    child: AnimatedOpacity(
-                      opacity: isFocused ? 1.0 : 0.52,
-                      duration: const Duration(milliseconds: 350),
-                      child: GestureDetector(
-                        onTap: () {
-                          if (!isFocused) {
-                            controller.animateToPage(
-                              index,
-                              duration: const Duration(milliseconds: 350),
-                              curve: Curves.easeOutCubic,
-                            );
-                          }
-                        },
-                        child: _buildRouteCard(
-                          option,
-                          isFocused,
-                          isMobile,
-                          index,
-                          isExpanded: false,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            // Flecha Izquierda (Desktop)
-            if (!isMobile && _activeCarouselIndex > 0)
-              Positioned(
-                left: 20,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      controller.previousPage(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeOutCubic,
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.2)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-                    ),
-                  ),
-                ),
-              ),
-
-            // Flecha Derecha (Desktop)
-            if (!isMobile && _activeCarouselIndex < _generatedOptions.length - 1)
-              Positioned(
-                right: 20,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      controller.nextPage(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeOutCubic,
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.2)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 24),
-      ],
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 
@@ -1788,351 +1807,461 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
 
     double verticalDragDelta = 0;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: (details) {
-        if (details.primaryDelta != null) {
-          verticalDragDelta += details.primaryDelta!;
-        }
-      },
-      onVerticalDragEnd: (details) {
-        final velocity = details.primaryVelocity ?? 0;
-        // Si el usuario desliza hacia arriba (velocidad negativa o arrastre acumulado hacia arriba) -> expande detalle
-        if (velocity < -120 || verticalDragDelta < -35) {
-          if (!_isDetailExpanded) {
+    return Listener(
+      onPointerSignal: (pointerSignal) {
+        if (pointerSignal is PointerScrollEvent) {
+          // Si el usuario hace scroll hacia arriba o hacia abajo en la tarjeta con el mouse o trackpad
+          if (pointerSignal.scrollDelta.dy.abs() > 8 && !_isDetailExpanded) {
             setState(() => _isDetailExpanded = true);
           }
         }
-        // Si el usuario desliza hacia abajo -> colapsa detalle si estaba expandido
-        else if (velocity > 120 || verticalDragDelta > 35) {
-          if (_isDetailExpanded) {
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragUpdate: (details) {
+          if (details.primaryDelta != null) {
+            verticalDragDelta += details.primaryDelta!;
+          }
+        },
+        onVerticalDragEnd: (details) {
+          final velocity = details.primaryVelocity ?? 0;
+          // Si el usuario desliza hacia arriba (velocidad negativa o arrastre acumulado hacia arriba) -> expande detalle
+          if ((velocity < -60 || verticalDragDelta < -20) && !_isDetailExpanded) {
+            setState(() => _isDetailExpanded = true);
+          }
+          // Si el usuario desliza hacia abajo -> colapsa detalle si estaba expandido
+          else if ((velocity > 60 || verticalDragDelta > 20) && _isDetailExpanded) {
             setState(() => _isDetailExpanded = false);
           }
-        }
-        verticalDragDelta = 0;
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isFocused ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.08),
-          width: isFocused ? 1.8 : 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isFocused ? 0.35 : 0.15),
-            blurRadius: isFocused ? 28 : 14,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Stack(
-          children: [
-            // 1. Fotografía de fondo
-            Positioned.fill(
-              child: Image.network(
-                coverUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF1E1E22)),
-              ),
+          verticalDragDelta = 0;
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isFocused ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.08),
+              width: isFocused ? 1.8 : 1.0,
             ),
-
-            // 2. Gradiente Cinematográfico equilibrado
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.black.withOpacity(0.60),
-                      Colors.black.withOpacity(0.12),
-                      Colors.black.withOpacity(0.70),
-                      Colors.black.withOpacity(0.96),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: const [0.0, 0.28, 0.60, 1.0],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isFocused ? 0.35 : 0.15),
+                blurRadius: isFocused ? 28 : 14,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Stack(
+              children: [
+                // 1. Fotografía de fondo cinematográfica a alto completo
+                Positioned.fill(
+                  child: Image.network(
+                    coverUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF1E1E22)),
                   ),
                 ),
-              ),
-            ),
 
-            // 3. Barra Superior (Badges a la izquierda, Chevron arriba al centro, Bookmark a la derecha)
-            Positioned(
-              top: isMobile ? 16 : 22,
-              left: isMobile ? 16 : 24,
-              right: isMobile ? 16 : 24,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: OhtliColors.stormyTeal,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'OPCIÓN ${index + 1}',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.0,
-                            color: Colors.white,
-                          ),
-                        ),
+                // 2. Gradiente Cinematográfico equilibrado
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.black.withOpacity(0.65),
+                          Colors.black.withOpacity(0.15),
+                          Colors.black.withOpacity(0.70),
+                          Colors.black.withOpacity(0.97),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: const [0.0, 0.28, 0.62, 1.0],
                       ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.45),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white.withOpacity(0.15)),
-                        ),
-                        child: Text(
-                          (option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase(),
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: Colors.white.withOpacity(0.9),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
+                ),
 
-                  // Chevron en la parte de arriba
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _isDetailExpanded = !_isDetailExpanded;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.50),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.25)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+                // 3. Barra Superior (Badges a la izquierda, Chevron arriba al centro, Bookmark a la derecha)
+                Positioned(
+                  top: isMobile ? 16 : 22,
+                  left: isMobile ? 16 : 24,
+                  right: isMobile ? 16 : 24,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.stormyTeal,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'OPCIÓN ${index + 1}',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.0,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.45),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.white.withOpacity(0.15)),
+                            ),
+                            child: Text(
+                              (option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase(),
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      child: Icon(
-                        isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
 
-                  IconButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
-                          backgroundColor: OhtliColors.stormyTeal,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white, size: 20),
-                    tooltip: 'Guardar alternativa en Planes',
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black.withOpacity(0.45),
-                      padding: const EdgeInsets.all(8),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // 4. Contenido Inferior (Metadatos, Título, Sinopsis, Paradas y Acciones)
-            Positioned(
-              left: isMobile ? 16 : 24,
-              right: isMobile ? 16 : 24,
-              bottom: isMobile ? 16 : 22,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Badges de Metadatos (Tiempo, Costo, Paradas)
-                  Row(
-                    children: [
-                      _buildMetaPill(Icons.schedule_rounded, timeStr),
-                      const SizedBox(width: 8),
-                      _buildMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN'),
-                      const SizedBox(width: 8),
-                      _buildMetaPill(Icons.place_rounded, '${stops.length} paradas'),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Título con escala balanceada
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.outfit(
-                      fontSize: isMobile ? 18 : 23,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.22,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Sinopsis Narrativa
-                  if (summary.isNotEmpty)
-                    Text(
-                      summary,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: isMobile ? 11.5 : 12.5,
-                        color: Colors.white.withOpacity(0.85),
-                        height: 1.35,
-                      ),
-                    ),
-                  const SizedBox(height: 12),
-
-                  // Preview interactivo de paradas
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: stops.asMap().entries.map((entry) {
-                        final i = entry.key;
-                        final stop = entry.value as Map<String, dynamic>;
-                        final stopName = (stop['name'] ?? 'Lugar').toString();
-                        return InkWell(
-                          onTap: () {
-                            setState(() => _isDetailExpanded = true);
-                          },
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.14),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.white.withOpacity(0.10)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
+                      // Chevron en la parte de arriba interactivo
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isDetailExpanded = !_isDetailExpanded;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withOpacity(0.30)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.35),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                              if (!isMobile) ...[
+                                const SizedBox(width: 4),
                                 Text(
-                                  '${i + 1}. ',
+                                  isExpanded ? 'Colapsar' : 'Detalle e Itinerario',
                                   style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: OhtliColors.stormyTeal,
-                                  ),
-                                ),
-                                Text(
-                                  stopName.length > 22 ? '${stopName.substring(0, 20)}...' : stopName,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
                                     color: Colors.white,
-                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
                               ],
-                            ),
+                            ],
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Botones de Acción
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
-                        icon: _isSavingTrip
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                              )
-                            : const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 20),
-                        label: Text(
-                          _isSavingTrip ? 'Creando viaje...' : 'Elegir esta ruta (\$${cost.toStringAsFixed(0)} MXN)',
-                          style: GoogleFonts.outfit(
-                            fontSize: isMobile ? 13 : 14.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isMobile ? 18 : 24,
-                            vertical: isMobile ? 12 : 15,
-                          ),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          elevation: 6,
                         ),
                       ),
-                      ElevatedButton.icon(
+
+                      IconButton(
                         onPressed: () {
-                          setState(() {
-                            _isDetailExpanded = true;
-                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
+                              backgroundColor: OhtliColors.stormyTeal,
+                            ),
+                          );
                         },
-                        icon: Icon(
-                          isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.map_rounded,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        label: Text(
-                          isExpanded ? 'Ver Mapa y Cronología abajo' : 'Ver Mapa y Cronología',
-                          style: GoogleFonts.inter(
-                            fontSize: isMobile ? 12 : 13,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white.withOpacity(0.18),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isMobile ? 14 : 20,
-                            vertical: isMobile ? 12 : 15,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                            side: BorderSide(color: Colors.white.withOpacity(0.35)),
-                          ),
-                          elevation: 0,
+                        icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white, size: 20),
+                        tooltip: 'Guardar alternativa en Planes',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black.withOpacity(0.45),
+                          padding: const EdgeInsets.all(8),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+
+                // 4. Contenido Inferior (Metadatos, Título, Sinopsis, Trazado de Ruta y Acciones)
+                Positioned(
+                  left: isMobile ? 16 : 26,
+                  right: isMobile ? 16 : 26,
+                  bottom: isMobile ? 16 : 24,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Badges de Metadatos (Tiempo, Costo, Paradas)
+                      Row(
+                        children: [
+                          _buildMetaPill(Icons.schedule_rounded, timeStr),
+                          const SizedBox(width: 8),
+                          _buildMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN'),
+                          const SizedBox(width: 8),
+                          _buildMetaPill(Icons.place_rounded, '${stops.length} paradas'),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Título con escala balanceada
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.outfit(
+                          fontSize: isMobile ? 20 : 26,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Sinopsis Narrativa
+                      if (summary.isNotEmpty)
+                        Text(
+                          summary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: isMobile ? 12 : 13.5,
+                            color: Colors.white.withOpacity(0.88),
+                            height: 1.35,
+                          ),
+                        ),
+                      const SizedBox(height: 14),
+
+                      // Trazado Secuencial de la Ruta en la Tarjeta
+                      _buildCardRouteTrail(stops, option, index),
+                      const SizedBox(height: 16),
+
+                      // Botones de Acción
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
+                            icon: _isSavingTrip
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                                  )
+                                : const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 20),
+                            label: Text(
+                              _isSavingTrip ? 'Creando viaje...' : 'Elegir esta ruta (\$${cost.toStringAsFixed(0)} MXN)',
+                              style: GoogleFonts.outfit(
+                                fontSize: isMobile ? 13 : 14.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.black,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isMobile ? 18 : 26,
+                                vertical: isMobile ? 12 : 16,
+                              ),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              elevation: 6,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _isDetailExpanded = true;
+                              });
+                            },
+                            icon: Icon(
+                              isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.map_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            label: Text(
+                              isExpanded ? 'Ver Mapa y Cronología abajo' : 'Ver Mapa y Cronología',
+                              style: GoogleFonts.inter(
+                                fontSize: isMobile ? 12 : 13,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white.withOpacity(0.20),
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isMobile ? 14 : 20,
+                                vertical: isMobile ? 12 : 16,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                                side: BorderSide(color: Colors.white.withOpacity(0.35)),
+                              ),
+                              elevation: 0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
+
+  // Trazado visual de la ruta en la tarjeta del carrusel
+  Widget _buildCardRouteTrail(List<dynamic> stops, Map<String, dynamic> option, int index) {
+    if (stops.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.route_rounded, color: OhtliColors.stormyTeal, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    'RUTA Y PARADAS',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.0,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: () {
+                  setState(() => _isDetailExpanded = true);
+                },
+                child: Row(
+                  children: [
+                    Text(
+                      'Ver en Mapa',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: OhtliColors.stormyTeal,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.arrow_forward_ios_rounded, color: OhtliColors.stormyTeal, size: 10),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: stops.asMap().entries.map((entry) {
+                final i = entry.key;
+                final stop = entry.value as Map<String, dynamic>;
+                final stopName = (stop['name'] ?? 'Lugar').toString();
+                final isLast = i == stops.length - 1;
+
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        setState(() => _isDetailExpanded = true);
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white.withOpacity(0.12)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 16,
+                              height: 16,
+                              decoration: const BoxDecoration(
+                                color: OhtliColors.stormyTeal,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${i + 1}',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              stopName.length > 20 ? '${stopName.substring(0, 18)}...' : stopName,
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (!isLast) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Icon(
+                          Icons.arrow_forward_rounded,
+                          color: Colors.white.withOpacity(0.4),
+                          size: 13,
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   // ==========================================
   // DETALLE COMPLETO EXPANDIDO EN LA PÁGINA (MAPA + CRONOLOGÍA)
@@ -2154,33 +2283,47 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     const apiKey = String.fromEnvironment('apiKey');
     final activeKey = mapsApiKey.isNotEmpty ? mapsApiKey : apiKey;
 
-    final markers = StringBuffer();
-    final path = StringBuffer('&path=color:0x2F6B6Bff|weight:5');
+    // Extracción robusta de coordenadas para cada parada
+    final validCoords = <Map<String, dynamic>>[];
     final waypointNames = <String>[];
+    final markers = StringBuffer();
+    final path = StringBuffer('&path=color:0x2C666Eff|weight:6');
 
     for (int i = 0; i < rawStops.length; i++) {
       final s = rawStops[i] as Map<String, dynamic>;
       final label = (i + 1).toString();
-      double? lat = (s['lat'] as num?)?.toDouble();
-      double? lng = (s['lng'] as num?)?.toDouble();
-      if (lat == null && s['location'] is Map) {
-        lat = (s['location']['lat'] as num?)?.toDouble();
-        lng = (s['location']['lng'] as num?)?.toDouble();
+      final stopName = (s['name'] ?? 'Parada ${i + 1}').toString();
+
+      double? lat = (s['lat'] as num?)?.toDouble() ?? (s['latitude'] as num?)?.toDouble();
+      double? lng = (s['lng'] as num?)?.toDouble() ?? (s['longitude'] as num?)?.toDouble();
+
+      final loc = s['location'] ?? s['coords'] ?? s['coordinates'];
+      if (loc != null) {
+        if (loc is Map) {
+          lat ??= (loc['lat'] as num?)?.toDouble() ?? (loc['latitude'] as num?)?.toDouble();
+          lng ??= (loc['lng'] as num?)?.toDouble() ?? (loc['longitude'] as num?)?.toDouble();
+        } else {
+          try {
+            lat ??= (loc as dynamic).latitude as double?;
+            lng ??= (loc as dynamic).longitude as double?;
+          } catch (_) {}
+        }
       }
 
       if (lat != null && lng != null) {
+        validCoords.add({'index': i + 1, 'name': stopName, 'lat': lat, 'lng': lng});
         markers.write('&markers=color:0xE26D5C|label:$label|$lat,$lng');
         path.write('|$lat,$lng');
         waypointNames.add('$lat,$lng');
       } else {
-        final stopName = Uri.encodeComponent('${s['name'] ?? 'Lugar'}, CDMX');
-        markers.write('&markers=color:0xE26D5C|label:$label|$stopName');
-        waypointNames.add(stopName);
+        final encodedName = Uri.encodeComponent('$stopName, CDMX');
+        markers.write('&markers=color:0xE26D5C|label:$label|$encodedName');
+        waypointNames.add(encodedName);
       }
     }
 
-    final staticMapUrl = activeKey.isNotEmpty
-        ? 'https://maps.googleapis.com/maps/api/staticmap?size=900x420&scale=2&maptype=roadmap$path$markers&key=$activeKey'
+    final staticMapUrl = activeKey.isNotEmpty && validCoords.isNotEmpty
+        ? 'https://maps.googleapis.com/maps/api/staticmap?size=1100x520&scale=2&maptype=roadmap$path$markers&key=$activeKey'
         : '';
 
     String googleMapsDirectionsUrl = '';
@@ -2310,37 +2453,38 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                 ],
               ),
               if (googleMapsDirectionsUrl.isNotEmpty)
-                TextButton.icon(
+                ElevatedButton.icon(
                   onPressed: () {
                     html.window.open(googleMapsDirectionsUrl, '_blank');
                   },
-                  icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                  icon: const Icon(Icons.navigation_rounded, size: 14, color: Colors.white),
                   label: Text(
                     'Abrir en Google Maps',
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: OhtliColors.stormyTeal,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: OhtliColors.stormyTeal,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 12),
 
-          // Visual del Mapa
+          // Visual del Mapa con Soporte para Google Maps Static API y Fallback Vectorial Cartográfico
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: staticMapUrl.isNotEmpty
                 ? Image.network(
                     staticMapUrl,
                     width: double.infinity,
-                    height: isMobile ? 220 : 320,
+                    height: isMobile ? 240 : 340,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) =>
-                        _buildFallbackOptionMap(rawStops, isDark),
+                        _buildVectorRouteMapCanvas(rawStops, validCoords, isDark, isMobile, googleMapsDirectionsUrl),
                   )
-                : _buildFallbackOptionMap(rawStops, isDark),
+                : _buildVectorRouteMapCanvas(rawStops, validCoords, isDark, isMobile, googleMapsDirectionsUrl),
           ),
           const SizedBox(height: 32),
 
@@ -2568,30 +2712,97 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
       ),
     );
   }
-  Widget _buildFallbackOptionMap(List<dynamic> stops, bool isDark) {
+
+  // Mapa Vectorial Cartográfico Real de la Ruta
+  Widget _buildVectorRouteMapCanvas(
+    List<dynamic> rawStops,
+    List<Map<String, dynamic>> validCoords,
+    bool isDark,
+    bool isMobile,
+    String googleMapsUrl,
+  ) {
     return Container(
       width: double.infinity,
-      height: 200,
+      height: isMobile ? 240 : 340,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF141416) : OhtliColors.innerCardBg,
+        color: isDark ? const Color(0xFF141418) : const Color(0xFFF1F3F4),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? Colors.white12 : OhtliColors.cardBorder),
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.route_rounded, color: OhtliColors.stormyTeal, size: 36),
-            const SizedBox(height: 8),
-            Text(
-              'Ruta secuencial con ${stops.length} paradas programadas',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : OhtliColors.onyx,
+      child: Stack(
+        children: [
+          // Cuadrícula y Trazado Vectorial de la Ruta
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _RouteVectorMapPainter(
+                stops: validCoords.isNotEmpty
+                    ? validCoords
+                    : rawStops.asMap().entries.map((e) => {
+                        'index': e.key + 1,
+                        'name': (e.value as Map<String, dynamic>)['name'] ?? 'Lugar ${e.key + 1}',
+                        'lat': 19.4326 - (e.key * 0.015),
+                        'lng': -99.1332 + (e.key * 0.018),
+                      }).toList(),
+                isDark: isDark,
               ),
             ),
-          ],
-        ),
+          ),
+
+          // Badge Superior: Trazado Oficial de Google Maps
+          Positioned(
+            top: 12,
+            left: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: (isDark ? Colors.black : Colors.white).withOpacity(0.85),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.route_rounded, color: OhtliColors.stormyTeal, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Ruta ${validCoords.length > 1 ? "${validCoords.length} paradas conectadas" : "secuencial"} · CDMX',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : OhtliColors.onyx,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Botón Inferior: Abrir en Google Maps
+          if (googleMapsUrl.isNotEmpty)
+            Positioned(
+              bottom: 12,
+              right: 12,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  html.window.open(googleMapsUrl, '_blank');
+                },
+                icon: const Icon(Icons.navigation_rounded, size: 14, color: Colors.white),
+                label: Text(
+                  'Ver ruta en Google Maps',
+                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  elevation: 3,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2646,5 +2857,231 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         ],
       ),
     );
+  }
+}
+
+// ==========================================
+// PINTOR VECTORIAL CARTOGRÁFICO DE LA RUTA (FALLBACK Y ALTA FIDELIDAD)
+// ==========================================
+class _RouteVectorMapPainter extends CustomPainter {
+  final List<Map<String, dynamic>> stops;
+  final bool isDark;
+
+  _RouteVectorMapPainter({
+    required this.stops,
+    required this.isDark,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bgPaint = Paint()
+      ..color = isDark ? const Color(0xFF141418) : const Color(0xFFF1F3F4);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    // 1. Cuadrícula cartográfica sutil
+    final gridPaint = Paint()
+      ..color = (isDark ? Colors.white : Colors.black).withOpacity(0.04)
+      ..strokeWidth = 1.0;
+
+    const gridSpacing = 40.0;
+    for (double x = 0; x < size.width; x += gridSpacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    for (double y = 0; y < size.height; y += gridSpacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    // 2. Líneas de arterias urbanas estilizadas (CDMX)
+    final roadPaint = Paint()
+      ..color = (isDark ? Colors.white : Colors.black).withOpacity(0.06)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+
+    final roadPath = Path()
+      ..moveTo(0, size.height * 0.3)
+      ..quadraticBezierTo(size.width * 0.45, size.height * 0.25, size.width, size.height * 0.65)
+      ..moveTo(size.width * 0.2, 0)
+      ..quadraticBezierTo(size.width * 0.5, size.height * 0.6, size.width * 0.75, size.height);
+    canvas.drawPath(roadPath, roadPaint);
+
+    if (stops.isEmpty) return;
+
+    // 3. Normalizar Coordenadas geográficas a puntos de pantalla
+    double minLat = 90.0, maxLat = -90.0;
+    double minLng = 180.0, maxLng = -180.0;
+
+    for (final s in stops) {
+      final lat = (s['lat'] as num?)?.toDouble() ?? 19.4326;
+      final lng = (s['lng'] as num?)?.toDouble() ?? -99.1332;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    }
+
+    if ((maxLat - minLat).abs() < 0.001) {
+      maxLat += 0.01;
+      minLat -= 0.01;
+    }
+    if ((maxLng - minLng).abs() < 0.001) {
+      maxLng += 0.01;
+      minLng -= 0.01;
+    }
+
+    const padding = 54.0;
+    final drawWidth = size.width - (padding * 2);
+    final drawHeight = size.height - (padding * 2);
+
+    final points = <Offset>[];
+    for (final s in stops) {
+      final lat = (s['lat'] as num?)?.toDouble() ?? 19.4326;
+      final lng = (s['lng'] as num?)?.toDouble() ?? -99.1332;
+
+      // Invertir latitud porque Y crece hacia abajo en la pantalla
+      final normalizedX = (lng - minLng) / (maxLng - minLng);
+      final normalizedY = 1.0 - ((lat - minLat) / (maxLat - minLat));
+
+      final px = padding + (normalizedX * drawWidth);
+      final py = padding + (normalizedY * drawHeight);
+      points.add(Offset(px, py));
+    }
+
+    // 4. Dibujar Polilínea de la Ruta con Gradiente Luminoso y Glow
+    if (points.length > 1) {
+      final glowPaint = Paint()
+        ..color = OhtliColors.stormyTeal.withOpacity(0.35)
+        ..strokeWidth = 10.0
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      final routePath = Path()..moveTo(points[0].dx, points[0].dy);
+      for (int i = 1; i < points.length; i++) {
+        routePath.lineTo(points[i].dx, points[i].dy);
+      }
+      canvas.drawPath(routePath, glowPaint);
+
+      final linePaint = Paint()
+        ..shader = LinearGradient(
+          colors: const [OhtliColors.stormyTeal, Color(0xFFE26D5C)],
+        ).createShader(Rect.fromPoints(points.first, points.last))
+        ..strokeWidth = 5.0
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      canvas.drawPath(routePath, linePaint);
+
+      // Flechas de dirección en la polilínea
+      final arrowPaint = Paint()
+        ..color = Colors.white.withOpacity(0.9)
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke;
+
+      for (int i = 0; i < points.length - 1; i++) {
+        final p1 = points[i];
+        final p2 = points[i + 1];
+        final mid = Offset((p1.dx + p2.dx) / 2, (p1.dy + p2.dy) / 2);
+        final angle = math.atan2(p2.dy - p1.dy, p2.dx - p1.dx);
+
+        const arrowSize = 6.0;
+        final left = Offset(
+          mid.dx - arrowSize * math.cos(angle - math.pi / 6),
+          mid.dy - arrowSize * math.sin(angle - math.pi / 6),
+        );
+        final right = Offset(
+          mid.dx - arrowSize * math.cos(angle + math.pi / 6),
+          mid.dy - arrowSize * math.sin(angle + math.pi / 6),
+        );
+        canvas.drawLine(left, mid, arrowPaint);
+        canvas.drawLine(right, mid, arrowPaint);
+      }
+    }
+
+    // 5. Dibujar Pines Numerados y Etiquetas
+    for (int i = 0; i < points.length; i++) {
+      final pt = points[i];
+      final isLast = i == points.length - 1;
+      final pinColor = isLast ? const Color(0xFFE26D5C) : OhtliColors.stormyTeal;
+
+      // Sombra del marcador
+      canvas.drawCircle(
+        pt.translate(0, 3),
+        15,
+        Paint()
+          ..color = Colors.black.withOpacity(0.35)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+
+      // Círculo exterior blanco
+      canvas.drawCircle(pt, 14, Paint()..color = Colors.white);
+
+      // Círculo interior coloreado
+      canvas.drawCircle(pt, 12, Paint()..color = pinColor);
+
+      // Número de la parada
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: '${i + 1}',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      textPainter.paint(
+        canvas,
+        Offset(pt.dx - textPainter.width / 2, pt.dy - textPainter.height / 2),
+      );
+
+      // Etiqueta de Texto con el nombre de la parada
+      final stopName = (stops[i]['name'] ?? 'Parada ${i + 1}').toString();
+      final labelSpan = TextSpan(
+        text: stopName.length > 20 ? '${stopName.substring(0, 18)}...' : stopName,
+        style: GoogleFonts.inter(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: isDark ? Colors.white : OhtliColors.onyx,
+        ),
+      );
+      final labelPainter = TextPainter(
+        text: labelSpan,
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final labelOffset = Offset(pt.dx + 18, pt.dy - labelPainter.height / 2);
+      final labelRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          labelOffset.dx - 6,
+          labelOffset.dy - 3,
+          labelPainter.width + 12,
+          labelPainter.height + 6,
+        ),
+        const Radius.circular(6),
+      );
+
+      // Fondo de la etiqueta
+      canvas.drawRRect(
+        labelRect,
+        Paint()
+          ..color = (isDark ? const Color(0xFF1E1E22) : Colors.white).withOpacity(0.92)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        labelRect,
+        Paint()
+          ..color = OhtliColors.stormyTeal.withOpacity(0.3)
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.stroke,
+      );
+      labelPainter.paint(canvas, labelOffset);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RouteVectorMapPainter oldDelegate) {
+    return oldDelegate.stops != stops || oldDelegate.isDark != isDark;
   }
 }
