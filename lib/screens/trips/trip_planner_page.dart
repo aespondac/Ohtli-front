@@ -1473,6 +1473,170 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   // ==========================================
   // PASO 4: SELECTOR CINEMATOGRÁFICO DE OPCIONES DE VIAJE
   // ==========================================
+
+  static const List<String> _highResCdmxCovers = [
+    'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1400&q=85', // Bellas Artes
+    'https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?auto=format&fit=crop&w=1400&q=85', // Paseo de la Reforma
+    'https://images.unsplash.com/photo-1585464231875-d9ef1f5ad396?auto=format&fit=crop&w=1400&q=85', // Centro Histórico
+    'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1400&q=85', // Coyoacán
+    'https://images.unsplash.com/photo-1512813195386-6cf811ad3542?auto=format&fit=crop&w=1400&q=85', // Chapultepec
+  ];
+
+  static const Map<String, List<String>> _curatedCategoryPhotos = {
+    'cafe': [
+      'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=85',
+      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=85',
+    ],
+    'restaurant': [
+      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=85',
+      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=85',
+    ],
+    'museum': [
+      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?auto=format&fit=crop&w=800&q=85',
+      'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&q=85',
+    ],
+    'park': [
+      'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=800&q=85',
+      'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=800&q=85',
+    ],
+    'artwork': [
+      'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=85',
+      'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=800&q=85',
+    ],
+    'bar': [
+      'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=800&q=85',
+      'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?auto=format&fit=crop&w=800&q=85',
+    ],
+    'market': [
+      'https://images.unsplash.com/photo-1533900298318-6b8da08a523e?auto=format&fit=crop&w=800&q=85',
+      'https://images.unsplash.com/photo-1543083477-4f785aeafaa9?auto=format&fit=crop&w=800&q=85',
+    ],
+  };
+
+  static String _upgradeImageUrl(String url, {int width = 1200, int quality = 85}) {
+    final clean = url.trim();
+    if (clean.isEmpty) return clean;
+    if (clean.contains('unsplash.com')) {
+      final uri = Uri.tryParse(clean);
+      if (uri != null) {
+        final query = Map<String, String>.from(uri.queryParameters);
+        query['auto'] = 'format';
+        query['fit'] = 'crop';
+        query['w'] = width.toString();
+        query['q'] = quality.toString();
+        return uri.replace(queryParameters: query).toString();
+      }
+    }
+    return clean;
+  }
+
+  static String _resolveStopPhoto(Map<String, dynamic> stop, int idx) {
+    final raw = (stop['photo_url'] ?? stop['main_photo_url'] ?? stop['image_url'] ?? stop['photo'] ?? '').toString().trim();
+    if (raw.isNotEmpty) {
+      return _upgradeImageUrl(raw, width: 800, quality: 85);
+    }
+    final cat = (stop['category'] ?? stop['type'] ?? 'general').toString().toLowerCase();
+    final key = _curatedCategoryPhotos.containsKey(cat) ? cat : 'museum';
+    final list = _curatedCategoryPhotos[key] ?? _curatedCategoryPhotos['museum']!;
+    return list[idx % list.length];
+  }
+
+  static IconData _getStopCategoryIcon(String category) {
+    final cat = category.toLowerCase().trim();
+    switch (cat) {
+      case 'cafe':
+      case 'coffee':
+        return Icons.local_cafe_rounded;
+      case 'restaurant':
+      case 'food':
+        return Icons.restaurant_rounded;
+      case 'fast_food':
+        return Icons.fastfood_rounded;
+      case 'bakery':
+      case 'pastry':
+        return Icons.bakery_dining_rounded;
+      case 'museum':
+        return Icons.museum_rounded;
+      case 'park':
+      case 'garden':
+        return Icons.park_rounded;
+      case 'artwork':
+      case 'art':
+      case 'monument':
+        return Icons.palette_rounded;
+      case 'bar':
+      case 'cantina':
+      case 'pub':
+        return Icons.local_bar_rounded;
+      case 'market':
+      case 'marketplace':
+        return Icons.storefront_rounded;
+      case 'theatre':
+      case 'theater':
+      case 'cinema':
+        return Icons.theater_comedy_rounded;
+      case 'church':
+      case 'cathedral':
+        return Icons.church_rounded;
+      default:
+        return Icons.place_rounded;
+    }
+  }
+
+  static Color _getStopCategoryColor(String category) {
+    final cat = category.toLowerCase().trim();
+    switch (cat) {
+      case 'cafe':
+      case 'coffee':
+      case 'bakery':
+        return const Color(0xFFD97706);
+      case 'restaurant':
+      case 'food':
+        return const Color(0xFFEF4444);
+      case 'museum':
+      case 'artwork':
+      case 'art':
+        return OhtliColors.stormyTeal;
+      case 'park':
+      case 'garden':
+        return const Color(0xFF10B981);
+      case 'bar':
+      case 'cantina':
+      case 'pub':
+        return const Color(0xFF8B5CF6);
+      case 'market':
+      case 'marketplace':
+        return OhtliColors.cempasuchil;
+      default:
+        return OhtliColors.stormyTeal;
+    }
+  }
+
+  void _handleTriadPointerScroll(PointerScrollEvent pointerSignal) {
+    final dy = pointerSignal.scrollDelta.dy;
+    final dx = pointerSignal.scrollDelta.dx;
+
+    // Descartar gestos horizontales del trackpad (para no confundir swipe lateral con scroll)
+    if (dx.abs() > 8 || dy.abs() < dx.abs() * 2.0) {
+      return;
+    }
+
+    const double threshold = 28.0;
+
+    if (!_isDetailExpanded) {
+      // EN EL CARRUSEL: Scroll up o vertical intencional abre el detalle
+      if (dy.abs() > threshold) {
+        setState(() => _isDetailExpanded = true);
+      }
+    } else {
+      // EN EL DETALLE EXPANDIDO: Scroll down contrae el detalle
+      // En trackpad macOS, swipe down con dos dedos (tirar hacia abajo) genera dy < -20
+      if (dy < -22) {
+        setState(() => _isDetailExpanded = false);
+      }
+    }
+  }
+
   Widget _buildRouteTriadCarouselStep(bool isMobile) {
     if (_generatedOptions.isEmpty) {
       return const SizedBox.shrink();
@@ -1493,77 +1657,134 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         ? (screenHeight * 0.86).clamp(520.0, 720.0)
         : (screenHeight * 0.90).clamp(640.0, 960.0);
 
-    // Si está en modo Detalle Expandido: queda SOLAMENTE la opción principal
-    if (_isDetailExpanded) {
-      final selectedOption = _generatedOptions[_activeCarouselIndex];
-      final maxContentWidth = isMobile ? double.infinity : (screenWidth * 0.84).clamp(760.0, 1280.0);
+    final selectedOption = _generatedOptions[_activeCarouselIndex];
+    final maxContentWidth = isMobile ? double.infinity : (screenWidth * 0.84).clamp(760.0, 1280.0);
+    final headerMaxWidth = isMobile ? double.infinity : (screenWidth * targetFraction).clamp(760.0, 1300.0);
+    final controller = _getTriadPageController(targetFraction);
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Barra de controles para volver al selector de las 3 opciones
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxContentWidth),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton.icon(
-                    onPressed: () {
-                      setState(() => _isDetailExpanded = false);
-                    },
-                    icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                    label: Text(
-                      'Ver las ${_generatedOptions.length} opciones de viaje',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: OhtliColors.stormyTeal,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () => setState(() => _isDetailExpanded = false),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: OhtliColors.stormyTeal.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Colapsar detalle',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: OhtliColors.stormyTeal,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.keyboard_arrow_down_rounded, color: OhtliColors.stormyTeal, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+    return Listener(
+      onPointerSignal: (pointerSignal) {
+        if (pointerSignal is PointerScrollEvent) {
+          _handleTriadPointerScroll(pointerSignal);
+        }
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 380),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.0, 0.03),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: _isDetailExpanded
+            ? KeyedSubtree(
+                key: const ValueKey('expanded_detail_mode'),
+                child: _buildExpandedDetailView(isMobile, maxContentWidth, selectedOption),
+              )
+            : KeyedSubtree(
+                key: const ValueKey('carousel_selector_mode'),
+                child: _buildCarouselSelectorView(
+                  isMobile,
+                  controller,
+                  carouselCardHeight,
+                  headerMaxWidth,
+                ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedDetailView(
+    bool isMobile,
+    double maxContentWidth,
+    Map<String, dynamic> selectedOption,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Barra de controles para volver al selector de las 3 opciones
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxContentWidth),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() => _isDetailExpanded = false);
+                  },
+                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                  label: Text(
+                    'Ver las ${_generatedOptions.length} opciones de viaje',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: OhtliColors.stormyTeal,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                ),
+                InkWell(
+                  onTap: () => setState(() => _isDetailExpanded = false),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.stormyTeal.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Colapsar detalle',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: OhtliColors.stormyTeal,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: OhtliColors.stormyTeal, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+        ),
 
-          // 1. Tarjeta Única Principal
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: maxContentWidth,
-              maxHeight: isMobile ? 480 : 540,
-            ),
+        // 1. Tarjeta Única Principal
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: maxContentWidth,
+            maxHeight: isMobile ? 480 : 540,
+          ),
+          child: Listener(
+            onPointerSignal: (pointerSignal) {
+              if (pointerSignal is PointerScrollEvent) {
+                final dy = pointerSignal.scrollDelta.dy;
+                final dx = pointerSignal.scrollDelta.dx;
+                if (dx.abs() > 8 || dy.abs() < dx.abs() * 2.0) return;
+                // Scroll down contrae el detalle
+                if (dy < -20 || dy > 30) {
+                  setState(() => _isDetailExpanded = false);
+                }
+              }
+            },
             child: _buildRouteCard(
               selectedOption,
               true,
@@ -1572,216 +1793,213 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               isExpanded: true,
             ),
           ),
+        ),
 
-          const SizedBox(height: 24),
+        const SizedBox(height: 24),
 
-          // 2. Detalle completo integrado en la página (Mapa y Cronología)
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxContentWidth),
-            child: _buildInPageExpandedDetail(selectedOption, _activeCarouselIndex, isMobile),
-          ),
+        // 2. Detalle completo integrado en la página (Mapa y Cronología)
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxContentWidth),
+          child: _buildInPageExpandedDetail(selectedOption, _activeCarouselIndex, isMobile),
+        ),
 
-          const SizedBox(height: 48),
-        ],
-      );
-    }
+        const SizedBox(height: 48),
+      ],
+    );
+  }
 
-    final controller = _getTriadPageController(targetFraction);
-    final headerMaxWidth = isMobile ? double.infinity : (screenWidth * targetFraction).clamp(760.0, 1300.0);
-
-    return Listener(
-      onPointerSignal: (pointerSignal) {
-        if (pointerSignal is PointerScrollEvent) {
-          // Si el usuario hace scroll hacia arriba o hacia abajo en la pantalla (scrollwheel o trackpad)
-          if (pointerSignal.scrollDelta.dy.abs() > 8 && !_isDetailExpanded) {
-            setState(() => _isDetailExpanded = true);
-          }
-        }
-      },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Indicador superior / Controles alineados al ancho de la tarjeta
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: headerMaxWidth),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'ELIGE TU OPCIÓN DE VIAJE',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                          color: OhtliColors.onyx.withOpacity(0.7),
-                        ),
+  Widget _buildCarouselSelectorView(
+    bool isMobile,
+    PageController controller,
+    double carouselCardHeight,
+    double headerMaxWidth,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Indicador superior / Controles alineados al ancho de la tarjeta
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: headerMaxWidth),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ELIGE TU OPCIÓN DE VIAJE',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: OhtliColors.onyx.withOpacity(0.7),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Alternativas temáticas diseñadas por IA (${_activeCarouselIndex + 1} de ${_generatedOptions.length})',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: OhtliColors.subtleText,
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Alternativas temáticas diseñadas por IA (${_activeCarouselIndex + 1} de ${_generatedOptions.length})',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: OhtliColors.subtleText,
                       ),
-                    ],
-                  ),
-                  // Paginador interactivo
-                  Row(
-                    children: List.generate(_generatedOptions.length, (idx) {
-                      final isSelected = _activeCarouselIndex == idx;
-                      return InkWell(
-                        onTap: () {
-                          controller.animateToPage(
-                            idx,
-                            duration: const Duration(milliseconds: 350),
-                            curve: Curves.easeOutCubic,
-                          );
-                        },
-                        borderRadius: BorderRadius.circular(4),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          width: isSelected ? 28 : 10,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Carrusel cinematográfico amplio con altura al 90% del viewport
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                height: carouselCardHeight,
-                child: PageView.builder(
-                  controller: controller,
-                  itemCount: _generatedOptions.length,
-                  onPageChanged: (idx) {
-                    setState(() => _activeCarouselIndex = idx);
-                  },
-                  itemBuilder: (context, index) {
-                    final option = _generatedOptions[index];
-                    final isFocused = _activeCarouselIndex == index;
-                    return AnimatedScale(
-                      scale: isFocused ? 1.0 : 0.88,
-                      duration: const Duration(milliseconds: 350),
-                      curve: Curves.easeOutCubic,
-                      child: AnimatedOpacity(
-                        opacity: isFocused ? 1.0 : 0.52,
-                        duration: const Duration(milliseconds: 350),
-                        child: GestureDetector(
-                          onTap: () {
-                            if (!isFocused) {
-                              controller.animateToPage(
-                                index,
-                                duration: const Duration(milliseconds: 350),
-                                curve: Curves.easeOutCubic,
-                              );
-                            }
-                          },
-                          child: _buildRouteCard(
-                            option,
-                            isFocused,
-                            isMobile,
-                            index,
-                            isExpanded: false,
-                          ),
+                    ),
+                  ],
+                ),
+                // Paginador interactivo
+                Row(
+                  children: List.generate(_generatedOptions.length, (idx) {
+                    final isSelected = _activeCarouselIndex == idx;
+                    return InkWell(
+                      onTap: () {
+                        controller.animateToPage(
+                          idx,
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeOutCubic,
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(4),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: isSelected ? 28 : 10,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
+                          borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                     );
-                  },
+                  }),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Carrusel cinematográfico amplio con altura al 90% del viewport
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              height: carouselCardHeight,
+              child: PageView.builder(
+                controller: controller,
+                itemCount: _generatedOptions.length,
+                onPageChanged: (idx) {
+                  setState(() => _activeCarouselIndex = idx);
+                },
+                itemBuilder: (context, index) {
+                  final option = _generatedOptions[index];
+                  final isFocused = _activeCarouselIndex == index;
+                  return AnimatedScale(
+                    scale: isFocused ? 1.0 : 0.88,
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedOpacity(
+                      opacity: isFocused ? 1.0 : 0.52,
+                      duration: const Duration(milliseconds: 350),
+                      child: GestureDetector(
+                        onTap: () {
+                          if (!isFocused) {
+                            controller.animateToPage(
+                              index,
+                              duration: const Duration(milliseconds: 350),
+                              curve: Curves.easeOutCubic,
+                            );
+                          } else {
+                            // Al hacer clic en la tarjeta enfocada, abre detalles completos
+                            setState(() => _isDetailExpanded = true);
+                          }
+                        },
+                        child: _buildRouteCard(
+                          option,
+                          isFocused,
+                          isMobile,
+                          index,
+                          isExpanded: false,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Flecha Izquierda (Desktop)
+            if (!isMobile && _activeCarouselIndex > 0)
+              Positioned(
+                left: 20,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      controller.previousPage(
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeOutCubic,
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                    ),
+                  ),
                 ),
               ),
 
-              // Flecha Izquierda (Desktop)
-              if (!isMobile && _activeCarouselIndex > 0)
-                Positioned(
-                  left: 20,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        controller.previousPage(
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeOutCubic,
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(24),
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white.withOpacity(0.2)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+            // Flecha Derecha (Desktop)
+            if (!isMobile && _activeCarouselIndex < _generatedOptions.length - 1)
+              Positioned(
+                right: 20,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      controller.nextPage(
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeOutCubic,
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
+                      child: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
                     ),
                   ),
                 ),
-
-              // Flecha Derecha (Desktop)
-              if (!isMobile && _activeCarouselIndex < _generatedOptions.length - 1)
-                Positioned(
-                  right: 20,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        controller.nextPage(
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeOutCubic,
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(24),
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white.withOpacity(0.2)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 24),
-        ],
-      ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 
@@ -1797,9 +2015,22 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     final cost = (option['total_cost_mxn'] as num?)?.toDouble() ?? 250.0;
     final timeMins = (option['estimated_time_mins'] as num?)?.toInt() ?? 180;
     final List<dynamic> stops = option['route'] ?? [];
-    final coverUrl = option['cover_url'] ??
-        (stops.isNotEmpty ? stops[0]['photo_url'] : null) ??
-        'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1200&q=80';
+
+    String? rawCover = (option['cover_url'] as String?);
+    if (rawCover == null || rawCover.trim().isEmpty) {
+      if (stops.isNotEmpty) {
+        final firstStop = stops[0];
+        if (firstStop is Map) {
+          final p = (firstStop['photo_url'] ?? firstStop['photo'] ?? firstStop['image_url'])?.toString().trim();
+          if (p != null && p.isNotEmpty) {
+            rawCover = p;
+          }
+        }
+      }
+    }
+    final coverUrl = (rawCover != null && rawCover.trim().isNotEmpty)
+        ? _upgradeImageUrl(rawCover, width: 1400, quality: 85)
+        : _highResCdmxCovers[index % _highResCdmxCovers.length];
 
     final int hours = timeMins ~/ 60;
     final int minutes = timeMins % 60;
@@ -1807,62 +2038,91 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
 
     double verticalDragDelta = 0;
 
-    return Listener(
-      onPointerSignal: (pointerSignal) {
-        if (pointerSignal is PointerScrollEvent) {
-          // Si el usuario hace scroll hacia arriba o hacia abajo en la tarjeta con el mouse o trackpad
-          if (pointerSignal.scrollDelta.dy.abs() > 8 && !_isDetailExpanded) {
-            setState(() => _isDetailExpanded = true);
-          }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (!isFocused) return;
+        if (!_isDetailExpanded) {
+          setState(() => _isDetailExpanded = true);
         }
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (details) {
-          if (details.primaryDelta != null) {
-            verticalDragDelta += details.primaryDelta!;
-          }
-        },
-        onVerticalDragEnd: (details) {
-          final velocity = details.primaryVelocity ?? 0;
-          // Si el usuario desliza hacia arriba (velocidad negativa o arrastre acumulado hacia arriba) -> expande detalle
-          if ((velocity < -60 || verticalDragDelta < -20) && !_isDetailExpanded) {
-            setState(() => _isDetailExpanded = true);
-          }
-          // Si el usuario desliza hacia abajo -> colapsa detalle si estaba expandido
-          else if ((velocity > 60 || verticalDragDelta > 20) && _isDetailExpanded) {
-            setState(() => _isDetailExpanded = false);
-          }
+      onVerticalDragUpdate: (details) {
+        if (!isFocused) return;
+        if (details.primaryDelta != null) {
+          verticalDragDelta += details.primaryDelta!;
+        }
+      },
+      onVerticalDragEnd: (details) {
+        if (!isFocused) {
           verticalDragDelta = 0;
-        },
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isFocused ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.08),
-              width: isFocused ? 1.8 : 1.0,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isFocused ? 0.35 : 0.15),
-                blurRadius: isFocused ? 28 : 14,
-                offset: const Offset(0, 10),
-              ),
-            ],
+          return;
+        }
+        final velocity = details.primaryVelocity ?? 0;
+        // Gesto hacia arriba (scroll up / swipe up) abre detalles
+        if ((velocity < -160 || verticalDragDelta < -35) && !_isDetailExpanded) {
+          setState(() => _isDetailExpanded = true);
+        }
+        // Gesto hacia abajo (scroll down / swipe down) contrae detalles
+        else if ((velocity > 160 || verticalDragDelta > 35) && _isDetailExpanded) {
+          setState(() => _isDetailExpanded = false);
+        }
+        verticalDragDelta = 0;
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isFocused ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.08),
+            width: isFocused ? 1.8 : 1.0,
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Stack(
-              children: [
-                // 1. Fotografía de fondo cinematográfica a alto completo
-                Positioned.fill(
-                  child: Image.network(
-                    coverUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF1E1E22)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isFocused ? 0.35 : 0.15),
+              blurRadius: isFocused ? 28 : 14,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              // 1. Fotografía de fondo cinematográfica a alto completo con calidad curada
+              Positioned.fill(
+                child: Image.network(
+                  coverUrl,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      color: const Color(0xFF1E1E22),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: OhtliColors.stormyTeal,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF1F2937), Color(0xFF111827)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.explore_rounded, size: 48, color: Colors.white24),
+                    ),
                   ),
                 ),
+              ),
 
                 // 2. Gradiente Cinematográfico equilibrado
                 Positioned.fill(
@@ -2481,6 +2741,24 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                     width: double.infinity,
                     height: isMobile ? 240 : 340,
                     fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        width: double.infinity,
+                        height: isMobile ? 240 : 340,
+                        color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: OhtliColors.stormyTeal,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                     errorBuilder: (context, error, stackTrace) =>
                         _buildVectorRouteMapCanvas(rawStops, validCoords, isDark, isMobile, googleMapsDirectionsUrl),
                   )
@@ -2520,7 +2798,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                   ? '$arrival${departure != null ? " - $departure" : ""}'
                   : 'Parada ${idx + 1}';
               final stopPrice = (stop['price_mxn'] as num?)?.toDouble() ?? 0.0;
-              final photo = (stop['photo_url'] ?? stop['main_photo_url'] ?? '').toString();
+              final photo = _resolveStopPhoto(stop, idx);
+              final category = (stop['category'] ?? stop['type'] ?? 'general').toString();
+              final catIcon = _getStopCategoryIcon(category);
+              final catColor = _getStopCategoryColor(category);
 
               String desc = '';
               if (idx < rawNarrations.length && rawNarrations[idx] != null) {
@@ -2595,19 +2876,78 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (photo.isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.network(
-                                    photo,
-                                    width: 60,
-                                    height: 60,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        const SizedBox.shrink(),
+                              // Fotografía estilizada alineada con la sección Lugares (PoiCard)
+                              Container(
+                                width: isMobile ? 74 : 86,
+                                height: isMobile ? 74 : 86,
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isDark ? Colors.white12 : OhtliColors.cardBorder,
                                   ),
                                 ),
-                              if (photo.isNotEmpty) const SizedBox(width: 12),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      Image.network(
+                                        photo,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (context, child, loadingProgress) {
+                                          if (loadingProgress == null) return child;
+                                          return Container(
+                                            color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
+                                            child: const Center(
+                                              child: SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: OhtliColors.stormyTeal,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return Container(
+                                            color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
+                                            child: Center(
+                                              child: Icon(
+                                                catIcon,
+                                                size: 28,
+                                                color: catColor.withOpacity(0.55),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      // Gradiente sutil inferior para contraste cinematográfico
+                                      Positioned(
+                                        bottom: 0,
+                                        left: 0,
+                                        right: 0,
+                                        height: 24,
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.transparent,
+                                                Colors.black.withOpacity(0.35),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
