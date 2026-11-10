@@ -2386,8 +2386,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   // Trazado visual de la ruta en la tarjeta del carrusel
