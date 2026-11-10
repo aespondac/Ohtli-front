@@ -164,18 +164,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   // Carrusel cinematográfico de multirutas
   PageController? _triadPageController;
   double _currentViewportFraction = 0.88;
-  int _activeCarouselIndex = 0;
+  int _activeCarouselIndex = 1;
   bool _isDetailExpanded = false;
+  final Map<int, ScrollController> _cardScrollControllers = {};
+
+  ScrollController _getCardScrollController(int index) {
+    return _cardScrollControllers.putIfAbsent(index, () => ScrollController());
+  }
 
   PageController _getTriadPageController(double targetFraction) {
     if (_triadPageController == null || (_currentViewportFraction - targetFraction).abs() > 0.01) {
-      final oldPage = _triadPageController?.hasClients == true
-          ? _triadPageController!.page?.round() ?? _activeCarouselIndex
-          : _activeCarouselIndex;
+      final initialPage = (_triadPageController?.hasClients == true)
+          ? (_triadPageController!.page?.round() ?? _activeCarouselIndex)
+          : (_generatedOptions.length > 2 ? 1 : _activeCarouselIndex);
       _triadPageController?.dispose();
       _triadPageController = PageController(
         viewportFraction: targetFraction,
-        initialPage: oldPage,
+        initialPage: initialPage,
       );
       _currentViewportFraction = targetFraction;
     }
@@ -237,6 +242,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
       _generatedOptions = widget.initialGeneratedOptions!;
       _selectedOriginName = widget.originName ?? 'CDMX';
       _currentStep = PlannerStep.routeTriadCarousel;
+      _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
     }
   }
 
@@ -244,6 +250,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   void dispose() {
     _jobSubscription?.cancel();
     _triadPageController?.dispose();
+    for (final c in _cardScrollControllers.values) {
+      c.dispose();
+    }
     _originSearchController.dispose();
     _customMoodController.dispose();
     super.dispose();
@@ -350,7 +359,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             setState(() {
               _generatedOptions = rawOptions.map((e) => Map<String, dynamic>.from(e as Map)).toList();
               _currentStep = PlannerStep.routeTriadCarousel;
-              _activeCarouselIndex = 0;
+              _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
+              _triadPageController?.dispose();
+              _triadPageController = null;
             });
           }
         }
@@ -547,6 +558,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                   maxWidth: _currentStep == PlannerStep.routeTriadCarousel ? double.infinity : 780,
                 ),
                 child: SingleChildScrollView(
+                  physics: _currentStep == PlannerStep.routeTriadCarousel
+                      ? const NeverScrollableScrollPhysics()
+                      : const BouncingScrollPhysics(),
                   padding: EdgeInsets.symmetric(
                     horizontal: _currentStep == PlannerStep.routeTriadCarousel ? 0 : (isMobile ? 16 : 24),
                     vertical: isMobile ? 12 : 24,
@@ -1652,159 +1666,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             ? 0.88
             : (screenWidth < 1500 ? 0.84 : 0.80));
 
-    // Alto al 90% del viewport solicitado por el usuario
-    final double carouselCardHeight = isMobile
-        ? (screenHeight * 0.86).clamp(520.0, 720.0)
-        : (screenHeight * 0.90).clamp(640.0, 960.0);
+    // Alto dinámico en la misma tarjeta sin cambiar de vista
+    final double carouselCardHeight = _isDetailExpanded
+        ? (isMobile ? (screenHeight * 0.90).clamp(580.0, 800.0) : (screenHeight * 0.92).clamp(720.0, 1020.0))
+        : (isMobile ? (screenHeight * 0.86).clamp(520.0, 720.0) : (screenHeight * 0.90).clamp(640.0, 960.0));
 
-    final selectedOption = _generatedOptions[_activeCarouselIndex];
-    final maxContentWidth = isMobile ? double.infinity : (screenWidth * 0.84).clamp(760.0, 1280.0);
     final headerMaxWidth = isMobile ? double.infinity : (screenWidth * targetFraction).clamp(760.0, 1300.0);
     final controller = _getTriadPageController(targetFraction);
 
-    return Listener(
-      onPointerSignal: (pointerSignal) {
-        if (pointerSignal is PointerScrollEvent) {
-          _handleTriadPointerScroll(pointerSignal);
-        }
-      },
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 380),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.0, 0.03),
-                end: Offset.zero,
-              ).animate(animation),
-              child: child,
-            ),
-          );
-        },
-        child: _isDetailExpanded
-            ? KeyedSubtree(
-                key: const ValueKey('expanded_detail_mode'),
-                child: _buildExpandedDetailView(isMobile, maxContentWidth, selectedOption),
-              )
-            : KeyedSubtree(
-                key: const ValueKey('carousel_selector_mode'),
-                child: _buildCarouselSelectorView(
-                  isMobile,
-                  controller,
-                  carouselCardHeight,
-                  headerMaxWidth,
-                ),
-              ),
-      ),
-    );
-  }
-
-  Widget _buildExpandedDetailView(
-    bool isMobile,
-    double maxContentWidth,
-    Map<String, dynamic> selectedOption,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Barra de controles para volver al selector de las 3 opciones
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxContentWidth),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() => _isDetailExpanded = false);
-                  },
-                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                  label: Text(
-                    'Ver las ${_generatedOptions.length} opciones de viaje',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: OhtliColors.stormyTeal,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  ),
-                ),
-                InkWell(
-                  onTap: () => setState(() => _isDetailExpanded = false),
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Colapsar detalle',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: OhtliColors.stormyTeal,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.keyboard_arrow_down_rounded, color: OhtliColors.stormyTeal, size: 18),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // 1. Tarjeta Única Principal
-        ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: maxContentWidth,
-            maxHeight: isMobile ? 480 : 540,
-          ),
-          child: Listener(
-            onPointerSignal: (pointerSignal) {
-              if (pointerSignal is PointerScrollEvent) {
-                final dy = pointerSignal.scrollDelta.dy;
-                final dx = pointerSignal.scrollDelta.dx;
-                if (dx.abs() > 8 || dy.abs() < dx.abs() * 2.0) return;
-                // Scroll down contrae el detalle
-                if (dy < -20 || dy > 30) {
-                  setState(() => _isDetailExpanded = false);
-                }
-              }
-            },
-            child: _buildRouteCard(
-              selectedOption,
-              true,
-              isMobile,
-              _activeCarouselIndex,
-              isExpanded: true,
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // 2. Detalle completo integrado en la página (Mapa y Cronología)
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxContentWidth),
-          child: _buildInPageExpandedDetail(selectedOption, _activeCarouselIndex, isMobile),
-        ),
-
-        const SizedBox(height: 48),
-      ],
+    return _buildCarouselSelectorView(
+      isMobile,
+      controller,
+      carouselCardHeight,
+      headerMaxWidth,
     );
   }
 
@@ -1882,7 +1756,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         Stack(
           alignment: Alignment.center,
           children: [
-            SizedBox(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
               height: carouselCardHeight,
               child: PageView.builder(
                 controller: controller,
@@ -1894,12 +1770,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                   final option = _generatedOptions[index];
                   final isFocused = _activeCarouselIndex == index;
                   return AnimatedScale(
-                    scale: isFocused ? 1.0 : 0.88,
-                    duration: const Duration(milliseconds: 350),
+                    scale: isFocused ? 1.0 : (_isDetailExpanded ? 0.94 : 0.88),
+                    duration: const Duration(milliseconds: 320),
                     curve: Curves.easeOutCubic,
                     child: AnimatedOpacity(
-                      opacity: isFocused ? 1.0 : 0.52,
-                      duration: const Duration(milliseconds: 350),
+                      opacity: isFocused ? 1.0 : (_isDetailExpanded ? 0.40 : 0.52),
+                      duration: const Duration(milliseconds: 320),
                       child: GestureDetector(
                         onTap: () {
                           if (!isFocused) {
@@ -1908,8 +1784,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                               duration: const Duration(milliseconds: 350),
                               curve: Curves.easeOutCubic,
                             );
-                          } else {
-                            // Al hacer clic en la tarjeta enfocada, abre detalles completos
+                          } else if (!_isDetailExpanded) {
+                            // Al hacer clic en la tarjeta enfocada, abre detalles completos en la misma tarjeta
                             setState(() => _isDetailExpanded = true);
                           }
                         },
@@ -1918,7 +1794,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                           isFocused,
                           isMobile,
                           index,
-                          isExpanded: false,
+                          isExpanded: _isDetailExpanded,
                         ),
                       ),
                     ),
@@ -2036,38 +1912,94 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     final int minutes = timeMins % 60;
     final String timeStr = hours > 0 ? '$hours h $minutes min' : '$minutes min';
 
+    if (isExpanded) {
+      return _buildExpandedCard(
+        option: option,
+        isFocused: isFocused,
+        isMobile: isMobile,
+        index: index,
+        title: title,
+        summary: summary,
+        cost: cost,
+        timeStr: timeStr,
+        coverUrl: coverUrl,
+        stops: stops,
+      );
+    }
+
+    return _buildCompactCard(
+      option: option,
+      isFocused: isFocused,
+      isMobile: isMobile,
+      index: index,
+      title: title,
+      summary: summary,
+      cost: cost,
+      timeStr: timeStr,
+      coverUrl: coverUrl,
+      stops: stops,
+    );
+  }
+
+  Widget _buildCompactCard({
+    required Map<String, dynamic> option,
+    required bool isFocused,
+    required bool isMobile,
+    required int index,
+    required String title,
+    required String summary,
+    required double cost,
+    required String timeStr,
+    required String coverUrl,
+    required List<dynamic> stops,
+  }) {
     double verticalDragDelta = 0;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
+    return Listener(
+      onPointerSignal: (pointerSignal) {
         if (!isFocused) return;
-        if (!_isDetailExpanded) {
-          setState(() => _isDetailExpanded = true);
+        if (pointerSignal is PointerScrollEvent) {
+          final dy = pointerSignal.scrollDelta.dy;
+          final dx = pointerSignal.scrollDelta.dx;
+          if (dx.abs() > 8 || dy.abs() < dx.abs() * 1.5) return;
+          // Scroll vertical intencional en la tarjeta abre detalles
+          if (dy.abs() > 20) {
+            setState(() => _isDetailExpanded = true);
+          }
         }
       },
-      onVerticalDragUpdate: (details) {
-        if (!isFocused) return;
-        if (details.primaryDelta != null) {
-          verticalDragDelta += details.primaryDelta!;
-        }
-      },
-      onVerticalDragEnd: (details) {
-        if (!isFocused) {
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (!isFocused) {
+            _triadPageController?.animateToPage(
+              index,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+            );
+          } else if (!_isDetailExpanded) {
+            // Click en la tarjeta enfocada abre detalles
+            setState(() => _isDetailExpanded = true);
+          }
+        },
+        onVerticalDragUpdate: (details) {
+          if (!isFocused) return;
+          if (details.primaryDelta != null) {
+            verticalDragDelta += details.primaryDelta!;
+          }
+        },
+        onVerticalDragEnd: (details) {
+          if (!isFocused) {
+            verticalDragDelta = 0;
+            return;
+          }
+          final velocity = details.primaryVelocity ?? 0;
+          // Gesto hacia arriba (scroll up / swipe up) abre detalles
+          if ((velocity < -120 || verticalDragDelta < -25) && !_isDetailExpanded) {
+            setState(() => _isDetailExpanded = true);
+          }
           verticalDragDelta = 0;
-          return;
-        }
-        final velocity = details.primaryVelocity ?? 0;
-        // Gesto hacia arriba (scroll up / swipe up) abre detalles
-        if ((velocity < -160 || verticalDragDelta < -35) && !_isDetailExpanded) {
-          setState(() => _isDetailExpanded = true);
-        }
-        // Gesto hacia abajo (scroll down / swipe down) contrae detalles
-        else if ((velocity > 160 || verticalDragDelta > 35) && _isDetailExpanded) {
-          setState(() => _isDetailExpanded = false);
-        }
-        verticalDragDelta = 0;
-      },
+        },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
@@ -2190,52 +2122,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                         ],
                       ),
 
-                      // Chevron en la parte de arriba interactivo
-                      InkWell(
-                        onTap: () {
-                          setState(() {
-                            _isDetailExpanded = !_isDetailExpanded;
-                          });
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.55),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withOpacity(0.30)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.35),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                              if (!isMobile) ...[
-                                const SizedBox(width: 4),
-                                Text(
-                                  isExpanded ? 'Colapsar' : 'Detalle e Itinerario',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-
                       IconButton(
                         onPressed: () {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -2344,39 +2230,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                               elevation: 6,
                             ),
                           ),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _isDetailExpanded = true;
-                              });
-                            },
-                            icon: Icon(
-                              isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.map_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            label: Text(
-                              isExpanded ? 'Ver Mapa y Cronología abajo' : 'Ver Mapa y Cronología',
-                              style: GoogleFonts.inter(
-                                fontSize: isMobile ? 12 : 13,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white.withOpacity(0.20),
-                              foregroundColor: Colors.white,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: isMobile ? 14 : 20,
-                                vertical: isMobile ? 12 : 16,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                                side: BorderSide(color: Colors.white.withOpacity(0.35)),
-                              ),
-                              elevation: 0,
-                            ),
-                          ),
                         ],
                       ),
                     ],
@@ -2386,7 +2239,300 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             ),
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _buildExpandedCard({
+    required Map<String, dynamic> option,
+    required bool isFocused,
+    required bool isMobile,
+    required int index,
+    required String title,
+    required String summary,
+    required double cost,
+    required String timeStr,
+    required String coverUrl,
+    required List<dynamic> stops,
+  }) {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final scrollController = _getCardScrollController(index);
+    double verticalDragDelta = 0;
+
+    return Listener(
+      onPointerSignal: (pointerSignal) {
+        if (!isFocused) return;
+        if (pointerSignal is PointerScrollEvent) {
+          final dy = pointerSignal.scrollDelta.dy;
+          final dx = pointerSignal.scrollDelta.dx;
+          if (dx.abs() > 10 || dy.abs() < dx.abs() * 1.5) return;
+          // Si el scroll está en el tope de la tarjeta expandida y hay scroll down (desplazamiento hacia abajo), contraer
+          final isAtTop = !scrollController.hasClients || scrollController.offset <= 2;
+          if (isAtTop && dy < -10) {
+            setState(() => _isDetailExpanded = false);
+          }
+        }
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onVerticalDragUpdate: (details) {
+          if (!isFocused) return;
+          if (details.primaryDelta != null) {
+            verticalDragDelta += details.primaryDelta!;
+          }
+        },
+        onVerticalDragEnd: (details) {
+          if (!isFocused) {
+            verticalDragDelta = 0;
+            return;
+          }
+          final velocity = details.primaryVelocity ?? 0;
+          final isAtTop = !scrollController.hasClients || scrollController.offset <= 2;
+          // Arrastre hacia abajo en el tope contrae y regresa a la tarjeta
+          if (isAtTop && (velocity > 120 || verticalDragDelta > 25)) {
+            setState(() => _isDetailExpanded = false);
+          }
+          verticalDragDelta = 0;
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isFocused ? OhtliColors.stormyTeal : (isDark ? Colors.white12 : OhtliColors.cardBorder),
+              width: isFocused ? 1.8 : 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.35 : 0.12),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                // Overscroll hacia abajo desde el tope contrae inmediatamente
+                if (notification is OverscrollNotification && notification.overscroll < -3) {
+                  if (_isDetailExpanded) {
+                    setState(() => _isDetailExpanded = false);
+                  }
+                  return true;
+                }
+                // Scroll update hacia abajo en el tope contrae
+                if (notification is ScrollUpdateNotification) {
+                  if (notification.metrics.pixels <= 0 && (notification.scrollDelta ?? 0) < -10) {
+                    if (_isDetailExpanded) {
+                      setState(() => _isDetailExpanded = false);
+                    }
+                    return true;
+                  }
+                }
+                return false;
+              },
+              child: SingleChildScrollView(
+                controller: scrollController,
+                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Banner superior compacto con foto de portada y controles
+                    SizedBox(
+                      height: isMobile ? 180 : 230,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            coverUrl,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                color: const Color(0xFF1E1E22),
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: OhtliColors.stormyTeal),
+                                  ),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: const Color(0xFF1F2937),
+                              child: const Icon(Icons.explore_rounded, color: Colors.white24, size: 36),
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.black.withOpacity(0.60),
+                                  Colors.black.withOpacity(0.20),
+                                  Colors.black.withOpacity(0.85),
+                                ],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                stops: const [0.0, 0.45, 1.0],
+                              ),
+                            ),
+                          ),
+                          // Barra superior en el banner (Badges y Bookmark - CERO BOTONES DE COLAPSO)
+                          Positioned(
+                            top: 14,
+                            left: 16,
+                            right: 16,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: OhtliColors.stormyTeal,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        'OPCIÓN ${index + 1}',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 1.0,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.45),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                      ),
+                                      child: Text(
+                                        (option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase(),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.8,
+                                          color: Colors.white.withOpacity(0.9),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                IconButton(
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
+                                        backgroundColor: OhtliColors.stormyTeal,
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white, size: 20),
+                                  tooltip: 'Guardar alternativa en Planes',
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.black.withOpacity(0.45),
+                                    padding: const EdgeInsets.all(8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Pie del banner: Título y Metadatos
+                          Positioned(
+                            left: 16,
+                            right: 16,
+                            bottom: 14,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.outfit(
+                                          fontSize: isMobile ? 18 : 22,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          _buildMetaPill(Icons.schedule_rounded, timeStr),
+                                          const SizedBox(width: 6),
+                                          _buildMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN'),
+                                          const SizedBox(width: 6),
+                                          _buildMetaPill(Icons.place_rounded, '${stops.length} paradas'),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                ElevatedButton.icon(
+                                  onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
+                                  icon: _isSavingTrip
+                                      ? const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                                        )
+                                      : const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 18),
+                                  label: Text(
+                                    _isSavingTrip ? 'Creando...' : 'Elegir (\$${cost.toStringAsFixed(0)})',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    elevation: 4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Contenido del detalle: Sinopsis, Mapa y Cronología
+                    Padding(
+                      padding: EdgeInsets.all(isMobile ? 16 : 24),
+                      child: _buildInPageExpandedDetail(
+                        option,
+                        index,
+                        isMobile,
+                        isEmbeddedInCard: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // Trazado visual de la ruta en la tarjeta del carrusel
@@ -2525,7 +2671,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   // ==========================================
   // DETALLE COMPLETO EXPANDIDO EN LA PÁGINA (MAPA + CRONOLOGÍA)
   // ==========================================
-  Widget _buildInPageExpandedDetail(Map<String, dynamic> option, int index, bool isMobile) {
+  Widget _buildInPageExpandedDetail(
+    Map<String, dynamic> option,
+    int index,
+    bool isMobile, {
+    bool isEmbeddedInCard = false,
+  }) {
     final isDark = OhtliSettings.instance.isDarkMode;
     final title = (option['editorial_headline'] ?? option['theme'] ?? 'Ruta ${index + 1}').toString();
     final summary = (option['narrative_summary'] ?? '').toString();
@@ -2597,26 +2748,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
           'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination$waypointsParam&travelmode=walking';
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white12 : OhtliColors.cardBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      padding: EdgeInsets.all(isMobile ? 18 : 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Encabezado
+    final innerContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!isEmbeddedInCard) ...[
+          // Encabezado suelto (solo en modo no embebido)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -2651,9 +2787,16 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                 ],
               ),
               IconButton(
-                onPressed: () => setState(() => _isDetailExpanded = false),
-                icon: const Icon(Icons.close_fullscreen_rounded, size: 20),
-                tooltip: 'Colapsar y volver al selector',
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
+                      backgroundColor: OhtliColors.stormyTeal,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.bookmark_add_outlined, size: 20),
+                tooltip: 'Guardar alternativa en Planes',
                 color: isDark ? Colors.white70 : OhtliColors.onyx,
               ),
             ],
@@ -2680,18 +2823,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               _buildDialogMetaPill(Icons.place_rounded, '${rawStops.length} paradas', isDark),
             ],
           ),
-          if (summary.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              summary,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: isDark ? Colors.white70 : OhtliColors.subtleText,
-                height: 1.4,
-              ),
+        ],
+        if (summary.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            summary,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: isDark ? Colors.white70 : OhtliColors.subtleText,
+              height: 1.4,
             ),
-          ],
-          const SizedBox(height: 28),
+          ),
+        ],
+        const SizedBox(height: 24),
 
           // Sección: Mapa de la Ruta
           Row(
@@ -3048,7 +3192,29 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             ),
           ),
         ],
+      );
+
+    if (isEmbeddedInCard) {
+      return innerContent;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white12 : OhtliColors.cardBorder,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
+      padding: EdgeInsets.all(isMobile ? 18 : 28),
+      child: innerContent,
     );
   }
 
