@@ -107,7 +107,17 @@
     // Fallback de seguridad: remover el loader tras 5 segundos en caso de que se pierdan los eventos
     setTimeout(removeLoader, 5000);
   </script>
-  <!-- Lanzador oficial e inalterado de Flutter Web -->
+  <!-- Lanzador de Flutter Web -->
   <script src="flutter_bootstrap.js" async></script>
+  <!-- Service worker propio: permite abrir la app y los itinerarios guardados sin conexión (CA-05) -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/ohtli_sw.js').catch(function (e) {
+          console.warn('No se pudo registrar ohtli_sw.js', e);
+        });
+      });
+    }
+  </script>
 </body>
 </html>
