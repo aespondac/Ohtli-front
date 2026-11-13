@@ -2,8 +2,10 @@
 
 import 'dart:async';
 import 'dart:html' as html;
+import 'dart:ui' show lerpDouble;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -67,7 +69,7 @@ class TripPlannerPage extends StatefulWidget {
   State<TripPlannerPage> createState() => _TripPlannerPageState();
 }
 
-class _TripPlannerPageState extends State<TripPlannerPage> {
+class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProviderStateMixin {
   final ItineraryBlackboardService _blackboardService = ItineraryBlackboardService();
   final TextEditingController _originSearchController = TextEditingController();
   final TextEditingController _customMoodController = TextEditingController();
@@ -169,8 +171,119 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   bool _isDetailExpanded = false;
   final Map<int, ScrollController> _cardScrollControllers = {};
 
+  // Transición tipo Apple TV: la tarjeta enfocada se transforma (morph) en la vista de detalle
+  late final AnimationController _expandController = AnimationController(vsync: this, duration: const Duration(milliseconds: 560), reverseDuration: const Duration(milliseconds: 440));
+  late final CurvedAnimation _expandCurve = CurvedAnimation(parent: _expandController, curve: Curves.easeOutQuart, reverseCurve: Curves.easeInOutCubic);
+  // Bloqueo breve tras cada transición: evita que la inercia del trackpad/rueda
+  // vuelva a disparar el gesto contrario (causa del parpadeo expandir↔contraer)
+  DateTime _expandLockUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime? _detailAtTopSince;
+  double _wheelAccum = 0;
+  double _pullDownAccum = 0;
+  Timer? _wheelResetTimer;
+  final ValueNotifier<Offset> _hoverTilt = ValueNotifier(Offset.zero);
+  final FocusNode _carouselFocusNode = FocusNode(debugLabel: 'routeCarousel');
+
   ScrollController _getCardScrollController(int index) {
-    return _cardScrollControllers.putIfAbsent(index, () => ScrollController());
+    return _cardScrollControllers.putIfAbsent(index, () => ScrollController(keepScrollOffset: false));
+  }
+
+  bool get _expandLocked => DateTime.now().isBefore(_expandLockUntil);
+
+  void _setDetailExpanded(bool value) {
+    if (value == _isDetailExpanded || _expandLocked) return;
+    _expandLockUntil = DateTime.now().add(const Duration(milliseconds: 700));
+    _wheelAccum = 0;
+    _pullDownAccum = 0;
+    _detailAtTopSince = DateTime.now();
+    _hoverTilt.value = Offset.zero;
+    setState(() => _isDetailExpanded = value);
+    if (value) {
+      _expandController.forward();
+    } else {
+      _expandController.reverse();
+    }
+  }
+
+  void _accumulateWheel(double dy) {
+    _wheelAccum += dy;
+    _wheelResetTimer?.cancel();
+    _wheelResetTimer = Timer(const Duration(milliseconds: 220), () => _wheelAccum = 0);
+  }
+
+  // Rueda/trackpad sobre la tarjeta compacta: scroll hacia abajo abre el detalle a pantalla completa
+  void _handleCompactWheel(PointerSignalEvent event, bool isFocused) {
+    if (!isFocused || _isDetailExpanded || event is! PointerScrollEvent) return;
+    final dy = event.scrollDelta.dy;
+    final dx = event.scrollDelta.dx;
+    if (dx.abs() > dy.abs() || dy <= 0) {
+      _wheelAccum = 0;
+      return;
+    }
+    _accumulateWheel(dy);
+    if (_wheelAccum > 60) _setDetailExpanded(true);
+  }
+
+  // Rueda/trackpad en el detalle: solo un "tirón" intencional hacia arriba estando ya en el tope cierra
+  void _handleDetailWheel(PointerSignalEvent event) {
+    if (!_isDetailExpanded || event is! PointerScrollEvent) return;
+    final c = _cardScrollControllers[_activeCarouselIndex];
+    final atTop = c == null || !c.hasClients || c.offset <= 0.5;
+    final dy = event.scrollDelta.dy;
+    final settledAtTop = atTop && _detailAtTopSince != null && DateTime.now().difference(_detailAtTopSince!) > const Duration(milliseconds: 320);
+    if (!settledAtTop || dy >= 0) {
+      _wheelAccum = 0;
+      return;
+    }
+    _accumulateWheel(dy);
+    if (_wheelAccum < -180) _setDetailExpanded(false);
+  }
+
+  // Gesto táctil: arrastrar hacia abajo desde el tope (no la inercia) cierra el detalle
+  bool _handleDetailScrollNotification(ScrollNotification n) {
+    if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
+    final px = n.metrics.pixels;
+    if (px > 0.5) {
+      _detailAtTopSince = null;
+      _pullDownAccum = 0;
+    } else {
+      _detailAtTopSince ??= DateTime.now();
+    }
+    if (n is OverscrollNotification && n.dragDetails != null && n.overscroll < 0) {
+      _pullDownAccum += -n.overscroll;
+    } else if (n is ScrollUpdateNotification && n.dragDetails != null && px < 0) {
+      _pullDownAccum = -px;
+    } else if (n is ScrollEndNotification) {
+      _pullDownAccum = 0;
+    }
+    if (_pullDownAccum > 90) _setDetailExpanded(false);
+    return false;
+  }
+
+  KeyEventResult _handleCarouselKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (_isDetailExpanded) {
+      if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.backspace) {
+        _setDetailExpanded(false);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+    final controller = _triadPageController;
+    if (key == LogicalKeyboardKey.arrowRight && controller != null) {
+      controller.nextPage(duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft && controller != null) {
+      controller.previousPage(duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.space) {
+      _setDetailExpanded(true);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   PageController _getTriadPageController(double targetFraction) {
@@ -251,6 +364,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
   void dispose() {
     _jobSubscription?.cancel();
     _triadPageController?.dispose();
+    _expandCurve.dispose();
+    _expandController.dispose();
+    _wheelResetTimer?.cancel();
+    _hoverTilt.dispose();
+    _carouselFocusNode.dispose();
     for (final c in _cardScrollControllers.values) {
       c.dispose();
     }
@@ -363,6 +481,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
               _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
               _triadPageController?.dispose();
               _triadPageController = null;
+              _isDetailExpanded = false;
+              _expandController.value = 0;
             });
           }
         }
@@ -540,7 +660,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: OhtliColors.stormyTeal),
           onPressed: () {
-            if (_currentStep == PlannerStep.preferences) {
+            if (_currentStep == PlannerStep.routeTriadCarousel && _isDetailExpanded) {
+              _expandLockUntil = DateTime.fromMillisecondsSinceEpoch(0);
+              _setDetailExpanded(false);
+            } else if (_currentStep == PlannerStep.preferences) {
               setState(() => _currentStep = PlannerStep.startingPoint);
             } else if (_currentStep == PlannerStep.startingPoint) {
               setState(() => _currentStep = PlannerStep.bifurcation);
@@ -631,19 +754,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                 constraints: BoxConstraints(
                   maxWidth: _currentStep == PlannerStep.routeTriadCarousel ? double.infinity : 780,
                 ),
-                child: SingleChildScrollView(
-                  physics: _currentStep == PlannerStep.routeTriadCarousel
-                      ? const NeverScrollableScrollPhysics()
-                      : const BouncingScrollPhysics(),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: _currentStep == PlannerStep.routeTriadCarousel ? 0 : (isMobile ? 16 : 24),
-                    vertical: isMobile ? 12 : 24,
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _buildStepContent(isMobile),
-                  ),
-                ),
+                child: _currentStep == PlannerStep.routeTriadCarousel
+                    // El selector de rutas ocupa todo el alto disponible (sin scroll externo)
+                    ? Padding(
+                        padding: EdgeInsets.only(top: isMobile ? 8 : 16),
+                        child: _buildStepContent(isMobile),
+                      )
+                    : SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 16 : 24,
+                          vertical: isMobile ? 12 : 24,
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: _buildStepContent(isMobile),
+                        ),
+                      ),
               ),
             ),
           ),
@@ -1700,241 +1827,228 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
     }
   }
 
+  // ==========================================
+  // SELECTOR DE RUTAS (inspirado en la selección de opciones de Apple TV)
+  // - La tarjeta enfocada se eleva y responde al cursor (parallax)
+  // - Al abrirla, la misma tarjeta se transforma hasta ocupar toda la pantalla
+  //   mientras el carrusel retrocede al fondo
+  // ==========================================
+  static const double _carouselHeaderHeight = 60.0;
+
+  double _carouselFractionFor(double width, bool isMobile) {
+    if (isMobile) return 0.90;
+    if (width < 1100) return 0.86;
+    if (width < 1500) return 0.82;
+    return 0.78;
+  }
+
   Widget _buildRouteTriadCarouselStep(bool isMobile) {
     if (_generatedOptions.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screen = MediaQuery.of(context).size;
+        final double w = constraints.maxWidth.isFinite ? constraints.maxWidth : screen.width;
+        final double h = constraints.maxHeight.isFinite ? constraints.maxHeight : screen.height * 0.85;
 
-    // Escala amplia: en desktop la opción ocupa entre 80% y 88% del ancho de pantalla
-    final double targetFraction = isMobile
-        ? 0.92
-        : (screenWidth < 1100
-            ? 0.88
-            : (screenWidth < 1500 ? 0.84 : 0.80));
+        final fraction = _carouselFractionFor(w, isMobile);
+        final controller = _getTriadPageController(fraction);
+        final double bottomGap = isMobile ? 8 : 20;
+        final double pageH = (h - _carouselHeaderHeight - bottomGap).clamp(240.0, double.infinity);
+        final double pageW = w * fraction;
+        const double cardMarginH = 10;
+        const double cardMarginV = 8;
 
-    // Alto dinámico en la misma tarjeta sin cambiar de vista
-    final double carouselCardHeight = _isDetailExpanded
-        ? (isMobile ? (screenHeight * 0.90).clamp(580.0, 800.0) : (screenHeight * 0.92).clamp(720.0, 1020.0))
-        : (isMobile ? (screenHeight * 0.86).clamp(520.0, 720.0) : (screenHeight * 0.90).clamp(640.0, 960.0));
+        // Rectángulo exacto de la tarjeta enfocada dentro del carrusel (punto de partida del morph)
+        final compactRect = Rect.fromLTWH((w - pageW) / 2 + cardMarginH, _carouselHeaderHeight + cardMarginV, pageW - cardMarginH * 2, pageH - cardMarginV * 2);
+        // Rectángulo final: toda la pantalla disponible
+        final double inset = isMobile ? 0 : 12;
+        final fullRect = Rect.fromLTWH(inset, 0, w - inset * 2, h - (isMobile ? 0 : inset));
 
-    final headerMaxWidth = isMobile ? double.infinity : (screenWidth * targetFraction).clamp(760.0, 1300.0);
-    final controller = _getTriadPageController(targetFraction);
+        final headerMaxWidth = isMobile ? double.infinity : pageW;
 
-    return _buildCarouselSelectorView(
-      isMobile,
-      controller,
-      carouselCardHeight,
-      headerMaxWidth,
+        // Capa base: encabezado + carrusel. Se construye una vez y se reutiliza en cada frame.
+        final baseLayer = Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(height: _carouselHeaderHeight, child: _buildCarouselHeader(controller, headerMaxWidth)),
+            SizedBox(height: pageH, child: _buildCarouselPager(controller, isMobile)),
+          ],
+        );
+
+        final activeIndex = _activeCarouselIndex.clamp(0, _generatedOptions.length - 1);
+        final activeOption = _generatedOptions[activeIndex];
+        final detailContent = Padding(padding: EdgeInsets.all(isMobile ? 16 : 28), child: _buildInPageExpandedDetail(activeOption, activeIndex, isMobile, isEmbeddedInCard: true));
+
+        return Focus(
+          focusNode: _carouselFocusNode,
+          autofocus: true,
+          onKeyEvent: _handleCarouselKey,
+          child: SizedBox(
+            width: w,
+            height: h,
+            child: AnimatedBuilder(
+              animation: _expandCurve,
+              child: baseLayer,
+              builder: (context, base) {
+                final t = _expandCurve.value;
+                final showOverlay = _expandController.value > 0.0005;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // El carrusel retrocede (escala + atenuación) como en el home de Apple TV
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        ignoring: showOverlay,
+                        child: Opacity(
+                          opacity: (1 - t * 1.15).clamp(0.0, 1.0),
+                          child: Transform.scale(scale: 1 - 0.06 * t, child: base),
+                        ),
+                      ),
+                    ),
+                    if (showOverlay)
+                      Positioned.fromRect(
+                        rect: Rect.lerp(compactRect, fullRect, t)!,
+                        // Durante el morph se ignora la inercia del scroll para que la transición sea estable
+                        child: IgnorePointer(
+                          ignoring: _expandController.isAnimating,
+                          child: _buildExpandedCard(option: activeOption, index: activeIndex, isMobile: isMobile, t: t, startHeight: compactRect.height, detailContent: detailContent),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildCarouselSelectorView(
-    bool isMobile,
-    PageController controller,
-    double carouselCardHeight,
-    double headerMaxWidth,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Indicador superior / Controles alineados al ancho de la tarjeta
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: headerMaxWidth),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
+  Widget _buildCarouselHeader(PageController controller, double headerMaxWidth) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: headerMaxWidth),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'ELIGE TU OPCIÓN DE VIAJE',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                        color: OhtliColors.onyx.withOpacity(0.7),
-                      ),
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: OhtliColors.onyx.withOpacity(0.7)),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Alternativas temáticas diseñadas por IA (${_activeCarouselIndex + 1} de ${_generatedOptions.length})',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: OhtliColors.subtleText,
-                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
                     ),
                   ],
                 ),
-                // Paginador interactivo
-                Row(
-                  children: List.generate(_generatedOptions.length, (idx) {
-                    final isSelected = _activeCarouselIndex == idx;
-                    return InkWell(
-                      onTap: () {
-                        controller.animateToPage(
-                          idx,
-                          duration: const Duration(milliseconds: 350),
-                          curve: Curves.easeOutCubic,
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(4),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        width: isSelected ? 28 : 10,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // Carrusel cinematográfico amplio con altura al 90% del viewport
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-              height: carouselCardHeight,
-              child: PageView.builder(
-                controller: controller,
-                itemCount: _generatedOptions.length,
-                onPageChanged: (idx) {
-                  setState(() => _activeCarouselIndex = idx);
-                },
-                itemBuilder: (context, index) {
-                  final option = _generatedOptions[index];
-                  final isFocused = _activeCarouselIndex == index;
-                  return AnimatedScale(
-                    scale: isFocused ? 1.0 : (_isDetailExpanded ? 0.94 : 0.88),
-                    duration: const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    child: AnimatedOpacity(
-                      opacity: isFocused ? 1.0 : (_isDetailExpanded ? 0.40 : 0.52),
-                      duration: const Duration(milliseconds: 320),
-                      child: GestureDetector(
-                        onTap: () {
-                          if (!isFocused) {
-                            controller.animateToPage(
-                              index,
-                              duration: const Duration(milliseconds: 350),
-                              curve: Curves.easeOutCubic,
-                            );
-                          } else if (!_isDetailExpanded) {
-                            // Al hacer clic en la tarjeta enfocada, abre detalles completos en la misma tarjeta
-                            setState(() => _isDetailExpanded = true);
-                          }
-                        },
-                        child: _buildRouteCard(
-                          option,
-                          isFocused,
-                          isMobile,
-                          index,
-                          isExpanded: _isDetailExpanded,
-                        ),
-                      ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(_generatedOptions.length, (idx) {
+                  final isSelected = _activeCarouselIndex == idx;
+                  return InkWell(
+                    onTap: () {
+                      controller.animateToPage(idx, duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: isSelected ? 28 : 10,
+                      height: 8,
+                      decoration: BoxDecoration(color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder, borderRadius: BorderRadius.circular(4)),
                     ),
                   );
-                },
+                }),
               ),
-            ),
-
-            // Flecha Izquierda (Desktop)
-            if (!isMobile && _activeCarouselIndex > 0)
-              Positioned(
-                left: 20,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      controller.previousPage(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeOutCubic,
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.2)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-                    ),
-                  ),
-                ),
-              ),
-
-            // Flecha Derecha (Desktop)
-            if (!isMobile && _activeCarouselIndex < _generatedOptions.length - 1)
-              Positioned(
-                right: 20,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      controller.nextPage(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeOutCubic,
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white.withOpacity(0.2)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 24),
+      ),
+    );
+  }
+
+  Widget _buildCarouselPager(PageController controller, bool isMobile) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        PageView.builder(
+          controller: controller,
+          itemCount: _generatedOptions.length,
+          onPageChanged: (idx) {
+            _hoverTilt.value = Offset.zero;
+            setState(() => _activeCarouselIndex = idx);
+          },
+          itemBuilder: (context, index) {
+            final isFocused = _activeCarouselIndex == index;
+            // Escala/opacidad continuas según la posición real del PageView (sin saltos al soltar)
+            return AnimatedBuilder(
+              animation: controller,
+              builder: (context, child) {
+                double distance = (index - _activeCarouselIndex).abs().toDouble();
+                if (controller.hasClients && controller.position.haveDimensions) {
+                  distance = ((controller.page ?? _activeCarouselIndex.toDouble()) - index).abs();
+                }
+                final d = distance.clamp(0.0, 1.0);
+                return Transform.scale(
+                  scale: 1.0 - 0.12 * d,
+                  child: Opacity(opacity: 1.0 - 0.48 * d, child: child),
+                );
+              },
+              child: _buildCompactCard(option: _generatedOptions[index], isFocused: isFocused, isMobile: isMobile, index: index),
+            );
+          },
+        ),
+        if (!isMobile && _activeCarouselIndex > 0)
+          Positioned(
+            left: 20,
+            child: _buildCarouselArrow(Icons.arrow_back_ios_new_rounded, () => controller.previousPage(duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic)),
+          ),
+        if (!isMobile && _activeCarouselIndex < _generatedOptions.length - 1)
+          Positioned(
+            right: 20,
+            child: _buildCarouselArrow(Icons.arrow_forward_ios_rounded, () => controller.nextPage(duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic)),
+          ),
       ],
     );
   }
 
-  Widget _buildRouteCard(
-    Map<String, dynamic> option,
-    bool isFocused,
-    bool isMobile,
-    int index, {
-    bool isExpanded = false,
-  }) {
+  Widget _buildCarouselArrow(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.6),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Icon(icon, color: Colors.white, size: 18),
+        ),
+      ),
+    );
+  }
+
+  ({String title, String summary, double cost, String timeStr, String coverUrl, List<dynamic> stops}) _routeCardData(Map<String, dynamic> option, int index) {
     final title = (option['editorial_headline'] ?? option['theme'] ?? 'Ruta ${index + 1}').toString();
     final summary = (option['narrative_summary'] ?? '').toString();
     final cost = (option['total_cost_mxn'] as num?)?.toDouble() ?? 250.0;
@@ -1953,169 +2067,149 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
         }
       }
     }
-    final coverUrl = (rawCover != null && rawCover.trim().isNotEmpty)
-        ? _upgradeImageUrl(rawCover, width: 1400, quality: 85)
-        : _highResCdmxCovers[index % _highResCdmxCovers.length];
+    final coverUrl = (rawCover != null && rawCover.trim().isNotEmpty) ? _upgradeImageUrl(rawCover, width: 1400, quality: 85) : _highResCdmxCovers[index % _highResCdmxCovers.length];
 
     final int hours = timeMins ~/ 60;
     final int minutes = timeMins % 60;
     final String timeStr = hours > 0 ? '$hours h $minutes min' : '$minutes min';
+    return (title: title, summary: summary, cost: cost, timeStr: timeStr, coverUrl: coverUrl, stops: stops);
+  }
 
-    if (isExpanded) {
-      return _buildExpandedCard(
-        option: option,
-        isFocused: isFocused,
-        isMobile: isMobile,
-        index: index,
-        title: title,
-        summary: summary,
-        cost: cost,
-        timeStr: timeStr,
-        coverUrl: coverUrl,
-        stops: stops,
-      );
-    }
-
-    return _buildCompactCard(
-      option: option,
-      isFocused: isFocused,
-      isMobile: isMobile,
-      index: index,
-      title: title,
-      summary: summary,
-      cost: cost,
-      timeStr: timeStr,
-      coverUrl: coverUrl,
-      stops: stops,
+  // Portada sin spinner: fondo oscuro estable + aparición suave (evita destellos al cambiar de vista)
+  Widget _buildCoverImage(String url, {Offset parallax = Offset.zero}) {
+    return Container(
+      color: const Color(0xFF1E1E22),
+      child: Transform.translate(
+        offset: parallax,
+        child: Transform.scale(
+          scale: 1.0 + (parallax.distance / 12).clamp(0.0, 1.0) * 0.06,
+          child: Image.network(
+            url,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            gaplessPlayback: true,
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (wasSynchronouslyLoaded) return child;
+              return AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 350), curve: Curves.easeOut, child: child);
+            },
+            errorBuilder: (context, error, stackTrace) => Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: [Color(0xFF1F2937), Color(0xFF111827)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              ),
+              child: const Center(child: Icon(Icons.explore_rounded, size: 48, color: Colors.white24)),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildCompactCard({
-    required Map<String, dynamic> option,
-    required bool isFocused,
-    required bool isMobile,
-    required int index,
-    required String title,
-    required String summary,
-    required double cost,
-    required String timeStr,
-    required String coverUrl,
-    required List<dynamic> stops,
-  }) {
+  Widget _buildOptionBadges(Map<String, dynamic> option, int index) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(color: OhtliColors.stormyTeal, borderRadius: BorderRadius.circular(8)),
+          child: Text(
+            'OPCIÓN ${index + 1}',
+            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0, color: Colors.white),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
+            ),
+            child: Text(
+              (option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: Colors.white.withOpacity(0.9)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBookmarkButton() {
+    return IconButton(
+      onPressed: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
+            backgroundColor: OhtliColors.stormyTeal,
+          ),
+        );
+      },
+      icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white, size: 20),
+      tooltip: 'Guardar alternativa en Planes',
+      style: IconButton.styleFrom(backgroundColor: Colors.black.withOpacity(0.45), padding: const EdgeInsets.all(8)),
+    );
+  }
+
+  Widget _buildChooseRouteButton(Map<String, dynamic> option, double cost, bool isMobile, {bool compact = false}) {
+    return ElevatedButton.icon(
+      onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
+      icon: _isSavingTrip
+          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+          : Icon(Icons.play_arrow_rounded, color: Colors.black, size: compact ? 18 : 20),
+      label: Text(
+        _isSavingTrip ? (compact ? 'Creando...' : 'Creando viaje...') : (compact ? 'Elegir (\$${cost.toStringAsFixed(0)})' : 'Elegir esta ruta (\$${cost.toStringAsFixed(0)} MXN)'),
+        style: GoogleFonts.outfit(fontSize: compact ? 13 : (isMobile ? 13 : 14.5), fontWeight: FontWeight.w800, color: Colors.black, letterSpacing: 0.2),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        padding: compact ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : EdgeInsets.symmetric(horizontal: isMobile ? 18 : 26, vertical: isMobile ? 12 : 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        elevation: 6,
+      ),
+    );
+  }
+
+  Widget _buildCompactCard({required Map<String, dynamic> option, required bool isFocused, required bool isMobile, required int index}) {
+    final data = _routeCardData(option, index);
     double verticalDragDelta = 0;
 
-    return Listener(
-      onPointerSignal: (pointerSignal) {
-        if (!isFocused) return;
-        if (pointerSignal is PointerScrollEvent) {
-          final dy = pointerSignal.scrollDelta.dy;
-          final dx = pointerSignal.scrollDelta.dx;
-          if (dx.abs() > 8 || dy.abs() < dx.abs() * 1.5) return;
-          // Scroll vertical intencional en la tarjeta abre detalles
-          if (dy.abs() > 20) {
-            setState(() => _isDetailExpanded = true);
-          }
-        }
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          if (!isFocused) {
-            _triadPageController?.animateToPage(
-              index,
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutCubic,
-            );
-          } else if (!_isDetailExpanded) {
-            // Click en la tarjeta enfocada abre detalles
-            setState(() => _isDetailExpanded = true);
-          }
-        },
-        onVerticalDragUpdate: (details) {
-          if (!isFocused) return;
-          if (details.primaryDelta != null) {
-            verticalDragDelta += details.primaryDelta!;
-          }
-        },
-        onVerticalDragEnd: (details) {
-          if (!isFocused) {
-            verticalDragDelta = 0;
-            return;
-          }
-          final velocity = details.primaryVelocity ?? 0;
-          // Gesto hacia arriba (scroll up / swipe up) abre detalles
-          if ((velocity < -120 || verticalDragDelta < -25) && !_isDetailExpanded) {
-            setState(() => _isDetailExpanded = true);
-          }
-          verticalDragDelta = 0;
-        },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isFocused ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.08),
-            width: isFocused ? 1.8 : 1.0,
+    Widget card(Offset tilt) {
+      final hovering = tilt != Offset.zero;
+      // Inclinación 3D sutil + elevación al pasar el cursor (efecto de foco de Apple TV)
+      final transform = Matrix4.identity()
+        ..setEntry(3, 2, 0.0009)
+        ..rotateX(-tilt.dy * 0.06)
+        ..rotateY(tilt.dx * 0.06)
+        ..scale(hovering ? 1.015 : 1.0);
+      return Transform(
+        alignment: Alignment.center,
+        transform: transform,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: isFocused ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.08), width: isFocused ? 1.8 : 1.0),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(isFocused ? (hovering ? 0.45 : 0.35) : 0.15), blurRadius: isFocused ? (hovering ? 40 : 28) : 14, offset: Offset(0, hovering ? 18 : 10)),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(isFocused ? 0.35 : 0.15),
-              blurRadius: isFocused ? 28 : 14,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            children: [
-              // 1. Fotografía de fondo cinematográfica a alto completo con calidad curada
-              Positioned.fill(
-                child: Image.network(
-                  coverUrl,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Container(
-                      color: const Color(0xFF1E1E22),
-                      child: const Center(
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: OhtliColors.stormyTeal,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF1F2937), Color(0xFF111827)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.explore_rounded, size: 48, color: Colors.white24),
-                    ),
-                  ),
-                ),
-              ),
-
-                // 2. Gradiente Cinematográfico equilibrado
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Stack(
+              children: [
+                Positioned.fill(child: _buildCoverImage(data.coverUrl, parallax: Offset(-tilt.dx * 14, -tilt.dy * 10))),
                 Positioned.fill(
-                  child: Container(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          Colors.black.withOpacity(0.65),
-                          Colors.black.withOpacity(0.15),
-                          Colors.black.withOpacity(0.70),
-                          Colors.black.withOpacity(0.97),
-                        ],
+                        colors: [Colors.black.withOpacity(0.65), Colors.black.withOpacity(0.15), Colors.black.withOpacity(0.70), Colors.black.withOpacity(0.97)],
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         stops: const [0.0, 0.28, 0.62, 1.0],
@@ -2123,8 +2217,17 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                     ),
                   ),
                 ),
-
-                // 3. Barra Superior (Badges a la izquierda, Chevron arriba al centro, Bookmark a la derecha)
+                // Brillo especular que sigue al cursor
+                if (hovering)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(center: Alignment(tilt.dx, tilt.dy), radius: 0.9, colors: [Colors.white.withOpacity(0.14), Colors.white.withOpacity(0.0)]),
+                        ),
+                      ),
+                    ),
+                  ),
                 Positioned(
                   top: isMobile ? 16 : 22,
                   left: isMobile ? 16 : 24,
@@ -2132,66 +2235,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: OhtliColors.stormyTeal,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'OPCIÓN ${index + 1}',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.0,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.45),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white.withOpacity(0.15)),
-                            ),
-                            child: Text(
-                              (option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase(),
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.8,
-                                color: Colors.white.withOpacity(0.9),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      IconButton(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
-                              backgroundColor: OhtliColors.stormyTeal,
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white, size: 20),
-                        tooltip: 'Guardar alternativa en Planes',
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.black.withOpacity(0.45),
-                          padding: const EdgeInsets.all(8),
-                        ),
-                      ),
+                      Flexible(child: _buildOptionBadges(option, index)),
+                      _buildBookmarkButton(),
                     ],
                   ),
                 ),
-
-                // 4. Contenido Inferior (Metadatos, Título, Sinopsis, Trazado de Ruta y Acciones)
                 Positioned(
                   left: isMobile ? 16 : 26,
                   right: isMobile ? 16 : 26,
@@ -2200,85 +2248,46 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Badges de Metadatos (Tiempo, Costo, Paradas)
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
                         children: [
-                          _buildMetaPill(Icons.schedule_rounded, timeStr),
-                          const SizedBox(width: 8),
-                          _buildMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN'),
-                          const SizedBox(width: 8),
-                          _buildMetaPill(Icons.place_rounded, '${stops.length} paradas'),
+                          _buildMetaPill(Icons.schedule_rounded, data.timeStr),
+                          _buildMetaPill(Icons.payments_outlined, '\$${data.cost.toStringAsFixed(0)} MXN'),
+                          _buildMetaPill(Icons.place_rounded, '${data.stops.length} paradas'),
                         ],
                       ),
                       const SizedBox(height: 10),
-
-                      // Título con escala balanceada
                       Text(
-                        title,
+                        data.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.outfit(
-                          fontSize: isMobile ? 20 : 26,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          height: 1.2,
-                        ),
+                        style: GoogleFonts.outfit(fontSize: isMobile ? 20 : 26, fontWeight: FontWeight.bold, color: Colors.white, height: 1.2),
                       ),
                       const SizedBox(height: 8),
-
-                      // Sinopsis Narrativa
-                      if (summary.isNotEmpty)
+                      if (data.summary.isNotEmpty)
                         Text(
-                          summary,
+                          data.summary,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: isMobile ? 12 : 13.5,
-                            color: Colors.white.withOpacity(0.88),
-                            height: 1.35,
-                          ),
+                          style: GoogleFonts.inter(fontSize: isMobile ? 12 : 13.5, color: Colors.white.withOpacity(0.88), height: 1.35),
                         ),
                       const SizedBox(height: 14),
-
-                      // Trazado Secuencial de la Ruta en la Tarjeta
-                      _buildCardRouteTrail(stops, option, index),
+                      _buildCardRouteTrail(data.stops, option, index),
                       const SizedBox(height: 16),
-
-                      // Botones de Acción
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 10,
-                        crossAxisAlignment: WrapCrossAlignment.center,
+                      Row(
                         children: [
-                          ElevatedButton.icon(
-                            onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
-                            icon: _isSavingTrip
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                                  )
-                                : const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 20),
-                            label: Text(
-                              _isSavingTrip ? 'Creando viaje...' : 'Elegir esta ruta (\$${cost.toStringAsFixed(0)} MXN)',
-                              style: GoogleFonts.outfit(
-                                fontSize: isMobile ? 13 : 14.5,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.black,
-                                letterSpacing: 0.2,
-                              ),
+                          _buildChooseRouteButton(option, data.cost, isMobile),
+                          const Spacer(),
+                          if (isFocused)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(isMobile ? 'Desliza para ver más' : 'Desplázate para ver detalles', style: GoogleFonts.inter(fontSize: 11, color: Colors.white60)),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white60, size: 18),
+                              ],
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.black,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: isMobile ? 18 : 26,
-                                vertical: isMobile ? 12 : 16,
-                              ),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                              elevation: 6,
-                            ),
-                          ),
                         ],
                       ),
                     ],
@@ -2288,295 +2297,184 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
             ),
           ),
         ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) => Listener(
+        onPointerSignal: (event) => _handleCompactWheel(event, isFocused),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onHover: (event) {
+            if (!isFocused || isMobile || _isDetailExpanded) return;
+            final size = constraints.biggest;
+            if (size.isEmpty || !size.isFinite) return;
+            final local = event.localPosition;
+            _hoverTilt.value = Offset(((local.dx / size.width) * 2 - 1).clamp(-1.0, 1.0), ((local.dy / size.height) * 2 - 1).clamp(-1.0, 1.0));
+          },
+          onExit: (_) {
+            if (isFocused) _hoverTilt.value = Offset.zero;
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              if (!isFocused) {
+                _triadPageController?.animateToPage(index, duration: const Duration(milliseconds: 380), curve: Curves.easeOutCubic);
+              } else {
+                _setDetailExpanded(true);
+              }
+            },
+            onVerticalDragUpdate: (details) {
+              if (!isFocused) return;
+              verticalDragDelta += details.primaryDelta ?? 0;
+            },
+            onVerticalDragEnd: (details) {
+              final velocity = details.primaryVelocity ?? 0;
+              // Deslizar hacia arriba abre el detalle a pantalla completa
+              if (isFocused && (velocity < -200 || verticalDragDelta < -40)) {
+                _setDetailExpanded(true);
+              }
+              verticalDragDelta = 0;
+            },
+            child: isFocused
+                ? ValueListenableBuilder<Offset>(
+                    valueListenable: _hoverTilt,
+                    builder: (context, tilt, _) => TweenAnimationBuilder<Offset>(
+                      tween: Tween(end: tilt),
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      builder: (context, smoothTilt, _) => card(smoothTilt),
+                    ),
+                  )
+                : card(Offset.zero),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildExpandedCard({
-    required Map<String, dynamic> option,
-    required bool isFocused,
-    required bool isMobile,
-    required int index,
-    required String title,
-    required String summary,
-    required double cost,
-    required String timeStr,
-    required String coverUrl,
-    required List<dynamic> stops,
-  }) {
+  Widget _buildExpandedCard({required Map<String, dynamic> option, required int index, required bool isMobile, required double t, required double startHeight, required Widget detailContent}) {
     final isDark = OhtliSettings.instance.isDarkMode;
+    final data = _routeCardData(option, index);
     final scrollController = _getCardScrollController(index);
-    double verticalDragDelta = 0;
+
+    // La portada arranca ocupando toda la tarjeta y se reduce a banner mientras la tarjeta crece
+    final double bannerTarget = isMobile ? 220 : 300;
+    final double bannerH = lerpDouble(startHeight, bannerTarget, t)!.clamp(bannerTarget, double.infinity);
+    final double radius = lerpDouble(24, isMobile ? 0 : 20, t)!;
+    final double contentReveal = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
 
     return Listener(
-      onPointerSignal: (pointerSignal) {
-        if (!isFocused) return;
-        if (pointerSignal is PointerScrollEvent) {
-          final dy = pointerSignal.scrollDelta.dy;
-          final dx = pointerSignal.scrollDelta.dx;
-          if (dx.abs() > 10 || dy.abs() < dx.abs() * 1.5) return;
-          // Si el scroll está en el tope de la tarjeta expandida y hay scroll down (desplazamiento hacia abajo), contraer
-          final isAtTop = !scrollController.hasClients || scrollController.offset <= 2;
-          if (isAtTop && dy < -10) {
-            setState(() => _isDetailExpanded = false);
-          }
-        }
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onVerticalDragUpdate: (details) {
-          if (!isFocused) return;
-          if (details.primaryDelta != null) {
-            verticalDragDelta += details.primaryDelta!;
-          }
-        },
-        onVerticalDragEnd: (details) {
-          if (!isFocused) {
-            verticalDragDelta = 0;
-            return;
-          }
-          final velocity = details.primaryVelocity ?? 0;
-          final isAtTop = !scrollController.hasClients || scrollController.offset <= 2;
-          // Arrastre hacia abajo en el tope contrae y regresa a la tarjeta
-          if (isAtTop && (velocity > 120 || verticalDragDelta > 25)) {
-            setState(() => _isDetailExpanded = false);
-          }
-          verticalDragDelta = 0;
-        },
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isFocused ? OhtliColors.stormyTeal : (isDark ? Colors.white12 : OhtliColors.cardBorder),
-              width: isFocused ? 1.8 : 1.0,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.35 : 0.12),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (notification) {
-                // Overscroll hacia abajo desde el tope contrae inmediatamente
-                if (notification is OverscrollNotification && notification.overscroll < -3) {
-                  if (_isDetailExpanded) {
-                    setState(() => _isDetailExpanded = false);
-                  }
-                  return true;
-                }
-                // Scroll update hacia abajo en el tope contrae
-                if (notification is ScrollUpdateNotification) {
-                  if (notification.metrics.pixels <= 0 && (notification.scrollDelta ?? 0) < -10) {
-                    if (_isDetailExpanded) {
-                      setState(() => _isDetailExpanded = false);
-                    }
-                    return true;
-                  }
-                }
-                return false;
-              },
-              child: SingleChildScrollView(
-                controller: scrollController,
-                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Banner superior compacto con foto de portada y controles
-                    SizedBox(
-                      height: isMobile ? 180 : 230,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.network(
-                            coverUrl,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(
-                                color: const Color(0xFF1E1E22),
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: OhtliColors.stormyTeal),
-                                  ),
-                                ),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              color: const Color(0xFF1F2937),
-                              child: const Icon(Icons.explore_rounded, color: Colors.white24, size: 36),
+      onPointerSignal: _handleDetailWheel,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: Colors.white.withOpacity(0.35 * (1 - t)), width: 1.8),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.35 + 0.1 * t), blurRadius: 28 + 20 * t, offset: const Offset(0, 12))],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleDetailScrollNotification,
+            child: CustomScrollView(
+              controller: scrollController,
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: bannerH,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _buildCoverImage(data.coverUrl),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.black.withOpacity(0.60), Colors.black.withOpacity(0.15), Colors.black.withOpacity(0.90)],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              stops: const [0.0, 0.45, 1.0],
                             ),
                           ),
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.black.withOpacity(0.60),
-                                  Colors.black.withOpacity(0.20),
-                                  Colors.black.withOpacity(0.85),
-                                ],
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                stops: const [0.0, 0.45, 1.0],
-                              ),
-                            ),
+                        ),
+                        Positioned(
+                          top: isMobile ? 14 : 22,
+                          left: isMobile ? 16 : 24,
+                          right: isMobile ? 16 : 24,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Flexible(child: _buildOptionBadges(option, index)),
+                              _buildBookmarkButton(),
+                            ],
                           ),
-                          // Barra superior en el banner (Badges y Bookmark - CERO BOTONES DE COLAPSO)
-                          Positioned(
-                            top: 14,
-                            left: 16,
-                            right: 16,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
+                        ),
+                        Positioned(
+                          left: isMobile ? 16 : 28,
+                          right: isMobile ? 16 : 28,
+                          bottom: isMobile ? 16 : 24,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: OhtliColors.stormyTeal,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        'OPCIÓN ${index + 1}',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1.0,
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: [
+                                        _buildMetaPill(Icons.schedule_rounded, data.timeStr),
+                                        _buildMetaPill(Icons.payments_outlined, '\$${data.cost.toStringAsFixed(0)} MXN'),
+                                        _buildMetaPill(Icons.place_rounded, '${data.stops.length} paradas'),
+                                      ],
                                     ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.45),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.white.withOpacity(0.2)),
-                                      ),
-                                      child: Text(
-                                        (option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase(),
-                                        style: GoogleFonts.inter(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.8,
-                                          color: Colors.white.withOpacity(0.9),
-                                        ),
-                                      ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      data.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.outfit(fontSize: lerpDouble(isMobile ? 20 : 26, isMobile ? 22 : 32, t), fontWeight: FontWeight.bold, color: Colors.white, height: 1.15),
                                     ),
                                   ],
                                 ),
-                                IconButton(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
-                                        backgroundColor: OhtliColors.stormyTeal,
-                                      ),
-                                    );
-                                  },
-                                  icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white, size: 20),
-                                  tooltip: 'Guardar alternativa en Planes',
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.black.withOpacity(0.45),
-                                    padding: const EdgeInsets.all(8),
-                                  ),
+                              ),
+                              const SizedBox(width: 12),
+                              _buildChooseRouteButton(option, data.cost, isMobile, compact: isMobile),
+                            ],
+                          ),
+                        ),
+                        // Indicador para regresar (arrastrar / desplazar hacia arriba en el tope)
+                        Positioned(
+                          top: 6,
+                          left: 0,
+                          right: 0,
+                          child: IgnorePointer(
+                            child: Opacity(
+                              opacity: contentReveal,
+                              child: Center(
+                                child: Container(
+                                  width: 40,
+                                  height: 4,
+                                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.55), borderRadius: BorderRadius.circular(2)),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
-                          // Pie del banner: Título y Metadatos
-                          Positioned(
-                            left: 16,
-                            right: 16,
-                            bottom: 14,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.outfit(
-                                          fontSize: isMobile ? 18 : 22,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          _buildMetaPill(Icons.schedule_rounded, timeStr),
-                                          const SizedBox(width: 6),
-                                          _buildMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN'),
-                                          const SizedBox(width: 6),
-                                          _buildMetaPill(Icons.place_rounded, '${stops.length} paradas'),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                ElevatedButton.icon(
-                                  onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
-                                  icon: _isSavingTrip
-                                      ? const SizedBox(
-                                          width: 12,
-                                          height: 12,
-                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
-                                        )
-                                      : const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 18),
-                                  label: Text(
-                                    _isSavingTrip ? 'Creando...' : 'Elegir (\$${cost.toStringAsFixed(0)})',
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: Colors.black,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    elevation: 4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-
-                    // Contenido del detalle: Sinopsis, Mapa y Cronología
-                    Padding(
-                      padding: EdgeInsets.all(isMobile ? 16 : 24),
-                      child: _buildInPageExpandedDetail(
-                        option,
-                        index,
-                        isMobile,
-                        isEmbeddedInCard: true,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+                SliverToBoxAdapter(
+                  child: Opacity(
+                    opacity: contentReveal,
+                    child: Transform.translate(offset: Offset(0, 24 * (1 - contentReveal)), child: detailContent),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -2618,9 +2516,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> {
                 ],
               ),
               InkWell(
-                onTap: () {
-                  setState(() => _isDetailExpanded = true);
-                },
+                onTap: () => _setDetailExpanded(true),
                 child: Row(
                   children: [
                     Text(
