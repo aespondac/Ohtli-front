@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../models/trip_model.dart';
 import 'trip_service.dart';
@@ -48,12 +49,10 @@ class ItineraryBlackboardService {
       }
     }
 
-    // Fallback determinista en 768d si el usuario no tiene aún perfil completo
+    // Sin perfil completo no se inventa un vector: se envía vacío y el motor resuelve el
+    // taste_vector desde /users o vectoriza mood_text con text-embedding-004.
     if (tasteVec.length != 768) {
-      tasteVec = List<double>.filled(768, 0.0);
-      for (int i = 0; i < 768; i++) {
-        tasteVec[i] = (i % 7 == 0) ? 0.05 : 0.01;
-      }
+      tasteVec = <double>[];
     }
 
     final effectiveOriginName = (originName != null && originName.trim().isNotEmpty)
@@ -69,7 +68,9 @@ class ItineraryBlackboardService {
       'origin_name': effectiveOriginName,
       'destination': destination ?? origin,
       'topology': topology,
-      'mood_vector': tasteVec, // El backend fusiona taste con mood_text
+      // mood_vector vacío: el motor vectoriza mood_text para representar la intención de la
+      // jornada (antes se enviaba el mismo vector de gusto y la fusión 0.65/0.35 no tenía efecto).
+      'mood_vector': <double>[],
       'vibe_vector': tasteVec,
       'mood_text': moodText,
       'travel_date': travelDate?.toIso8601String(),
@@ -107,13 +108,25 @@ class ItineraryBlackboardService {
 
     // 3. Invocar al backend en Cloud Run / Gateway
     bool callSuccess = false;
+    String? idToken;
+    try {
+      idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+    } catch (e) {
+      debugPrint('[BlackboardService] No se pudo obtener el ID token: $e');
+    }
+    final headers = {
+      'Content-Type': 'application/json',
+      if (idToken != null) 'Authorization': 'Bearer $idToken',
+    };
     for (final base in [_primaryApiUrl, _secondaryApiUrl]) {
       try {
+        // El motor responde 202 en cuanto registra el job (la ejecución corre en el trigger);
+        // 12 s cubren el arranque en frío de Cloud Functions.
         final res = await http.post(
           Uri.parse('$base/v1/itinerary'),
-          headers: {'Content-Type': 'application/json'},
+          headers: headers,
           body: jsonEncode(payload),
-        ).timeout(const Duration(seconds: 4));
+        ).timeout(const Duration(seconds: 12));
 
         if (res.statusCode == 200 || res.statusCode == 201 || res.statusCode == 202) {
           callSuccess = true;

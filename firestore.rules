@@ -26,6 +26,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      // Lectura pública: el visor de viajes públicos muestra nombre, foto y título del autor a
+      // visitantes sin sesión. Pendiente: mover esos campos a /public_profiles para no exponer
+      // email ni taste_vector.
       allow read: if true;
       allow delete: if request.auth != null && (
         request.auth.uid == userId || 
@@ -107,7 +110,11 @@ service cloud.firestore {
       allow read: if true;
     }
     match /itinerary_jobs/{jobId} {
-      allow read: if true;
+      // El job incluye la solicitud del usuario (presupuesto, origen): solo su dueño lo lee.
+      allow read: if request.auth != null && (
+        (resource.data != null && 'user_id' in resource.data && resource.data.user_id == request.auth.uid) ||
+        (resource.data != null && 'userId' in resource.data && resource.data.userId == request.auth.uid)
+      );
       allow create: if request.auth != null && (
         (!('user_id' in request.resource.data) && !('userId' in request.resource.data)) ||
         ('user_id' in request.resource.data && request.resource.data.user_id == request.auth.uid) ||

@@ -847,8 +847,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
                           // --- TAB: PLANES (Borradores & Opciones de Viaje IA) ---
                           StreamBuilder<QuerySnapshot>(
+                            // Consulta acotada al usuario: las reglas solo permiten leer jobs propios.
                             stream: FirebaseFirestore.instance
                                 .collection('itinerary_jobs')
+                                .where('user_id', isEqualTo: _userId ?? FirebaseAuth.instance.currentUser?.uid ?? '__none__')
                                 .snapshots(),
                             builder: (context, aiSnap) {
                               final currentUid = _userId ?? FirebaseAuth.instance.currentUser?.uid;
