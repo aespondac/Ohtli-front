@@ -510,52 +510,94 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     return total > 0 ? total : 180;
   }
 
-  void _openStopPoiModal(Map<String, dynamic> stop) async {
-    final poiId = (stop['poi_id'] ?? stop['id'] ?? '').toString();
-    Poi? fullPoi;
+  // Fichas completas de lugares (Firestore) para que la descripción del itinerario
+  // sea exactamente la misma que muestra el detalle del lugar.
+  final Map<String, Poi> _poiCache = {};
+  final Set<String> _poiRequested = {};
 
-    if (poiId.isNotEmpty) {
+  String _stopPoiId(Map<String, dynamic> stop) => (stop['poi_id'] ?? stop['id'] ?? '').toString();
+
+  void _prefetchStopPois(List<dynamic> stops) {
+    final ids = <String>[];
+    for (final s in stops) {
+      if (s is! Map) continue;
+      final id = _stopPoiId(Map<String, dynamic>.from(s));
+      if (id.isNotEmpty && _poiRequested.add(id)) ids.add(id);
+    }
+    if (ids.isEmpty) return;
+    final FirebaseFirestore db;
+    try {
+      db = FirebaseFirestore.instance;
+    } catch (e) {
+      debugPrint('[TripPlanner] Firestore no disponible: $e');
+      return;
+    }
+    for (final id in ids) {
+      db.collection('pois').doc(id).get().then((doc) {
+        if (!mounted || !doc.exists || doc.data() == null) return;
+        setState(() => _poiCache[id] = Poi.fromFirestore(doc));
+      }).catchError((e) {
+        _poiRequested.remove(id);
+        debugPrint('[TripPlanner] No se pudo precargar POI $id: $e');
+      });
+    }
+  }
+
+  Poi _poiFromStop(Map<String, dynamic> stop) {
+    final poiId = _stopPoiId(stop);
+    final loc = stop['location'] ?? stop['coords'] ?? stop['coordinates'];
+    double lat = 0.0;
+    double lng = 0.0;
+    if (loc is Map) {
+      lat = (loc['lat'] as num?)?.toDouble() ?? (loc['latitude'] as num?)?.toDouble() ?? 0.0;
+      lng = (loc['lng'] as num?)?.toDouble() ?? (loc['longitude'] as num?)?.toDouble() ?? 0.0;
+    } else {
+      lat = (stop['lat'] as num?)?.toDouble() ?? (stop['latitude'] as num?)?.toDouble() ?? 0.0;
+      lng = (stop['lng'] as num?)?.toDouble() ?? (stop['longitude'] as num?)?.toDouble() ?? 0.0;
+    }
+    final poiMap = <String, dynamic>{
+      'poi_id': poiId.isNotEmpty ? poiId : 'poi_${(stop['name'] ?? '').hashCode}',
+      'name': stop['name'] ?? 'Lugar de interés',
+      'category': stop['category'] ?? stop['type'] ?? 'cultural',
+      'subcategories': stop['subcategories'] ?? [],
+      'location': {'lat': lat, 'lng': lng},
+      'price_level': stop['price_level'] ?? 1,
+      'price_mxn_avg': (stop['price_mxn'] as num?)?.toDouble() ?? 0.0,
+      'description': stop['description'] ?? stop['semantic_description'] ?? '',
+      'editorial_summary': stop['editorial_summary'] ?? '',
+      'semantic_description': stop['semantic_description'] ?? '',
+      'photo_url': _resolveStopPhoto(stop, 0),
+      'address': stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México',
+      'opening_hours': stop['opening_hours'] ?? '',
+      'rating': (stop['rating'] as num?)?.toDouble() ?? 4.8,
+      'vibe_tags': stop['vibe_tags'] ?? [],
+    };
+    return Poi.fromMap(poiMap, poiId);
+  }
+
+  /// Misma descripción que "Sobre este lugar" en el detalle del lugar.
+  String _stopDetailDescription(Map<String, dynamic> stop) {
+    final cached = _poiCache[_stopPoiId(stop)];
+    return (cached ?? _poiFromStop(stop)).cleanNarrative;
+  }
+
+  void _openStopPoiModal(Map<String, dynamic> stop) async {
+    final poiId = _stopPoiId(stop);
+    Poi? fullPoi = _poiCache[poiId];
+
+    if (fullPoi == null && poiId.isNotEmpty) {
       try {
         final doc = await FirebaseFirestore.instance.collection('pois').doc(poiId).get();
         if (doc.exists && doc.data() != null) {
           fullPoi = Poi.fromFirestore(doc);
+          _poiCache[poiId] = fullPoi;
         }
       } catch (e) {
         debugPrint('[TripPlanner] Error al consultar POI de Firestore: $e');
       }
     }
 
-    if (fullPoi == null) {
-      final loc = stop['location'] ?? stop['coords'] ?? stop['coordinates'];
-      double lat = 0.0;
-      double lng = 0.0;
-      if (loc is Map) {
-        lat = (loc['lat'] as num?)?.toDouble() ?? (loc['latitude'] as num?)?.toDouble() ?? 0.0;
-        lng = (loc['lng'] as num?)?.toDouble() ?? (loc['longitude'] as num?)?.toDouble() ?? 0.0;
-      } else {
-        lat = (stop['lat'] as num?)?.toDouble() ?? (stop['latitude'] as num?)?.toDouble() ?? 0.0;
-        lng = (stop['lng'] as num?)?.toDouble() ?? (stop['longitude'] as num?)?.toDouble() ?? 0.0;
-      }
-
-      final poiMap = <String, dynamic>{
-        'poi_id': poiId.isNotEmpty ? poiId : 'poi_${DateTime.now().millisecondsSinceEpoch}',
-        'name': stop['name'] ?? 'Lugar de interés',
-        'category': stop['category'] ?? stop['type'] ?? 'cultural',
-        'subcategories': stop['subcategories'] ?? [],
-        'location': {'lat': lat, 'lng': lng},
-        'price_level': stop['price_level'] ?? 1,
-        'price_mxn_avg': (stop['price_mxn'] as num?)?.toDouble() ?? 0.0,
-        'description': stop['description'] ?? stop['semantic_description'] ?? '',
-        'editorial_summary': stop['editorial_summary'] ?? '',
-        'semantic_description': stop['semantic_description'] ?? '',
-        'photo_url': _resolveStopPhoto(stop, 0),
-        'address': stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México',
-        'opening_hours': stop['opening_hours'] ?? '',
-        'rating': (stop['rating'] as num?)?.toDouble() ?? 4.8,
-        'vibe_tags': stop['vibe_tags'] ?? [],
-      };
-      fullPoi = Poi.fromMap(poiMap, poiId);
-    }
+    fullPoi ??= _poiFromStop(stop);
 
     if (!mounted) return;
     PoiDetailDialog.show(
@@ -1942,15 +1984,16 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'ELIGE TU OPCIÓN DE VIAJE',
-                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: OhtliColors.onyx.withOpacity(0.7)),
+                      'ALTERNATIVAS DISEÑADAS POR IA · ${_activeCarouselIndex + 1} DE ${_generatedOptions.length}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.stormyTeal),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Alternativas temáticas diseñadas por IA (${_activeCarouselIndex + 1} de ${_generatedOptions.length})',
+                      'Elige tu ruta',
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
+                      style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w700, color: OhtliColors.onyx, height: 1.1),
                     ),
                   ],
                 ),
@@ -2279,14 +2322,26 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                         children: [
                           _buildChooseRouteButton(option, data.cost, isMobile),
                           const Spacer(),
-                          if (isFocused)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(isMobile ? 'Desliza para ver más' : 'Desplázate para ver detalles', style: GoogleFonts.inter(fontSize: 11, color: Colors.white60)),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white60, size: 18),
-                              ],
+                          if (isFocused && isMobile)
+                            const Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white60, size: 22)
+                          else if (isFocused)
+                            Flexible(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      'Desplázate para ver detalles',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.inter(fontSize: 11, color: Colors.white60),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white60, size: 18),
+                                ],
+                              ),
                             ),
                         ],
                       ),
@@ -2359,7 +2414,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final scrollController = _getCardScrollController(index);
 
     // La portada arranca ocupando toda la tarjeta y se reduce a banner mientras la tarjeta crece
-    final double bannerTarget = isMobile ? 220 : 300;
+    final double bannerTarget = isMobile ? 300 : 320;
     final double bannerH = lerpDouble(startHeight, bannerTarget, t)!.clamp(bannerTarget, double.infinity);
     final double radius = lerpDouble(24, isMobile ? 0 : 20, t)!;
     final double contentReveal = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
@@ -2436,13 +2491,20 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                                       data.title,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.outfit(fontSize: lerpDouble(isMobile ? 20 : 26, isMobile ? 22 : 32, t), fontWeight: FontWeight.bold, color: Colors.white, height: 1.15),
+                                      style: GoogleFonts.outfit(fontSize: lerpDouble(isMobile ? 20 : 26, isMobile ? 24 : 32, t), fontWeight: FontWeight.bold, color: Colors.white, height: 1.15),
                                     ),
+                                    // En móvil el botón va debajo del título para no comprimirlo
+                                    if (isMobile) ...[
+                                      const SizedBox(height: 12),
+                                      _buildChooseRouteButton(option, data.cost, isMobile),
+                                    ],
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              _buildChooseRouteButton(option, data.cost, isMobile, compact: isMobile),
+                              if (!isMobile) ...[
+                                const SizedBox(width: 12),
+                                _buildChooseRouteButton(option, data.cost, isMobile),
+                              ],
                             ],
                           ),
                         ),
@@ -2623,17 +2685,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     bool isEmbeddedInCard = false,
   }) {
     final isDark = OhtliSettings.instance.isDarkMode;
-    final title = (option['editorial_headline'] ?? option['theme'] ?? 'Ruta ${index + 1}').toString();
     final summary = (option['narrative_summary'] ?? '').toString();
     final cost = (option['total_cost_mxn'] as num?)?.toDouble() ?? 250.0;
     final List<dynamic> rawStops = option['route'] ?? [];
-    final List<dynamic> rawNarrations = option['stops_narration'] ?? [];
+    _prefetchStopPois(rawStops);
+
+    String fmtMins(int mins) {
+      final h = mins ~/ 60;
+      final m = mins % 60;
+      if (h == 0) return '$m min';
+      return m == 0 ? '$h h' : '$h h $m min';
+    }
 
     final int timeMins = _computeOptionTotalDuration(option);
-    final int hours = timeMins ~/ 60;
-    final int minutes = timeMins % 60;
-    final String timeStr = hours > 0 ? '$hours h $minutes min' : '$minutes min';
-
     int totalStayMins = 0;
     int totalWalkMins = 0;
     for (final s in rawStops) {
@@ -2642,23 +2706,17 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         totalWalkMins += (s['travel_time_from_prev_mins'] as num?)?.toInt() ?? 0;
       }
     }
-    final int stayHours = totalStayMins ~/ 60;
-    final int stayMinutes = totalStayMins % 60;
-    final String totalStayStr = stayHours > 0 ? '$stayHours h $stayMinutes min' : '$stayMinutes min';
+    final walkingKm = (option['total_walking_km'] as num?)?.toDouble() ??
+        (option['osm_route'] is Map ? (option['osm_route']['total_distance_km'] as num?)?.toDouble() : null) ??
+        rawStops.fold<double>(0.0, (acc, s) => acc + (s is Map ? ((s['travel_distance_from_prev_km'] as num?)?.toDouble() ?? 0.0) : 0.0));
 
-    final int walkHours = totalWalkMins ~/ 60;
-    final int walkMinutes = totalWalkMins % 60;
-    final String totalWalkStr = walkHours > 0 ? '$walkHours h $walkMinutes min' : '$walkMinutes min';
-
-    // Extracción de coordenadas para enlace opcional a Google Maps
+    // Enlace opcional a Google Maps con las paradas como waypoints
     final waypointNames = <String>[];
     for (int i = 0; i < rawStops.length; i++) {
       final s = rawStops[i] as Map<String, dynamic>;
       final stopName = (s['name'] ?? 'Parada ${i + 1}').toString();
-
       double? lat = (s['lat'] as num?)?.toDouble() ?? (s['latitude'] as num?)?.toDouble();
       double? lng = (s['lng'] as num?)?.toDouble() ?? (s['longitude'] as num?)?.toDouble();
-
       final loc = s['location'] ?? s['coords'] ?? s['coordinates'];
       if (loc != null) {
         if (loc is Map) {
@@ -2671,714 +2729,461 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           } catch (_) {}
         }
       }
-
-      if (lat != null && lng != null) {
-        waypointNames.add('$lat,$lng');
-      } else {
-        waypointNames.add(Uri.encodeComponent('$stopName, CDMX'));
-      }
+      waypointNames.add(lat != null && lng != null ? '$lat,$lng' : Uri.encodeComponent('$stopName, CDMX'));
     }
-
-
     String googleMapsDirectionsUrl = '';
     if (waypointNames.isNotEmpty) {
-      final origin = waypointNames.first;
-      final destination = waypointNames.last;
-      final waypoints = waypointNames.length > 2
-          ? waypointNames.sublist(1, waypointNames.length - 1).join('|')
-          : '';
-      final waypointsParam = waypoints.isNotEmpty ? '&waypoints=$waypoints' : '';
-      googleMapsDirectionsUrl =
-          'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination$waypointsParam&travelmode=walking';
+      final waypoints = waypointNames.length > 2 ? waypointNames.sublist(1, waypointNames.length - 1).join('|') : '';
+      googleMapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&origin=${waypointNames.first}'
+          '&destination=${waypointNames.last}${waypoints.isNotEmpty ? '&waypoints=$waypoints' : ''}&travelmode=walking';
     }
 
-    final innerContent = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (!isEmbeddedInCard) ...[
-          // Encabezado suelto (solo en modo no embebido)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'OPCIÓN ${index + 1}',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.0,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'ITINERARIO Y MAPA COMPLETO',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                      color: OhtliColors.stormyTeal,
-                    ),
-                  ),
-                ],
-              ),
-              IconButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
-                      backgroundColor: OhtliColors.stormyTeal,
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.bookmark_add_outlined, size: 20),
-                tooltip: 'Guardar alternativa en Planes',
-                color: isDark ? Colors.white70 : OhtliColors.onyx,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+    final textPrimary = isDark ? Colors.white : OhtliColors.onyx;
+    final textSecondary = isDark ? Colors.white70 : OhtliColors.subtleText;
+    final surface = isDark ? const Color(0xFF26262B) : OhtliColors.innerCardBg;
+    final hairline = isDark ? Colors.white.withOpacity(0.08) : OhtliColors.cardBorder;
 
-          Text(
-            title,
-            style: GoogleFonts.outfit(
-              fontSize: isMobile ? 20 : 24,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : OhtliColors.onyx,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Badges de Metadatos
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildDialogMetaPill(Icons.schedule_rounded, timeStr, isDark),
-              _buildDialogMetaPill(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)} MXN', isDark),
-              _buildDialogMetaPill(Icons.place_rounded, '${rawStops.length} paradas', isDark),
-              _buildDialogMetaPill(
-                Icons.directions_walk_rounded,
-                '${((option['total_walking_km'] as num?)?.toDouble() ?? (option['osm_route'] is Map ? (option['osm_route']['total_distance_km'] as num?)?.toDouble() : null) ?? 0.0).toStringAsFixed(1)} km a pie',
-                isDark,
-              ),
-            ],
-          ),
-        ],
-        if (summary.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Text(
-            summary,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: isDark ? Colors.white70 : OhtliColors.subtleText,
-              height: 1.4,
-            ),
-          ),
-        ],
-        const SizedBox(height: 24),
-
-          // Sección: Mapa de la Ruta con OpenStreetMap & OSRM
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Mapa de la Ruta',
-                    style: GoogleFonts.outfit(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : OhtliColors.onyx,
-                    ),
-                  ),
-                ],
-              ),
-              if (googleMapsDirectionsUrl.isNotEmpty)
-                InkWell(
-                  onTap: () {
-                    html.window.open(googleMapsDirectionsUrl, '_blank');
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.open_in_new_rounded, size: 14, color: OhtliColors.stormyTeal),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Google Maps',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: OhtliColors.stormyTeal,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+    Widget sectionHeader(String eyebrow, String title, {Widget? trailing}) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  eyebrow,
+                  style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.6, color: OhtliColors.stormyTeal),
                 ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(fontSize: isMobile ? 20 : 24, fontWeight: FontWeight.w700, color: textPrimary, height: 1.15),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
+          ?trailing,
+        ],
+      );
+    }
 
-          // Visor cartográfico oficial OpenStreetMap & OSRM
-          OsrmMapWidget(
-            stops: rawStops,
-            routeGeometry: (option['osm_route_geometry'] as List<dynamic>?) ??
-                (option['osm_route'] is Map ? (option['osm_route']['coordinates'] as List<dynamic>?) : null),
-            height: isMobile ? 260 : 360,
-            isDark: isDark,
-            onStopSelected: (stop) => _openStopPoiModal(stop),
-          ),
-          const SizedBox(height: 32),
-
-          // Sección: Cronología del Recorrido con desglose de tiempos
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              Row(
+    Widget statTile(IconData icon, String value, String label, Color accent) {
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: isMobile ? 12 : 14),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: hairline),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: isMobile ? 30 : 36,
+              height: isMobile ? 30 : 36,
+              decoration: BoxDecoration(color: accent.withOpacity(0.14), borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, size: isMobile ? 16 : 18, color: accent),
+            ),
+            SizedBox(width: isMobile ? 10 : 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.timeline_rounded, color: OhtliColors.cempasuchil, size: 20),
-                  const SizedBox(width: 8),
                   Text(
-                    'Cronología de Paradas',
-                    style: GoogleFonts.outfit(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : OhtliColors.onyx,
-                    ),
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(fontSize: isMobile ? 15 : 17, fontWeight: FontWeight.w700, color: textPrimary),
+                  ),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(fontSize: 11, color: textSecondary),
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: OhtliColors.cempasuchil.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: OhtliColors.cempasuchil.withOpacity(0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.schedule_rounded, size: 14, color: OhtliColors.cempasuchil),
-                    const SizedBox(width: 5),
-                    Text(
-                      '$timeStr ($totalStayStr estancia + $totalWalkStr traslado)',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : OhtliColors.onyx,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final stats = [
+      statTile(Icons.schedule_rounded, fmtMins(timeMins), 'Duración total', OhtliColors.stormyTeal),
+      statTile(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)}', 'Costo (MXN)', OhtliColors.cempasuchil),
+      statTile(Icons.place_rounded, '${rawStops.length} paradas', '${fmtMins(totalStayMins)} en sitio', OhtliColors.xoconostle),
+      statTile(Icons.directions_walk_rounded, '${walkingKm.toStringAsFixed(1)} km', '${fmtMins(totalWalkMins)} caminando', const Color(0xFF3F8F5B)),
+    ];
+
+    Widget stopCard(int idx) {
+      final stop = rawStops[idx] as Map<String, dynamic>;
+      final stopName = (stop['name'] ?? 'Parada ${idx + 1}').toString();
+      final arrival = stop['arrival_time']?.toString();
+      final departure = stop['departure_time']?.toString();
+      final stayMins = (stop['stay_duration_mins'] as num?)?.toInt() ?? 60;
+      final stopPrice = (stop['price_mxn'] as num?)?.toDouble() ?? 0.0;
+      final photo = _resolveStopPhoto(stop, idx);
+      final category = (stop['category'] ?? stop['type'] ?? 'cultural').toString();
+      final catIcon = _getStopCategoryIcon(category);
+      final catColor = _getStopCategoryColor(category);
+      final address = (stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México').toString();
+      final rating = (stop['rating'] as num?)?.toDouble() ?? 4.8;
+      final desc = _stopDetailDescription(stop);
+      final photoSize = isMobile ? 92.0 : 128.0;
+      Widget wrapInfo(Widget c) => isMobile ? c : Expanded(child: c);
+
+      Widget chip(Widget child, Color color) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+            child: child,
+          );
+
+      return Material(
+        color: surface,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: () => _openStopPoiModal(stop),
+          borderRadius: BorderRadius.circular(18),
+          mouseCursor: SystemMouseCursors.click,
+          splashColor: OhtliColors.stormyTeal.withOpacity(0.10),
+          highlightColor: OhtliColors.stormyTeal.withOpacity(0.05),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: hairline),
+            ),
+            // En móvil la foto va arriba a todo lo ancho para dar espacio a la descripción
+            child: Flex(
+              direction: isMobile ? Axis.vertical : Axis.horizontal,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: isMobile ? double.infinity : photoSize,
+                    height: isMobile ? 150 : photoSize,
+                    child: Image.network(
+                      photo,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      frameBuilder: (context, child, frame, sync) => sync
+                          ? child
+                          : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 300), child: child),
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: catColor.withOpacity(0.10),
+                        child: Center(child: Icon(catIcon, size: 30, color: catColor.withOpacity(0.6))),
                       ),
                     ),
+                  ),
+                ),
+                SizedBox(width: 14, height: isMobile ? 12 : 0),
+                wrapInfo(Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          chip(
+                            Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(catIcon, size: 12, color: catColor),
+                              const SizedBox(width: 4),
+                              Text(category.toUpperCase(),
+                                  style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: catColor)),
+                            ]),
+                            catColor,
+                          ),
+                          chip(
+                            Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.star_rounded, size: 12, color: Color(0xFFE0A100)),
+                              const SizedBox(width: 3),
+                              Text(rating.toStringAsFixed(1),
+                                  style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFFB07E00))),
+                            ]),
+                            const Color(0xFFE0A100),
+                          ),
+                          chip(
+                            Row(mainAxisSize: MainAxisSize.min, children: [
+                              const Icon(Icons.schedule_rounded, size: 12, color: OhtliColors.cempasuchil),
+                              const SizedBox(width: 4),
+                              Text(
+                                arrival != null ? '$arrival${departure != null ? ' – $departure' : ''} · $stayMins min' : '$stayMins min',
+                                style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil),
+                              ),
+                            ]),
+                            OhtliColors.cempasuchil,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        stopName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.outfit(fontSize: isMobile ? 16 : 18, fontWeight: FontWeight.w700, color: textPrimary, height: 1.2),
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on_outlined, size: 13, color: textSecondary),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              address,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(fontSize: 11.5, color: textSecondary),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            stopPrice > 0 ? '\$${stopPrice.toStringAsFixed(0)} MXN' : 'Gratis',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: stopPrice > 0 ? textPrimary : const Color(0xFF3F8F5B),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Descripción idéntica a la del detalle del lugar
+                      Text(
+                        desc,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(fontSize: 12.5, color: textSecondary, height: 1.5),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Ver detalles del lugar',
+                            style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.arrow_forward_rounded, size: 14, color: OhtliColors.stormyTeal),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget walkConnector(int idx) {
+      final nextStop = rawStops[idx + 1] as Map<String, dynamic>;
+      final nextWalkMins = (nextStop['travel_time_from_prev_mins'] as num?)?.toInt() ?? 10;
+      final nextDistKm = (nextStop['travel_distance_from_prev_km'] as num?)?.toDouble() ?? 0.8;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            const Icon(Icons.directions_walk_rounded, size: 15, color: OhtliColors.stormyTeal),
+            const SizedBox(width: 6),
+            Text(
+              '$nextWalkMins min · ${nextDistKm.toStringAsFixed(1)} km a pie',
+              style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final timeline = Column(
+      children: List.generate(rawStops.length, (idx) {
+        final isLast = idx == rawStops.length - 1;
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 32,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 14),
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: OhtliColors.stormyTeal,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: isDark ? const Color(0xFF1E1E22) : Colors.white, width: 3),
+                        boxShadow: [BoxShadow(color: OhtliColors.stormyTeal.withOpacity(0.35), blurRadius: 8, offset: const Offset(0, 2))],
+                      ),
+                      child: Center(
+                        child: Text('${idx + 1}', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                      ),
+                    ),
+                    if (!isLast)
+                      Expanded(
+                        child: Container(
+                          width: 2,
+                          margin: const EdgeInsets.only(top: 4),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [OhtliColors.stormyTeal.withOpacity(0.45), OhtliColors.stormyTeal.withOpacity(0.15)],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    stopCard(idx),
+                    if (!isLast) walkConnector(idx) else const SizedBox(height: 4),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+        );
+      }),
+    );
 
-          // Timeline vertical de paradas
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: rawStops.length,
-            itemBuilder: (context, idx) {
-              final stop = rawStops[idx] as Map<String, dynamic>;
-              final stopName = (stop['name'] ?? 'Parada ${idx + 1}').toString();
-              final isLast = idx == rawStops.length - 1;
-              final arrival = stop['arrival_time']?.toString();
-              final departure = stop['departure_time']?.toString();
-              final stayMins = (stop['stay_duration_mins'] as num?)?.toInt() ?? 60;
-              final timeLabel = arrival != null
-                  ? '$arrival${departure != null ? " - $departure" : ""} ($stayMins min)'
-                  : 'Parada ${idx + 1}';
-              final stopPrice = (stop['price_mxn'] as num?)?.toDouble() ?? 0.0;
-              final photo = _resolveStopPhoto(stop, idx);
-              final category = (stop['category'] ?? stop['type'] ?? 'cultural').toString();
-              final catIcon = _getStopCategoryIcon(category);
-              final catColor = _getStopCategoryColor(category);
-              final address = (stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México').toString();
-              final rating = (stop['rating'] as num?)?.toDouble() ?? 4.8;
-
-              String desc = '';
-              if (idx < rawNarrations.length && rawNarrations[idx] != null) {
-                final n = rawNarrations[idx];
-                if (n is Map) {
-                  desc = (n['narration'] ?? n['why'] ?? '').toString();
-                } else {
-                  desc = n.toString();
-                }
-              }
-              if (desc.isEmpty) {
-                desc = (stop['description'] ?? stop['semantic_description'] ?? '').toString();
-              }
-
-              // Traslado caminando hacia la siguiente parada (si no es la última)
-              int nextWalkMins = 0;
-              double nextDistKm = 0.0;
-              String nextStopName = '';
-              if (!isLast && idx + 1 < rawStops.length) {
-                final nextStop = rawStops[idx + 1] as Map<String, dynamic>;
-                nextStopName = (nextStop['name'] ?? 'siguiente parada').toString();
-                nextWalkMins = (nextStop['travel_time_from_prev_mins'] as num?)?.toInt() ?? 10;
-                nextDistKm = (nextStop['travel_distance_from_prev_km'] as num?)?.toDouble() ?? 0.8;
-              }
-
-              return Column(
-                children: [
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Columna Izquierda: Número y línea conectora vertical
-                        Column(
-                          children: [
-                            Container(
-                              width: 30,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                color: OhtliColors.stormyTeal,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: OhtliColors.stormyTeal.withOpacity(0.35),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${idx + 1}',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Container(
-                                width: 2,
-                                color: OhtliColors.stormyTeal.withOpacity(0.3),
-                                margin: const EdgeInsets.symmetric(vertical: 4),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 14),
-
-                        // Columna Derecha: Tarjeta de la Parada interactiva (abre modal al hacer click)
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Material(
-                              color: isDark ? const Color(0xFF26262B) : OhtliColors.innerCardBg,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                onTap: () => _openStopPoiModal(stop),
-                                borderRadius: BorderRadius.circular(16),
-                                mouseCursor: SystemMouseCursors.click,
-                                splashColor: OhtliColors.stormyTeal.withOpacity(0.12),
-                                highlightColor: OhtliColors.stormyTeal.withOpacity(0.06),
-                                child: Container(
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: isDark ? Colors.white12 : OhtliColors.cardBorder,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      // Fila superior: Badges de Categoría, Rating y Horario/Estancia
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: catColor.withOpacity(0.14),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(catIcon, size: 12, color: catColor),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  category.toUpperCase(),
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w800,
-                                                    letterSpacing: 0.4,
-                                                    color: catColor,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: Colors.amber.withOpacity(0.14),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(Icons.star_rounded, size: 13, color: Colors.amber),
-                                                const SizedBox(width: 2),
-                                                Text(
-                                                  rating.toStringAsFixed(1),
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.amber[800] ?? Colors.amber,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: OhtliColors.cempasuchil.withOpacity(0.12),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(Icons.schedule_rounded, size: 11, color: OhtliColors.cempasuchil),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  timeLabel,
-                                                  style: GoogleFonts.inter(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: OhtliColors.cempasuchil,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-
-                                      // Contenido: Foto a la izquierda, información a la derecha
-                                      Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Container(
-                                            width: isMobile ? 80 : 92,
-                                            height: isMobile ? 80 : 92,
-                                            decoration: BoxDecoration(
-                                              color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
-                                              borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: isDark ? Colors.white12 : OhtliColors.cardBorder,
-                                              ),
-                                            ),
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(12),
-                                              child: Image.network(
-                                                photo,
-                                                fit: BoxFit.cover,
-                                                loadingBuilder: (context, child, loadingProgress) {
-                                                  if (loadingProgress == null) return child;
-                                                  return Container(
-                                                    color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
-                                                    child: const Center(
-                                                      child: SizedBox(
-                                                        width: 18,
-                                                        height: 18,
-                                                        child: CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                          color: OhtliColors.stormyTeal,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                                errorBuilder: (context, error, stackTrace) {
-                                                  return Container(
-                                                    color: isDark ? const Color(0xFF16161A) : OhtliColors.innerCardBg,
-                                                    child: Center(
-                                                      child: Icon(
-                                                        catIcon,
-                                                        size: 30,
-                                                        color: catColor.withOpacity(0.55),
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  stopName,
-                                                  style: GoogleFonts.outfit(
-                                                    fontSize: 15,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: isDark ? Colors.white : OhtliColors.onyx,
-                                                  ),
-                                                  maxLines: 2,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 3),
-                                                Row(
-                                                  children: [
-                                                    const Icon(Icons.location_on_outlined, size: 12, color: OhtliColors.stormyTeal),
-                                                    const SizedBox(width: 3),
-                                                    Expanded(
-                                                      child: Text(
-                                                        address,
-                                                        style: GoogleFonts.inter(
-                                                          fontSize: 11,
-                                                          color: isDark ? Colors.white60 : OhtliColors.subtleText,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      stopPrice > 0 ? '\$${stopPrice.toStringAsFixed(0)} MXN' : 'Gratis',
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w700,
-                                                        color: stopPrice > 0 ? OhtliColors.stormyTeal : Colors.green[600],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                if (desc.isNotEmpty) ...[
-                                                  const SizedBox(height: 5),
-                                                  Text(
-                                                    desc,
-                                                    style: GoogleFonts.inter(
-                                                      fontSize: 11.5,
-                                                      color: isDark ? Colors.white70 : OhtliColors.subtleText,
-                                                      height: 1.35,
-                                                    ),
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
-                                                ],
-                                                const SizedBox(height: 6),
-                                                Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Text(
-                                                      'Ver detalles del lugar',
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w600,
-                                                        color: OhtliColors.stormyTeal,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 4),
-                                                    const Icon(
-                                                      Icons.arrow_forward_rounded,
-                                                      size: 13,
-                                                      color: OhtliColors.stormyTeal,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Conector peatonal OSRM entre paradas (si no es la última)
-                  if (!isLast)
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 30,
-                          child: Center(
-                            child: Container(
-                              width: 2,
-                              height: 38,
-                              color: OhtliColors.stormyTeal.withOpacity(0.35),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: OhtliColors.stormyTeal.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.18)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.directions_walk_rounded, size: 15, color: OhtliColors.stormyTeal),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    '$nextWalkMins min caminando (${nextDistKm.toStringAsFixed(1)} km) hacia $nextStopName',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark ? Colors.white70 : OhtliColors.stormyTeal,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              );
-            },
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (summary.isNotEmpty) ...[
+          Text(
+            summary,
+            style: GoogleFonts.inter(fontSize: isMobile ? 14.5 : 16, color: textPrimary.withOpacity(0.85), height: 1.6),
           ),
-          const SizedBox(height: 28),
-
-          // Botón inferior grande para elegir esta ruta
-          Center(
-            child: ElevatedButton.icon(
-              onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
-              icon: _isSavingTrip
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              label: Text(
-                _isSavingTrip ? 'Creando viaje...' : 'Elegir esta ruta (\$${cost.toStringAsFixed(0)} MXN)',
-                style: GoogleFonts.outfit(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 0.3,
+          const SizedBox(height: 22),
+        ],
+        LayoutBuilder(
+          builder: (context, c) {
+            final cols = c.maxWidth >= 900 ? 4 : 2;
+            const gap = 10.0;
+            final tileW = (c.maxWidth - gap * (cols - 1)) / cols;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: stats.map((t) => SizedBox(width: tileW, child: t)).toList(),
+            );
+          },
+        ),
+        const SizedBox(height: 36),
+        sectionHeader(
+          'RECORRIDO',
+          'Mapa de la ruta',
+          trailing: googleMapsDirectionsUrl.isEmpty
+              ? null
+              : TextButton.icon(
+                  onPressed: () => html.window.open(googleMapsDirectionsUrl, '_blank'),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                  label: Text('Abrir en Google Maps', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: OhtliColors.stormyTeal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: hairline),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.06), blurRadius: 18, offset: const Offset(0, 6))],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: OsrmMapWidget(
+              stops: rawStops,
+              routeGeometry: (option['osm_route_geometry'] as List<dynamic>?) ??
+                  (option['osm_route'] is Map ? (option['osm_route']['coordinates'] as List<dynamic>?) : null),
+              height: isMobile ? 260 : 380,
+              isDark: isDark,
+              onStopSelected: (stop) => _openStopPoiModal(stop),
+            ),
+          ),
+        ),
+        const SizedBox(height: 40),
+        sectionHeader(
+          'ITINERARIO',
+          'Cronología de paradas',
+          trailing: isMobile
+              ? null
+              : Text(
+                  '${fmtMins(totalStayMins)} de estancia · ${fmtMins(totalWalkMins)} de traslado',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: textSecondary),
+                ),
+        ),
+        const SizedBox(height: 18),
+        timeline,
+        const SizedBox(height: 36),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
+                icon: _isSavingTrip
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                label: Text(
+                  _isSavingTrip ? 'Creando viaje...' : 'Elegir esta ruta · \$${cost.toStringAsFixed(0)} MXN',
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.3),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  elevation: 6,
+                  shadowColor: OhtliColors.stormyTeal.withOpacity(0.5),
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                elevation: 4,
-              ),
             ),
           ),
-        ],
-      );
-
-    if (isEmbeddedInCard) {
-      return innerContent;
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white12 : OhtliColors.cardBorder,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      padding: EdgeInsets.all(isMobile ? 18 : 28),
-      child: innerContent,
+        const SizedBox(height: 12),
+      ],
     );
-  }
 
-
-  Widget _buildDialogMetaPill(IconData icon, String label, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF26262B) : OhtliColors.innerCardBg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: isDark ? Colors.white12 : OhtliColors.cardBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: OhtliColors.stormyTeal),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : OhtliColors.onyx,
-            ),
-          ),
-        ],
+    // Ancho de lectura cómodo en pantallas amplias
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1080),
+        child: content,
       ),
     );
   }
 
   Widget _buildMetaPill(IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.22)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: Colors.white70),
-          const SizedBox(width: 4),
+          Icon(icon, size: 13, color: Colors.white),
+          const SizedBox(width: 5),
           Text(
             label,
             style: GoogleFonts.inter(
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
               color: Colors.white,
             ),
