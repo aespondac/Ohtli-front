@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/user_profile_helper.dart';
+import '../../utils/friendly_errors.dart';
 
 class DesktopLoginPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -104,7 +105,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Error: ${e.toString()}',
+              friendlyError(e),
               style: GoogleFonts.inter(fontWeight: FontWeight.w500),
             ),
             backgroundColor: OhtliColors.xoconostle,
@@ -154,7 +155,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
         widget.onLoginSuccess();
       }
     } on FirebaseAuthException catch (e) {
-      String errorMessage = 'Error de autenticación con Google: ${e.message}';
+      String errorMessage = friendlyError(e, fallback: 'No pudimos iniciar sesión con Google. Intenta de nuevo.');
       if (e.code == 'popup-closed-by-user') {
         errorMessage = 'La ventana de inicio de sesión con Google fue cerrada.';
       }
@@ -174,7 +175,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Error al iniciar sesión con Google: ${e.toString()}',
+              friendlyError(e, fallback: 'No pudimos iniciar sesión con Google. Intenta de nuevo.'),
               style: GoogleFonts.inter(fontWeight: FontWeight.w500),
             ),
             backgroundColor: OhtliColors.xoconostle,

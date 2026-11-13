@@ -16,6 +16,7 @@ import '../../services/itinerary_blackboard_service.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
 import '../../widgets/osrm_map_widget.dart';
+import '../../utils/friendly_errors.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
 import 'trip_viewer_page.dart';
@@ -160,6 +161,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   // Blackboard / SMA State
   String? _activeJobId;
   StreamSubscription<DocumentSnapshot>? _jobSubscription;
+  // Estado de fallo del trabajo de IA (error del motor, sin opciones, sin conexión o sin avance)
+  String? _jobError;
+  Timer? _jobWatchdog;
+  DateTime _lastJobUpdateAt = DateTime.now();
+  static const Duration _jobStallTimeout = Duration(minutes: 4);
   int _blackboardProgress = 15;
   String _currentAgentName = 'Comparador';
   List<Map<String, dynamic>> _generatedOptions = [];
@@ -364,6 +370,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   @override
   void dispose() {
     _jobSubscription?.cancel();
+    _jobWatchdog?.cancel();
     _triadPageController?.dispose();
     _expandCurve.dispose();
     _expandController.dispose();
@@ -418,6 +425,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       _currentStep = PlannerStep.blackboardProcessing;
       _blackboardProgress = 15;
       _currentAgentName = 'Comparador';
+      _jobError = null;
     });
 
     try {
@@ -445,7 +453,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al conectar con Yollotl Engine: $e', style: GoogleFonts.inter()),
+            content: Text(friendlyError(e, fallback: 'No pudimos iniciar el cálculo de tu ruta. Intenta de nuevo.'), style: GoogleFonts.inter()),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );
@@ -453,43 +461,83 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     }
   }
 
+  void _failJob(String message) {
+    _jobWatchdog?.cancel();
+    if (!mounted) return;
+    setState(() => _jobError = message);
+  }
+
   void _listenToBlackboardJob(String jobId) {
     _jobSubscription?.cancel();
+    _jobWatchdog?.cancel();
+    _lastJobUpdateAt = DateTime.now();
+    if (mounted && _jobError != null) setState(() => _jobError = null);
+
+    // Si el motor deja de reportar avance, avisamos en lugar de girar para siempre
+    _jobWatchdog = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_jobError == null && DateTime.now().difference(_lastJobUpdateAt) > _jobStallTimeout) {
+        _failJob('El cálculo está tardando más de lo normal. Puedes seguir esperando, reintentar o revisarlo más tarde en Mis Viajes > Planes.');
+      }
+    });
+
     try {
-      _jobSubscription = _blackboardService.streamJob(jobId).listen((snapshot) {
-        if (!snapshot.exists || snapshot.data() == null) return;
-        final data = snapshot.data() as Map<String, dynamic>;
+      _jobSubscription = _blackboardService.streamJob(jobId).listen(
+        (snapshot) {
+          if (!snapshot.exists || snapshot.data() == null) return;
+          final data = snapshot.data() as Map<String, dynamic>;
 
-        final progress = (data['progress_percent'] as num?)?.toInt() ?? 15;
-        final agent = (data['current_agent'] ?? 'Comparador').toString();
-        final status = data['status'];
+          final progress = (data['progress_percent'] as num?)?.toInt() ?? 15;
+          final agent = (data['current_agent'] ?? 'Comparador').toString();
+          final status = (data['status'] ?? '').toString();
 
-        if (mounted) {
-          setState(() {
-            _blackboardProgress = progress;
-            _currentAgentName = agent[0].toUpperCase() + agent.substring(1);
-          });
-        }
+          if (progress != _blackboardProgress || agent.toLowerCase() != _currentAgentName.toLowerCase()) {
+            _lastJobUpdateAt = DateTime.now();
+          }
 
-        if (status == 'completed' && data['result'] != null) {
-          final res = data['result'] as Map<String, dynamic>;
-          final rawOptions = res['options'] as List<dynamic>? ?? [];
-          if (rawOptions.isNotEmpty && mounted) {
+          if (status == 'error' || status == 'failed') {
             _jobSubscription?.cancel();
+            _failJob('No logramos armar tu ruta esta vez. Prueba de nuevo o ajusta tus preferencias (presupuesto, estilo o punto de partida).');
+            return;
+          }
+
+          if (mounted) {
             setState(() {
-              _generatedOptions = rawOptions.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-              _currentStep = PlannerStep.routeTriadCarousel;
-              _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
-              _triadPageController?.dispose();
-              _triadPageController = null;
-              _isDetailExpanded = false;
-              _expandController.value = 0;
+              _blackboardProgress = progress;
+              _currentAgentName = agent.isEmpty ? 'Comparador' : agent[0].toUpperCase() + agent.substring(1);
+              // Si llegó avance después de un aviso por demora, el aviso deja de aplicar
+              if (_jobError != null && status != 'completed') _jobError = null;
             });
           }
-        }
-      });
+
+          if (status == 'completed') {
+            final res = data['result'] as Map<String, dynamic>? ?? {};
+            final rawOptions = res['options'] as List<dynamic>? ?? [];
+            _jobSubscription?.cancel();
+            if (rawOptions.isEmpty) {
+              _failJob('No encontramos lugares que encajen con estas preferencias. Prueba con otro estilo, un presupuesto mayor o un punto de partida distinto.');
+              return;
+            }
+            _jobWatchdog?.cancel();
+            if (mounted) {
+              setState(() {
+                _jobError = null;
+                _generatedOptions = rawOptions.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                _currentStep = PlannerStep.routeTriadCarousel;
+                _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
+                _triadPageController?.dispose();
+                _triadPageController = null;
+                _isDetailExpanded = false;
+                _expandController.value = 0;
+              });
+            }
+          }
+        },
+        onError: (Object e) {
+          _failJob(friendlyError(e, fallback: 'Perdimos la conexión con el cálculo de tu ruta. Revisa tu internet e intenta de nuevo.'));
+        },
+      );
     } catch (e) {
-      debugPrint('[TripPlanner] Error al escuchar job de Blackboard: $e');
+      _failJob(friendlyError(e, fallback: 'Perdimos la conexión con el cálculo de tu ruta. Revisa tu internet e intenta de nuevo.'));
     }
   }
 
@@ -654,7 +702,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         setState(() => _isSavingTrip = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al persistir el viaje: $e', style: GoogleFonts.inter()),
+            content: Text(friendlyError(e, fallback: 'No pudimos guardar este viaje. Intenta de nuevo.'), style: GoogleFonts.inter()),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );
@@ -692,7 +740,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final isMobile = screenSize.width < 768;
+    final isMobile = ohtliIsMobileWidth(screenSize.width);
     final isDark = OhtliSettings.instance.isDarkMode;
 
     return Scaffold(
@@ -809,9 +857,15 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                           horizontal: isMobile ? 16 : 24,
                           vertical: isMobile ? 12 : 24,
                         ),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: _buildStepContent(isMobile),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _buildWizardStepIndicator(),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              child: _buildStepContent(isMobile),
+                            ),
+                          ],
                         ),
                       ),
               ),
@@ -837,6 +891,146 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     }
   }
 
+  // Indicador "Paso X de 3" del asistente de nueva ruta con IA
+  Widget _buildWizardStepIndicator() {
+    const labels = ['Punto de partida', 'Preferencias', 'Tus rutas'];
+    int step;
+    switch (_currentStep) {
+      case PlannerStep.startingPoint:
+        step = 0;
+        break;
+      case PlannerStep.preferences:
+        step = 1;
+        break;
+      case PlannerStep.blackboardProcessing:
+        step = 2;
+        break;
+      default:
+        return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'PASO ${step + 1} DE 3 · ${labels[step].toUpperCase()}',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: OhtliColors.stormyTeal,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: List.generate(3, (i) {
+              return Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  height: 4,
+                  margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
+                  decoration: BoxDecoration(
+                    color: i <= step ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJobErrorState(bool isMobile) {
+    final stalled = _jobError!.startsWith('El cálculo está tardando');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const SizedBox(height: 30),
+        Container(
+          width: 84,
+          height: 84,
+          decoration: BoxDecoration(
+            color: (stalled ? OhtliColors.cempasuchil : OhtliColors.xoconostle).withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            stalled ? Icons.hourglass_top_rounded : Icons.route_outlined,
+            size: 38,
+            color: stalled ? OhtliColors.cempasuchil : OhtliColors.xoconostle,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          stalled ? 'Esto está tardando' : 'No pudimos armar tu ruta',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.outfit(
+            fontSize: isMobile ? 22 : 26,
+            fontWeight: FontWeight.w800,
+            color: OhtliColors.onyx,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Text(
+            _jobError!,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.45),
+          ),
+        ),
+        const SizedBox(height: 28),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _launchBlackboardJob,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text('Reintentar', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: OhtliColors.stormyTeal,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () {
+                _jobSubscription?.cancel();
+                _jobWatchdog?.cancel();
+                setState(() {
+                  _jobError = null;
+                  _currentStep = PlannerStep.preferences;
+                });
+              },
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              label: Text('Ajustar preferencias', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: OhtliColors.stormyTeal,
+                side: const BorderSide(color: OhtliColors.stormyTeal),
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+            ),
+            if (stalled)
+              TextButton(
+                onPressed: () {
+                  _lastJobUpdateAt = DateTime.now();
+                  if (_activeJobId != null) _listenToBlackboardJob(_activeJobId!);
+                },
+                child: Text('Seguir esperando', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   // ==========================================
   // PASO 0: BIFURCACIÓN INICIAL
   // ==========================================
@@ -856,7 +1050,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
         const SizedBox(height: 8),
         Text(
-          'Elige entre la asistencia de los agentes autónomos de Yollotl Engine o armar cada parada por tu cuenta.',
+          'Deja que la IA te proponga rutas o arma cada parada por tu cuenta.',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(
             fontSize: 13,
@@ -868,7 +1062,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         // Tarjeta 1: Obtener planes con IA
         _buildBifurcationCard(
           title: 'Obtener planes con IA',
-          subtitle: 'El Sistema Multiagente cruza tus gustos culturales, optimiza traslados y maximiza tu presupuesto generando 3 rutas.',
+          subtitle: 'Te proponemos 3 rutas según tus gustos y presupuesto, con traslados a pie bien calculados.',
           badge: 'RECOMENDADO',
           badgeColor: OhtliColors.stormyTeal,
           icon: Icons.explore_rounded,
@@ -1250,7 +1444,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
         const SizedBox(height: 6),
         Text(
-          'Ajusta el estilo de experiencia deseado. Nuestro Sistema Multiagente optimizará tus opciones de viaje basándose en estos parámetros.',
+          'Cuéntanos qué te late hoy y cuánto quieres gastar. Con eso te proponemos varias rutas para elegir.',
           style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
         ),
         const SizedBox(height: 24),
@@ -1477,7 +1671,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
         // Topología de Ruta
         Text(
-          'TOPOLOGÍA DE RECORRIDO',
+          'TIPO DE RECORRIDO',
           style: GoogleFonts.inter(
             fontSize: 11,
             fontWeight: FontWeight.w800,
@@ -1592,6 +1786,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   // PASO 3: PROCESAMIENTO SMA (BLACKBOARD)
   // ==========================================
   Widget _buildBlackboardProcessingStep(bool isMobile) {
+    if (_jobError != null) {
+      return _buildJobErrorState(isMobile);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -1626,7 +1823,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
         const SizedBox(height: 28),
         Text(
-          'Agentes de Yollotl en Acción',
+          'Estamos armando tus rutas',
           textAlign: TextAlign.center,
           style: GoogleFonts.outfit(
             fontSize: isMobile ? 22 : 26,
@@ -1636,7 +1833,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
         const SizedBox(height: 8),
         Text(
-          'Agente activo: $_currentAgentName · Calculando candidatos y optimizando traslados...',
+          _currentAgentName == 'Generador'
+              ? 'Trazando el recorrido y calculando los traslados a pie...'
+              : (_currentAgentName == 'Recomendador'
+                  ? 'Dando los últimos toques a cada propuesta...'
+                  : 'Buscando los lugares que van con tu estilo...'),
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
         ),
@@ -1653,22 +1854,22 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           child: Column(
             children: [
               _buildAgentStateRow(
-                agentLabel: 'Agente Comparador',
-                taskDesc: 'Prefiltro por vector de afinidad, presupuesto y MMR de diversidad',
+                agentLabel: 'Elegimos los lugares',
+                taskDesc: 'Según tu estilo y presupuesto, con variedad entre opciones',
                 isActive: _currentAgentName == 'Comparador',
                 isDone: _blackboardProgress > 35,
               ),
               const Divider(height: 24),
               _buildAgentStateRow(
-                agentLabel: 'Agente Generador',
-                taskDesc: 'Trazado topológico ($_selectedTopology) y optimización de fatiga de caminata',
+                agentLabel: 'Trazamos el recorrido',
+                taskDesc: 'Ordenamos las paradas para que camines lo justo',
                 isActive: _currentAgentName == 'Generador',
                 isDone: _blackboardProgress > 70,
               ),
               const Divider(height: 24),
               _buildAgentStateRow(
-                agentLabel: 'Agente Recomendador',
-                taskDesc: 'Curaduría editorial, sinopsis culturales y calibración de costos en MXN',
+                agentLabel: 'Preparamos cada propuesta',
+                taskDesc: 'Descripción de cada parada y costo estimado en MXN',
                 isActive: _currentAgentName == 'Recomendador',
                 isDone: _blackboardProgress >= 95,
               ),
@@ -2140,22 +2341,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     );
   }
 
-  Widget _buildBookmarkButton() {
-    return IconButton(
-      onPressed: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Esta opción permanecerá guardada en tu pestaña Planes.', style: GoogleFonts.inter()),
-            backgroundColor: OhtliColors.stormyTeal,
-          ),
-        );
-      },
-      icon: const Icon(Icons.bookmark_add_outlined, color: Colors.white, size: 20),
-      tooltip: 'Guardar alternativa en Planes',
-      style: IconButton.styleFrom(backgroundColor: Colors.black.withOpacity(0.45), padding: const EdgeInsets.all(8)),
-    );
-  }
-
   Widget _buildChooseRouteButton(Map<String, dynamic> option, double cost, bool isMobile, {bool compact = false}) {
     return ElevatedButton.icon(
       onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
@@ -2238,7 +2423,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Flexible(child: _buildOptionBadges(option, index)),
-                      _buildBookmarkButton(),
                     ],
                   ),
                 ),
@@ -2420,7 +2604,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Flexible(child: _buildOptionBadges(option, index)),
-                              _buildBookmarkButton(),
                             ],
                           ),
                         ),

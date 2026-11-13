@@ -21,6 +21,7 @@ import 'trip_editor_page.dart';
 import '../error_404_page.dart';
 import '../error_403_page.dart';
 import '../../services/pdf_export_service.dart';
+import '../../utils/friendly_errors.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -114,7 +115,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al exportar el itinerario: $e'),
+            content: Text(friendlyError(e, fallback: 'No pudimos exportar el itinerario. Intenta de nuevo.')),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );
@@ -210,10 +211,17 @@ class _TripViewerPageState extends State<TripViewerPage> {
             _errorMessage = "El aventurero ha decidido mantener esta bitácora bajo llave.";
             _isLoading = false;
           });
-        } else {
+        } else if (e.code == 'not-found') {
           setState(() {
             _errorCode = 404;
             _errorMessage = "Este viaje ha tomado otro rumbo. No logramos encontrar la bitácora que buscas.";
+            _isLoading = false;
+          });
+        } else {
+          // Errores de red/servidor: no son "no encontrado" ni "privado"
+          setState(() {
+            _errorCode = null;
+            _errorMessage = friendlyError(e, fallback: 'No pudimos cargar este viaje. Revisa tu conexión e intenta de nuevo.');
             _isLoading = false;
           });
         }
@@ -227,8 +235,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
           });
         } else {
           setState(() {
-            _errorCode = 404;
-            _errorMessage = "Error al conectar con la base de datos: $e";
+            _errorCode = null;
+            _errorMessage = friendlyError(e, fallback: 'No pudimos cargar este viaje. Revisa tu conexión e intenta de nuevo.');
             _isLoading = false;
           });
         }
@@ -315,8 +323,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
           });
         } else {
           setState(() {
-            _errorCode = 404;
-            _errorMessage = "Error al cargar los bloques de la historia: $e";
+            _errorCode = null;
+            _errorMessage = friendlyError(e, fallback: 'No pudimos cargar el contenido de este viaje. Intenta de nuevo.');
             _isLoading = false;
           });
         }
@@ -627,6 +635,24 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _errorMessage = null;
+                      _errorCode = null;
+                      _isLoading = true;
+                    });
+                    _loadTripData();
+                  },
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text("Reintentar"),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: OhtliColors.stormyTeal,
+                    side: const BorderSide(color: OhtliColors.stormyTeal),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 ElevatedButton(
                   onPressed: widget.onBackToDashboard,
                   style: ElevatedButton.styleFrom(

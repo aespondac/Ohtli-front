@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/colors.dart';
+import '../utils/friendly_errors.dart';
 
 enum ImageFormat {
   jpeg,
@@ -468,7 +469,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al recortar la imagen: $e'),
+            content: Text(friendlyError(e, fallback: 'No pudimos recortar la imagen. Intenta con otra foto.')),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );

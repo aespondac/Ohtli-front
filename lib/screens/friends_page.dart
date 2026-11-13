@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -20,17 +22,137 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   String _searchQuery = '';
 
+  // Streams creados UNA sola vez: antes se recreaban en cada build (cada tecla del buscador),
+  // lo que mostraba el spinner a pantalla completa y hacía perder el foco del campo de búsqueda.
+  late final Stream<DocumentSnapshot> _meStream;
+  late final Stream<QuerySnapshot> _sentRequestsStream;
+  late final Stream<QuerySnapshot> _incomingRequestsStream;
+
+  // Ya no se descarga toda la colección de usuarios: solo amigos, una muestra de sugeridos
+  // y los resultados de búsqueda, guardados en caché.
+  final Map<String, DocumentSnapshot> _userCache = {};
+  final Set<String> _userIdsInFlight = {};
+  List<String> _suggestionIds = [];
+  List<String> _searchResultIds = [];
+  bool _searchingServer = false;
+  Timer? _searchDebounce;
+  static const int _suggestionsLimit = 40;
+
+  String get _uid => _currentUser?.uid ?? '__none__';
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    final db = FirebaseFirestore.instance;
+    _meStream = db.collection('users').doc(_uid).snapshots();
+    _sentRequestsStream = db
+        .collection('friend_requests')
+        .where('senderId', isEqualTo: _uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots();
+    _incomingRequestsStream = db
+        .collection('friend_requests')
+        .where('receiverId', isEqualTo: _uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots();
+    _loadSuggestions();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSuggestions() async {
+    try {
+      final snap = await FirebaseFirestore.instance.collection('users').limit(_suggestionsLimit).get();
+      if (!mounted) return;
+      setState(() {
+        for (final d in snap.docs) {
+          _userCache[d.id] = d;
+        }
+        _suggestionIds = snap.docs.map((d) => d.id).toList();
+      });
+    } catch (e) {
+      debugPrint('[Friends] sugeridos: $e');
+    }
+  }
+
+  // Trae (en lotes) los perfiles de amigos/solicitudes que aún no están en caché
+  void _ensureUsers(Iterable<dynamic> ids) {
+    final missing = ids
+        .map((e) => e.toString())
+        .where((id) => id.isNotEmpty && !_userCache.containsKey(id) && !_userIdsInFlight.contains(id))
+        .toList();
+    if (missing.isEmpty) return;
+    _userIdsInFlight.addAll(missing);
+    () async {
+      for (var i = 0; i < missing.length; i += 10) {
+        final chunk = missing.sublist(i, (i + 10).clamp(0, missing.length));
+        try {
+          final snap = await FirebaseFirestore.instance
+              .collection('users')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get();
+          if (!mounted) return;
+          setState(() {
+            for (final d in snap.docs) {
+              _userCache[d.id] = d;
+            }
+          });
+        } catch (e) {
+          debugPrint('[Friends] perfiles: $e');
+        } finally {
+          _userIdsInFlight.removeAll(chunk);
+        }
+      }
+    }();
+  }
+
+  void _onSearchChanged(String val) {
+    setState(() => _searchQuery = val);
+    _searchDebounce?.cancel();
+    final q = val.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _searchResultIds = [];
+        _searchingServer = false;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () => _searchServer(q));
+  }
+
+  // Búsqueda por prefijo en el servidor (tal cual y con mayúscula inicial)
+  Future<void> _searchServer(String q) async {
+    setState(() => _searchingServer = true);
+    final variants = <String>{q, q[0].toUpperCase() + q.substring(1)};
+    final ids = <String>[];
+    try {
+      for (final v in variants) {
+        final snap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('displayName', isGreaterThanOrEqualTo: v)
+            .where('displayName', isLessThan: '$v\uf8ff')
+            .limit(20)
+            .get();
+        for (final d in snap.docs) {
+          _userCache[d.id] = d;
+          ids.add(d.id);
+        }
+      }
+    } catch (e) {
+      debugPrint('[Friends] búsqueda: $e');
+    }
+    if (!mounted || _searchQuery.trim() != q) return;
+    setState(() {
+      _searchResultIds = ids;
+      _searchingServer = false;
+    });
   }
 
   Future<void> _toggleFriendStatus(String targetUserId, String action) async {
@@ -357,9 +479,21 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
           ),
           Positioned.fill(
             child: StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).snapshots(),
+              stream: _meStream,
               builder: (context, userSnapshot) {
-                if (userSnapshot.connectionState == ConnectionState.waiting) {
+                if (userSnapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        'No pudimos cargar tus amigos. Revisa tu conexión e intenta de nuevo.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 13),
+                      ),
+                    ),
+                  );
+                }
+                if (!userSnapshot.hasData) {
                   return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
                 }
 
@@ -367,28 +501,27 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                 final List<dynamic> friends = userData?['friends'] ?? [];
                 final List<dynamic> closeFriends = userData?['closeFriends'] ?? [];
 
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('users').snapshots(),
-                  builder: (context, usersSnapshot) {
-                    if (usersSnapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
-                    }
-
+                _ensureUsers(friends);
+                return Builder(
+                  builder: (context) {
                     return StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('friend_requests')
-                          .where('senderId', isEqualTo: _currentUser.uid)
-                          .where('status', isEqualTo: 'pending')
-                          .snapshots(),
+                      stream: _sentRequestsStream,
                       builder: (context, sentRequestsSnapshot) {
                         return StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('friend_requests')
-                              .where('receiverId', isEqualTo: _currentUser.uid)
-                              .where('status', isEqualTo: 'pending')
-                              .snapshots(),
+                          stream: _incomingRequestsStream,
                           builder: (context, incomingRequestsSnapshot) {
-                            final allUsers = usersSnapshot.data?.docs ?? [];
+                            _ensureUsers((incomingRequestsSnapshot.data?.docs ?? []).map((d) => d['senderId']));
+                            _ensureUsers((sentRequestsSnapshot.data?.docs ?? []).map((d) => d['receiverId']));
+                            final candidateIds = <String>{
+                              ...friends.map((e) => e.toString()),
+                              ..._suggestionIds,
+                              ..._searchResultIds,
+                              ...(incomingRequestsSnapshot.data?.docs ?? []).map((d) => d['senderId'].toString()),
+                            };
+                            final allUsers = [
+                              for (final id in candidateIds)
+                                if (_userCache[id] != null) _userCache[id]!,
+                            ];
                             final Map<String, String> sentPendingMap = {
                               for (var doc in sentRequestsSnapshot.data?.docs ?? [])
                                 doc['receiverId'] as String: doc.id
@@ -424,11 +557,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                                   padding: const EdgeInsets.all(16.0),
                                   child: TextField(
                                     controller: _searchController,
-                                    onChanged: (val) {
-                                      setState(() {
-                                        _searchQuery = val;
-                                      });
-                                    },
+                                    onChanged: _onSearchChanged,
                                     decoration: InputDecoration(
                                       hintText: 'Buscar aventureros...',
                                       hintStyle: GoogleFonts.inter(
@@ -440,6 +569,16 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                                         color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
                                         size: 20,
                                       ),
+                                      suffixIcon: _searchingServer
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(14),
+                                              child: SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child: CircularProgressIndicator(strokeWidth: 2, color: OhtliColors.stormyTeal),
+                                              ),
+                                            )
+                                          : null,
                                       filled: true,
                                       fillColor: cardColor,
                                       border: OutlineInputBorder(

@@ -14,6 +14,7 @@ import '../../theme/colors.dart';
 import '../../widgets/ohtli_sidebar.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/address_picker_widget.dart' as address_picker;
+import '../../utils/friendly_errors.dart';
 import '../construction_page.dart'; // Reuse RouteBackgroundPainter
 
 enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
@@ -834,7 +835,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: ${e.toString()}'),
+          content: Text(friendlyError(e)),
           backgroundColor: OhtliColors.xoconostle,
         ),
       );
@@ -910,7 +911,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(friendlyError(e)),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );
@@ -2304,7 +2305,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Error al vincular cuenta de Google: $e'),
+                              content: Text(friendlyError(e, fallback: 'No pudimos vincular tu cuenta de Google. Intenta de nuevo.')),
                               backgroundColor: OhtliColors.xoconostle,
                             ),
                           );

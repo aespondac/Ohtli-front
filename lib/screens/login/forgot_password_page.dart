@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../utils/friendly_errors.dart';
 import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 
 class ForgotPasswordPage extends StatefulWidget {
@@ -77,7 +78,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(friendlyError(e)),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );

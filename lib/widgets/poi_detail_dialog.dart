@@ -12,6 +12,7 @@ import '../models/poi_model.dart';
 import '../models/trip_model.dart';
 import '../screens/trips/trip_editor_page.dart';
 import '../screens/trips/trip_viewer_page.dart';
+import '../utils/friendly_errors.dart';
 
 class PoiDetailDialog extends StatefulWidget {
   final Poi poi;
@@ -264,7 +265,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         setState(() => _isCreatingTrip = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al crear la ruta: $e'),
+            content: Text(friendlyError(e, fallback: 'No pudimos crear la ruta. Intenta de nuevo.')),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );

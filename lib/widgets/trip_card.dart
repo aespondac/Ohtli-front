@@ -13,6 +13,7 @@ import '../services/trip_service.dart';
 import '../services/pdf_export_service.dart';
 import 'ohtli_markdown_renderer.dart';
 import 'interactive_3d_card.dart';
+import '../utils/friendly_errors.dart';
 
 class TripCard extends StatefulWidget {
   final Trip trip;
@@ -194,7 +195,7 @@ class _TripCardState extends State<TripCard> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Error al exportar el viaje a PDF: $e',
+              friendlyError(e, fallback: 'No pudimos exportar el viaje a PDF. Intenta de nuevo.'),
               style: GoogleFonts.inter(color: Colors.white),
             ),
             backgroundColor: OhtliColors.xoconostle,

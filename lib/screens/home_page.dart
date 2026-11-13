@@ -70,6 +70,21 @@ class _HomePageState extends State<HomePage> {
   String? _localPhotoURL;
   int _currentIndex = 0;
 
+  // Barra inferior (móvil): Explorar, Mis Viajes, Lugares, Amigos, Perfil → índices de página
+  static const List<int> _bottomNavPages = [0, 1, 5, 3, 2];
+  int _lastBottomNavIndex = 0;
+
+  // Creados una sola vez: antes se recreaban en cada build, así que la crónica destacada
+  // volvía a pedirse (y parpadeaba) y el carrusel regresaba a la primera tarjeta.
+  final PageController _pinnedController = PageController(viewportFraction: 1.0);
+  final Map<String, Future<List<DocumentSnapshot>>> _pinnedFutures = {};
+
+  @override
+  void dispose() {
+    _pinnedController.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -390,19 +405,14 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _currentIndex == 1
-              ? 0
-              : (_currentIndex == 2
-                  ? 1
-                  : (_currentIndex == 0
-                      ? 2
-                      : (_currentIndex == 5 ? 3 : 2))),
+          // En pantallas fuera de la barra (p. ej. Notificaciones) se mantiene la última pestaña
+          currentIndex: _bottomNavPages.contains(_currentIndex)
+              ? (_lastBottomNavIndex = _bottomNavPages.indexOf(_currentIndex))
+              : _lastBottomNavIndex,
           onTap: (index) {
             setState(() {
-              if (index == 0) _currentIndex = 1; // Mis Viajes
-              if (index == 1) _currentIndex = 2; // Perfil
-              if (index == 2) _currentIndex = 0; // Explorar
-              if (index == 3) _currentIndex = 5; // Lugares
+              _lastBottomNavIndex = index;
+              _currentIndex = _bottomNavPages[index];
             });
           },
           backgroundColor: colorSidebar,
@@ -412,16 +422,6 @@ class _HomePageState extends State<HomePage> {
           unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 11),
           type: BottomNavigationBarType.fixed, // Use fixed when >= 4 items
           items: [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.map_outlined),
-              activeIcon: Icon(Icons.map),
-              label: 'Mis Viajes',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Perfil',
-            ),
             BottomNavigationBarItem(
               icon: SvgPicture.asset(
                 'assets/icon_isologo.svg',
@@ -444,9 +444,24 @@ class _HomePageState extends State<HomePage> {
               label: 'Explorar',
             ),
             const BottomNavigationBarItem(
+              icon: Icon(Icons.map_outlined),
+              activeIcon: Icon(Icons.map),
+              label: 'Mis Viajes',
+            ),
+            const BottomNavigationBarItem(
               icon: Icon(Icons.place_outlined),
               activeIcon: Icon(Icons.place),
               label: 'Lugares',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.people_outline_rounded),
+              activeIcon: Icon(Icons.people_rounded),
+              label: 'Amigos',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
+              label: 'Perfil',
             ),
           ],
         ),
@@ -533,7 +548,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildPinnedStoriesCarousel(bool isMobile, bool isDark) {
     // PageController for sliding carousel - full width viewport fraction 1.0!
-    final PageController controller = PageController(viewportFraction: 1.0);
+    final PageController controller = _pinnedController;
     final double height = isMobile ? 260.0 : 380.0;
     
     return SizedBox(
@@ -552,7 +567,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildPinnedStoryCard(PinnedStory pinned, bool isMobile, bool isDark) {
     return FutureBuilder<List<DocumentSnapshot>>(
-      future: Future.wait([
+      future: _pinnedFutures['${pinned.authorId}/${pinned.tripId}'] ??= Future.wait([
         FirebaseFirestore.instance
             .collection('users')
             .doc(pinned.authorId)

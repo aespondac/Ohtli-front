@@ -12,6 +12,7 @@ import 'dart:convert';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../theme/colors.dart';
+import '../../utils/friendly_errors.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/ohtli_markdown_editor.dart';
 import '../../widgets/ohtli_place_photo_stack.dart';
@@ -57,6 +58,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   // Local changes tracking
   DateTime? _lastSavedCloudTime;
+  // Estado real de sincronización: antes el indicador decía "Sincronizado" aunque hubiera
+  // cambios pendientes o el último guardado hubiera fallado.
+  int _editVersion = 0;
+  int _savedEditVersion = 0;
+  String? _cloudSaveError;
+  int _failedUploads = 0;
+  bool get _hasPendingCloudChanges => _editVersion != _savedEditVersion;
 
   // New fields for co-authors & surprise
   List<String> _coAuthorIds = [];
@@ -415,7 +423,15 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   void _triggerCloudAutoSaveDebounce() {
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(seconds: 30), () {
+    final wasPending = _hasPendingCloudChanges;
+    _editVersion++;
+    if (!wasPending && mounted) {
+      // Solo redibuja al pasar de "sincronizado" a "pendiente" (no en cada tecla)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    }
+    _debounceTimer = Timer(const Duration(seconds: 4), () {
       _saveToCloudFirestore();
     });
   }
@@ -427,6 +443,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
     setState(() {
       _isSavingCloud = true;
     });
+    final versionAtStart = _editVersion;
+    _failedUploads = 0;
 
     final now = DateTime.now();
     String finalCoverUrl = _coverUrl;
@@ -447,6 +465,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fcover.jpg?alt=media";
       } catch (e) {
         print("Error uploading cover to Storage: $e");
+        _failedUploads++;
       }
     }
 
@@ -468,6 +487,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             finalMain = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
           } catch (e) {
             print("Error uploading section main photo: $e");
+        _failedUploads++;
           }
         }
 
@@ -485,6 +505,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               secUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
             } catch (e) {
               print("Error uploading section secondary photo $i: $e");
+        _failedUploads++;
             }
           }
           finalSec.add(secUrl);
@@ -513,6 +534,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             finalImg = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
           } catch (e) {
             print("Error uploading section text_image photo: $e");
+        _failedUploads++;
           }
         }
 
@@ -566,13 +588,30 @@ class _TripEditorPageState extends State<TripEditorPage> {
           _coverUrl = finalCoverUrl; // Keep local state in sync with network URL
           _isSavingCloud = false;
           _lastSavedCloudTime = now;
+          _cloudSaveError = null;
+          // Si hubo fotos sin subir, el cambio sigue pendiente para reintentarlo
+          _savedEditVersion = _failedUploads > 0 ? versionAtStart - 1 : versionAtStart;
         });
+        if (_failedUploads > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _failedUploads == 1
+                    ? 'Una foto no se pudo subir. La volveremos a intentar en el siguiente guardado.'
+                    : '$_failedUploads fotos no se pudieron subir. Las volveremos a intentar en el siguiente guardado.',
+                style: GoogleFonts.inter(),
+              ),
+              backgroundColor: OhtliColors.xoconostle,
+            ),
+          );
+        }
       }
     } catch (e) {
-      print("Error saving to cloud: $e");
+      final message = friendlyError(e, fallback: 'No se pudieron guardar tus cambios en la nube.');
       if (mounted) {
         setState(() {
           _isSavingCloud = false;
+          _cloudSaveError = message;
         });
       }
     }
@@ -1219,7 +1258,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    'Error al publicar el viaje: $e',
+                                    friendlyError(e, fallback: 'No pudimos publicar el viaje. Intenta de nuevo.'),
                                     style: GoogleFonts.inter(color: Colors.white),
                                   ),
                                   backgroundColor: OhtliColors.xoconostle,
@@ -1370,7 +1409,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    'Error al publicar errata: $e',
+                                    friendlyError(e, fallback: 'No pudimos publicar la errata. Intenta de nuevo.'),
                                     style: GoogleFonts.inter(color: Colors.white),
                                   ),
                                   backgroundColor: OhtliColors.xoconostle,
@@ -1534,7 +1573,49 @@ class _TripEditorPageState extends State<TripEditorPage> {
   Future<bool> _onWillPop() async {
     _debounceTimer?.cancel();
     _syncAllTables();
-    await _saveToCloudFirestore();
+    if (!_hasPendingCloudChanges && _cloudSaveError == null && !_isSavingCloud) return true;
+
+    // Guarda antes de salir, pero sin dejar el botón "atrás" colgado si no hay conexión
+    try {
+      // Si ya hay un guardado en curso, espera a que termine antes de lanzar otro
+      final waitUntil = DateTime.now().add(const Duration(seconds: 12));
+      while (_isSavingCloud && DateTime.now().isBefore(waitUntil)) {
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+      if (_hasPendingCloudChanges || _cloudSaveError != null) {
+        await _saveToCloudFirestore().timeout(const Duration(seconds: 12));
+      }
+    } catch (_) {
+      if (mounted) setState(() => _cloudSaveError ??= 'La conexión está tardando demasiado.');
+    }
+    if (!mounted) return true;
+    if (_cloudSaveError == null && !_hasPendingCloudChanges) return true;
+
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Cambios sin subir a la nube', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: Text(
+          'No pudimos guardar tus últimos cambios en la nube. Siguen guardados en este dispositivo y podrás recuperarlos al volver a abrir el viaje aquí.',
+          style: GoogleFonts.inter(fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Quedarme e intentar de nuevo', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.xoconostle, foregroundColor: Colors.white),
+            child: Text('Salir de todas formas', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (leave != true) {
+      _saveToCloudFirestore();
+      return false;
+    }
     return true;
   }
 
@@ -1542,14 +1623,21 @@ class _TripEditorPageState extends State<TripEditorPage> {
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
 
-    String syncStatusText = "Cambios guardados localmente";
-    IconData syncIcon = Icons.cloud_done_outlined;
+    String syncStatusText = "Cambios guardados en este dispositivo";
+    IconData syncIcon = Icons.cloud_queue_rounded;
     Color syncColor = OhtliColors.stormyTeal;
 
     if (_isSavingCloud) {
       syncStatusText = "Guardando en la nube...";
       syncIcon = Icons.sync_rounded;
+      syncColor = OhtliColors.cempasuchil;
+    } else if (_cloudSaveError != null) {
+      syncStatusText = "Sin guardar en la nube · Toca para reintentar";
+      syncIcon = Icons.cloud_off_rounded;
       syncColor = OhtliColors.xoconostle;
+    } else if (_hasPendingCloudChanges) {
+      syncStatusText = "Cambios sin subir...";
+      syncIcon = Icons.cloud_upload_outlined;
     } else if (_lastSavedCloudTime != null) {
       syncStatusText = "Sincronizado en la nube";
       syncIcon = Icons.cloud_done_rounded;
@@ -1814,19 +1902,28 @@ class _TripEditorPageState extends State<TripEditorPage> {
               }
             },
           ),
-          title: Row(
+          title: InkWell(
+            onTap: _cloudSaveError != null && !_isSavingCloud ? _saveToCloudFirestore : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(syncIcon, color: syncColor, size: 18),
               const SizedBox(width: 6),
-              Text(
-                syncStatusText,
-                style: GoogleFonts.inter(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  color: OhtliColors.onyx.withValues(alpha: 0.6),
+              Flexible(
+                child: Text(
+                  syncStatusText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: _cloudSaveError != null ? OhtliColors.xoconostle : OhtliColors.onyx.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
             ],
+          ),
           ),
           actions: [
             // 1. Co-authors button for plans (drafts) - ONLY for the owner/creator

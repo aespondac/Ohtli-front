@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/user_profile_helper.dart';
+import '../../utils/friendly_errors.dart';
 
 class MobileRegisterPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -137,7 +138,7 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(friendlyError(e)),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );
@@ -181,7 +182,7 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
         widget.onRegisterSuccess();
       }
     } on FirebaseAuthException catch (e) {
-      String errorMessage = 'Error con Google: ${e.message}';
+      String errorMessage = friendlyError(e, fallback: 'No pudimos continuar con Google. Intenta de nuevo.');
       if (e.code == 'popup-closed-by-user') {
         errorMessage = 'Se cerró la ventana de Google.';
       }
@@ -197,7 +198,7 @@ class _MobileRegisterPageState extends State<MobileRegisterPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(friendlyError(e)),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );

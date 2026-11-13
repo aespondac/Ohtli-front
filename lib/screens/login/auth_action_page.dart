@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../utils/friendly_errors.dart';
 import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 
 class AuthActionPage extends StatefulWidget {
@@ -127,7 +128,7 @@ class _AuthActionPageState extends State<AuthActionPage> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: ${e.toString()}', style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
+          content: Text(friendlyError(e), style: GoogleFonts.inter(fontWeight: FontWeight.w500)),
           backgroundColor: OhtliColors.xoconostle,
         ),
       );

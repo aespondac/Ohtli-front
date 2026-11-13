@@ -12,6 +12,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/colors.dart';
+import '../../utils/friendly_errors.dart';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../widgets/trip_card.dart';
@@ -587,7 +588,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Error al guardar el viaje: $e',
+                                      friendlyError(e, fallback: 'No pudimos guardar el viaje. Intenta de nuevo.'),
                                       style: GoogleFonts.inter(color: Colors.white),
                                     ),
                                     backgroundColor: OhtliColors.xoconostle,
@@ -668,7 +669,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Error al eliminar el viaje: $e',
+              friendlyError(e, fallback: 'No pudimos eliminar el viaje. Intenta de nuevo.'),
               style: GoogleFonts.inter(color: Colors.white),
             ),
             backgroundColor: OhtliColors.xoconostle,
@@ -951,6 +952,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     if (aiJobs.isEmpty) return const SizedBox.shrink();
 
     final generatingJobs = <QueryDocumentSnapshot>[];
+    final failedJobs = <QueryDocumentSnapshot>[];
     final completedJobs = <QueryDocumentSnapshot>[];
 
     for (final doc in aiJobs) {
@@ -968,12 +970,15 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
       if ((status == 'completed' || progress >= 100 || options.isNotEmpty) && options.isNotEmpty) {
         completedJobs.add(doc);
-      } else if (status != 'failed' && status != 'error') {
+      } else if (status == 'failed' || status == 'error' || status == 'completed') {
+        // Antes los fallidos desaparecían sin aviso; ahora se muestran con opción de reintentar
+        failedJobs.add(doc);
+      } else if (status != 'dismissed') {
         generatingJobs.add(doc);
       }
     }
 
-    if (generatingJobs.isEmpty && completedJobs.isEmpty) {
+    if (generatingJobs.isEmpty && completedJobs.isEmpty && failedJobs.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -1034,6 +1039,31 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           const SizedBox(height: 12),
           Column(
             children: generatingJobs.map((doc) => _buildGeneratingJobCard(doc, isDark)).toList(),
+          ),
+          const SizedBox(height: 20),
+        ],
+
+        // ==========================================
+        // 1.b JOBS QUE NO SE PUDIERON COMPLETAR
+        // ==========================================
+        if (failedJobs.isNotEmpty) ...[
+          Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 18, color: OhtliColors.xoconostle),
+              const SizedBox(width: 8),
+              Text(
+                'No se pudieron generar',
+                style: GoogleFonts.outfit(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : OhtliColors.onyx,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Column(
+            children: failedJobs.map((doc) => _buildFailedJobCard(doc, isDark)).toList(),
           ),
           const SizedBox(height: 20),
         ],
@@ -1236,6 +1266,94 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     );
   }
 
+  Widget _buildFailedJobCard(QueryDocumentSnapshot doc, bool isDark) {
+    final data = doc.data() as Map<String, dynamic>;
+    final req = data['request'] as Map<String, dynamic>? ?? {};
+    final originName = (data['origin_name'] ?? req['origin_name'] ?? 'Ciudad de México').toString();
+    final status = (data['status'] ?? '').toString();
+    final reason = status == 'completed'
+        ? 'No encontramos lugares que encajen con esas preferencias.'
+        : 'Hubo un problema al calcular la ruta.';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: OhtliColors.xoconostle.withOpacity(0.35), width: 1.2),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: OhtliColors.xoconostle.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.route_outlined, size: 18, color: OhtliColors.xoconostle),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Plan desde $originName',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : OhtliColors.onyx,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  reason,
+                  style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white60 : OhtliColors.subtleText),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => TripPlannerDialog.show(context, originName: originName),
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: Text('Intentar de nuevo', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        try {
+                          await doc.reference.set({'status': 'dismissed'}, SetOptions(merge: true));
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(friendlyError(e), style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+                          );
+                        }
+                      },
+                      child: Text('Descartar', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildGeneratingJobCard(QueryDocumentSnapshot doc, bool isDark) {
     final data = doc.data() as Map<String, dynamic>;
     final req = data['request'] as Map<String, dynamic>? ?? {};
@@ -1245,13 +1363,13 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
     String agentStageText;
     if (agent.toLowerCase().contains('comparador')) {
-      agentStageText = 'Agente Comparador calibrando afinidad cultural...';
+      agentStageText = 'Buscando lugares que van con tu estilo...';
     } else if (agent.toLowerCase().contains('generador')) {
-      agentStageText = 'Agente Generador trazando multirutas y topología...';
+      agentStageText = 'Trazando el recorrido y los traslados...';
     } else if (agent.toLowerCase().contains('recomendador')) {
-      agentStageText = 'Agente Recomendador enriqueciendo narrativa y presupuesto...';
+      agentStageText = 'Dando los últimos toques a cada propuesta...';
     } else {
-      agentStageText = 'Yollotl Engine procesando Pizarrón...';
+      agentStageText = 'Preparando tus rutas...';
     }
 
     return Container(
