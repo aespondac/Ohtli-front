@@ -104,6 +104,8 @@ void main() async {
   } catch (e) {
     print("Firebase initialization error: $e");
   }
+  // Precarga el catálogo de Lugares (y despierta la API si estaba inactiva)
+  PlacesPage.prefetch();
   runApp(const OhtliApp());
 }
 

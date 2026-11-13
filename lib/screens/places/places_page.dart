@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:html' as html;
@@ -33,10 +34,58 @@ class PlacesPage extends StatefulWidget {
 
   @override
   State<PlacesPage> createState() => _PlacesPageState();
+
+  /// Inicia la descarga del catálogo en cuanto arranca la app (también "despierta"
+  /// al servidor si estaba inactivo), para que la sección Lugares abra con datos listos.
+  static void prefetch() {
+    _PlacesPageState._loadCatalog().catchError((_) => <Poi>[]);
+  }
 }
 
 class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateMixin {
   static List<Poi> _globalPoisCache = [];
+  static Future<List<Poi>>? _inflightCatalog;
+  static const String _apiUrl = String.fromEnvironment('yollotlApiUrl', defaultValue: 'https://api.ohtli.quest');
+
+  // Una sola descarga compartida del catálogo (precarga + pantalla), sin duplicar peticiones.
+  // El tiempo de espera cubre el arranque en frío del servidor (puede tardar ~1 min).
+  static Future<List<Poi>> _loadCatalog({bool forceRefresh = false}) {
+    if (!forceRefresh && _inflightCatalog != null) return _inflightCatalog!;
+    final future = () async {
+      final uri = Uri.parse('$_apiUrl/v1/pois${forceRefresh ? "?refresh=true" : ""}');
+      final response = await http.get(uri).timeout(const Duration(seconds: 90));
+      if (response.statusCode != 200) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map || decoded['pois'] is! List) {
+        throw Exception('Respuesta inesperada del catálogo');
+      }
+      final rawList = decoded['pois'] as List;
+      final list = rawList
+          .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
+          .where((p) => p.isValidCulturalPlace)
+          .toList();
+      if (list.isEmpty) throw Exception('Catálogo vacío');
+      _globalPoisCache = list;
+      if (kIsWeb) {
+        try {
+          html.window.localStorage['ohtli_cached_pois_v2'] = jsonEncode(rawList);
+        } catch (_) {}
+      }
+      return list;
+    }();
+    _inflightCatalog = future;
+    // Si falla, permite reintentar más tarde
+    future.catchError((_) {
+      if (identical(_inflightCatalog, future)) _inflightCatalog = null;
+      return <Poi>[];
+    });
+    return future;
+  }
+
+  bool _isSlowLoad = false;
+  Timer? _slowLoadTimer;
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -185,6 +234,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   @override
   void dispose() {
     _shimmerController?.dispose();
+    _slowLoadTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _paraTiScrollController.dispose();
@@ -200,66 +250,59 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       setState(() {
         _isLoadingPois = true;
         _poisError = null;
+        _isSlowLoad = false;
+      });
+      // Si tarda, avisa que el servidor está arrancando en lugar de dejar solo el esqueleto
+      _slowLoadTimer?.cancel();
+      _slowLoadTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted && _allPois.isEmpty) setState(() => _isSlowLoad = true);
       });
     }
 
     try {
-      const apiUrl = String.fromEnvironment(
-        'yollotlApiUrl',
-        defaultValue: 'https://api.ohtli.quest',
-      );
-      final uri = Uri.parse('$apiUrl/v1/pois${forceRefresh ? "?refresh=true" : ""}');
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-        if (decoded is Map && decoded['pois'] is List) {
-          final rawList = decoded['pois'] as List;
-          final list = rawList
-              .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
-              .where((p) => p.isValidCulturalPlace)
-              .toList();
-
-          if (list.isNotEmpty && mounted) {
-            _globalPoisCache = list;
-            setState(() {
-              _allPois = list;
-              _isLoadingPois = false;
-            });
-
-            // Guardar en localStorage para recargas instantáneas posteriores
-            if (kIsWeb) {
-              try {
-                html.window.localStorage['ohtli_cached_pois_v2'] = jsonEncode(rawList);
-              } catch (_) {}
-            }
-            return;
-          }
-        }
+      final list = await _loadCatalog(forceRefresh: forceRefresh);
+      _slowLoadTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _allPois = list;
+          _isLoadingPois = false;
+          _isSlowLoad = false;
+        });
       }
+      return;
     } catch (e) {
-      debugPrint('Error fetching POIs from Yollotl Engine API: $e. Fallback to Firestore.');
+      debugPrint('Error fetching POIs from Yollotl Engine API: $e');
+    }
+    _slowLoadTimer?.cancel();
+
+    // Con datos en caché no hace falta el respaldo: se conservan los actuales
+    if (_allPois.isNotEmpty) {
+      if (mounted) setState(() => _isLoadingPois = false);
+      return;
     }
 
-    // Fallback de contingencia a Firestore
+    // Respaldo acotado a Firestore (cada documento incluye su vector de 768 dimensiones,
+    // así que nunca se descarga la colección completa desde el navegador)
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('pois').get();
+      final snapshot = await FirebaseFirestore.instance.collection('pois').limit(250).get();
       final list = snapshot.docs
           .map((d) => Poi.fromFirestore(d))
           .where((p) => p.isValidCulturalPlace)
           .toList();
 
       if (mounted) {
-        _globalPoisCache = list;
         setState(() {
           _allPois = list;
           _isLoadingPois = false;
+          _isSlowLoad = false;
+          if (list.isEmpty) _poisError = 'No se pudo cargar el catálogo de lugares.';
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoadingPois = false;
+          _isSlowLoad = false;
           if (_allPois.isEmpty) {
             _poisError = e.toString();
           }
@@ -1344,6 +1387,39 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   width: double.infinity,
                   height: 52,
                   borderRadius: 16,
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  child: _isSlowLoad
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.cardBg,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: OhtliColors.cardBorder),
+                            ),
+                            child: Row(
+                              children: [
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2.2, color: OhtliColors.stormyTeal),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    'Preparando el catálogo de lugares… La primera carga puede tardar unos segundos mientras el servidor arranca.',
+                                    style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : const SizedBox(width: double.infinity),
                 ),
                 const SizedBox(height: 36),
 
