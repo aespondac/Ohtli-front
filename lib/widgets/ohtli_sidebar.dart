@@ -48,6 +48,9 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
     Icon(Icons.keyboard_arrow_left_rounded),
     Icon(Icons.keyboard_arrow_right_rounded),
     Icon(Icons.logout_rounded),
+    Icon(Icons.explore_outlined),
+    Icon(Icons.explore),
+    Icon(Icons.add_rounded),
   ];
 
   static bool _isCollapsed = false;
@@ -369,11 +372,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
             ),
           ],
         ),
-        padding: const EdgeInsets.all(10),
-        child: SvgPicture.asset(
-          'assets/icon_isologo.svg',
-          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-        ),
+        // El isologo ya aparece arriba como marca; aquí un "+" evita repetirlo al comprimir
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
       );
       ctaContent = Tooltip(
         message: 'Planea un viaje',
@@ -542,8 +542,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> {
           const SizedBox(height: 8),
 
           _buildSidebarItem(
-            icon: 'assets/icon_isologo.svg',
-            activeIcon: 'assets/icon_isologo.svg',
+            icon: Icons.explore_outlined,
+            activeIcon: Icons.explore,
             label: 'Explorar',
             index: 0,
             isHovered: _isHoveringInicio,

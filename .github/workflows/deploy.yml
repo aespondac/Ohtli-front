@@ -99,6 +99,9 @@ jobs:
           
           # Deploy firestore rules to ensure pois security rules are active
           firebase deploy --only firestore:rules --project=othli-497404 --force || echo "Firestore rules deploy skipped."
+
+          # Deploy firestore indexes (p. ej. viajes públicos por status/visibility para Explorar)
+          firebase deploy --only firestore:indexes --project=othli-497404 --non-interactive || echo "Firestore indexes deploy skipped."
           
           # Install dependencies inside functions
           cd functions

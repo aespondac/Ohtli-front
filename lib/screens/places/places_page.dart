@@ -40,6 +40,14 @@ class PlacesPage extends StatefulWidget {
   static void prefetch() {
     _PlacesPageState._loadCatalog().catchError((_) => <Poi>[]);
   }
+
+  /// Catálogo compartido (misma descarga que usa Lugares) para otras vistas, como Explorar.
+  static Future<List<Poi>> loadCatalog() {
+    if (_PlacesPageState._globalPoisCache.isNotEmpty) {
+      return Future.value(_PlacesPageState._globalPoisCache);
+    }
+    return _PlacesPageState._loadCatalog();
+  }
 }
 
 class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateMixin {

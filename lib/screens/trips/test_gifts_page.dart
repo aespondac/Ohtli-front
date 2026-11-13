@@ -129,7 +129,7 @@ class _TestGiftsPageState extends State<TestGiftsPage> {
                   createdAt: DateTime.now(),
                   updatedAt: DateTime.now(),
                   isSurprise: true,
-                  surpriseUnlockDate: unlockDate,
+                  surpriseUnlockDates: unlockDate != null ? {'mock_viewer': unlockDate} : const {},
                 );
 
                 // Dummy card content revealed underneath
@@ -146,6 +146,7 @@ class _TestGiftsPageState extends State<TestGiftsPage> {
                   trip: mockTrip,
                   isLocked: false, // Override to allow testing unwrap animations locally
                   isOpened: false,
+                  unlockDate: unlockDate,
                   addedByName: sender,
                   onRevealComplete: () {
                     ScaffoldMessenger.of(context).showSnackBar(
