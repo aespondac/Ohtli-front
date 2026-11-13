@@ -59,6 +59,20 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   int? _selectedPriceFilter;
   String? _selectedCategoryFilter;
 
+  static const Map<String, IconData> _categoryIcons = {
+    'all': Icons.apps_rounded,
+    'restaurant': Icons.restaurant_rounded,
+    'cafe': Icons.local_cafe_rounded,
+    'fast_food': Icons.lunch_dining_rounded,
+    'bakery': Icons.bakery_dining_rounded,
+    'museum_art': Icons.museum_rounded,
+    'bar_pub': Icons.local_bar_rounded,
+    'books_shop': Icons.menu_book_rounded,
+    'park': Icons.park_rounded,
+    'culture': Icons.theater_comedy_rounded,
+    'attraction': Icons.attractions_rounded,
+  };
+
   static const List<Map<String, String>> _categoryFilters = [
     {'id': 'all', 'label': 'Todos', 'emoji': '✨'},
     {'id': 'restaurant', 'label': 'Restaurantes', 'emoji': '🍽️'},
@@ -483,6 +497,14 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     }
   }
 
+  void _clearAllFilters() {
+    _searchController.clear();
+    setState(() {
+      _selectedPriceFilter = null;
+      _selectedCategoryFilter = null;
+    });
+  }
+
   void _scrollSection(ScrollController controller, double offset) {
     controller.animateTo(
       (controller.offset + offset).clamp(0.0, controller.position.maxScrollExtent),
@@ -628,18 +650,36 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                       const SizedBox(height: 16),
                     ],
 
+                    // Título de la sección
+                    Text(
+                      'Lugares',
+                      style: GoogleFonts.outfit(
+                        fontSize: isMobile ? 28 : 34,
+                        fontWeight: FontWeight.w800,
+                        color: OhtliColors.onyx,
+                        letterSpacing: -0.6,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Descubre ${allPois.length} rincones culturales de la Ciudad de México',
+                      style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText),
+                    ),
+                    const SizedBox(height: 18),
+
                     // Search Bar
                     Container(
                       key: const ValueKey('places_search_box'),
                       decoration: BoxDecoration(
                         color: OhtliColors.cardBg,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: OhtliColors.cardBorder),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.06),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 20,
+                            offset: const Offset(0, 6),
                           ),
                         ],
                       ),
@@ -651,7 +691,10 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                         decoration: InputDecoration(
                           hintText: 'Buscar lugares, colonias, museos, cafés...',
                           hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14),
-                          prefixIcon: const Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 22),
+                          prefixIcon: const Padding(
+                            padding: EdgeInsets.only(left: 6),
+                            child: Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 22),
+                          ),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear_rounded, size: 20),
@@ -662,7 +705,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                                 )
                               : null,
                           border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                         ),
                       ),
                     ),
@@ -679,23 +722,35 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
                       child: Row(
                         children: [
-                          Text(
-                            _searchQuery.isNotEmpty
-                                ? 'Resultados para "${_searchController.text}" (${searchResults.length})'
-                                : 'Lugares encontrados (${searchResults.length})',
-                            style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                          Flexible(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: _searchQuery.isNotEmpty
+                                        ? 'Resultados para "${_searchController.text}"'
+                                        : 'Lugares encontrados',
+                                  ),
+                                  TextSpan(
+                                    text: '  ${searchResults.length}',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: OhtliColors.stormyTeal,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
+                            ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 12),
                           TextButton.icon(
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _selectedPriceFilter = null;
-                                _selectedCategoryFilter = null;
-                              });
-                            },
-                            icon: const Icon(Icons.clear_all_rounded, size: 16),
-                            label: const Text('Ver todas las secciones'),
+                            onPressed: _clearAllFilters,
+                            icon: const Icon(Icons.close_rounded, size: 16),
+                            label: Text(isMobile ? 'Limpiar' : 'Limpiar y ver secciones'),
                             style: TextButton.styleFrom(
                               foregroundColor: OhtliColors.stormyTeal,
                               textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
@@ -768,6 +823,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                               width: doubleWidth,
                               height: isMobile ? 460 : 520,
                               isDoubleWidth: true,
+                              affinity: _calculateAffinity(poi, index),
                               isSaved: isSaved,
                               onToggleSave: () => _toggleSavePoi(poi.poiId),
                               onCreateRoute: () => _createRouteFromPlace(poi),
@@ -826,6 +882,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   SliverToBoxAdapter(
                     child: _buildCleanSectionHeader(
                       title: 'Mis lugares',
+                      count: misLugaresPois.length,
                       isMobile: isMobile,
                       controller: _misLugaresScrollController,
                       scrollStep: standardWidth + 18,
@@ -871,6 +928,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   SliverToBoxAdapter(
                     child: _buildCleanSectionHeader(
                       title: 'Revisita tus lugares',
+                      count: revisitaPois.length,
                       isMobile: isMobile,
                       controller: _revisitaScrollController,
                       scrollStep: standardWidth + 18,
@@ -925,56 +983,60 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     required ScrollController controller,
     required double scrollStep,
     bool showArrows = true,
+    int? count,
   }) {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         isMobile ? 16 : 36,
         14,
         isMobile ? 16 : 36,
-        14,
+        12,
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.outfit(
-              fontSize: isMobile ? 20 : 24,
-              fontWeight: FontWeight.w800,
-              color: OhtliColors.onyx,
-              letterSpacing: -0.2,
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(
+                      fontSize: isMobile ? 21 : 25,
+                      fontWeight: FontWeight.w800,
+                      color: OhtliColors.onyx,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                if (count != null && count > 0) ...[
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.stormyTeal.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: OhtliColors.stormyTeal,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           if (!isMobile && showArrows)
             Row(
               children: [
-                IconButton(
-                  onPressed: () => _scrollSection(controller, -scrollStep),
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 15),
-                  color: OhtliColors.onyx,
-                  style: IconButton.styleFrom(
-                    backgroundColor: OhtliColors.cardBg,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: OhtliColors.cardBorder),
-                    ),
-                  ),
-                  tooltip: 'Anterior',
-                ),
+                _buildShelfArrow(Icons.arrow_back_ios_new_rounded, 'Anterior', () => _scrollSection(controller, -scrollStep)),
                 const SizedBox(width: 8),
-                IconButton(
-                  onPressed: () => _scrollSection(controller, scrollStep),
-                  icon: const Icon(Icons.arrow_forward_ios_rounded, size: 15),
-                  color: OhtliColors.onyx,
-                  style: IconButton.styleFrom(
-                    backgroundColor: OhtliColors.cardBg,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: OhtliColors.cardBorder),
-                    ),
-                  ),
-                  tooltip: 'Siguiente',
-                ),
+                _buildShelfArrow(Icons.arrow_forward_ios_rounded, 'Siguiente', () => _scrollSection(controller, scrollStep)),
               ],
             ),
         ],
@@ -982,23 +1044,60 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildEmptyMisLugaresBanner() {
+  Widget _buildShelfArrow(IconData icon, String tooltip, VoidCallback onPressed) {
+    return IconButton(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 14),
+      color: OhtliColors.onyx,
+      tooltip: tooltip,
+      style: IconButton.styleFrom(
+        backgroundColor: OhtliColors.cardBg,
+        fixedSize: const Size(38, 38),
+        shape: CircleBorder(side: BorderSide(color: OhtliColors.cardBorder)),
+      ),
+    );
+  }
+
+  Widget _buildEmptyShelf({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String message,
+  }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
         color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: OhtliColors.cardBorder),
       ),
       child: Row(
         children: [
-          const Icon(Icons.bookmark_border_rounded, size: 24, color: OhtliColors.cempasuchil),
-          const SizedBox(width: 14),
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, size: 22, color: color),
+          ),
+          const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              'Guarda tus rincones favoritos tocando el ícono de marcador en cualquier tarjeta o modal para tenerlos a mano.',
-              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4),
+                ),
+              ],
             ),
           ),
         ],
@@ -1006,19 +1105,21 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildEmptyMisLugaresBanner() {
+    return _buildEmptyShelf(
+      icon: Icons.bookmark_border_rounded,
+      color: OhtliColors.cempasuchil,
+      title: 'Aún no guardas lugares',
+      message: 'Guarda tus rincones favoritos tocando el ícono de marcador en cualquier tarjeta o modal para tenerlos a mano.',
+    );
+  }
+
   Widget _buildEmptyRevisitaBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      decoration: BoxDecoration(
-        color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: OhtliColors.cardBorder),
-      ),
-      child: Text(
-        'Los lugares que explores se guardarán aquí automáticamente para que puedas revisarlos cuando quieras.',
-        style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
-      ),
+    return _buildEmptyShelf(
+      icon: Icons.history_rounded,
+      color: OhtliColors.stormyTeal,
+      title: 'Tu historial está vacío',
+      message: 'Los lugares que explores se guardarán aquí automáticamente para que puedas revisarlos cuando quieras.',
     );
   }
 
@@ -1029,30 +1130,39 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search_off_rounded, size: 48, color: OhtliColors.subtleText),
-            const SizedBox(height: 16),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.search_off_rounded, size: 34, color: OhtliColors.stormyTeal),
+            ),
+            const SizedBox(height: 18),
             Text(
               'No encontramos resultados',
-              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
             ),
             const SizedBox(height: 8),
             Text(
-              'Intenta con otra palabra clave como cafetería, museo o una colonia.',
-              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
+              'Intenta con otra palabra clave como cafetería, museo o una colonia, o quita algún filtro.',
+              style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.4),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                _searchController.clear();
-                setState(() {});
-              },
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _clearAllFilters,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Limpiar búsqueda y filtros'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.cempasuchil,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                backgroundColor: OhtliColors.stormyTeal,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              child: const Text('Limpiar Búsqueda'),
             ),
           ],
         ),
@@ -1140,7 +1250,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       width: width,
       decoration: BoxDecoration(
         color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: OhtliColors.cardBorder),
         boxShadow: [
           BoxShadow(
@@ -1151,7 +1261,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -1306,152 +1416,118 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   }
 
   Widget _buildFilterBar(bool isMobile) {
+    final categoryRow = ShaderMask(
+      // Desvanecido en los bordes para sugerir que la fila se desplaza
+      shaderCallback: (rect) => const LinearGradient(
+        colors: [Colors.white, Colors.white, Colors.transparent],
+        stops: [0.0, 0.94, 1.0],
+      ).createShader(rect),
+      blendMode: BlendMode.dstIn,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(right: 24),
+        child: Row(
+          children: _categoryFilters.map((cat) {
+            final id = cat['id']!;
+            final isSelected = (_selectedCategoryFilter == null && id == 'all') || (_selectedCategoryFilter == id);
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _buildFilterChip(
+                label: cat['label']!,
+                icon: _categoryIcons[id],
+                isSelected: isSelected,
+                onTap: () {
+                  setState(() {
+                    if (id == 'all' || _selectedCategoryFilter == id) {
+                      _selectedCategoryFilter = null;
+                    } else {
+                      _selectedCategoryFilter = id;
+                    }
+                  });
+                },
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+
+    final priceSelector = _buildPriceSelector();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                categoryRow,
+                const SizedBox(height: 10),
+                SingleChildScrollView(scrollDirection: Axis.horizontal, child: priceSelector),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: categoryRow),
+                const SizedBox(width: 12),
+                priceSelector,
+              ],
+            ),
+    );
+  }
+
+  // Selector de precio segmentado compacto
+  Widget _buildPriceSelector() {
     final prices = [
+      {'level': null, 'symbol': 'Todos', 'label': 'Cualquier precio'},
       {'level': 1, 'symbol': '\$', 'label': 'Económico'},
       {'level': 2, 'symbol': '\$\$', 'label': 'Moderado'},
       {'level': 3, 'symbol': '\$\$\$', 'label': 'Costoso'},
       {'level': 4, 'symbol': '\$\$\$\$', 'label': 'Exclusivo'},
     ];
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: OhtliColors.cardBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Row 1: Filtro de Precio
-          Row(
-            children: [
-              Text(
-                'Precio:',
-                style: GoogleFonts.inter(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: OhtliColors.onyx,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      // Chip "Todos" para precio
-                      _buildFilterChip(
-                        label: 'Todos',
-                        isSelected: _selectedPriceFilter == null,
-                        onTap: () {
-                          setState(() => _selectedPriceFilter = null);
-                        },
-                      ),
-                      const SizedBox(width: 6),
-                      ...prices.map((p) {
-                        final level = p['level'] as int;
-                        final symbol = p['symbol'] as String;
-                        final isSelected = _selectedPriceFilter == level;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: _buildFilterChip(
-                            label: symbol,
-                            tooltip: p['label'] as String,
-                            isSelected: isSelected,
-                            onTap: () {
-                              setState(() {
-                                if (_selectedPriceFilter == level) {
-                                  _selectedPriceFilter = null;
-                                } else {
-                                  _selectedPriceFilter = level;
-                                }
-                              });
-                            },
-                          ),
-                        );
-                      }),
-                      if (_selectedPriceFilter != null || _selectedCategoryFilter != null || _searchQuery.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              _selectedPriceFilter = null;
-                              _selectedCategoryFilter = null;
-                              _searchController.clear();
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: OhtliColors.xoconostle.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.3)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.close_rounded, size: 14, color: OhtliColors.xoconostle),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Limpiar filtros',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: OhtliColors.xoconostle,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+          Padding(
+            padding: const EdgeInsets.only(left: 8, right: 4),
+            child: Icon(Icons.payments_outlined, size: 16, color: OhtliColors.subtleText),
+          ),
+          ...prices.map((p) {
+            final level = p['level'] as int?;
+            final isSelected = _selectedPriceFilter == level;
+            return Tooltip(
+              message: p['label'] as String,
+              child: InkWell(
+                onTap: () => setState(() {
+                  _selectedPriceFilter = (level != null && _selectedPriceFilter == level) ? null : level;
+                }),
+                borderRadius: BorderRadius.circular(10),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: isSelected ? OhtliColors.stormyTeal : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    p['symbol'] as String,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected ? Colors.white : OhtliColors.onyx,
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Row 2: Filtro de Tipo / Categoría
-          Row(
-            children: [
-              Text(
-                'Tipo:',
-                style: GoogleFonts.inter(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: OhtliColors.onyx,
-                ),
-              ),
-              const SizedBox(width: 22),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _categoryFilters.map((cat) {
-                      final id = cat['id']!;
-                      final isSelected = (_selectedCategoryFilter == null && id == 'all') ||
-                          (_selectedCategoryFilter == id);
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: _buildFilterChip(
-                          label: '${cat['emoji']} ${cat['label']}',
-                          isSelected: isSelected,
-                          onTap: () {
-                            setState(() {
-                              if (id == 'all' || _selectedCategoryFilter == id) {
-                                _selectedCategoryFilter = null;
-                              } else {
-                                _selectedCategoryFilter = id;
-                              }
-                            });
-                          },
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            );
+          }),
         ],
       ),
     );
@@ -1461,37 +1537,39 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     required String label,
     required bool isSelected,
     required VoidCallback onTap,
+    IconData? icon,
     String? tooltip,
   }) {
-    final chip = InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBg,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-            width: isSelected ? 1.5 : 1.0,
+    final chip = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: isSelected ? OhtliColors.onyx : OhtliColors.cardBg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: isSelected ? OhtliColors.onyx : OhtliColors.cardBorder),
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: OhtliColors.stormyTeal.withValues(alpha: 0.25),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? Colors.white : OhtliColors.onyx,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 15, color: isSelected ? OhtliColors.cloudDancer : OhtliColors.stormyTeal),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? OhtliColors.cloudDancer : OhtliColors.onyx,
+                ),
+              ),
+            ],
           ),
         ),
       ),
