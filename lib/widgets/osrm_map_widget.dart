@@ -28,6 +28,9 @@ class OsrmMapWidget extends StatefulWidget {
   final String? title;
   final VoidCallback? onResetView;
   final void Function(Map<String, dynamic> stop)? onStopSelected;
+  /// Oculta la etiqueta de ruta y los botones de mapas externos (p. ej. en el modal de un lugar,
+  /// que ya ofrece "Cómo llegar"). Por defecto se muestran.
+  final bool compact;
 
   const OsrmMapWidget({
     super.key,
@@ -41,6 +44,7 @@ class OsrmMapWidget extends StatefulWidget {
     this.title,
     this.onResetView,
     this.onStopSelected,
+    this.compact = false,
   });
 
   @override
@@ -614,6 +618,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
             ),
 
             // Barra inferior compacta con controles fuera del PlatformView para garantizar clics
+            if (!widget.compact)
             Container(
               height: 44,
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -916,6 +921,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
                   ),
                 ),
 
+                if (!widget.compact)
                 Positioned(
                   top: 12,
                   left: 12,
@@ -990,6 +996,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
                   ),
                 ),
 
+                if (!widget.compact)
                 Positioned(
                   bottom: 12,
                   right: 12,
