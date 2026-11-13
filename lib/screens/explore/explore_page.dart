@@ -11,6 +11,7 @@ import '../../widgets/poi_detail_dialog.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
 import '../places/places_page.dart';
 import '../trips/trip_viewer_page.dart';
+import '../../config/editorial.dart';
 
 // Crónicas destacadas (fijadas por el equipo editorial)
 class PinnedStory {
@@ -85,6 +86,9 @@ class _ExplorePageState extends State<ExplorePage> {
   final Map<String, Future<DocumentSnapshot>> _authorFutures = {};
   int _pinnedPage = 0;
 
+  // Historias destacadas: últimas notas de versión del equipo + crónicas fijadas.
+  List<PinnedStory> _featured = List<PinnedStory>.from(kPinnedStories);
+
   late Future<List<Poi>> _placesFuture;
   late Future<List<_CommunityTrip>> _communityFuture;
 
@@ -93,6 +97,44 @@ class _ExplorePageState extends State<ExplorePage> {
     super.initState();
     _placesFuture = _loadDailyPlaces();
     _communityFuture = _loadCommunityTrips();
+    _loadReleaseNotes();
+  }
+
+  /// Notas de versión publicadas por el equipo editorial, la más reciente primero.
+  /// Solo filtros de igualdad: no requieren índice compuesto, y incluir
+  /// visibility == public permite que las reglas acepten la consulta de cualquiera.
+  Future<void> _loadReleaseNotes() async {
+    try {
+      final results = await Future.wait(kEditorialTeamUids.map((uid) => FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('trips')
+          .where('kind', isEqualTo: 'release_notes')
+          .where('status', isEqualTo: 'published')
+          .where('visibility', isEqualTo: 'public')
+          .get()
+          .timeout(const Duration(seconds: 10))));
+      final docs = results.expand((q) => q.docs).toList();
+      DateTime when(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+        final u = d.data()['updatedAt'];
+        return u is Timestamp ? u.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+      }
+
+      docs.sort((a, b) => when(b).compareTo(when(a)));
+      final notes = docs
+          .take(kFeaturedReleaseNotes)
+          .map((d) => PinnedStory(tripId: d.id, authorId: (d.data()['userId'] ?? d.reference.parent.parent!.id).toString()))
+          .toList();
+      if (notes.isEmpty || !mounted) return;
+      final ids = notes.map((n) => n.tripId).toSet();
+      setState(() {
+        _featured = [...notes, ...kPinnedStories.where((p) => !ids.contains(p.tripId))];
+        _pinnedPage = 0;
+      });
+      if (_pinnedController.hasClients) _pinnedController.jumpToPage(0);
+    } catch (e) {
+      print('No se pudieron cargar las notas de versión: $e');
+    }
   }
 
   @override
@@ -146,6 +188,8 @@ class _ExplorePageState extends State<ExplorePage> {
       final data = doc.data();
       // Las sorpresas no se muestran en el feed público
       if (data['isSurprise'] == true) continue;
+      // Las notas de versión van en el carrusel de destacadas, no en el feed
+      if (data['kind'] == 'release_notes') continue;
       final authorId = (data['userId'] ?? doc.reference.parent.parent?.id ?? '').toString();
       if (authorId.isEmpty) continue;
       final updated = data['updatedAt'];
@@ -221,7 +265,7 @@ class _ExplorePageState extends State<ExplorePage> {
                       children: [
                         _buildGreeting(isMobile, gutter),
                         _buildPinnedStoriesCarousel(isMobile, isDark),
-                        if (kPinnedStories.length > 1) _buildPinnedDots(),
+                        if (_featured.length > 1) _buildPinnedDots(),
                         const SizedBox(height: 8),
                         _buildQuickActions(isMobile, gutter),
                         const SizedBox(height: 28),
@@ -292,7 +336,7 @@ class _ExplorePageState extends State<ExplorePage> {
   Widget _buildPinnedDots() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(kPinnedStories.length, (i) {
+      children: List.generate(_featured.length, (i) {
         final active = i == _pinnedPage;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 250),
@@ -624,10 +668,10 @@ class _ExplorePageState extends State<ExplorePage> {
       width: double.infinity,
       child: PageView.builder(
         controller: _pinnedController,
-        itemCount: kPinnedStories.length,
+        itemCount: _featured.length,
         onPageChanged: (page) => setState(() => _pinnedPage = page),
         itemBuilder: (context, index) {
-          final pinned = kPinnedStories[index];
+          final pinned = _featured[index];
           return _buildPinnedStoryCard(pinned, isMobile, isDark);
         },
       ),
@@ -678,6 +722,11 @@ class _ExplorePageState extends State<ExplorePage> {
         final String title = tripData?['title'] ?? 'Sin Título';
         final String cover = tripData?['coverUrl'] ?? '';
         final String desc = tripData?['description'] ?? 'Sin descripción.';
+        final bool isReleaseNotes = tripData?['kind'] == 'release_notes';
+        final String? version = tripData?['version']?.toString();
+        final String badgeText = isReleaseNotes
+            ? 'NOVEDADES DE OHTLI${version != null && version.isNotEmpty ? ' · V$version' : ''}'
+            : 'CRÓNICA DESTACADA';
         
         final String authorName = authorData?['displayName'] ?? 'Viajero Ohtli';
         final String? authorPhoto = authorData?['photoURL'];
@@ -763,16 +812,16 @@ class _ExplorePageState extends State<ExplorePage> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: OhtliColors.xoconostle,
+                              color: isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.stars_rounded, color: Colors.white, size: 12),
+                                Icon(isReleaseNotes ? Icons.new_releases_rounded : Icons.stars_rounded, color: Colors.white, size: 12),
                                 const SizedBox(width: 4),
                                 Text(
-                                  'CRÓNICA DESTACADA',
+                                  badgeText,
                                   style: GoogleFonts.inter(
                                     color: Colors.white,
                                     fontSize: 9,
@@ -886,7 +935,7 @@ class _ExplorePageState extends State<ExplorePage> {
                                   Row(
                                     children: [
                                       Text(
-                                        'Leer historia',
+                                        isReleaseNotes ? 'Ver novedades' : 'Leer historia',
                                         style: GoogleFonts.inter(
                                           color: Colors.white,
                                           fontSize: 11,

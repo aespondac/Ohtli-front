@@ -21,6 +21,11 @@ import 'package:uuid/uuid.dart';
 import 'widgets/alert_block_editor.dart';
 import 'widgets/table_block_editor.dart';
 import 'widgets/coauthors_modal.dart';
+import 'trip_viewer_page.dart';
+import '../places/places_page.dart';
+import '../../models/poi_model.dart';
+import '../../services/trip_transfers.dart';
+import '../../config/editorial.dart';
 
 class TripEditorPage extends StatefulWidget {
   final Trip trip;
@@ -52,6 +57,27 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   // Persistent FocusNodes for text inputs to return focus when formatting
   final Map<String, FocusNode> _blockFocusNodes = {};
+
+  // Deshacer / rehacer (E4): instantáneas JSON del viaje. Las ráfagas de escritura
+  // se agrupan en un solo paso; las acciones estructurales siempre abren uno nuevo.
+  final List<String> _undoStack = [];
+  final List<String> _redoStack = [];
+  String? _currentSnapshot;
+  DateTime _lastSnapshotAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _isRestoringSnapshot = false;
+  bool _forceNewUndoStep = false;
+  static const int _maxUndoSteps = 40;
+
+  // Tipo de publicación: viaje o notas de versión (solo equipo editorial).
+  late String _kind = widget.trip.kind;
+  late final TextEditingController _versionController = TextEditingController(text: widget.trip.version ?? '');
+  bool get _canPublishReleaseNotes => isEditorialTeam(FirebaseAuth.instance.currentUser?.uid);
+
+  // Generación de los editores de bloque: al deshacer se recrean desde los datos.
+  int _editorGeneration = 0;
+
+  // Claves para desplazarse a un bloque desde el índice (E5).
+  final Map<String, GlobalKey> _blockKeys = {};
 
   // Image provider cache to prevent flickering
   final Map<String, ImageProvider> _imageProvidersCache = {};
@@ -161,6 +187,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _versionController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
     for (var controller in _blockControllers.values) {
@@ -195,6 +222,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         }
       }
 
+      _resetUndoBaseline();
       // Check browser localStorage for newer local cache
       _checkLocalCache();
     } catch (e) {
@@ -310,8 +338,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
             _blockControllers[section.id]!.text = section.markdownText;
           }
         }
+        _resetBlockEditors();
       }
     });
+    _resetUndoBaseline();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -353,6 +383,139 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // Local caching & debounced auto-save triggers
   void _onDataChanged() {
     _saveToLocalCache();
+    _recordUndoStep();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Deshacer / rehacer
+  // ---------------------------------------------------------------------------
+  String _buildSnapshot() => jsonEncode({
+        'title': _titleController.text,
+        'description': _descriptionController.markdownText,
+        'coverUrl': _coverUrl,
+        'sections': _sections.map((s) => s.toMap()).toList(),
+      });
+
+  void _resetUndoBaseline() {
+    _currentSnapshot = _buildSnapshot();
+    _lastSnapshotAt = DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  void _recordUndoStep() {
+    if (_isRestoringSnapshot) return;
+    final snap = _buildSnapshot();
+    if (_currentSnapshot == null) {
+      _currentSnapshot = snap;
+      return;
+    }
+    if (snap == _currentSnapshot) return;
+    final now = DateTime.now();
+    final bool hadUndo = _undoStack.isNotEmpty;
+    final bool hadRedo = _redoStack.isNotEmpty;
+    final bool sameBurst = !_forceNewUndoStep &&
+        now.difference(_lastSnapshotAt) < const Duration(milliseconds: 1200);
+    if (!sameBurst) {
+      _undoStack.add(_currentSnapshot!);
+      if (_undoStack.length > _maxUndoSteps) _undoStack.removeAt(0);
+    }
+    _redoStack.clear();
+    _currentSnapshot = snap;
+    // Tras una acción estructural, lo siguiente que se escriba es otro paso.
+    _lastSnapshotAt = _forceNewUndoStep ? DateTime.fromMillisecondsSinceEpoch(0) : now;
+    _forceNewUndoStep = false;
+    if (hadUndo != _undoStack.isNotEmpty || hadRedo != _redoStack.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(_currentSnapshot ?? _buildSnapshot());
+    _applySnapshot(_undoStack.removeLast());
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(_currentSnapshot ?? _buildSnapshot());
+    _applySnapshot(_redoStack.removeLast());
+  }
+
+  void _applySnapshot(String snap) {
+    final data = jsonDecode(snap) as Map<String, dynamic>;
+    _isRestoringSnapshot = true;
+    setState(() {
+      _titleController.text = data['title'] ?? '';
+      _descriptionController.text = data['description'] ?? '';
+      _coverUrl = data['coverUrl'] ?? '';
+      _sections = (data['sections'] as List<dynamic>)
+          .map((m) => TripSection.fromMap(Map<String, dynamic>.from(m as Map)))
+          .toList();
+      _resetBlockEditors();
+    });
+    _currentSnapshot = snap;
+    _lastSnapshotAt = DateTime.fromMillisecondsSinceEpoch(0);
+    _saveToLocalCache();
+    _isRestoringSnapshot = false;
+  }
+
+  /// Descarta los controladores de texto de los bloques para que se vuelvan a
+  /// crear con el contenido actual (tras deshacer o vincular un lugar).
+  void _resetBlockEditors() {
+    final old = _blockControllers.values.toList();
+    _blockControllers.clear();
+    _editorGeneration++;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final c in old) {
+        c.dispose();
+      }
+    });
+  }
+
+  Trip _buildCurrentTrip({String? coverUrl, DateTime? updatedAt}) {
+    return Trip(
+      id: widget.trip.id,
+      userId: widget.trip.userId,
+      title: _titleController.text,
+      description: _descriptionController.markdownText,
+      coverUrl: coverUrl ?? _coverUrl,
+      status: _status,
+      visibility: _visibility,
+      createdAt: widget.trip.createdAt,
+      updatedAt: updatedAt ?? DateTime.now(),
+      travelDate: _travelDate,
+      errataHistory: _errataHistory,
+      coAuthorIds: _coAuthorIds,
+      coAuthorNames: _coAuthorNames,
+      isSurprise: _isSurprise,
+      surpriseTargetIds: _surpriseTargetIds,
+      surpriseTargetNames: _surpriseTargetNames,
+      surpriseUnlockDates: _surpriseUnlockDates,
+      unlockOnPublish: _unlockOnPublish,
+      surpriseOpenedBy: widget.trip.surpriseOpenedBy,
+      reviewedAt: widget.trip.reviewedAt,
+      kind: _kind,
+      version: _kind == kTripKindReleaseNotes && _versionController.text.trim().isNotEmpty
+          ? _versionController.text.trim()
+          : null,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vista previa (E6)
+  // ---------------------------------------------------------------------------
+  void _openPreview() {
+    _syncAllTables();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TripViewerPage(
+          trip: _buildCurrentTrip(),
+          previewSections: List<TripSection>.from(_sections),
+        ),
+      ),
+    );
   }
 
   void _syncAllTables() {
@@ -511,15 +674,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
           finalSec.add(secUrl);
         }
 
-        updatedSections.add(PlaceSection(
-          id: section.id,
-          title: section.title,
-          description: section.description,
-          rating: section.rating,
+        updatedSections.add(section.copyWith(
           mainPhotoUrl: finalMain,
           secondaryPhotoUrls: finalSec,
-          cost: section.cost,
-          currency: section.currency,
         ));
       } else if (section is TextImageSection) {
         String finalImg = section.imageUrl;
@@ -549,27 +706,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       }
     }
 
-    final updatedTrip = Trip(
-      id: widget.trip.id,
-      userId: widget.trip.userId,
-      title: _titleController.text,
-      description: _descriptionController.markdownText,
-      coverUrl: finalCoverUrl,
-      status: _status,
-      visibility: _visibility,
-      createdAt: widget.trip.createdAt,
-      updatedAt: now,
-      travelDate: _travelDate,
-      errataHistory: _errataHistory,
-      coAuthorIds: _coAuthorIds,
-      coAuthorNames: _coAuthorNames,
-      isSurprise: _isSurprise,
-      surpriseTargetIds: _surpriseTargetIds,
-      surpriseTargetNames: _surpriseTargetNames,
-      surpriseUnlockDates: _surpriseUnlockDates,
-      unlockOnPublish: _unlockOnPublish,
-      surpriseOpenedBy: widget.trip.surpriseOpenedBy,
-    );
+    final updatedTrip = _buildCurrentTrip(coverUrl: finalCoverUrl, updatedAt: now);
 
     final updatedContent = TripContent(sections: updatedSections);
 
@@ -663,6 +800,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
   }
 
+  /// Índice actual de un bloque por su id. Los listeners de los controladores
+  /// se crean una sola vez, así que no pueden guardar el índice: al reordenar
+  /// escribirían en el bloque equivocado.
+  int _idx(String id) => _sections.indexWhere((s) => s.id == id);
+
   // Actions on Blocks
   void _addBlock(String type) {
     setState(() {
@@ -698,7 +840,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
           id: id,
           markdownText: '> [!NOTE]\n> Escribe tu nota aquí',
         ));
+      } else if (type == 'transfer') {
+        _sections.add(TransferSection(id: id));
       }
+      _forceNewUndoStep = true;
       _onDataChanged();
     });
   }
@@ -709,6 +854,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final temp = _sections[index];
       _sections[index] = _sections[index - 1];
       _sections[index - 1] = temp;
+      _forceNewUndoStep = true;
       _onDataChanged();
     });
   }
@@ -719,6 +865,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final temp = _sections[index];
       _sections[index] = _sections[index + 1];
       _sections[index + 1] = temp;
+      _forceNewUndoStep = true;
       _onDataChanged();
     });
   }
@@ -728,8 +875,253 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final sec = _sections[index];
       _blockControllers.remove(sec.id);
       _sections.removeAt(index);
+      _forceNewUndoStep = true;
       _onDataChanged();
     });
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Bloque eliminado', style: GoogleFonts.inter()),
+        backgroundColor: OhtliColors.onyx,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Deshacer',
+          textColor: OhtliColors.cempasuchil,
+          onPressed: _undo,
+        ),
+      ),
+    );
+  }
+
+  void _duplicateBlock(int index) {
+    final map = Map<String, dynamic>.from(_sections[index].toMap());
+    map['id'] = 'sec_${DateTime.now().millisecondsSinceEpoch}_${_sections.length}';
+    setState(() {
+      _sections.insert(index + 1, TripSection.fromMap(map));
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+  }
+
+  void _reorderBlocks(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (oldIndex == newIndex) return;
+    setState(() {
+      final moved = _sections.removeAt(oldIndex);
+      _sections.insert(newIndex, moved);
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+  }
+
+  void _scrollToBlock(String id) {
+    final ctx = _blockKeys[id]?.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeInOutCubic,
+      alignment: 0.08,
+    );
+  }
+
+  /// Etiqueta corta de un bloque para el índice.
+  (String, IconData) _blockOutlineInfo(TripSection s) {
+    if (s is TransferSection) return (describeTransfer(s), transferModeOf(s.mode).icon);
+    if (s is UnknownSection) return ('Bloque no compatible', Icons.help_outline_rounded);
+    if (s is PlaceSection) {
+      final t = s.title.trim();
+      return (t.isEmpty ? 'Lugar sin nombre' : t, Icons.location_on_rounded);
+    }
+    final String md = s is TextSection ? s.markdownText : (s as TextImageSection).markdownText;
+    if (s is TextSection && parseTableMarkdown(md) != null) {
+      return ('Tabla', Icons.table_chart_rounded);
+    }
+    final bool isAlert = s is TextSection && parseAlertMarkdown(md) != null;
+    final line = md
+        .split('\n')
+        .map((l) => l
+            .replaceAll(RegExp(r'\[![A-Z]+\]'), '')
+            .replaceAll(RegExp(r'[#>*_`~\[\]]'), '')
+            .trim())
+        .firstWhere((l) => l.isNotEmpty, orElse: () => '');
+    final label = line.isEmpty
+        ? (isAlert ? 'Nota' : (s is TextImageSection ? 'Texto con imagen' : 'Texto'))
+        : line;
+    final icon = isAlert
+        ? Icons.info_outline_rounded
+        : (s is TextImageSection ? Icons.photo_library_rounded : Icons.notes_rounded);
+    return (label, icon);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Horarios y ubicación de la parada (E3)
+  // ---------------------------------------------------------------------------
+  void _replacePlace(String sectionId, PlaceSection Function(PlaceSection) change, {bool resetEditors = false}) {
+    final i = _idx(sectionId);
+    if (i < 0 || _sections[i] is! PlaceSection) return;
+    setState(() {
+      _sections[i] = change(_sections[i] as PlaceSection);
+      if (resetEditors) _resetBlockEditors();
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+  }
+
+  TimeOfDay? _parseTime(String? value) {
+    if (value == null) return null;
+    final m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(value);
+    if (m == null) return null;
+    final h = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    if (h > 23 || min > 59) return null;
+    return TimeOfDay(hour: h, minute: min);
+  }
+
+  String _formatTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _pickPlaceTime(String sectionId, {required bool arrival}) async {
+    final i = _idx(sectionId);
+    if (i < 0) return;
+    final place = _sections[i] as PlaceSection;
+    final current = _parseTime(arrival ? place.arrivalTime : place.departureTime) ??
+        _parseTime(arrival ? null : place.arrivalTime) ??
+        const TimeOfDay(hour: 10, minute: 0);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: current,
+      helpText: arrival ? 'Hora de llegada' : 'Hora de salida',
+      cancelText: 'Cancelar',
+      confirmText: 'Listo',
+      builder: (ctx, child) => MediaQuery(
+        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    _replacePlace(sectionId, (p) => arrival
+        ? p.copyWith(arrivalTime: _formatTime(picked))
+        : p.copyWith(departureTime: _formatTime(picked)));
+  }
+
+  static String _normalize(String s) {
+    const from = 'áàäâéèëêíìïîóòöôúùüûñÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑ';
+    const to = 'aaaaeeeeiiiioooouuuunAAAAEEEEIIIIOOOOUUUUN';
+    final b = StringBuffer();
+    for (final ch in s.split('')) {
+      final i = from.indexOf(ch);
+      b.write(i >= 0 ? to[i] : ch);
+    }
+    return b.toString().toLowerCase();
+  }
+
+  /// Busca un lugar del catálogo y llena la parada con su ubicación, foto y costo.
+  Future<void> _linkPlaceFromCatalog(String sectionId) async {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final Poi? poi = await showDialog<Poi>(
+      context: context,
+      builder: (ctx) => _CatalogPickerDialog(isDark: isDark, normalize: _normalize),
+    );
+    if (poi == null || !mounted) return;
+    _replacePlace(
+      sectionId,
+      (p) => p.copyWith(
+        title: poi.name,
+        description: p.description.trim().isEmpty ? poi.cleanNarrative : null,
+        mainPhotoUrl: p.mainPhotoUrl.isEmpty && poi.imageUrl.isNotEmpty ? poi.imageUrl : null,
+        cost: p.cost <= 0 ? (poi.priceMxnAvg ?? (poi.priceLevel * 60.0)) : null,
+        lat: poi.location.isValid ? poi.location.lat : null,
+        lng: poi.location.isValid ? poi.location.lng : null,
+      ),
+      resetEditors: true,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          poi.location.isValid
+              ? '${poi.name} quedó vinculado y ya aparece en el mapa.'
+              : '${poi.name} quedó vinculado, pero no tiene coordenadas en el catálogo.',
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: OhtliColors.stormyTeal,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Revisión antes de publicar (E7)
+  // ---------------------------------------------------------------------------
+  /// Devuelve true si se puede continuar con la publicación.
+  Future<bool> _confirmPublishChecklist() async {
+    final places = _sections.whereType<PlaceSection>().toList();
+    final List<String> errors = [];
+    final List<String> warnings = [];
+    if (_titleController.text.trim().isEmpty) errors.add('Ponle un título a tu viaje.');
+    if (_kind == kTripKindReleaseNotes && _versionController.text.trim().isEmpty) {
+      errors.add('Indica el número de versión de estas notas (ej. 1.4.0).');
+    }
+    if (_sections.isEmpty) errors.add('La bitácora está vacía: añade al menos un bloque.');
+    final unnamed = places.where((p) => p.title.trim().isEmpty).length;
+    if (unnamed > 0) errors.add(unnamed == 1 ? 'Hay 1 lugar sin nombre.' : 'Hay $unnamed lugares sin nombre.');
+    if (_coverUrl.isEmpty) warnings.add('No tiene imagen de portada.');
+    if (_descriptionController.markdownText.trim().isEmpty) warnings.add('No tiene descripción.');
+    final noLocation = places.where((p) => p.lat == null || p.lng == null).length;
+    if (noLocation > 0) {
+      warnings.add(noLocation == 1
+          ? '1 lugar no tiene ubicación y no saldrá bien en el mapa.'
+          : '$noLocation lugares no tienen ubicación y no saldrán bien en el mapa.');
+    }
+    final noPhoto = places.where((p) => p.mainPhotoUrl.isEmpty).length;
+    if (noPhoto > 0) warnings.add(noPhoto == 1 ? '1 lugar no tiene foto.' : '$noPhoto lugares no tienen foto.');
+    if (errors.isEmpty && warnings.isEmpty) return true;
+
+    Widget row(String text, bool isError) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(isError ? Icons.error_rounded : Icons.warning_amber_rounded,
+                  size: 18, color: isError ? OhtliColors.xoconostle : OhtliColors.cempasuchil),
+              const SizedBox(width: 10),
+              Expanded(child: Text(text, style: GoogleFonts.inter(fontSize: 13.5, height: 1.35))),
+            ],
+          ),
+        );
+
+    final bool? go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          errors.isNotEmpty ? 'Falta algo antes de publicar' : 'Revisa antes de publicar',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...errors.map((e) => row(e, true)),
+              ...warnings.map((w) => row(w, false)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Revisar', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+          ),
+          if (errors.isEmpty)
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
+              child: Text('Publicar de todas formas', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            ),
+        ],
+      ),
+    );
+    return go == true;
   }
 
   // Mutator Helpers
@@ -742,6 +1134,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     double? cost,
     String? currency,
   }) {
+    if (index < 0 || index >= _sections.length || _sections[index] is! PlaceSection) return;
     final current = _sections[index] as PlaceSection;
     
     String finalMainPhoto = mainPhoto ?? current.mainPhotoUrl;
@@ -768,15 +1161,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
       finalSecondary.add('');
     }
 
-    final newSection = PlaceSection(
-      id: current.id,
-      title: title ?? current.title,
-      description: description ?? current.description,
-      rating: rating ?? current.rating,
+    final newSection = current.copyWith(
+      title: title,
+      description: description,
+      rating: rating,
       mainPhotoUrl: finalMainPhoto,
       secondaryPhotoUrls: finalSecondary,
-      cost: cost ?? current.cost,
-      currency: currency ?? current.currency,
+      cost: cost,
+      currency: currency,
     );
     
     if (current.title != newSection.title ||
@@ -794,6 +1186,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   void _updatePlaceSecondaryPhoto(int blockIndex, int slotIndex, String base64Photo) {
+    if (blockIndex < 0 || _sections[blockIndex] is! PlaceSection) return;
     final current = _sections[blockIndex] as PlaceSection;
     final List<String> currentSecondary = List<String>.from(current.secondaryPhotoUrls);
     
@@ -807,6 +1200,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   void _deletePlaceSecondaryPhoto(int blockIndex, int slotIndex) {
+    if (blockIndex < 0 || _sections[blockIndex] is! PlaceSection) return;
     final current = _sections[blockIndex] as PlaceSection;
     final List<String> currentSecondary = List<String>.from(current.secondaryPhotoUrls);
     if (slotIndex < currentSecondary.length) {
@@ -822,6 +1216,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   void _updateTextBlock(int index, {String? markdown}) {
+    if (index < 0 || index >= _sections.length || _sections[index] is! TextSection) return;
     final current = _sections[index] as TextSection;
     final newSection = TextSection(
       id: current.id,
@@ -836,6 +1231,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   void _updateTextImageBlock(int index, {String? markdown, String? photo, String? layout}) {
+    if (index < 0 || index >= _sections.length || _sections[index] is! TextImageSection) return;
     final current = _sections[index] as TextImageSection;
     final newSection = TextImageSection(
       id: current.id,
@@ -853,8 +1249,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
   }
 
-  void _uploadImageForBlock(int index, String type) {
+  void _uploadImageForBlock(int startIndex, String type) {
     if (!kIsWeb) return;
+    if (startIndex < 0 || startIndex >= _sections.length) return;
+    // El usuario puede reordenar mientras elige o recorta la foto: se resuelve por id al final.
+    final String sectionId = _sections[startIndex].id;
 
     try {
       final uploadInput = html.FileUploadInputElement()
@@ -881,6 +1280,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     aspectRatio: 3 / 4, // 3:4 Aspect Ratio for Place & Text/Image
                     onCropped: (String base64String) {
                       final String finalPhotoUrl = base64String;
+                      final int index = _idx(sectionId);
+                      if (index < 0) return;
                       if (type == 'place_main') {
                         _updatePlaceBlock(index, mainPhoto: finalPhotoUrl);
                       } else if (type == 'place_sec_0') {
@@ -1565,6 +1966,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (_status == 'published') {
       await _showErrataDialog();
     } else {
+      if (!await _confirmPublishChecklist()) return;
       await _showPublishOptionsDialog();
     }
   }
@@ -1752,11 +2154,19 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 onChanged: _onDataChanged,
               ),
 
+              if (_canPublishReleaseNotes || _kind == kTripKindReleaseNotes) ...[
+                const SizedBox(height: 16),
+                _buildKindSelector(isDark),
+              ],
+
               const Divider(height: 48, color: OhtliColors.cantera),
 
               // Blocks List Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
                 children: [
                   Text(
                     'Bitácora del Viaje',
@@ -1766,12 +2176,32 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       color: OhtliColors.onyx,
                     ),
                   ),
-                  Text(
-                    '${_sections.length} bloques',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: OhtliColors.onyx.withValues(alpha: 0.4),
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_sections.whereType<PlaceSection>().length >= 2)
+                        TextButton.icon(
+                          onPressed: _fillAllTransfers,
+                          style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal, visualDensity: VisualDensity.compact),
+                          icon: const Icon(Icons.add_road_rounded, size: 16),
+                          label: Text('Completar traslados', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        ),
+                      if (_sections.any((s) => s is PlaceSection))
+                        TextButton.icon(
+                          onPressed: _recalculateTimes,
+                          style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal, visualDensity: VisualDensity.compact),
+                          icon: const Icon(Icons.schedule_rounded, size: 16),
+                          label: Text('Ajustar horarios', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${_sections.length} bloques',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: OhtliColors.onyx.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1814,13 +2244,36 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         ],
                       ),
                     )
-                  : ListView.builder(
+                  : ReorderableListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
+                      buildDefaultDragHandles: false,
                       itemCount: _sections.length,
+                      onReorder: _reorderBlocks,
+                      proxyDecorator: (child, index, animation) => Material(
+                        color: Colors.transparent,
+                        elevation: 10,
+                        shadowColor: OhtliColors.onyx.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(20),
+                        child: child,
+                      ),
                       itemBuilder: (context, index) {
                         final section = _sections[index];
-                        return _buildBlockCard(index, section, isDark);
+                        final bool needsTransfer = section is PlaceSection &&
+                            _sections.take(index).any((s) => s is PlaceSection) &&
+                            transferBefore(_sections, index) == null;
+                        return KeyedSubtree(
+                          key: ValueKey('${section.id}_$_editorGeneration'),
+                          child: needsTransfer
+                              ? Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildMissingTransferConnector(section.id),
+                                    _buildBlockCard(index, section, isDark),
+                                  ],
+                                )
+                              : _buildBlockCard(index, section, isDark),
+                        );
                       },
                     ),
 
@@ -1869,6 +2322,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     label: 'Notas',
                     icon: Icons.info_outline_rounded,
                     onTap: () => _addBlock('notes'),
+                    width: 105,
+                  ),
+                  _buildAddBlockButton(
+                    label: 'Traslado',
+                    icon: Icons.add_road_rounded,
+                    onTap: () => _addBlock('transfer'),
                     width: 105,
                   ),
                 ],
@@ -1926,6 +2385,67 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ),
           ),
           actions: [
+            // 0. Deshacer / rehacer, índice y vista previa (E4–E6)
+            if (MediaQuery.of(context).size.width >= 760) ...[
+              IconButton(
+                tooltip: 'Deshacer (Ctrl+Z)',
+                icon: const Icon(Icons.undo_rounded, size: 20),
+                color: OhtliColors.stormyTeal,
+                onPressed: _undoStack.isEmpty ? null : _undo,
+              ),
+              IconButton(
+                tooltip: 'Rehacer (Ctrl+Shift+Z)',
+                icon: const Icon(Icons.redo_rounded, size: 20),
+                color: OhtliColors.stormyTeal,
+                onPressed: _redoStack.isEmpty ? null : _redo,
+              ),
+              if (MediaQuery.of(context).size.width < _outlinePanelMinWidth)
+                IconButton(
+                  tooltip: 'Índice de bloques',
+                  icon: const Icon(Icons.toc_rounded, size: 20),
+                  color: OhtliColors.stormyTeal,
+                  onPressed: _sections.isEmpty ? null : () => _showOutlineSheet(isDark),
+                ),
+              IconButton(
+                tooltip: 'Vista previa',
+                icon: const Icon(Icons.visibility_outlined, size: 20),
+                color: OhtliColors.stormyTeal,
+                onPressed: _isLoadingContent ? null : _openPreview,
+              ),
+              const SizedBox(width: 4),
+            ] else
+              PopupMenuButton<String>(
+                tooltip: 'Más acciones',
+                icon: const Icon(Icons.more_vert_rounded, color: OhtliColors.stormyTeal),
+                onSelected: (v) {
+                  if (v == 'undo') _undo();
+                  if (v == 'redo') _redo();
+                  if (v == 'outline') _showOutlineSheet(isDark);
+                  if (v == 'preview') _openPreview();
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'undo',
+                    enabled: _undoStack.isNotEmpty,
+                    child: const ListTile(dense: true, leading: Icon(Icons.undo_rounded), title: Text('Deshacer')),
+                  ),
+                  PopupMenuItem(
+                    value: 'redo',
+                    enabled: _redoStack.isNotEmpty,
+                    child: const ListTile(dense: true, leading: Icon(Icons.redo_rounded), title: Text('Rehacer')),
+                  ),
+                  PopupMenuItem(
+                    value: 'outline',
+                    enabled: _sections.isNotEmpty,
+                    child: const ListTile(dense: true, leading: Icon(Icons.toc_rounded), title: Text('Índice de bloques')),
+                  ),
+                  PopupMenuItem(
+                    value: 'preview',
+                    enabled: !_isLoadingContent,
+                    child: const ListTile(dense: true, leading: Icon(Icons.visibility_outlined), title: Text('Vista previa')),
+                  ),
+                ],
+              ),
             // 1. Co-authors button for plans (drafts) - ONLY for the owner/creator
             if (_isOwner) ...[
               _buildCoAuthorsAvatarStack(),
@@ -2034,12 +2554,55 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ],
         ),
         body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 800),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: mainContent,
+          child: Shortcuts(
+            shortcuts: const <ShortcutActivator, Intent>{
+              SingleActivator(LogicalKeyboardKey.keyZ, meta: true): _EditorUndoIntent(),
+              SingleActivator(LogicalKeyboardKey.keyZ, control: true): _EditorUndoIntent(),
+              SingleActivator(LogicalKeyboardKey.keyZ, meta: true, shift: true): _EditorRedoIntent(),
+              SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true): _EditorRedoIntent(),
+              SingleActivator(LogicalKeyboardKey.keyY, control: true): _EditorRedoIntent(),
+            },
+            child: Actions(
+              actions: {
+                _EditorUndoIntent: _UnlessTypingAction<_EditorUndoIntent>(_undo),
+                _EditorRedoIntent: _UnlessTypingAction<_EditorRedoIntent>(_redo),
+              },
+              child: Focus(
+                autofocus: true,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final Widget editorColumn = Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 800),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(24),
+                          child: mainContent,
+                        ),
+                      ),
+                    );
+                    if (constraints.maxWidth < _outlinePanelMinWidth || _isLoadingContent || _sections.isEmpty) {
+                      return editorColumn;
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 260,
+                          margin: const EdgeInsets.fromLTRB(16, 24, 0, 24),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
+                            ),
+                          ),
+                          child: _buildOutline(isDark),
+                        ),
+                        Expanded(child: editorColumn),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -2091,7 +2654,18 @@ class _TripEditorPageState extends State<TripEditorPage> {
     IconData typeIcon = Icons.article_outlined;
     Widget blockContent = const SizedBox();
 
-    if (section is PlaceSection) {
+    if (section is TransferSection) {
+      typeLabel = "Traslado";
+      typeIcon = transferModeOf(section.mode).icon;
+      blockContent = _buildTransferEditor(section, isDark);
+    } else if (section is UnknownSection) {
+      typeLabel = "Bloque no compatible";
+      typeIcon = Icons.help_outline_rounded;
+      blockContent = Text(
+        'Este bloque se creó con una versión más nueva de Ohtli. Se conserva sin cambios.',
+        style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withValues(alpha: 0.6)),
+      );
+    } else if (section is PlaceSection) {
       typeLabel = "Lugar Visitado";
       typeIcon = Icons.location_on_rounded;
       
@@ -2100,7 +2674,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         () {
           final c = TextEditingController(text: section.title);
           c.addListener(() {
-            _updatePlaceBlock(index, title: c.text);
+            _updatePlaceBlock(_idx(section.id), title: c.text);
           });
           return c;
         },
@@ -2111,7 +2685,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         () {
           final c = MarkdownRichTextController(text: section.description, context: context);
           c.addListener(() {
-            _updatePlaceBlock(index, description: c.markdownText);
+            _updatePlaceBlock(_idx(section.id), description: c.markdownText);
           });
           return c;
         },
@@ -2124,7 +2698,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           final c = TextEditingController(text: section.cost > 0 ? section.cost.toString() : '');
           c.addListener(() {
             final double? parsed = double.tryParse(c.text);
-            _updatePlaceBlock(index, cost: parsed ?? 0.0);
+            _updatePlaceBlock(_idx(section.id), cost: parsed ?? 0.0);
           });
           return c;
         },
@@ -2135,22 +2709,22 @@ class _TripEditorPageState extends State<TripEditorPage> {
           'url': section.mainPhotoUrl,
           'label': 'Principal',
           'type': 'place_main',
-          'onTap': () => _uploadImageForBlock(index, 'place_main'),
-          'onDelete': () => _updatePlaceBlock(index, mainPhoto: ''),
+          'onTap': () => _uploadImageForBlock(_idx(section.id), 'place_main'),
+          'onDelete': () => _updatePlaceBlock(_idx(section.id), mainPhoto: ''),
         },
         {
           'url': section.secondaryPhotoUrls.isNotEmpty ? section.secondaryPhotoUrls[0] : '',
           'label': 'Foto 2',
           'type': 'place_sec_0',
-          'onTap': () => _uploadImageForBlock(index, 'place_sec_0'),
-          'onDelete': () => _deletePlaceSecondaryPhoto(index, 0),
+          'onTap': () => _uploadImageForBlock(_idx(section.id), 'place_sec_0'),
+          'onDelete': () => _deletePlaceSecondaryPhoto(_idx(section.id), 0),
         },
         {
           'url': section.secondaryPhotoUrls.length > 1 ? section.secondaryPhotoUrls[1] : '',
           'label': 'Foto 3',
           'type': 'place_sec_1',
-          'onTap': () => _uploadImageForBlock(index, 'place_sec_1'),
-          'onDelete': () => _deletePlaceSecondaryPhoto(index, 1),
+          'onTap': () => _uploadImageForBlock(_idx(section.id), 'place_sec_1'),
+          'onDelete': () => _deletePlaceSecondaryPhoto(_idx(section.id), 1),
         },
       ];
 
@@ -2192,7 +2766,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       size: 20,
                     ),
                     onPressed: () {
-                      _updatePlaceBlock(index, rating: starIndex + 1);
+                      _updatePlaceBlock(_idx(section.id), rating: starIndex + 1);
                     },
                   );
                 }),
@@ -2257,7 +2831,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     }).toList(),
                     onChanged: (val) {
                       if (val != null) {
-                        _updatePlaceBlock(index, currency: val);
+                        _updatePlaceBlock(_idx(section.id), currency: val);
                       }
                     },
                   ),
@@ -2288,6 +2862,18 @@ class _TripEditorPageState extends State<TripEditorPage> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          // Horarios y ubicación (E3)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _buildTimeChip(section, arrival: true, isDark: isDark),
+              _buildTimeChip(section, arrival: false, isDark: isDark),
+              _buildLocationChip(section, isDark),
+            ],
+          ),
         ],
       );
 
@@ -2309,8 +2895,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     blockIndex: index,
                     photoUrl: '',
                     label: 'Principal',
-                    onTap: () => _uploadImageForBlock(index, 'place_main'),
-                    onDelete: () => _updatePlaceBlock(index, mainPhoto: ''),
+                    onTap: () => _uploadImageForBlock(_idx(section.id), 'place_main'),
+                    onDelete: () => _updatePlaceBlock(_idx(section.id), mainPhoto: ''),
                     isDark: isDark,
                   ),
                 ),
@@ -2391,7 +2977,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         blockContent = OhtliAlertBlockEditor(
           alertData: alertData,
           isDark: isDark,
-          onChanged: (newMarkdown) => _updateTextBlock(index, markdown: newMarkdown),
+          onChanged: (newMarkdown) => _updateTextBlock(_idx(section.id), markdown: newMarkdown),
         );
       } else if (tableData != null) {
         typeLabel = "Tabla";
@@ -2399,7 +2985,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         blockContent = OhtliTableBlockEditor(
           tableMarkdown: section.markdownText,
           isDark: isDark,
-          onChanged: (newMarkdown) => _updateTextBlock(index, markdown: newMarkdown),
+          onChanged: (newMarkdown) => _updateTextBlock(_idx(section.id), markdown: newMarkdown),
         );
       } else {
         typeLabel = "Nota / Historia";
@@ -2410,7 +2996,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           () {
             final c = MarkdownRichTextController(text: section.markdownText, context: context);
             c.addListener(() {
-              _updateTextBlock(index, markdown: c.markdownText);
+              _updateTextBlock(_idx(section.id), markdown: c.markdownText);
             });
             return c;
           },
@@ -2435,7 +3021,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         () {
           final c = MarkdownRichTextController(text: section.markdownText, context: context);
           c.addListener(() {
-            _updateTextImageBlock(index, markdown: c.markdownText);
+            _updateTextImageBlock(_idx(section.id), markdown: c.markdownText);
           });
           return c;
         },
@@ -2466,7 +3052,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
             child: section.imageUrl.isEmpty
                 ? GestureDetector(
-                    onTap: () => _uploadImageForBlock(index, 'text_image'),
+                    onTap: () => _uploadImageForBlock(_idx(section.id), 'text_image'),
                     behavior: HitTestBehavior.opaque,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -2509,13 +3095,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
                               GestureDetector(
-                                onTap: () => _uploadImageForBlock(index, 'text_image'),
+                                onTap: () => _uploadImageForBlock(_idx(section.id), 'text_image'),
                                 behavior: HitTestBehavior.opaque,
                                 child: const Icon(Icons.edit_rounded, color: Colors.white, size: 11),
                               ),
                               Container(width: 1, height: 10, color: Colors.white24),
                               GestureDetector(
-                                onTap: () => _updateTextImageBlock(index, photo: ''),
+                                onTap: () => _updateTextImageBlock(_idx(section.id), photo: ''),
                                 behavior: HitTestBehavior.opaque,
                                 child: const Icon(Icons.delete_rounded, color: Colors.white, size: 11),
                               ),
@@ -2554,7 +3140,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     label: Text('Izquierda', style: GoogleFonts.inter(fontSize: 11)),
                     selected: section.layout == 'left',
                     onSelected: (val) {
-                      if (val) _updateTextImageBlock(index, layout: 'left');
+                      if (val) _updateTextImageBlock(_idx(section.id), layout: 'left');
                     },
                   ),
                   const SizedBox(width: 8),
@@ -2563,7 +3149,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     label: Text('Derecha', style: GoogleFonts.inter(fontSize: 11)),
                     selected: section.layout == 'right',
                     onSelected: (val) {
-                      if (val) _updateTextImageBlock(index, layout: 'right');
+                      if (val) _updateTextImageBlock(_idx(section.id), layout: 'right');
                     },
                   ),
                 ],
@@ -2603,6 +3189,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
 
     return Container(
+      key: _blockKeys.putIfAbsent(section.id, () => GlobalKey()),
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
@@ -2631,6 +3218,20 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
             child: Row(
               children: [
+                // Asa para arrastrar el bloque (E2)
+                ReorderableDragStartListener(
+                  index: index,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.grab,
+                    child: Tooltip(
+                      message: 'Arrastra para reordenar',
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Icon(Icons.drag_indicator_rounded, size: 18, color: OhtliColors.onyx.withValues(alpha: 0.4)),
+                      ),
+                    ),
+                  ),
+                ),
                 Icon(typeIcon, size: 16, color: OhtliColors.stormyTeal),
                 const SizedBox(width: 8),
                 Text(
@@ -2660,8 +3261,19 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   onPressed: index < _sections.length - 1 ? () => _moveDown(index) : null,
                 ),
                 const SizedBox(width: 12),
+                // Duplicate Button (E5)
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Duplicar bloque',
+                  icon: const Icon(Icons.copy_all_rounded, size: 16),
+                  color: OhtliColors.stormyTeal,
+                  onPressed: () => _duplicateBlock(index),
+                ),
+                const SizedBox(width: 12),
                 // Delete Button
                 IconButton(
+                  tooltip: 'Eliminar bloque',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   icon: const Icon(Icons.delete_outline_rounded, size: 16),
@@ -2680,6 +3292,588 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
+
+  static const double _outlinePanelMinWidth = 1240;
+
+  /// Selector "Viaje / Notas de versión" (solo cuentas del equipo editorial).
+  Widget _buildKindSelector(bool isDark) {
+    final bool isNotes = _kind == kTripKindReleaseNotes;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isNotes
+            ? OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.18 : 0.06)
+            : (isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.12)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: isNotes ? 0.35 : 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('Tipo de publicación',
+                  style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx.withValues(alpha: 0.7))),
+              SegmentedButton<String>(
+                showSelectedIcon: false,
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: OhtliColors.stormyTeal,
+                  selectedForegroundColor: Colors.white,
+                  textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600),
+                  visualDensity: VisualDensity.compact,
+                ),
+                segments: const [
+                  ButtonSegment(value: kTripKindTrip, icon: Icon(Icons.map_outlined, size: 16), label: Text('Viaje')),
+                  ButtonSegment(value: kTripKindReleaseNotes, icon: Icon(Icons.new_releases_outlined, size: 16), label: Text('Notas de versión')),
+                ],
+                selected: {_kind},
+                onSelectionChanged: _canPublishReleaseNotes
+                    ? (v) {
+                        setState(() => _kind = v.first);
+                        _forceNewUndoStep = true;
+                        _onDataChanged();
+                      }
+                    : null,
+              ),
+              if (isNotes)
+                SizedBox(
+                  width: 140,
+                  child: TextField(
+                    controller: _versionController,
+                    enabled: _canPublishReleaseNotes,
+                    onChanged: (_) => _onDataChanged(),
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      labelText: 'Versión',
+                      hintText: '1.4.0',
+                      prefixText: 'v',
+                      isDense: true,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (isNotes) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Al publicarlas (públicas) aparecen como historia destacada en Explorar y no en el feed de la comunidad. '
+              'Usa bloques de texto, notas, tablas e imágenes para contar qué hay de nuevo.',
+              style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: OhtliColors.onyx.withValues(alpha: 0.6)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Traslados entre paradas
+  // ---------------------------------------------------------------------------
+  String _newSectionId() => 'sec_${DateTime.now().microsecondsSinceEpoch}_${_sections.length}';
+
+  void _replaceTransfer(String id, TransferSection Function(TransferSection) change, {bool structural = true}) {
+    final i = _idx(id);
+    if (i < 0 || _sections[i] is! TransferSection) return;
+    final next = change(_sections[i] as TransferSection);
+    setState(() {
+      _sections[i] = next;
+      if (structural) _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+  }
+
+  /// Paradas vecinas de un traslado (la anterior y la siguiente en la bitácora).
+  (PlaceSection?, PlaceSection?) _placesAround(int index) {
+    PlaceSection? before;
+    PlaceSection? after;
+    for (int i = index - 1; i >= 0; i--) {
+      if (_sections[i] is PlaceSection) {
+        before = _sections[i] as PlaceSection;
+        break;
+      }
+    }
+    for (int i = index + 1; i < _sections.length; i++) {
+      if (_sections[i] is PlaceSection) {
+        after = _sections[i] as PlaceSection;
+        break;
+      }
+    }
+    return (before, after);
+  }
+
+  void _estimateTransfer(String id) {
+    final i = _idx(id);
+    if (i < 0) return;
+    final t = _sections[i] as TransferSection;
+    final (a, b) = _placesAround(i);
+    final est = (a != null && b != null) ? estimateTransfer(a, b, t.mode, id: t.id) : null;
+    if (est == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Para estimarlo, las paradas de antes y después deben tener ubicación.', style: GoogleFonts.inter()),
+        backgroundColor: OhtliColors.xoconostle,
+      ));
+      return;
+    }
+    _replaceTransfer(id, (_) => est.copyWith(notes: t.notes));
+    _resetBlockEditors();
+  }
+
+  /// Inserta un traslado estimado justo antes de la parada [placeId].
+  void _insertTransferBefore(String placeId) {
+    final i = _idx(placeId);
+    if (i < 0) return;
+    final (prev, _) = _placesAround(i);
+    final place = _sections[i] as PlaceSection;
+    final id = _newSectionId();
+    final t = (prev != null ? estimateTransfer(prev, place, 'walking', id: id) : null) ?? TransferSection(id: id);
+    setState(() {
+      _sections.insert(i, t);
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+  }
+
+  Future<void> _fillAllTransfers() async {
+    final String? mode = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('¿Cómo te vas a mover?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(
+              'Se añadirá un traslado estimado entre cada par de paradas que no tenga uno. Luego puedes cambiar cada tramo.',
+              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withValues(alpha: 0.65)),
+            ),
+          ),
+          ...kTransferModes.where((m) => m.id != 'other').map((m) => SimpleDialogOption(
+                onPressed: () => Navigator.of(ctx).pop(m.id),
+                child: Row(children: [
+                  Icon(m.icon, color: OhtliColors.stormyTeal, size: 20),
+                  const SizedBox(width: 12),
+                  Text(m.label, style: GoogleFonts.inter(fontSize: 14)),
+                ]),
+              )),
+        ],
+      ),
+    );
+    if (mode == null || !mounted) return;
+    final (list, added) = fillMissingTransfers(_sections, mode, _newSectionId);
+    if (added > 0) {
+      setState(() {
+        _sections = list;
+        _forceNewUndoStep = true;
+        _onDataChanged();
+      });
+    }
+    final places = _sections.whereType<PlaceSection>().where((p) => p.lat == null || p.lng == null).length;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        added == 0
+            ? (places > 0
+                ? 'No se añadió nada: faltan ubicaciones en $places ${places == 1 ? 'parada' : 'paradas'}.'
+                : 'Todas las paradas ya tienen traslado.')
+            : 'Se añadieron $added ${added == 1 ? 'traslado' : 'traslados'} estimados.',
+        style: GoogleFonts.inter(),
+      ),
+      backgroundColor: OhtliColors.stormyTeal,
+      action: added > 0 ? SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo) : null,
+    ));
+  }
+
+  Future<void> _recalculateTimes() async {
+    final places = _sections.whereType<PlaceSection>().toList();
+    if (places.isEmpty) return;
+    String start = places.first.arrivalTime ?? '';
+    if (parseClockMinutes(start) == null) {
+      final picked = await showTimePicker(
+        context: context,
+        initialTime: const TimeOfDay(hour: 10, minute: 0),
+        helpText: '¿A qué hora empiezas?',
+        cancelText: 'Cancelar',
+        confirmText: 'Listo',
+        builder: (ctx, child) => MediaQuery(
+          data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        ),
+      );
+      if (picked == null || !mounted) return;
+      start = _formatTime(picked);
+    }
+    setState(() {
+      _sections = recalculateSchedule(_sections, startTime: start);
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Horarios ajustados con las estancias y los traslados.', style: GoogleFonts.inter()),
+      backgroundColor: OhtliColors.stormyTeal,
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+    ));
+  }
+
+  Widget _buildTransferEditor(TransferSection t, bool isDark) {
+    final sid = t.id;
+    TextEditingController ctrl(String suffix, String initial, void Function(String) onChange) {
+      return _blockControllers.putIfAbsent('${sid}_$suffix', () {
+        final c = TextEditingController(text: initial);
+        String last = initial;
+        c.addListener(() {
+          if (c.text == last) return;
+          last = c.text;
+          onChange(c.text);
+        });
+        return c;
+      });
+    }
+
+    final minsCtrl = ctrl('mins', t.durationMins?.toString() ?? '', (v) {
+      final n = int.tryParse(v);
+      _replaceTransfer(sid, (x) => n == null ? x.copyWith(clearDuration: true, isEstimated: false) : x.copyWith(durationMins: n, isEstimated: false),
+          structural: false);
+    });
+    final kmCtrl = ctrl('km', t.distanceKm?.toString() ?? '', (v) {
+      final n = double.tryParse(v);
+      _replaceTransfer(sid, (x) => n == null ? x.copyWith(clearDistance: true, isEstimated: false) : x.copyWith(distanceKm: n, isEstimated: false),
+          structural: false);
+    });
+    final costCtrl = ctrl('cost', t.cost > 0 ? t.cost.toStringAsFixed(t.cost % 1 == 0 ? 0 : 2) : '', (v) {
+      _replaceTransfer(sid, (x) => x.copyWith(cost: double.tryParse(v) ?? 0), structural: false);
+    });
+    final notesCtrl = ctrl('notes', t.notes, (v) {
+      _replaceTransfer(sid, (x) => x.copyWith(notes: v), structural: false);
+    });
+
+    InputDecoration deco(String label, {String? suffix}) => InputDecoration(
+          labelText: label,
+          suffixText: suffix,
+          isDense: true,
+          labelStyle: GoogleFonts.inter(fontSize: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        );
+
+    final i = _idx(sid);
+    final (a, b) = i >= 0 ? _placesAround(i) : (null, null);
+    final mode = transferModeOf(t.mode);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (a != null || b != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              '${a?.title.isNotEmpty == true ? a!.title : 'Inicio'}  →  ${b?.title.isNotEmpty == true ? b!.title : 'Siguiente parada'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx.withValues(alpha: 0.7)),
+            ),
+          ),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: kTransferModes.map((m) {
+            final selected = m.id == t.mode;
+            return ChoiceChip(
+              selected: selected,
+              showCheckmark: false,
+              avatar: Icon(m.icon, size: 16, color: selected ? Colors.white : OhtliColors.stormyTeal),
+              label: Text(m.label,
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? Colors.white : OhtliColors.onyx)),
+              selectedColor: OhtliColors.stormyTeal,
+              backgroundColor: isDark ? const Color(0xFF25252A) : OhtliColors.stormyTeal.withValues(alpha: 0.06),
+              side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: selected ? 1 : 0.2)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              onSelected: (_) {
+                // Si el tramo era estimado, se vuelve a estimar con el nuevo modo.
+                if (t.isEstimated && a != null && b != null) {
+                  final est = estimateTransfer(a, b, m.id, id: sid);
+                  if (est != null) {
+                    _replaceTransfer(sid, (_) => est.copyWith(notes: t.notes));
+                    _resetBlockEditors();
+                    return;
+                  }
+                }
+                _replaceTransfer(sid, (x) => x.copyWith(mode: m.id));
+              },
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            SizedBox(
+              width: 110,
+              child: TextField(
+                controller: minsCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: GoogleFonts.inter(fontSize: 13),
+                decoration: deco('Duración', suffix: 'min'),
+              ),
+            ),
+            SizedBox(
+              width: 110,
+              child: TextField(
+                controller: kmCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                style: GoogleFonts.inter(fontSize: 13),
+                decoration: deco('Distancia', suffix: 'km'),
+              ),
+            ),
+            SizedBox(
+              width: 120,
+              child: TextField(
+                controller: costCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                style: GoogleFonts.inter(fontSize: 13),
+                decoration: deco('Costo', suffix: t.currency),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: notesCtrl,
+          minLines: 1,
+          maxLines: 3,
+          style: GoogleFonts.inter(fontSize: 13),
+          decoration: deco(mode.id == 'walking'
+              ? 'Indicaciones (ej. sube por Madero hasta el Zócalo)'
+              : 'Indicaciones (ej. Línea 2 dirección Taxqueña, baja en Zócalo)'),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            TextButton.icon(
+              onPressed: () => _estimateTransfer(sid),
+              icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
+              label: Text('Estimar con el mapa', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ),
+            if (t.isEstimated)
+              Tooltip(
+                message: 'Calculado por Ohtli a partir de la ubicación de las paradas. Puedes corregirlo.',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: OhtliColors.cempasuchil.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('Estimado por Ohtli',
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.cempasuchil)),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Conector "+ Añadir traslado" entre dos paradas seguidas que no tienen uno.
+  Widget _buildMissingTransferConnector(String placeId) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          const SizedBox(width: 22),
+          Container(width: 2, height: 22, color: OhtliColors.stormyTeal.withValues(alpha: 0.25)),
+          const SizedBox(width: 10),
+          TextButton.icon(
+            onPressed: () => _insertTransferBefore(placeId),
+            style: TextButton.styleFrom(
+              foregroundColor: OhtliColors.stormyTeal,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              visualDensity: VisualDensity.compact,
+            ),
+            icon: const Icon(Icons.add_road_rounded, size: 16),
+            label: Text('Añadir traslado', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Índice de bloques (E5): toca para ir al bloque, arrastra para reordenar.
+  Widget _buildOutline(bool isDark, {VoidCallback? onNavigate, VoidCallback? onReordered}) {
+    int placeNumber = 0;
+    final numbers = <String, int>{};
+    for (final s in _sections) {
+      if (s is PlaceSection) numbers[s.id] = ++placeNumber;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Row(
+            children: [
+              const Icon(Icons.toc_rounded, size: 18, color: OhtliColors.stormyTeal),
+              const SizedBox(width: 8),
+              Text('Índice', style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: OhtliColors.onyx)),
+              const Spacer(),
+              Text('${_sections.length}', style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withValues(alpha: 0.4))),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            'Toca para ir · arrastra para mover',
+            style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.onyx.withValues(alpha: 0.45)),
+          ),
+        ),
+        Flexible(
+          child: ReorderableListView.builder(
+            shrinkWrap: true,
+            buildDefaultDragHandles: false,
+            padding: const EdgeInsets.only(bottom: 12),
+            itemCount: _sections.length,
+            onReorder: (a, b) {
+              _reorderBlocks(a, b);
+              onReordered?.call();
+            },
+            proxyDecorator: (child, index, animation) => Material(
+              color: isDark ? const Color(0xFF25252A) : Colors.white,
+              elevation: 6,
+              borderRadius: BorderRadius.circular(10),
+              child: child,
+            ),
+            itemBuilder: (context, i) {
+              final s = _sections[i];
+              final (label, icon) = _blockOutlineInfo(s);
+              final n = numbers[s.id];
+              return ReorderableDragStartListener(
+                key: ValueKey('outline_${s.id}'),
+                index: i,
+                child: InkWell(
+                  onTap: () {
+                    onNavigate?.call();
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(s.id));
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 26,
+                          child: n != null
+                              ? CircleAvatar(
+                                  radius: 11,
+                                  backgroundColor: OhtliColors.xoconostle,
+                                  child: Text('$n', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white)),
+                                )
+                              : Icon(icon, size: 16, color: OhtliColors.stormyTeal),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: s is PlaceSection ? FontWeight.w600 : FontWeight.w400,
+                              color: OhtliColors.onyx.withValues(alpha: s is PlaceSection ? 0.9 : 0.65),
+                            ),
+                          ),
+                        ),
+                        if (s is PlaceSection && (s.lat == null || s.lng == null))
+                          const Tooltip(
+                            message: 'Sin ubicación',
+                            child: Icon(Icons.location_off_outlined, size: 14, color: OhtliColors.xoconostle),
+                          ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.drag_indicator_rounded, size: 16, color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showOutlineSheet(bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheet) => ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+          child: SafeArea(
+            child: _buildOutline(
+              isDark,
+              onNavigate: () => Navigator.of(sheetCtx).pop(),
+              onReordered: () => setSheet(() {}),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeChip(PlaceSection place, {required bool arrival, required bool isDark}) {
+    final String? value = arrival ? place.arrivalTime : place.departureTime;
+    final bool hasValue = value != null && value.trim().isNotEmpty;
+    final String label = arrival ? 'Llegada' : 'Salida';
+    return InputChip(
+      avatar: Icon(arrival ? Icons.login_rounded : Icons.logout_rounded, size: 15, color: OhtliColors.stormyTeal),
+      label: Text(
+        hasValue ? '$label · $value' : '+ $label',
+        style: GoogleFonts.inter(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: hasValue ? OhtliColors.onyx : OhtliColors.onyx.withValues(alpha: 0.55),
+        ),
+      ),
+      tooltip: hasValue ? 'Cambiar hora de ${label.toLowerCase()}' : 'Añadir hora de ${label.toLowerCase()}',
+      backgroundColor: isDark ? const Color(0xFF25252A) : OhtliColors.stormyTeal.withValues(alpha: 0.06),
+      side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: hasValue ? 0.35 : 0.15)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      onPressed: () => _pickPlaceTime(place.id, arrival: arrival),
+      onDeleted: hasValue
+          ? () => _replacePlace(
+                place.id,
+                (p) => arrival ? p.copyWith(clearArrivalTime: true) : p.copyWith(clearDepartureTime: true),
+              )
+          : null,
+      deleteIcon: const Icon(Icons.close_rounded, size: 14),
+      deleteButtonTooltipMessage: 'Quitar hora',
+    );
+  }
+
+  Widget _buildLocationChip(PlaceSection place, bool isDark) {
+    final bool located = place.lat != null && place.lng != null;
+    final Color tone = located ? OhtliColors.stormyTeal : OhtliColors.xoconostle;
+    return ActionChip(
+      avatar: Icon(located ? Icons.where_to_vote_rounded : Icons.travel_explore_rounded, size: 15, color: tone),
+      label: Text(
+        located ? 'En el mapa · Cambiar lugar' : 'Sin ubicación · Buscar en el catálogo',
+        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: tone),
+      ),
+      tooltip: 'Vincular con un lugar del catálogo de Ohtli',
+      backgroundColor: tone.withValues(alpha: isDark ? 0.18 : 0.07),
+      side: BorderSide(color: tone.withValues(alpha: 0.3)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      onPressed: () => _linkPlaceFromCatalog(place.id),
+    );
+  }
 
   Widget _buildPhotoStack(List<Map<String, dynamic>> uploadedSlots, bool isDark) {
     // Sort so back cards are drawn first and front card (place_main) is drawn last (on top/front of Stack)
@@ -3134,6 +4328,183 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Atajos de deshacer: si el foco está en un campo de texto, se deja pasar el
+// atajo para que el campo use su propio deshacer.
+// -----------------------------------------------------------------------------
+class _EditorUndoIntent extends Intent {
+  const _EditorUndoIntent();
+}
+
+class _EditorRedoIntent extends Intent {
+  const _EditorRedoIntent();
+}
+
+class _UnlessTypingAction<T extends Intent> extends Action<T> {
+  _UnlessTypingAction(this.onInvoke);
+  final VoidCallback onInvoke;
+
+  bool get _isTyping {
+    final ctx = FocusManager.instance.primaryFocus?.context;
+    return ctx != null && ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  @override
+  bool isEnabled(T intent) => !_isTyping;
+
+  @override
+  Object? invoke(T intent) {
+    onInvoke();
+    return null;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Buscador del catálogo de lugares (E3)
+// -----------------------------------------------------------------------------
+class _CatalogPickerDialog extends StatefulWidget {
+  final bool isDark;
+  final String Function(String) normalize;
+
+  const _CatalogPickerDialog({required this.isDark, required this.normalize});
+
+  @override
+  State<_CatalogPickerDialog> createState() => _CatalogPickerDialogState();
+}
+
+class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
+  late final Future<List<Poi>> _catalog = PlacesPage.loadCatalog();
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    return Dialog(
+      backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 620),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Vincular con un lugar',
+                      style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Cerrar',
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              Text(
+                'Toma la ubicación, la foto y el costo del catálogo de Ohtli.',
+                style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.55)),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                autofocus: true,
+                onChanged: (v) => setState(() => _query = v),
+                style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx),
+                decoration: InputDecoration(
+                  hintText: 'Busca por nombre o colonia…',
+                  prefixIcon: const Icon(Icons.search_rounded, color: OhtliColors.stormyTeal),
+                  isDense: true,
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: FutureBuilder<List<Poi>>(
+                  future: _catalog,
+                  builder: (context, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
+                    }
+                    if (snap.hasError || (snap.data ?? []).isEmpty) {
+                      return Center(
+                        child: Text(
+                          'No pudimos cargar el catálogo. Revisa tu conexión e intenta de nuevo.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6)),
+                        ),
+                      );
+                    }
+                    final q = widget.normalize(_query.trim());
+                    final all = snap.data!;
+                    final results = (q.isEmpty
+                            ? all
+                            : all.where((p) => widget.normalize('${p.name} ${p.coloniaAlcaldiaDisplay}').contains(q)))
+                        .take(40)
+                        .toList();
+                    if (results.isEmpty) {
+                      return Center(
+                        child: Text('Sin resultados para "$_query".',
+                            style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6))),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: results.length,
+                      separatorBuilder: (_, __) => Divider(height: 1, color: OhtliColors.cantera.withValues(alpha: 0.3)),
+                      itemBuilder: (context, i) {
+                        final p = results[i];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: p.imageUrl.isNotEmpty
+                                  ? Image.network(
+                                      p.imageUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(Icons.place_rounded, color: OhtliColors.stormyTeal),
+                                    )
+                                  : const Icon(Icons.place_rounded, color: OhtliColors.stormyTeal),
+                            ),
+                          ),
+                          title: Text(p.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14, color: OhtliColors.onyx)),
+                          subtitle: Text(
+                            '${p.categoryDisplay} · ${p.coloniaAlcaldiaDisplay}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withValues(alpha: 0.55)),
+                          ),
+                          trailing: p.location.isValid
+                              ? null
+                              : const Tooltip(
+                                  message: 'Sin coordenadas',
+                                  child: Icon(Icons.location_off_outlined, size: 16, color: OhtliColors.xoconostle),
+                                ),
+                          onTap: () => Navigator.of(context).pop(p),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),

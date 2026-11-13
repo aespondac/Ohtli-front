@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../models/trip_model.dart';
+import 'trip_transfers.dart';
 import '../theme/cdmx_photos.dart';
 import 'trip_service.dart';
 
@@ -283,6 +284,22 @@ class ItineraryBlackboardService {
       }
       final arrivalTime = stop['arrival_time']?.toString();
       final departureTime = stop['departure_time']?.toString();
+
+      // Traslado desde la parada anterior, tal como lo calculó el motor (OSRM).
+      if (i > 0) {
+        final mins = (stop['travel_time_from_prev_mins'] as num?)?.toInt();
+        final km = (stop['travel_distance_from_prev_km'] as num?)?.toDouble();
+        if (mins != null || km != null) {
+          sections.add(TransferSection(
+            id: 'sec_${const Uuid().v4()}',
+            mode: normalizeTransferMode(
+                (stop['transport_mode'] ?? chosenOption['transport_mode'])?.toString()),
+            durationMins: mins,
+            distanceKm: km,
+            isEstimated: true,
+          ));
+        }
+      }
 
       sections.add(
         PlaceSection(

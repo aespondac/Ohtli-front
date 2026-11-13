@@ -47,6 +47,7 @@ dependencies:
   firebase_app_check: ^0.4.4+1
   http: ^1.6.0
   pdf: ^3.13.1
+  barcode: ^2.2.9
   printing: ^5.15.1
 
 dev_dependencies:

@@ -232,6 +232,8 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         secondaryPhotoUrls: [],
         cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),
         currency: 'MXN',
+        lat: poi.location.isValid ? poi.location.lat : null,
+        lng: poi.location.isValid ? poi.location.lng : null,
       );
 
       final newTrip = Trip(

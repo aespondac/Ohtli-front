@@ -488,6 +488,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         secondaryPhotoUrls: [],
         cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),
         currency: 'MXN',
+        lat: poi.location.isValid ? poi.location.lat : null,
+        lng: poi.location.isValid ? poi.location.lng : null,
       );
 
       final newTrip = Trip(

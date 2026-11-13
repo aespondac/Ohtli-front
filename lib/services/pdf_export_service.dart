@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/trip_model.dart';
+import 'trip_transfers.dart';
 
 class PdfExportService {
   // Paleta de colores institucional Ohtli (Estilo Editorial Mexicano)
@@ -176,6 +177,8 @@ class PdfExportService {
                 return _buildMarkdownBlocks(section.markdownText);
               } else if (section is TextImageSection) {
                 return _buildMarkdownBlocks(section.markdownText);
+              } else if (section is TransferSection) {
+                return [_buildTransferItem(section)];
               }
               return <pw.Widget>[];
             }),
@@ -516,6 +519,32 @@ class PdfExportService {
   }
 
   /// Elemento individual de parada (Lugar / POI) con estrellas vectoriales
+  /// Traslado entre paradas: una línea discreta con modo, tiempo, costo e indicaciones.
+  static pw.Widget _buildTransferItem(TransferSection t) {
+    final cost = t.cost > 0 ? '  ·  \$${t.cost.toStringAsFixed(t.cost % 1 == 0 ? 0 : 2)} ${t.currency}' : '';
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(left: 18, bottom: 12),
+      padding: const pw.EdgeInsets.only(left: 12, top: 2, bottom: 2),
+      decoration: pw.BoxDecoration(
+        border: pw.Border(left: pw.BorderSide(color: stormyTeal, width: 2)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Traslado: ${describeTransfer(t)}$cost${t.isEstimated ? '  (estimado)' : ''}',
+            style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: stormyTeal),
+          ),
+          if (t.notes.trim().isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 2),
+              child: pw.Text(t.notes.trim(), style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+            ),
+        ],
+      ),
+    );
+  }
+
   static pw.Widget _buildPlaceItem(PlaceSection place, int index) {
     final hasCost = place.cost > 0;
     final costStr = hasCost ? '\$${place.cost.toStringAsFixed(0)} ${place.currency}' : 'Acceso Libre';

@@ -214,6 +214,16 @@ class TripService {
     await ref.set(content.toMap()); // Usar set para crear o reemplazar
   }
 
+  /// Guarda la reseña posterior al viaje (T5): calificaciones/notas de las paradas
+  /// y la marca `reviewedAt` en el documento del viaje.
+  Future<void> saveTripReview(String userId, String tripId, TripContent content) async {
+    await updateTripContent(userId, tripId, content);
+    await _tripsRef(userId).doc(tripId).update({
+      'reviewedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<Trip?> getTrip(String userId, String tripId) async {
     final doc = await _tripsRef(userId).doc(tripId).get();
     if (!doc.exists) return null;

@@ -30,6 +30,9 @@ class ErrataEntry {
   }
 }
 
+const String kTripKindTrip = 'trip';
+const String kTripKindReleaseNotes = 'release_notes';
+
 class Trip {
   final String id;
   final String userId;
@@ -57,6 +60,18 @@ class Trip {
   final bool unlockOnPublish;
   final List<String> surpriseOpenedBy; // List of UIDs of users who have unwrapped it
 
+  /// Cuándo el autor calificó las paradas después del viaje (T5). Null = pendiente.
+  final DateTime? reviewedAt;
+
+  /// Tipo de publicación: 'trip' (viaje/crónica) o 'release_notes' (notas de
+  /// versión de Ohtli, que se destacan en Explorar).
+  final String kind;
+
+  /// Versión de la app a la que corresponden las notas (solo 'release_notes').
+  final String? version;
+
+  bool get isReleaseNotes => kind == kTripKindReleaseNotes;
+
   Trip({
     required this.id,
     required this.userId,
@@ -77,6 +92,9 @@ class Trip {
     this.surpriseUnlockDates = const {},
     this.unlockOnPublish = false,
     this.surpriseOpenedBy = const [],
+    this.reviewedAt,
+    this.kind = kTripKindTrip,
+    this.version,
   });
 
   factory Trip.fromMap(Map<String, dynamic> data, String documentId) {
@@ -128,6 +146,9 @@ class Trip {
       surpriseUnlockDates: parsedUnlockDates,
       unlockOnPublish: data['unlockOnPublish'] ?? false,
       surpriseOpenedBy: surpriseOpenedBy,
+      reviewedAt: (data['reviewedAt'] as Timestamp?)?.toDate(),
+      kind: (data['kind'] ?? kTripKindTrip).toString(),
+      version: data['version']?.toString(),
     );
   }
 
@@ -151,6 +172,10 @@ class Trip {
       'surpriseUnlockDates': surpriseUnlockDates.map((k, v) => MapEntry(k, Timestamp.fromDate(v))),
       'unlockOnPublish': unlockOnPublish,
       'surpriseOpenedBy': surpriseOpenedBy,
+      // Solo si existe: el editor guarda con merge y no debe borrar la reseña.
+      if (reviewedAt != null) 'reviewedAt': Timestamp.fromDate(reviewedAt!),
+      'kind': kind,
+      'version': version,
     };
   }
 }
@@ -162,7 +187,8 @@ class TripContent {
 
   factory TripContent.fromMap(Map<String, dynamic> data) {
     var sectionList = data['sections'] as List<dynamic>? ?? [];
-    List<TripSection> parsedSections = sectionList.map((s) => TripSection.fromMap(s as Map<String, dynamic>)).toList();
+    List<TripSection> parsedSections =
+        sectionList.map((s) => TripSection.fromMap(Map<String, dynamic>.from(s as Map))).toList();
     return TripContent(sections: parsedSections);
   }
 
@@ -187,8 +213,11 @@ abstract class TripSection {
         return TextSection.fromMap(data);
       case 'text_image':
         return TextImageSection.fromMap(data);
+      case 'transfer':
+        return TransferSection.fromMap(data);
       default:
-        throw Exception('Unknown section type');
+        // Tipos de versiones futuras: se conservan tal cual para no perderlos al guardar.
+        return UnknownSection(data);
     }
   }
 
@@ -222,6 +251,40 @@ class PlaceSection extends TripSection {
     this.arrivalTime,
     this.departureTime,
   }) : super(type: 'place');
+
+  /// Copia la parada conservando todos los campos que no se pasen
+  /// (coordenadas y horarios incluidos). Usar siempre en lugar de
+  /// reconstruir `PlaceSection(...)` a mano para no perder datos.
+  PlaceSection copyWith({
+    String? title,
+    String? description,
+    int? rating,
+    String? mainPhotoUrl,
+    List<String>? secondaryPhotoUrls,
+    double? cost,
+    String? currency,
+    double? lat,
+    double? lng,
+    String? arrivalTime,
+    String? departureTime,
+    bool clearArrivalTime = false,
+    bool clearDepartureTime = false,
+  }) {
+    return PlaceSection(
+      id: id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      rating: rating ?? this.rating,
+      mainPhotoUrl: mainPhotoUrl ?? this.mainPhotoUrl,
+      secondaryPhotoUrls: secondaryPhotoUrls ?? this.secondaryPhotoUrls,
+      cost: cost ?? this.cost,
+      currency: currency ?? this.currency,
+      lat: lat ?? this.lat,
+      lng: lng ?? this.lng,
+      arrivalTime: clearArrivalTime ? null : (arrivalTime ?? this.arrivalTime),
+      departureTime: clearDepartureTime ? null : (departureTime ?? this.departureTime),
+    );
+  }
 
   factory PlaceSection.fromMap(Map<String, dynamic> data) {
     double? parsedLat = (data['lat'] as num?)?.toDouble();
@@ -324,4 +387,93 @@ class TextImageSection extends TripSection {
       'layout': layout,
     };
   }
+}
+
+/// Traslado entre dos paradas (a pie, metro, taxi…). Es el mismo bloque para
+/// viajes generados por Ohtli y para los que se escriben a mano.
+class TransferSection extends TripSection {
+  /// walking | metro | metrobus | bus | bike | taxi | car | other
+  final String mode;
+  final int? durationMins;
+  final double? distanceKm;
+  final String notes;
+  final double cost;
+  final String currency;
+
+  /// true si los minutos/distancia los calculó Ohtli (motor o estimación),
+  /// false si los escribió la persona.
+  final bool isEstimated;
+
+  TransferSection({
+    required super.id,
+    this.mode = 'walking',
+    this.durationMins,
+    this.distanceKm,
+    this.notes = '',
+    this.cost = 0.0,
+    this.currency = 'MXN',
+    this.isEstimated = false,
+  }) : super(type: 'transfer');
+
+  TransferSection copyWith({
+    String? mode,
+    int? durationMins,
+    double? distanceKm,
+    String? notes,
+    double? cost,
+    String? currency,
+    bool? isEstimated,
+    bool clearDuration = false,
+    bool clearDistance = false,
+  }) {
+    return TransferSection(
+      id: id,
+      mode: mode ?? this.mode,
+      durationMins: clearDuration ? null : (durationMins ?? this.durationMins),
+      distanceKm: clearDistance ? null : (distanceKm ?? this.distanceKm),
+      notes: notes ?? this.notes,
+      cost: cost ?? this.cost,
+      currency: currency ?? this.currency,
+      isEstimated: isEstimated ?? this.isEstimated,
+    );
+  }
+
+  factory TransferSection.fromMap(Map<String, dynamic> data) {
+    return TransferSection(
+      id: data['id'] ?? '',
+      mode: data['mode'] ?? 'walking',
+      durationMins: (data['durationMins'] as num?)?.toInt(),
+      distanceKm: (data['distanceKm'] as num?)?.toDouble(),
+      notes: data['notes'] ?? '',
+      cost: (data['cost'] as num?)?.toDouble() ?? 0.0,
+      currency: data['currency'] ?? 'MXN',
+      isEstimated: data['isEstimated'] ?? false,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'type': type,
+      'mode': mode,
+      'durationMins': durationMins,
+      'distanceKm': distanceKm,
+      'notes': notes,
+      'cost': cost,
+      'currency': currency,
+      'isEstimated': isEstimated,
+    };
+  }
+}
+
+/// Bloque de un tipo que esta versión de la app no conoce. Se guarda sin cambios.
+class UnknownSection extends TripSection {
+  final Map<String, dynamic> raw;
+
+  UnknownSection(this.raw)
+      : super(id: (raw['id'] ?? '').toString(), type: (raw['type'] ?? 'unknown').toString());
+
+  @override
+  Map<String, dynamic> toMap() => Map<String, dynamic>.from(raw);
 }
