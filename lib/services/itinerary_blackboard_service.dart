@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../models/trip_model.dart';
+import '../theme/cdmx_photos.dart';
 import 'trip_service.dart';
 
 class ItineraryBlackboardService {
@@ -319,7 +320,7 @@ class ItineraryBlackboardService {
       description: description,
       coverUrl: coverUrl.isNotEmpty
           ? coverUrl
-          : 'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1200&q=80',
+          : CdmxPhotos.cover(title.hashCode),
       status: 'draft',
       visibility: 'private',
       createdAt: now,
@@ -378,7 +379,7 @@ class ItineraryBlackboardService {
           'narrative_summary': 'Un recorrido diseñado para desconectar del ruido urbano, sumergiéndote en patios virreinales, el murmullo de fuentes centenarias y el aroma a café recién tostado.',
           'total_cost_mxn': (budget * 0.65).clamp(150.0, budget),
           'estimated_time_mins': 210,
-          'cover_url': 'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1200&q=80',
+          'cover_url': CdmxPhotos.forCategory('museum', 1),
           'route': [
             {
               'name': 'Café El Jarocho y Jardín Centenario',
@@ -386,7 +387,7 @@ class ItineraryBlackboardService {
               'price_mxn': 85.0,
               'stay_duration_mins': 50,
               'location': {'lat': 19.3498, 'lng': -99.1638},
-              'photo_url': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('cafe', 0),
             },
             {
               'name': 'Museo Frida Kahlo (Casa Azul)',
@@ -394,7 +395,7 @@ class ItineraryBlackboardService {
               'price_mxn': 270.0,
               'stay_duration_mins': 90,
               'location': {'lat': 19.3551, 'lng': -99.1626},
-              'photo_url': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('museum', 1),
             },
             {
               'name': 'Mercado de Artesanías de Coyoacán',
@@ -402,7 +403,7 @@ class ItineraryBlackboardService {
               'price_mxn': 60.0,
               'stay_duration_mins': 60,
               'location': {'lat': 19.3501, 'lng': -99.1610},
-              'photo_url': 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('market', 0),
             }
           ],
           'stops_narration': [
@@ -418,7 +419,7 @@ class ItineraryBlackboardService {
           'narrative_summary': 'Ideal para adentrarse en los frescos de Diego Rivera y José Clemente Orozco, concluyendo en una tertulia histórica con sabor a botana tradicional.',
           'total_cost_mxn': (budget * 0.80).clamp(200.0, budget),
           'estimated_time_mins': 240,
-          'cover_url': 'https://images.unsplash.com/photo-1584646098378-0874589d76b1?auto=format&fit=crop&w=1200&q=80',
+          'cover_url': CdmxPhotos.forCategory('artwork', 0),
           'route': [
             {
               'name': 'Antiguo Colegio de San Ildefonso',
@@ -426,7 +427,7 @@ class ItineraryBlackboardService {
               'price_mxn': 50.0,
               'stay_duration_mins': 80,
               'location': {'lat': 19.4359, 'lng': -99.1308},
-              'photo_url': 'https://images.unsplash.com/photo-1584646098378-0874589d76b1?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('artwork', 1),
             },
             {
               'name': 'La Ópera Bar',
@@ -434,7 +435,7 @@ class ItineraryBlackboardService {
               'price_mxn': 280.0,
               'stay_duration_mins': 90,
               'location': {'lat': 19.4348, 'lng': -99.1390},
-              'photo_url': 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('bar', 0),
             },
             {
               'name': 'Palacio de Bellas Artes',
@@ -442,7 +443,7 @@ class ItineraryBlackboardService {
               'price_mxn': 90.0,
               'stay_duration_mins': 70,
               'location': {'lat': 19.4352, 'lng': -99.1412},
-              'photo_url': 'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.cover(0),
             }
           ],
           'stops_narration': [
@@ -458,7 +459,7 @@ class ItineraryBlackboardService {
           'narrative_summary': 'Un respiro entre senderos arbolados, calzadas flotantes y recintos culturales de primer nivel con accesibilidad total.',
           'total_cost_mxn': (budget * 0.45).clamp(100.0, budget),
           'estimated_time_mins': 180,
-          'cover_url': 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
+          'cover_url': CdmxPhotos.cover(3),
           'route': [
             {
               'name': 'Museo de Arte Moderno (MAM)',
@@ -466,7 +467,7 @@ class ItineraryBlackboardService {
               'price_mxn': 90.0,
               'stay_duration_mins': 75,
               'location': {'lat': 19.4225, 'lng': -99.1795},
-              'photo_url': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('museum', 0),
             },
             {
               'name': 'Jardín Botánico y Orquideario de Chapultepec',
@@ -474,7 +475,7 @@ class ItineraryBlackboardService {
               'price_mxn': 0.0,
               'stay_duration_mins': 45,
               'location': {'lat': 19.4230, 'lng': -99.1830},
-              'photo_url': 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('park', 0),
             },
             {
               'name': 'Librería Porrúa del Bosque',
@@ -482,7 +483,7 @@ class ItineraryBlackboardService {
               'price_mxn': 120.0,
               'stay_duration_mins': 60,
               'location': {'lat': 19.4245, 'lng': -99.1820},
-              'photo_url': 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=800&q=80',
+              'photo_url': CdmxPhotos.forCategory('park', 1),
             }
           ],
           'stops_narration': [

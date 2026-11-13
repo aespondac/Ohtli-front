@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
+import '../theme/cdmx_photos.dart';
 
 class PoiLocation {
   final double lat;
@@ -351,62 +352,9 @@ class Poi {
     return isValidPoiNameAndId(name, poiId, category);
   }
 
-  static const Map<String, List<String>> _curatedImages = {
-    'cafe': [
-      'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'restaurant': [
-      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'museum': [
-      'https://images.unsplash.com/photo-1565008447742-97f6f38c985c?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'artwork': [
-      'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1565008447742-97f6f38c985c?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'gallery': [
-      'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'park': [
-      'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'bar': [
-      'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1543007630-9710e4a00a20?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'cinema': [
-      'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'theatre': [
-      'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-    'general': [
-      'https://images.unsplash.com/photo-1512815779059-d6e4df987dca?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=800&h=450&q=80',
-      'https://images.unsplash.com/photo-1520699049698-acd2fccb8cc8?auto=format&fit=crop&w=800&h=450&q=80',
-    ],
-  };
-
   String get imageUrl {
     if (photoUrl.isNotEmpty) return photoUrl;
-    final key = _curatedImages.containsKey(category) ? category : 'general';
-    final list = _curatedImages[key]!;
-    final index = poiId.hashCode.abs() % list.length;
-    return list[index];
+    return CdmxPhotos.forCategory(category, poiId.hashCode);
   }
 
   String get categoryEmoji {

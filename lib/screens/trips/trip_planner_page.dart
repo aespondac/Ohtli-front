@@ -13,6 +13,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../services/itinerary_blackboard_service.dart';
+import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
 import '../../widgets/osrm_map_widget.dart';
 import '../../widgets/poi_detail_dialog.dart';
@@ -1731,45 +1732,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   // PASO 4: SELECTOR CINEMATOGRÁFICO DE OPCIONES DE VIAJE
   // ==========================================
 
-  static const List<String> _highResCdmxCovers = [
-    'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1400&q=85', // Bellas Artes
-    'https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?auto=format&fit=crop&w=1400&q=85', // Paseo de la Reforma
-    'https://images.unsplash.com/photo-1585464231875-d9ef1f5ad396?auto=format&fit=crop&w=1400&q=85', // Centro Histórico
-    'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1400&q=85', // Coyoacán
-    'https://images.unsplash.com/photo-1512813195386-6cf811ad3542?auto=format&fit=crop&w=1400&q=85', // Chapultepec
-  ];
-
-  static const Map<String, List<String>> _curatedCategoryPhotos = {
-    'cafe': [
-      'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=85',
-      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=85',
-    ],
-    'restaurant': [
-      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=85',
-      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=85',
-    ],
-    'museum': [
-      'https://images.unsplash.com/photo-1566127444979-b3d2b654e3d7?auto=format&fit=crop&w=800&q=85',
-      'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=800&q=85',
-    ],
-    'park': [
-      'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=800&q=85',
-      'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=800&q=85',
-    ],
-    'artwork': [
-      'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=85',
-      'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=800&q=85',
-    ],
-    'bar': [
-      'https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=800&q=85',
-      'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?auto=format&fit=crop&w=800&q=85',
-    ],
-    'market': [
-      'https://images.unsplash.com/photo-1533900298318-6b8da08a523e?auto=format&fit=crop&w=800&q=85',
-      'https://images.unsplash.com/photo-1543083477-4f785aeafaa9?auto=format&fit=crop&w=800&q=85',
-    ],
-  };
-
   static String _upgradeImageUrl(String url, {int width = 1200, int quality = 85}) {
     final clean = url.trim();
     if (clean.isEmpty) return clean;
@@ -1792,10 +1754,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     if (raw.isNotEmpty) {
       return _upgradeImageUrl(raw, width: 800, quality: 85);
     }
-    final cat = (stop['category'] ?? stop['type'] ?? 'general').toString().toLowerCase();
-    final key = _curatedCategoryPhotos.containsKey(cat) ? cat : 'museum';
-    final list = _curatedCategoryPhotos[key] ?? _curatedCategoryPhotos['museum']!;
-    return list[idx % list.length];
+    return CdmxPhotos.forCategory((stop['category'] ?? stop['type'] ?? '').toString(), idx);
   }
 
   static IconData _getStopCategoryIcon(String category) {
@@ -2110,7 +2069,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         }
       }
     }
-    final coverUrl = (rawCover != null && rawCover.trim().isNotEmpty) ? _upgradeImageUrl(rawCover, width: 1400, quality: 85) : _highResCdmxCovers[index % _highResCdmxCovers.length];
+    final coverUrl = (rawCover != null && rawCover.trim().isNotEmpty) ? _upgradeImageUrl(rawCover, width: 1400, quality: 85) : CdmxPhotos.cover(index);
 
     final int hours = timeMins ~/ 60;
     final int minutes = timeMins % 60;
