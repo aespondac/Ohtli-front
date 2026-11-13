@@ -644,6 +644,170 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     );
   }
 
+  // Borra un trabajo de IA y ofrece "Deshacer" (antes se borraba sin confirmación)
+  Future<void> _discardJobWithUndo(QueryDocumentSnapshot doc, {required String message}) async {
+    final ref = FirebaseFirestore.instance.collection('itinerary_jobs').doc(doc.id);
+    final backup = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>? ?? {});
+    try {
+      await ref.delete();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyError(e), style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+      );
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message, style: GoogleFonts.inter(color: Colors.white)),
+          backgroundColor: OhtliColors.onyx,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          action: SnackBarAction(
+            label: 'Deshacer',
+            textColor: OhtliColors.cempasuchil,
+            onPressed: () => ref.set(backup),
+          ),
+        ),
+      );
+  }
+
+  void _openAiPlanner() => TripPlannerDialog.show(context);
+
+  // En móvil: un solo botón "Nuevo viaje" que ofrece las dos formas de empezar
+  void _showNewTripSheet() {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetContext) {
+        Widget option(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
+              child: Icon(icon, color: color),
+            ),
+            title: Text(title, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+            subtitle: Text(subtitle, style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText)),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              onTap();
+            },
+          );
+        }
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: OhtliColors.cardBorder, borderRadius: BorderRadius.circular(2)),
+                ),
+                const SizedBox(height: 12),
+                option(Icons.auto_awesome_rounded, 'Planear con IA', 'Te proponemos 3 rutas según tus gustos', OhtliColors.stormyTeal, _openAiPlanner),
+                option(Icons.edit_note_rounded, 'Crear plan por mi cuenta', 'Empieza un borrador en blanco', OhtliColors.cempasuchil, () => _showCreateTripDialog(context)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionHeader(String title, {String? subtitle, Widget? leading, Widget? trailing}) {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (leading != null) ...[leading, const SizedBox(width: 8)],
+              Flexible(
+                child: Text(
+                  title,
+                  style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx),
+                ),
+              ),
+              if (trailing != null) ...[const SizedBox(width: 8), trailing],
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 3),
+            Text(subtitle, style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white60 : OhtliColors.subtleText)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _countBadge(int n, Color color, {bool filled = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: filled ? color : color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$n',
+        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: filled ? Colors.white : color),
+      ),
+    );
+  }
+
+  // Esqueleto de tarjetas mientras llegan los viajes (en lugar de un spinner)
+  Widget _buildSkeletonGrid(int crossAxisCount, double width, double padding) {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final base = isDark ? const Color(0xFF26262B) : OhtliColors.cantera.withValues(alpha: 0.35);
+    final cardWidth = (width - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
+    final cardHeight = crossAxisCount == 1 ? 125.0 : (cardWidth * 9 / 16) + 140.0;
+    Widget bar(double w, double h) => Container(width: w, height: h, decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(6)));
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(padding, 20, padding, 20),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 24,
+        crossAxisSpacing: 24,
+        childAspectRatio: cardWidth / cardHeight,
+      ),
+      itemCount: crossAxisCount == 1 ? 4 : crossAxisCount * 2,
+      itemBuilder: (context, i) {
+        final card = isDark ? const Color(0xFF1E1E22) : Colors.white;
+        final details = Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [bar(140, 14), const SizedBox(height: 10), bar(double.infinity, 10), const SizedBox(height: 6), bar(100, 10)],
+          ),
+        );
+        return Container(
+          decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(24)),
+          clipBehavior: Clip.antiAlias,
+          child: crossAxisCount == 1
+              ? Row(children: [Container(width: 130, color: base), Expanded(child: details)])
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [AspectRatio(aspectRatio: 16 / 9, child: Container(color: base)), details],
+                ),
+        );
+      },
+    );
+  }
+
   void _deleteTrip(Trip trip) async {
     final uid = _userId;
     if (uid == null) return;
@@ -731,8 +895,26 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           surpriseSection = _buildSurprisePlansSection(unopenedSurprises, crossAxisCount, width, padding, isDark);
         }
 
+        final int planCount = draftTrips.length + unopenedSurprises.length;
+        final bool isMobileHeader = width <= 600;
+        String summary;
+        if (_isLoading) {
+          summary = 'Cargando tus viajes…';
+        } else if (publishedTrips.isEmpty && planCount == 0) {
+          summary = 'Organiza y comparte tus caminos';
+        } else {
+          final parts = <String>[
+            '${publishedTrips.length} ${publishedTrips.length == 1 ? 'publicado' : 'publicados'}',
+            '$planCount ${planCount == 1 ? 'plan' : 'planes'}',
+          ];
+          summary = parts.join(' · ');
+        }
+
+        // Si aún no hay viajes publicados, abre directo en Planes (donde está lo que estás armando)
         return DefaultTabController(
+          key: ValueKey('tabs-$_isLoading'),
           length: 2,
+          initialIndex: (!_isLoading && publishedTrips.isEmpty && planCount > 0) ? 1 : 0,
           child: Scaffold(
             backgroundColor: OhtliColors.cloudDancer,
             appBar: AppBar(
@@ -751,43 +933,55 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Mis Viajes',
-                          style: GoogleFonts.inter(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
+                          'Mis viajes',
+                          style: GoogleFonts.outfit(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
                             color: OhtliColors.onyx,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
-                          'Organiza y comparte tus caminos',
+                          summary,
                           style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: OhtliColors.onyx.withValues(alpha: 0.5),
-                            fontWeight: FontWeight.w400,
+                            fontSize: 13,
+                            color: OhtliColors.onyx.withValues(alpha: 0.55),
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
                     
-                    // Styled "Crear Plan" button on desktop / tablet
-                    if (width > 600)
-                      ElevatedButton.icon(
-                        onPressed: () => _showCreateTripDialog(context),
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: Text(
-                          'Crear Plan',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: OhtliColors.stormyTeal,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                    // Dos formas claras de empezar (escritorio / tablet)
+                    if (!isMobileHeader)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _showCreateTripDialog(context),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: Text('Crear plan', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: isDark ? Colors.white : OhtliColors.stormyTeal,
+                              side: BorderSide(color: isDark ? Colors.white38 : OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          ElevatedButton.icon(
+                            onPressed: _openAiPlanner,
+                            icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                            label: Text('Planear con IA', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: OhtliColors.stormyTeal,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                          ),
+                        ],
                       ),
                   ],
                 ),
@@ -799,6 +993,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                   padding: EdgeInsets.symmetric(horizontal: padding),
                   child: TabBar(
                     isScrollable: true,
+                    tabAlignment: TabAlignment.start,
                     indicatorColor: OhtliColors.stormyTeal,
                     indicatorWeight: 3,
                     labelColor: OhtliColors.stormyTeal,
@@ -811,9 +1006,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       fontWeight: FontWeight.w500,
                       fontSize: 14,
                     ),
-                    tabs: const [
-                      Tab(text: 'Publicados'),
-                      Tab(text: 'Planes'),
+                    tabs: [
+                      Tab(text: _isLoading || publishedTrips.isEmpty ? 'Publicados' : 'Publicados · ${publishedTrips.length}'),
+                      Tab(text: _isLoading || planCount == 0 ? 'Planes' : 'Planes · $planCount'),
                     ],
                   ),
                 ),
@@ -829,21 +1024,20 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 ),
 
                 _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
-                        ),
-                      )
+                    ? _buildSkeletonGrid(crossAxisCount, width, padding)
                     : TabBarView(
                         children: [
                           // --- TAB: PUBLICADOS ---
                           _buildTripsList(
-                            publishedTrips, 
-                            'Aún no tienes viajes publicados.',
-                            'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
-                            crossAxisCount, 
+                            publishedTrips,
+                            'Aún no has publicado viajes',
+                            planCount > 0
+                                ? 'Cuando termines uno de tus planes, publícalo para que otros vean tu recorrido.'
+                                : 'Cuando termines un plan, podrás publicarlo para que todo el mundo vea tu recorrido.',
+                            crossAxisCount,
                             padding,
                             width,
+                            showGoToPlans: planCount > 0,
                           ),
 
                           // --- TAB: PLANES (Borradores & Opciones de Viaje IA) ---
@@ -885,10 +1079,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
                               if (draftTrips.isEmpty && unopenedSurprises.isEmpty && aiJobs.isEmpty) {
                                 return _buildTripsList(
-                                  [], 
-                                  'Tu libreta de caminos está vacía.',
-                                  'Crea tu primer plan o genera opciones de viaje con IA para comenzar a diseñar tu ruta.',
-                                  crossAxisCount, 
+                                  [],
+                                  'Tu libreta de caminos está vacía',
+                                  'Pide 3 rutas a la IA según tus gustos o arma tu propio plan desde cero.',
+                                  crossAxisCount,
                                   padding,
                                   width,
                                 );
@@ -905,16 +1099,13 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                     const SizedBox(height: 24),
                                   ],
                                   if (draftTrips.isNotEmpty) ...[
-                                    Text(
-                                      'Mis Planes de Viaje',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: OhtliColors.onyx,
-                                      ),
+                                    _buildSectionHeader(
+                                      'Borradores',
+                                      subtitle: 'Los planes que estás armando. Publícalos cuando estén listos.',
+                                      trailing: _countBadge(draftTrips.length, OhtliColors.cempasuchil),
                                     ),
-                                    const SizedBox(height: 12),
                                     _buildTripsGrid(draftTrips, crossAxisCount, width, padding),
+                                    const SizedBox(height: 80),
                                   ],
                                 ],
                               );
@@ -925,16 +1116,17 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
               ],
             ),
             
-            // Floating Action Button on mobile instead of AppBar button
-            floatingActionButton: width <= 600
-                ? FloatingActionButton(
-                    onPressed: () => _showCreateTripDialog(context),
+            // Móvil: un solo botón que ofrece IA o plan manual
+            floatingActionButton: isMobileHeader
+                ? FloatingActionButton.extended(
+                    onPressed: _showNewTripSheet,
                     backgroundColor: OhtliColors.stormyTeal,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.add_rounded),
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text('Nuevo viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                   )
                 : null,
           ),
@@ -989,54 +1181,16 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         // 1. JOBS EN PROCESO DE GENERACIÓN CON IA
         // ==========================================
         if (generatingJobs.isNotEmpty) ...[
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: OhtliColors.cempasuchil,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Generando con IA (En Progreso)',
-                style: GoogleFonts.outfit(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : OhtliColors.onyx,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: OhtliColors.cempasuchil.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: OhtliColors.cempasuchil.withOpacity(0.4)),
-                ),
-                child: Text(
-                  '${generatingJobs.length} EN CURSO',
-                  style: GoogleFonts.inter(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    color: OhtliColors.cempasuchil,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'El Sistema Multiagente está analizando opciones y trazando tu recorrido en segundo plano.',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: isDark ? Colors.white60 : OhtliColors.onyx.withOpacity(0.55),
+          _buildSectionHeader(
+            'En preparación',
+            subtitle: 'Estamos armando tus rutas. Puedes salir y volver: seguirá avanzando.',
+            leading: const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil)),
             ),
+            trailing: _countBadge(generatingJobs.length, OhtliColors.cempasuchil),
           ),
-          const SizedBox(height: 12),
           Column(
             children: generatingJobs.map((doc) => _buildGeneratingJobCard(doc, isDark)).toList(),
           ),
@@ -1047,21 +1201,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         // 1.b JOBS QUE NO SE PUDIERON COMPLETAR
         // ==========================================
         if (failedJobs.isNotEmpty) ...[
-          Row(
-            children: [
-              const Icon(Icons.error_outline_rounded, size: 18, color: OhtliColors.xoconostle),
-              const SizedBox(width: 8),
-              Text(
-                'No se pudieron generar',
-                style: GoogleFonts.outfit(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : OhtliColors.onyx,
-                ),
-              ),
-            ],
+          _buildSectionHeader(
+            'No se pudieron generar',
+            leading: const Icon(Icons.error_outline_rounded, size: 18, color: OhtliColors.xoconostle),
           ),
-          const SizedBox(height: 12),
           Column(
             children: failedJobs.map((doc) => _buildFailedJobCard(doc, isDark)).toList(),
           ),
@@ -1072,63 +1215,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         // 2. OPCIONES DE VIAJE COMPLETADAS Y LISTAS
         // ==========================================
         if (completedJobs.isNotEmpty) ...[
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: SvgPicture.asset(
-                      'assets/icon_isologo.svg',
-                      width: 16,
-                      height: 16,
-                      colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Opciones de Viaje con IA',
-                    style: GoogleFonts.outfit(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : OhtliColors.onyx,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${completedJobs.length} LISTAS',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          _buildSectionHeader(
+            'Listos para elegir',
+            subtitle: 'Compara las 3 rutas y quédate con tu favorita cuando quieras.',
+            leading: const Icon(Icons.auto_awesome_rounded, size: 18, color: OhtliColors.stormyTeal),
+            trailing: _countBadge(completedJobs.length, OhtliColors.stormyTeal, filled: true),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Explora y compara las 3 opciones de viaje en cualquier momento antes de elegir tu favorita.',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: isDark ? Colors.white60 : OhtliColors.onyx.withOpacity(0.55),
-            ),
-          ),
-          const SizedBox(height: 14),
 
           // Tarjetas de Opciones Listas
           Column(
@@ -1161,102 +1253,100 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     ),
                   ],
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: OhtliColors.stormyTeal.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(14),
+                child: LayoutBuilder(builder: (context, c) {
+                  final narrow = c.maxWidth < 520;
+                  final info = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rutas desde $originName',
+                        style: GoogleFonts.outfit(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : OhtliColors.onyx,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      child: const Icon(Icons.auto_awesome_rounded, color: OhtliColors.stormyTeal, size: 22),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Opciones para: $originName',
-                            style: GoogleFonts.outfit(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? Colors.white : OhtliColors.onyx,
+                      const SizedBox(height: 3),
+                      Text(
+                        '${options.length} ${options.length == 1 ? 'opción' : 'opciones'} · Presupuesto \$${budget.toStringAsFixed(0)} MXN',
+                        style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white70 : OhtliColors.subtleText),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: options.take(3).map((opt) {
+                          final theme = (opt['theme'] ?? opt['editorial_headline'] ?? 'Ruta').toString();
+                          return Container(
+                            constraints: const BoxConstraints(maxWidth: 220),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.stormyTeal.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '3 opciones de ruta temáticas calculadas · Presupuesto \$${budget.toStringAsFixed(0)} MXN',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: isDark ? Colors.white70 : OhtliColors.subtleText,
+                            child: Text(
+                              theme,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.stormyTeal),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: options.take(3).map((opt) {
-                              final theme = (opt['theme'] ?? opt['editorial_headline'] ?? 'Ruta').toString();
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: OhtliColors.stormyTeal.withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  theme.length > 25 ? '${theme.substring(0, 23)}...' : theme,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: OhtliColors.stormyTeal,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
+                          );
+                        }).toList(),
                       ),
+                    ],
+                  );
+                  final actions = Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          TripPlannerDialog.show(
+                            context,
+                            initialGeneratedOptions: options,
+                            originName: originName,
+                          );
+                        },
+                        icon: const Icon(Icons.explore_rounded, size: 16),
+                        label: Text('Ver rutas', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OhtliColors.stormyTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          elevation: 0,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(Icons.delete_outline_rounded, size: 20, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.45)),
+                        tooltip: 'Descartar rutas',
+                        onPressed: () => _discardJobWithUndo(doc, message: 'Rutas descartadas'),
+                      ),
+                    ],
+                  );
+                  final icon = Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: OhtliColors.stormyTeal.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        TripPlannerDialog.show(
-                          context,
-                          initialGeneratedOptions: options,
-                          originName: originName,
-                        );
-                      },
-                      icon: const Icon(Icons.explore_rounded, size: 16),
-                      label: Text(
-                        'Ver opciones de viaje',
-                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: Icon(
-                        Icons.delete_outline_rounded,
-                        size: 18,
-                        color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
-                      ),
-                      tooltip: 'Descartar opciones',
-                      onPressed: () {
-                        FirebaseFirestore.instance.collection('itinerary_jobs').doc(doc.id).delete();
-                      },
-                    ),
-                  ],
-                ),
+                    child: const Icon(Icons.auto_awesome_rounded, color: OhtliColors.stormyTeal, size: 22),
+                  );
+                  if (narrow) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [icon, const SizedBox(width: 12), Expanded(child: info)]),
+                        const SizedBox(height: 12),
+                        Align(alignment: Alignment.centerRight, child: actions),
+                      ],
+                    );
+                  }
+                  return Row(children: [icon, const SizedBox(width: 14), Expanded(child: info), const SizedBox(width: 12), actions]);
+                }),
               );
             }).toList(),
           ),
@@ -1393,95 +1483,71 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          LayoutBuilder(builder: (context, c) {
+            final narrow = c.maxWidth < 460;
+            final title = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            'Generando plan: $originName',
-                            style: GoogleFonts.outfit(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? Colors.white : OhtliColors.onyx,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    Flexible(
+                      child: Text(
+                        'Rutas desde $originName',
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : OhtliColors.onyx,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '$progress%',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: OhtliColors.cempasuchil,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      agentStageText,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: isDark ? Colors.white60 : OhtliColors.subtleText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$progress%',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.cempasuchil),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  TripPlannerDialog.show(
-                    context,
-                    initialActiveJobId: doc.id,
-                    originName: originName,
-                  );
-                },
-                icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                label: Text(
-                  'Ver en vivo',
-                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                const SizedBox(height: 2),
+                Text(
+                  agentStageText,
+                  style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white60 : OhtliColors.subtleText),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: OhtliColors.stormyTeal,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  elevation: 0,
+              ],
+            );
+            final actions = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton.icon(
+                  onPressed: () {
+                    TripPlannerDialog.show(
+                      context,
+                      initialActiveJobId: doc.id,
+                      originName: originName,
+                    );
+                  },
+                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                  label: Text('Ver avance', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
                 ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: Icon(
-                  Icons.close_rounded,
-                  size: 16,
-                  color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4),
+                IconButton(
+                  icon: Icon(Icons.close_rounded, size: 18, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.45)),
+                  tooltip: 'Cancelar',
+                  onPressed: () => _discardJobWithUndo(doc, message: 'Generación cancelada'),
                 ),
-                tooltip: 'Cancelar generación',
-                onPressed: () {
-                  FirebaseFirestore.instance.collection('itinerary_jobs').doc(doc.id).delete();
-                },
-              ),
-            ],
-          ),
+              ],
+            );
+            if (narrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [title, Align(alignment: Alignment.centerRight, child: actions)],
+              );
+            }
+            return Row(children: [Expanded(child: title), const SizedBox(width: 8), actions]);
+          }),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
@@ -1498,13 +1564,14 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   }
 
   Widget _buildTripsList(
-    List<Trip> trips, 
-    String emptyTitle, 
+    List<Trip> trips,
+    String emptyTitle,
     String emptySub,
     int crossAxisCount,
     double padding,
-    double availableWidth,
-  ) {
+    double availableWidth, {
+    bool showGoToPlans = false,
+  }) {
     if (trips.isEmpty) {
       return Center(
         child: SingleChildScrollView(
@@ -1559,22 +1626,52 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              OutlinedButton.icon(
-                onPressed: () => _showCreateTripDialog(context),
-                icon: const Icon(Icons.add_rounded, size: 16),
-                label: Text(
-                  'Crear Plan',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: OhtliColors.stormyTeal,
-                  side: const BorderSide(color: OhtliColors.stormyTeal),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              if (showGoToPlans)
+                Builder(
+                  builder: (tabContext) => ElevatedButton.icon(
+                    onPressed: () => DefaultTabController.of(tabContext).animateTo(1),
+                    icon: const Icon(Icons.edit_note_rounded, size: 18),
+                    label: Text('Ver mis planes', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: OhtliColors.stormyTeal,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
                   ),
+                )
+              else
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _openAiPlanner,
+                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                      label: Text('Planear con IA', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _showCreateTripDialog(context),
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: Text('Crear plan', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: OhtliSettings.instance.isDarkMode ? Colors.white : OhtliColors.stormyTeal,
+                        side: BorderSide(color: OhtliSettings.instance.isDarkMode ? Colors.white38 : OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
             ],
           ),
         ),
@@ -1589,7 +1686,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 168px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 176.0;
+        : (cardWidth * 9 / 16) + 150.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -1667,7 +1764,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 176.0;
+        : (cardWidth * 9 / 16) + 150.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -1745,15 +1842,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Regalos por Abrir',
-          style: GoogleFonts.outfit(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: OhtliColors.onyx,
-          ),
+        _buildSectionHeader(
+          'Regalos por abrir',
+          subtitle: 'Viajes que tus amigos prepararon para ti.',
+          leading: const Icon(Icons.card_giftcard_rounded, size: 18, color: OhtliColors.xoconostle),
+          trailing: _countBadge(surpriseTrips.length, OhtliColors.xoconostle),
         ),
-        const SizedBox(height: 12),
         _buildSurpriseTripsGrid(surpriseTrips, crossAxisCount, availableWidth, padding, isDark),
       ],
     );
@@ -1763,7 +1857,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 168.0;
+        : (cardWidth * 9 / 16) + 150.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 

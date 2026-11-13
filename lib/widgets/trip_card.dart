@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
+import '../theme/cdmx_photos.dart';
 import '../theme/colors.dart';
 import '../models/trip_model.dart';
 import '../services/trip_service.dart';
@@ -44,12 +45,60 @@ class TripCard extends StatefulWidget {
 class _TripCardState extends State<TripCard> {
   bool _isExportingPdf = false;
 
-  String _formatSpanishDate(DateTime date) {
-    final months = [
-      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
-    ];
-    return '${date.day} de ${months[date.month - 1]} de ${date.year}';
+  String _formatShortDate(DateTime date) {
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    final now = DateTime.now();
+    final base = '${date.day} ${months[date.month - 1]}';
+    return date.year == now.year ? base : '$base ${date.year}';
+  }
+
+  bool get _isPublished => widget.trip.status == 'published';
+
+  Widget _buildStatusChip() {
+    final published = _isPublished;
+    final color = published ? OhtliColors.stormyTeal : OhtliColors.cempasuchil;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(published ? Icons.check_circle_rounded : Icons.edit_note_rounded, size: 12, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(
+            published ? 'Publicado' : 'Borrador',
+            style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTravelDate({double fontSize = 12}) {
+    final date = widget.trip.travelDate;
+    final muted = OhtliColors.onyx.withValues(alpha: 0.55);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(date != null ? Icons.event_rounded : Icons.event_busy_rounded, size: fontSize + 3, color: date != null ? OhtliColors.stormyTeal : muted),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            date != null ? _formatShortDate(date) : 'Sin fecha',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              color: date != null ? OhtliColors.onyx.withValues(alpha: 0.8) : muted,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   void _handleShare(BuildContext context) {
@@ -295,20 +344,19 @@ class _TripCardState extends State<TripCard> {
           imageUrl: widget.trip.coverUrl,
           fit: BoxFit.cover,
           fadeInDuration: const Duration(milliseconds: 300),
-          placeholder: (context, url) => Container(
-            color: OhtliColors.cantera.withValues(alpha: 0.3),
-            child: const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.stormyTeal),
-              ),
-            ),
-          ),
+          placeholder: (context, url) => Container(color: OhtliColors.cantera.withValues(alpha: 0.35)),
           errorWidget: (context, url, error) => _buildCoverFallback(),
         );
       }
     } else {
-      imageWidget = _buildCoverFallback();
+      // Sin portada: una foto de la CDMX (estable para cada viaje) en lugar de un degradado genérico
+      imageWidget = CachedNetworkImage(
+        imageUrl: CdmxPhotos.cover(widget.trip.id.hashCode),
+        fit: BoxFit.cover,
+        fadeInDuration: const Duration(milliseconds: 300),
+        placeholder: (context, url) => Container(color: OhtliColors.cantera.withValues(alpha: 0.35)),
+        errorWidget: (context, url, error) => _buildCoverFallback(),
+      );
     }
 
     return ClipRRect(
@@ -317,13 +365,31 @@ class _TripCardState extends State<TripCard> {
         fit: StackFit.expand,
         children: [
           imageWidget,
-          
+          // Degradado suave para que las etiquetas se lean sobre cualquier foto
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: isHorizontal ? Alignment.bottomCenter : Alignment.topCenter,
+                    end: Alignment.center,
+                    colors: [Colors.black.withValues(alpha: 0.35), Colors.transparent],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (isHorizontal)
+            Positioned(bottom: 8, left: 8, child: _buildStatusChip())
+          else
+            Positioned(top: 10, left: 10, child: _buildStatusChip()),
+
           // Visibility Badge
           Positioned(
             top: 10,
             right: 10,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: isHorizontal ? const EdgeInsets.all(5) : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
@@ -336,15 +402,15 @@ class _TripCardState extends State<TripCard> {
                         ? Icons.public_rounded
                         : Icons.lock_outline_rounded,
                     color: Colors.white,
-                    size: 11,
+                    size: 12,
                   ),
-                  const SizedBox(width: 4),
-                  Text(
+                  if (!isHorizontal) const SizedBox(width: 4),
+                  if (!isHorizontal) Text(
                     widget.trip.visibility == 'public' ? 'Público' : 'Privado',
                     style: GoogleFonts.inter(
                       color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -477,10 +543,11 @@ class _TripCardState extends State<TripCard> {
                     children: [
                       Text(
                         widget.trip.title,
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                        style: GoogleFonts.outfit(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
                           color: OhtliColors.onyx,
+                          height: 1.2,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -503,73 +570,7 @@ class _TripCardState extends State<TripCard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Creado: ${_formatSpanishDate(widget.trip.createdAt)}',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                color: OhtliColors.onyx.withValues(alpha: 0.4),
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Viaje: ${widget.trip.travelDate != null ? _formatSpanishDate(widget.trip.travelDate!) : "Sin fecha definida"}',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                color: OhtliColors.onyx.withValues(alpha: 0.65),
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Tooltip(
-                        message: 'Generar PDF',
-                        child: ElevatedButton.icon(
-                          onPressed: _isExportingPdf ? null : () => _handlePdfExport(context),
-                          icon: _isExportingPdf
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.picture_as_pdf_rounded,
-                                  size: 15,
-                                ),
-                          label: Text(
-                            'Generar PDF',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: OhtliColors.stormyTeal,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                      ),
+                      Expanded(child: _buildTravelDate()),
                       const SizedBox(width: 4),
                       PopupMenuButton<String>(
                         icon: const Icon(
@@ -740,7 +741,7 @@ class _TripCardState extends State<TripCard> {
           // Details on the right
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.fromLTRB(14, 10, 6, 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -750,10 +751,11 @@ class _TripCardState extends State<TripCard> {
                     children: [
                       Text(
                         widget.trip.title,
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                        style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
                           color: OhtliColors.onyx,
+                          height: 1.2,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -775,70 +777,7 @@ class _TripCardState extends State<TripCard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Creado: ${_formatSpanishDate(widget.trip.createdAt)}',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                color: OhtliColors.onyx.withValues(alpha: 0.4),
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              'Viaje: ${widget.trip.travelDate != null ? _formatSpanishDate(widget.trip.travelDate!) : "Sin fecha definida"}',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                color: OhtliColors.onyx.withValues(alpha: 0.65),
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Tooltip(
-                        message: 'Generar PDF',
-                        child: ElevatedButton.icon(
-                          onPressed: _isExportingPdf ? null : () => _handlePdfExport(context),
-                          icon: _isExportingPdf
-                              ? const SizedBox(
-                                  width: 12,
-                                  height: 12,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.picture_as_pdf_rounded,
-                                  size: 14,
-                                ),
-                          label: Text(
-                            'Generar PDF',
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: OhtliColors.stormyTeal,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                      ),
+                      Expanded(child: _buildTravelDate(fontSize: 11)),
                       const SizedBox(width: 2),
                       PopupMenuButton<String>(
                         icon: const Icon(

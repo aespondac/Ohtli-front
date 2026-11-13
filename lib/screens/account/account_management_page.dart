@@ -16,6 +16,7 @@ import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../../utils/friendly_errors.dart';
 import '../construction_page.dart'; // Reuse RouteBackgroundPainter
+import 'public_profile_page.dart';
 
 enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
 
@@ -1646,17 +1647,78 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             textAlign: TextAlign.center,
             style: GoogleFonts.inter(
               fontSize: 13,
-              fontWeight: FontWeight.w300,
-              color: OhtliColors.onyx.withValues(alpha: 0.5),
+              fontWeight: FontWeight.w400,
+              color: OhtliColors.onyx.withValues(alpha: 0.55),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 14),
+          if (user != null)
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (ctx) => PublicProfilePage(
+                    userId: user.uid,
+                    showBackButton: true,
+                    onBack: () => Navigator.pop(ctx),
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.badge_outlined, size: 18),
+              label: Text('Ver mi perfil', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: OhtliColors.stormyTeal,
+                side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+            ),
+          const SizedBox(height: 28),
 
-          // Grid for Desktop or ListTile list for Mobile
-          if (isMobile)
-            _buildMobileDashboardList()
-          else
-            _buildDesktopDashboardGrid(),
+          // Ajustes agrupados (mismo diseño en móvil y escritorio)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSettingsGroup('Tu cuenta', [
+                  _SettingsItem(
+                    icon: Icons.person_outline_rounded,
+                    title: 'Información personal',
+                    subtitle: 'Tu nombre y datos de contacto',
+                    onTap: () => setState(() => _currentSection = AccountSection.personalInfo),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Seguridad',
+                    subtitle: 'Contraseña y cuentas vinculadas',
+                    onTap: () => setState(() => _currentSection = AccountSection.security),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.location_on_outlined,
+                    title: 'Direcciones',
+                    subtitle: 'Puntos de partida guardados para planear rutas',
+                    onTap: () => setState(() => _currentSection = AccountSection.addresses),
+                  ),
+                ]),
+                const SizedBox(height: 22),
+                _buildSettingsGroup('Tu experiencia', [
+                  _SettingsItem(
+                    icon: Icons.privacy_tip_outlined,
+                    title: 'Privacidad',
+                    subtitle: 'Quién ve tu perfil, tus viajes y tus datos',
+                    onTap: () => setState(() => _currentSection = AccountSection.privacy),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.accessibility_new_rounded,
+                    title: 'Preferencias y accesibilidad',
+                    subtitle: 'Tema, colores y tamaño de letra',
+                    onTap: () => setState(() => _currentSection = AccountSection.preferences),
+                  ),
+                ]),
+              ],
+            ),
+          ),
 
           const SizedBox(height: 40),
 
@@ -1699,129 +1761,82 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     );
   }
 
-  // Grid for Desktop
-  Widget _buildDesktopDashboardGrid() {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 680),
-      child: Wrap(
-        spacing: 20,
-        runSpacing: 20,
-        alignment: WrapAlignment.center,
-        children: [
-          _DashboardCard(
-            title: 'Información Personal',
-            description: 'Datos personales y de contacto proporcionados.',
-            icon: Icons.person_outline_rounded,
-            onTap: () =>
-                setState(() => _currentSection = AccountSection.personalInfo),
-          ),
-          _DashboardCard(
-            title: 'Seguridad',
-            description: 'Gestiona la seguridad y contraseña de tu cuenta.',
-            icon: Icons.security_rounded,
-            onTap: () =>
-                setState(() => _currentSection = AccountSection.security),
-          ),
-          _DashboardCard(
-            title: 'Direcciones',
-            description: 'Direcciones guardadas para facturación y envíos.',
-            icon: Icons.location_on_outlined,
-            onTap: () =>
-                setState(() => _currentSection = AccountSection.addresses),
-          ),
-          _DashboardCard(
-            title: 'Privacidad',
-            description:
-                'Control sobre tus preferencias y el uso de tus datos.',
-            icon: Icons.privacy_tip_outlined,
-            onTap: () =>
-                setState(() => _currentSection = AccountSection.privacy),
-          ),
-          _DashboardCard(
-            title: 'Preferencias y Accesibilidad',
-            description:
-                'Ajusta el tema visual, colores y tamaño de la letra.',
-            icon: Icons.accessibility_new_rounded,
-            onTap: () =>
-                setState(() => _currentSection = AccountSection.preferences),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // List layout for Mobile
-  Widget _buildMobileDashboardList() {
+  Widget _buildSettingsGroup(String title, List<_SettingsItem> items) {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final divider = isDark ? Colors.white.withValues(alpha: 0.06) : OhtliColors.cardBorder.withValues(alpha: 0.7);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildMobileListTile(
-          title: 'Información Personal',
-          icon: Icons.person_outline_rounded,
-          onTap: () =>
-              setState(() => _currentSection = AccountSection.personalInfo),
+        Padding(
+          padding: const EdgeInsets.only(left: 6, bottom: 8),
+          child: Text(
+            title.toUpperCase(),
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: OhtliColors.onyx.withValues(alpha: 0.5),
+            ),
+          ),
         ),
-        const SizedBox(height: 12),
-        _buildMobileListTile(
-          title: 'Seguridad',
-          icon: Icons.security_rounded,
-          onTap: () =>
-              setState(() => _currentSection = AccountSection.security),
-        ),
-        const SizedBox(height: 12),
-        _buildMobileListTile(
-          title: 'Direcciones',
-          icon: Icons.location_on_outlined,
-          onTap: () =>
-              setState(() => _currentSection = AccountSection.addresses),
-        ),
-        const SizedBox(height: 12),
-        _buildMobileListTile(
-          title: 'Privacidad',
-          icon: Icons.privacy_tip_outlined,
-          onTap: () => setState(() => _currentSection = AccountSection.privacy),
-        ),
-        const SizedBox(height: 12),
-        _buildMobileListTile(
-          title: 'Preferencias y Accesibilidad',
-          icon: Icons.accessibility_new_rounded,
-          onTap: () => setState(() => _currentSection = AccountSection.preferences),
+        Container(
+          decoration: BoxDecoration(
+            color: OhtliColors.inputBg,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 3)),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                if (i > 0) Divider(height: 1, thickness: 1, indent: 68, color: divider),
+                _buildSettingsRow(items[i]),
+              ],
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildMobileListTile({
-    required String title,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildSettingsRow(_SettingsItem item) {
     return Material(
-      color: OhtliColors.inputBg,
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        onTap: item.onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              Icon(icon, color: OhtliColors.stormyTeal, size: 22),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(item.icon, color: OhtliColors.stormyTeal, size: 20),
+              ),
               const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.subtitle,
+                      style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.55)),
+                    ),
+                  ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: OhtliColors.stormyTeal,
-                size: 20,
-              ),
+              Icon(Icons.chevron_right_rounded, color: OhtliColors.onyx.withValues(alpha: 0.35), size: 22),
             ],
           ),
         ),
@@ -3296,89 +3311,16 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 }
 
 // Custom Config Card for Desktop Hover effects
-class _DashboardCard extends StatefulWidget {
-  final String title;
-  final String description;
+class _SettingsItem {
   final IconData icon;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
-  const _DashboardCard({
-    required this.title,
-    required this.description,
+  const _SettingsItem({
     required this.icon,
+    required this.title,
+    required this.subtitle,
     required this.onTap,
   });
-
-  @override
-  State<_DashboardCard> createState() => _DashboardCardState();
-}
-
-class _DashboardCardState extends State<_DashboardCard> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          width: 320,
-          height: 140,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: OhtliColors.inputBg,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: _isHovered ? 0.12 : 0.05),
-                blurRadius: _isHovered ? 14 : 6,
-                offset: Offset(0, _isHovered ? 6 : 2),
-              ),
-            ],
-          ),
-          transform: Matrix4.identity()
-            ..translate(0.0, _isHovered ? -4.0 : 0.0, 0.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(widget.icon, color: OhtliColors.stormyTeal, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w700,
-                        color: OhtliColors.onyx,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: Text(
-                  widget.description,
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w400,
-                    color: OhtliColors.onyx.withValues(alpha: 0.6),
-                    height: 1.3,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

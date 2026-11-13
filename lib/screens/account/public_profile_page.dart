@@ -10,7 +10,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
+import '../../utils/friendly_errors.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
@@ -833,22 +835,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             imageFilter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
                             child: Container(
                               decoration: BoxDecoration(
-                                image: coverURL != null && coverURL.isNotEmpty
-                                    ? DecorationImage(
-                                        image: _getImageProvider(coverURL),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
-                                gradient: coverURL == null
-                                    ? LinearGradient(
-                                        colors: [
-                                          OhtliColors.stormyTeal.withOpacity(0.8),
-                                          OhtliColors.xoconostle.withOpacity(0.7),
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      )
-                                    : null,
+                                image: DecorationImage(
+                                  image: coverURL != null && coverURL.isNotEmpty
+                                      ? _getImageProvider(coverURL)
+                                      : NetworkImage(CdmxPhotos.cover(widget.userId.hashCode)),
+                                  fit: BoxFit.cover,
+                                ),
                               ),
                             ),
                           ),
@@ -882,7 +874,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                                   const Icon(Icons.edit_rounded, color: Colors.white, size: 15),
                                   const SizedBox(width: 6),
                                   Text(
-                                    'Cambiar Portada',
+                                    'Cambiar portada',
                                     style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                 ],
@@ -969,19 +961,20 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     ),
                   ),
 
-                  Positioned(
-                    bottom: 0,
-                    right: 24,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildStatsRow(isDark, followingList.length),
-                        const SizedBox(height: 12),
-                        _buildActionButtons(isDark),
-                      ],
+                  if (isDesktop)
+                    Positioned(
+                      bottom: 0,
+                      right: 24,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildStatsRow(isDark, followingList.length),
+                          const SizedBox(height: 12),
+                          _buildActionButtons(isDark),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -1026,17 +1019,23 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     // Registration Date
                     Row(
                       children: [
-                        Icon(Icons.calendar_today_rounded, size: 13, color: isDark ? Colors.white38 : OhtliColors.cantera),
+                        Icon(Icons.calendar_today_rounded, size: 13, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4)),
                         const SizedBox(width: 6),
                         Text(
                           _formatJoinedDate(rawCreatedAt),
                           style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.5),
+                            fontSize: 12,
+                            color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
                           ),
                         ),
                       ],
                     ),
+                    if (!isDesktop) ...[
+                      const SizedBox(height: 16),
+                      _buildStatsRow(isDark, followingList.length),
+                      const SizedBox(height: 14),
+                      SizedBox(width: double.infinity, child: _buildActionButtons(isDark)),
+                    ],
                   ],
                 ),
               ),
@@ -1088,14 +1087,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             text: '$friendsCount ',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.bold,
-              fontSize: 13.5,
+              fontSize: 17,
               color: isDark ? Colors.white : OhtliColors.onyx,
             ),
           ),
           TextSpan(
             text: 'Amigos',
             style: GoogleFonts.inter(
-              fontSize: 12,
+              fontSize: 13,
               color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
             ),
           ),
@@ -1124,7 +1123,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       mainAxisSize: MainAxisSize.min,
       children: [
         friendsWidget,
-        const SizedBox(width: 16),
+        const SizedBox(width: 20),
         RichText(
           text: TextSpan(
             children: [
@@ -1132,21 +1131,21 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 text: '$_followersCount ',
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.bold,
-                  fontSize: 13.5,
+                  fontSize: 17,
                   color: isDark ? Colors.white : OhtliColors.onyx,
                 ),
               ),
               TextSpan(
                 text: 'Seguidores',
                 style: GoogleFonts.inter(
-                  fontSize: 12,
+                  fontSize: 13,
                   color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 20),
         RichText(
           text: TextSpan(
             children: [
@@ -1154,14 +1153,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 text: '$followingCount ',
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.bold,
-                  fontSize: 13.5,
+                  fontSize: 17,
                   color: isDark ? Colors.white : OhtliColors.onyx,
                 ),
               ),
               TextSpan(
                 text: 'Siguiendo',
                 style: GoogleFonts.inter(
-                  fontSize: 12,
+                  fontSize: 13,
                   color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
                 ),
               ),
@@ -1182,7 +1181,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             icon: Icon(_isFollowing ? Icons.check_rounded : Icons.person_add_rounded, size: 14),
             label: Text(
               _isFollowing ? 'Siguiendo' : 'Seguir',
-              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor: _isFollowing ? OhtliColors.cantera : OhtliColors.stormyTeal,
@@ -1212,16 +1211,16 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             ),
           );
         },
-        icon: const Icon(Icons.edit_rounded, size: 14),
+        icon: const Icon(Icons.edit_rounded, size: 16),
         label: Text(
-          'Configurar Cuenta',
-          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+          'Editar perfil',
+          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
         ),
         style: OutlinedButton.styleFrom(
           foregroundColor: OhtliColors.stormyTeal,
-          side: const BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          side: BorderSide(color: OhtliColors.stormyTeal.withOpacity(0.6), width: 1.2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         ),
       );
     }
@@ -1482,24 +1481,61 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   Widget _buildTripsGrid(List<Trip> items, bool isDesktop, bool isDark, {required bool isTrip}) {
     if (items.isEmpty) {
+      final String name = (_userProfile?['displayName'] as String?)?.split(' ').first ?? 'Este viajero';
+      String title;
+      String subtitle;
+      IconData icon;
+      if (isTrip) {
+        icon = Icons.landscape_rounded;
+        title = _isSelf ? 'Aún no publicas viajes' : '$name aún no comparte viajes';
+        subtitle = _isSelf
+            ? 'Cuando publiques un viaje aparecerá aquí para que tus amigos lo vean.'
+            : 'Cuando publique uno, lo verás aquí.';
+      } else if (!_isSelf && !_isFriend) {
+        icon = Icons.lock_outline_rounded;
+        title = 'Planes solo para amigos';
+        subtitle = 'Agrega a $name como amigo para ver los planes que está armando.';
+      } else {
+        icon = Icons.map_outlined;
+        title = _isSelf ? 'No tienes planes en curso' : '$name no tiene planes en curso';
+        subtitle = _isSelf ? 'Tus borradores aparecerán aquí mientras los armas.' : 'Cuando empiece uno, lo verás aquí.';
+      }
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isTrip ? Icons.landscape_rounded : Icons.map_outlined,
-              size: 48,
-              color: isDark ? Colors.white24 : OhtliColors.cantera,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              isTrip ? 'No hay viajes para mostrar.' : 'No hay planes para mostrar.',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.5),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: OhtliColors.stormyTeal.withValues(alpha: 0.08),
+                ),
+                child: Icon(icon, size: 32, color: OhtliColors.stormyTeal),
               ),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx),
+              ),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1512,7 +1548,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 20) / crossAxisCount;
     final double cardHeight = crossAxisCount == 1 
         ? 125.0 
-        : (cardWidth * 9 / 16) + 160.0;
+        : (cardWidth * 9 / 16) + 150.0;
     final double computedAspectRatio = cardWidth / cardHeight;
 
     return GridView.builder(
@@ -1578,7 +1614,14 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         );
       }
     } catch (e) {
-      print("Error deleting trip: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(friendlyError(e, fallback: 'No pudimos eliminar el viaje. Intenta de nuevo.'), style: GoogleFonts.inter()),
+            backgroundColor: OhtliColors.xoconostle,
+          ),
+        );
+      }
     }
   }
 }

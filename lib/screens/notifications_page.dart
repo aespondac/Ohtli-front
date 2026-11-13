@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
 import 'construction_page.dart'; // To reuse RouteBackgroundPainter
 import 'trips/trip_viewer_page.dart';
+import 'account/public_profile_page.dart';
+import '../utils/friendly_errors.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -155,7 +157,51 @@ class _NotificationsPageState extends State<NotificationsPage> {
         }
       }
     } catch (e) {
-      print("Error handling friend request: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(friendlyError(e, fallback: 'No pudimos responder la solicitud. Intenta de nuevo.'), style: GoogleFonts.inter()),
+            backgroundColor: OhtliColors.xoconostle,
+          ),
+        );
+      }
+    }
+  }
+
+  String _relativeTime(DateTime t) {
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 1) return 'ahora';
+    if (diff.inMinutes < 60) return 'hace ${diff.inMinutes} min';
+    if (diff.inHours < 24) return 'hace ${diff.inHours} h';
+    if (diff.inDays == 1) return 'ayer';
+    if (diff.inDays < 7) return 'hace ${diff.inDays} días';
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    final sameYear = t.year == DateTime.now().year;
+    return '${t.day} ${months[t.month - 1]}${sameYear ? '' : ' ${t.year}'}';
+  }
+
+  String _groupFor(DateTime? t) {
+    if (t == null) return 'Antes';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(t.year, t.month, t.day);
+    final days = today.difference(day).inDays;
+    if (days <= 0) return 'Hoy';
+    if (days == 1) return 'Ayer';
+    if (days < 7) return 'Esta semana';
+    return 'Antes';
+  }
+
+  ({IconData icon, Color color}) _typeBadge(String type) {
+    switch (type) {
+      case 'friend_request':
+        return (icon: Icons.person_add_alt_1_rounded, color: OhtliColors.stormyTeal);
+      case 'surprise_plan':
+        return (icon: Icons.card_giftcard_rounded, color: OhtliColors.xoconostle);
+      case 'co_author_added':
+        return (icon: Icons.group_add_rounded, color: OhtliColors.cempasuchil);
+      default:
+        return (icon: Icons.auto_stories_rounded, color: OhtliColors.stormyTeal);
     }
   }
 
@@ -263,10 +309,24 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'No tienes notificaciones todavía.',
-                          style: GoogleFonts.inter(
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.5),
-                            fontSize: 14,
+                          'Todo al día',
+                          style: GoogleFonts.outfit(
+                            color: textColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          child: Text(
+                            'Aquí verás solicitudes de amistad, viajes nuevos de tus amigos y planes sorpresa.',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.inter(
+                              color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
+                              fontSize: 13,
+                              height: 1.45,
+                            ),
                           ),
                         ),
                       ],
@@ -274,273 +334,256 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   );
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final data = doc.data() as Map<String, dynamic>;
-                    
-                    final String type = data['type'] ?? 'friend_request';
-                    final String senderName = data['senderName'] ?? 'Viajero Ohtli';
-                    final String senderId = data['senderId'] ?? '';
-                    final String status = data['status'] ?? 'pending';
-                    final String? senderPhoto = data['senderPhoto'];
+                // Encabezados por día (Hoy / Ayer / Esta semana / Antes)
+                final entries = <Object>[];
+                String? lastGroup;
+                for (final doc in docs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final ts = (data['timestamp'] as Timestamp?)?.toDate();
+                  final group = _groupFor(ts);
+                  if (group != lastGroup) {
+                    entries.add(group);
+                    lastGroup = group;
+                  }
+                  entries.add(doc);
+                }
 
-                    String messageText = '';
-                    if (type == 'friend_request') {
-                      if (status == 'pending') {
-                        messageText = 'te envió una solicitud de amistad.';
-                      } else if (status == 'accepted') {
-                        messageText = 'y tú ahora son amigos.';
-                      } else {
-                        messageText = 'te envió una solicitud (rechazada).';
-                      }
-                    } else if (type == 'new_publication') {
-                      final isPlan = data['isPlan'] ?? false;
-                      final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                      messageText = 'publicó un nuevo ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
-                    } else if (type == 'surprise_plan') {
-                      final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                      messageText = 'te hizo un plan sorpresa: "$tripTitle"!';
-                    } else if (type == 'co_author_added') {
-                      final isPlan = data['isPlan'] ?? false;
-                      final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                      messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
-                    }
-
-                    final initials = senderName
-                        .split(' ')
-                        .where((w) => w.isNotEmpty)
-                        .take(2)
-                        .map((w) => w[0].toUpperCase())
-                        .join();
-
-                    final bool isClickable = (type == 'new_publication' || type == 'surprise_plan' || type == 'co_author_added') && data['tripId'] != null;
-
-                    final bool isDesktop = width > 600;
-
-                    final Widget actionButtons = Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => _handleFriendRequest(doc.id, senderId, false),
-                          icon: const Icon(Icons.close_rounded, size: 14),
-                          label: Text(
-                            'Rechazar',
-                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: OhtliColors.xoconostle,
-                            side: const BorderSide(color: OhtliColors.xoconostle, width: 1.2),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            minimumSize: Size.zero,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        ElevatedButton.icon(
-                          onPressed: () => _handleFriendRequest(doc.id, senderId, true),
-                          icon: const Icon(Icons.check_rounded, size: 14),
-                          label: Text(
-                            'Aceptar',
-                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: OhtliColors.stormyTeal,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            minimumSize: Size.zero,
-                          ),
-                        ),
-                      ],
-                    );
-
-                    final Widget cardContent = Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.02),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: isDesktop
-                          ? Row(
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: OhtliColors.stormyTeal,
-                                  ),
-                                  child: ClipOval(
-                                    child: senderPhoto != null && senderPhoto.isNotEmpty
-                                        ? Image.network(
-                                            senderPhoto,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (c, e, s) => Center(
-                                              child: Text(
-                                                initials,
-                                                style: GoogleFonts.inter(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                        : Center(
-                                            child: Text(
-                                              initials,
-                                              style: GoogleFonts.inter(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: RichText(
-                                    text: TextSpan(
-                                      style: GoogleFonts.inter(color: textColor, fontSize: 13.5),
-                                      children: [
-                                        TextSpan(
-                                          text: '$senderName ',
-                                          style: const TextStyle(fontWeight: FontWeight.bold),
-                                        ),
-                                        TextSpan(
-                                          text: messageText,
-                                          style: TextStyle(
-                                            color: isDark ? Colors.white70 : OhtliColors.onyx.withOpacity(0.85),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                if (type == 'friend_request' && status == 'pending') ...[
-                                  const SizedBox(width: 16),
-                                  actionButtons,
-                                ],
-                              ],
-                            )
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: const BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: OhtliColors.stormyTeal,
-                                      ),
-                                      child: ClipOval(
-                                        child: senderPhoto != null && senderPhoto.isNotEmpty
-                                            ? Image.network(
-                                                senderPhoto,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (c, e, s) => Center(
-                                                  child: Text(
-                                                    initials,
-                                                    style: GoogleFonts.inter(
-                                                      color: Colors.white,
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                            : Center(
-                                                child: Text(
-                                                  initials,
-                                                  style: GoogleFonts.inter(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: RichText(
-                                        text: TextSpan(
-                                          style: GoogleFonts.inter(color: textColor, fontSize: 13.5),
-                                          children: [
-                                            TextSpan(
-                                              text: '$senderName ',
-                                              style: const TextStyle(fontWeight: FontWeight.bold),
-                                            ),
-                                            TextSpan(
-                                              text: messageText,
-                                              style: TextStyle(
-                                                color: isDark ? Colors.white70 : OhtliColors.onyx.withOpacity(0.85),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (type == 'friend_request' && status == 'pending') ...[
-                                  const SizedBox(height: 14),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      actionButtons,
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                    );
-
-                    if (isClickable) {
-                      return MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: () {
-                            // For co_author_added, use tripOwnerId since senderId is the person who added them
-                            final String navAuthorId = (type == 'co_author_added' && data['tripOwnerId'] != null)
-                                ? data['tripOwnerId']
-                                : senderId;
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => TripViewerPage(
-                                  tripId: data['tripId'],
-                                  authorId: navAuthorId,
-                                ),
+                return Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: ListView.builder(
+                      padding: EdgeInsets.fromLTRB(padding, 4, padding, 32),
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) {
+                        final entry = entries[index];
+                        if (entry is String) {
+                          return Padding(
+                            padding: EdgeInsets.only(top: index == 0 ? 4 : 18, bottom: 10, left: 4),
+                            child: Text(
+                              entry.toUpperCase(),
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.2,
+                                color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.5),
                               ),
-                            );
-                          },
-                          child: cardContent,
-                        ),
-                      );
-                    } else {
-                      return cardContent;
-                    }
-                  },
+                            ),
+                          );
+                        }
+                        final doc = entry as QueryDocumentSnapshot;
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        final String type = data['type'] ?? 'friend_request';
+                        final String senderName = data['senderName'] ?? 'Viajero Ohtli';
+                        final String senderId = data['senderId'] ?? '';
+                        final String status = data['status'] ?? 'pending';
+                        final String? senderPhoto = data['senderPhoto'];
+                        final DateTime? ts = (data['timestamp'] as Timestamp?)?.toDate();
+
+                        String messageText = '';
+                        if (type == 'friend_request') {
+                          if (status == 'pending') {
+                            messageText = 'te envió una solicitud de amistad.';
+                          } else if (status == 'accepted') {
+                            messageText = 'y tú ahora son amigos.';
+                          } else {
+                            messageText = 'te envió una solicitud (rechazada).';
+                          }
+                        } else if (type == 'new_publication') {
+                          final isPlan = data['isPlan'] ?? false;
+                          final tripTitle = data['tripTitle'] ?? 'su itinerario';
+                          messageText = 'publicó un nuevo ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
+                        } else if (type == 'surprise_plan') {
+                          final tripTitle = data['tripTitle'] ?? 'su itinerario';
+                          messageText = 'te preparó un plan sorpresa: "$tripTitle".';
+                        } else if (type == 'co_author_added') {
+                          final isPlan = data['isPlan'] ?? false;
+                          final tripTitle = data['tripTitle'] ?? 'su itinerario';
+                          messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
+                        }
+
+                        final initials = senderName
+                            .split(' ')
+                            .where((w) => w.isNotEmpty)
+                            .take(2)
+                            .map((w) => w[0].toUpperCase())
+                            .join();
+
+                        final bool isClickable = (type == 'new_publication' || type == 'surprise_plan' || type == 'co_author_added') && data['tripId'] != null;
+                        final bool isPendingRequest = type == 'friend_request' && status == 'pending';
+                        final badge = _typeBadge(type);
+                        final bool isDesktop = width > 600;
+
+                        void openTrip() {
+                          // En co_author_added el dueño del viaje es tripOwnerId (senderId es quien te agregó)
+                          final String navAuthorId = (type == 'co_author_added' && data['tripOwnerId'] != null) ? data['tripOwnerId'] : senderId;
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => TripViewerPage(tripId: data['tripId'], authorId: navAuthorId),
+                            ),
+                          );
+                        }
+
+                        void openProfile() {
+                          if (senderId.isEmpty) return;
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (ctx) => PublicProfilePage(userId: senderId, showBackButton: true, onBack: () => Navigator.pop(ctx)),
+                            ),
+                          );
+                        }
+
+                        final avatar = GestureDetector(
+                          onTap: openProfile,
+                          child: MouseRegion(
+                            cursor: senderId.isEmpty ? MouseCursor.defer : SystemMouseCursors.click,
+                            child: SizedBox(
+                              width: 46,
+                              height: 46,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: const BoxDecoration(shape: BoxShape.circle, color: OhtliColors.stormyTeal),
+                                    child: ClipOval(
+                                      child: senderPhoto != null && senderPhoto.isNotEmpty
+                                          ? Image.network(
+                                              senderPhoto,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (c, e, st) => Center(
+                                                child: Text(initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                              ),
+                                            )
+                                          : Center(
+                                              child: Text(initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                                            ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: -2,
+                                    bottom: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: badge.color,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: cardColor, width: 2),
+                                      ),
+                                      child: Icon(badge.icon, size: 11, color: Colors.white),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+
+                        final text = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            RichText(
+                              text: TextSpan(
+                                style: GoogleFonts.inter(color: textColor, fontSize: 14, height: 1.4),
+                                children: [
+                                  TextSpan(text: '$senderName ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  TextSpan(
+                                    text: messageText,
+                                    style: TextStyle(color: isDark ? Colors.white70 : OhtliColors.onyx.withOpacity(0.85)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (ts != null) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                _relativeTime(ts),
+                                style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.45)),
+                              ),
+                            ],
+                          ],
+                        );
+
+                        final actionButtons = Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextButton(
+                              onPressed: () => _handleFriendRequest(doc.id, senderId, false),
+                              style: TextButton.styleFrom(
+                                foregroundColor: isDark ? Colors.white70 : OhtliColors.onyx.withOpacity(0.7),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                              child: Text('Rechazar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+                            ),
+                            const SizedBox(width: 6),
+                            ElevatedButton(
+                              onPressed: () => _handleFriendRequest(doc.id, senderId, true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: OhtliColors.stormyTeal,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              ),
+                              child: Text('Aceptar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        );
+
+                        final card = Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: isPendingRequest
+                                  ? OhtliColors.stormyTeal.withOpacity(0.35)
+                                  : (isDark ? Colors.white.withOpacity(0.06) : OhtliColors.cardBorder.withOpacity(0.6)),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  avatar,
+                                  const SizedBox(width: 12),
+                                  Expanded(child: text),
+                                  if (isPendingRequest && isDesktop) ...[const SizedBox(width: 12), actionButtons],
+                                  if (isClickable)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 8, top: 10),
+                                      child: Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.35)),
+                                    ),
+                                ],
+                              ),
+                              if (isPendingRequest && !isDesktop) ...[
+                                const SizedBox(height: 10),
+                                Align(alignment: Alignment.centerRight, child: actionButtons),
+                              ],
+                            ],
+                          ),
+                        );
+
+                        if (!isClickable) return card;
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: openTrip,
+                            borderRadius: BorderRadius.circular(18),
+                            child: card,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 );
               },
             ),
