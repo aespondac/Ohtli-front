@@ -31,6 +31,11 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      # 4.1 Pruebas (bloquean el despliegue si fallan). El código usa dart:html, por lo que
+      # las pruebas se ejecutan en la plataforma web (Chrome incluido en ubuntu-latest).
+      - name: Run tests
+        run: flutter test --platform chrome
+
       # 5. Extract Firebase Config from GitHub Secret
       - name: Extract Firebase Config
         id: config_extractor

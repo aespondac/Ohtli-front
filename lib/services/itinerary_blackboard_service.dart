@@ -108,16 +108,7 @@ class ItineraryBlackboardService {
 
     // 3. Invocar al backend en Cloud Run / Gateway
     bool callSuccess = false;
-    String? idToken;
-    try {
-      idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-    } catch (e) {
-      debugPrint('[BlackboardService] No se pudo obtener el ID token: $e');
-    }
-    final headers = {
-      'Content-Type': 'application/json',
-      if (idToken != null) 'Authorization': 'Bearer $idToken',
-    };
+    final headers = await _authHeaders(json: true);
     for (final base in [_primaryApiUrl, _secondaryApiUrl]) {
       try {
         // El motor responde 202 en cuanto registra el job (la ejecución corre en el trigger);
@@ -146,6 +137,21 @@ class ItineraryBlackboardService {
     return jobId;
   }
 
+  /// Encabezados con el ID token de Firebase: el motor lo exige (REQUIRE_AUTH=1) en las
+  /// rutas de itinerario y solo devuelve trabajos del usuario autenticado.
+  Future<Map<String, String>> _authHeaders({bool json = false}) async {
+    String? idToken;
+    try {
+      idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+    } catch (e) {
+      debugPrint('[BlackboardService] No se pudo obtener el ID token: $e');
+    }
+    return {
+      if (json) 'Content-Type': 'application/json',
+      if (idToken != null) 'Authorization': 'Bearer $idToken',
+    };
+  }
+
   /// Escucha en tiempo real el Pizarrón Compartido en Firestore
   Stream<DocumentSnapshot> streamJob(String jobId) {
     return _firestore.collection('itinerary_jobs').doc(jobId).snapshots();
@@ -166,7 +172,7 @@ class ItineraryBlackboardService {
     // Consultar a los endpoints REST de Yollotl Engine
     for (final base in [_primaryApiUrl, _secondaryApiUrl]) {
       try {
-        final res = await http.get(Uri.parse('$base/v1/itinerary/$jobId')).timeout(const Duration(seconds: 4));
+        final res = await http.get(Uri.parse('$base/v1/itinerary/$jobId'), headers: await _authHeaders()).timeout(const Duration(seconds: 4));
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body) as Map<String, dynamic>;
           // Replicar en Firestore para persistencia local y trazabilidad
@@ -186,7 +192,7 @@ class ItineraryBlackboardService {
   Future<void> syncUserJobsFromBackend(String userId) async {
     for (final base in [_primaryApiUrl, _secondaryApiUrl]) {
       try {
-        final res = await http.get(Uri.parse('$base/v1/itinerary/user/$userId')).timeout(const Duration(seconds: 5));
+        final res = await http.get(Uri.parse('$base/v1/itinerary/user/$userId'), headers: await _authHeaders()).timeout(const Duration(seconds: 5));
         if (res.statusCode == 200) {
           final body = jsonDecode(res.body) as Map<String, dynamic>;
           final jobs = body['jobs'] as List<dynamic>? ?? [];
