@@ -257,10 +257,8 @@ class _ExplorePageState extends State<ExplorePage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 // Espacio extra abajo para que el botón flotante no tape la última sección
                 padding: const EdgeInsets.only(bottom: 110.0),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1280),
-                    child: Column(
+                // Ocupa todo el ancho disponible junto al menú lateral
+                child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildGreeting(isMobile, gutter),
@@ -286,8 +284,6 @@ class _ExplorePageState extends State<ExplorePage> {
                         _buildCommunityRow(isMobile, gutter),
                       ],
                     ),
-                  ),
-                ),
               ),
             ),
           ),
