@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../../theme/colors.dart';
+import '../../theme/cdmx_photos.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/poi_card.dart';
@@ -101,6 +103,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   final ScrollController _descubreScrollController = ScrollController();
   final ScrollController _misLugaresScrollController = ScrollController();
   final ScrollController _revisitaScrollController = ScrollController();
+  final ScrollController _pageScrollController = ScrollController();
 
   AnimationController? _shimmerController;
 
@@ -249,6 +252,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     _descubreScrollController.dispose();
     _misLugaresScrollController.dispose();
     _revisitaScrollController.dispose();
+    _pageScrollController.dispose();
     super.dispose();
   }
 
@@ -638,398 +642,778 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       return indexA.compareTo(indexB);
     });
 
-    // Card sizing
-    final standardWidth = 280.0;
-    final doubleWidth = isMobile ? math.min(560.0, screenSize.width - 48) : 560.0;
+    // Medidas de tarjetas
+    final hPad = _hPad(isMobile);
+    const standardWidth = 268.0;
+    const standardHeight = 372.0;
+    final doubleWidth = isMobile ? math.min(520.0, screenSize.width - 48) : 560.0;
+    final immersiveHeight = isMobile ? 470.0 : 520.0;
+    final categoriesCount = allPois.map((p) => p.category).toSet().length;
+
+    Widget shelf({
+      required ScrollController controller,
+      required List<Poi> pois,
+      required double height,
+      required Widget Function(Poi poi, int index) builder,
+      double gap = 20,
+    }) {
+      return SizedBox(
+        height: height,
+        child: ListView.separated(
+          controller: controller,
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          padding: EdgeInsets.fromLTRB(hPad, 6, hPad, 22),
+          itemCount: pois.length,
+          separatorBuilder: (_, _) => SizedBox(width: gap),
+          itemBuilder: (context, index) => builder(pois[index], index),
+        ),
+      );
+    }
+
+    Widget standardCard(Poi poi, {bool? saved}) => PoiCard(
+          poi: poi,
+          width: standardWidth,
+          height: standardHeight - 28,
+          variant: PoiCardVariant.standard,
+          isSaved: saved ?? _savedPoiIds.contains(poi.poiId),
+          onToggleSave: () => _toggleSavePoi(poi.poiId),
+          onCreateRoute: () => _createRouteFromPlace(poi),
+          onTap: () => _onPoiTapped(poi),
+        );
 
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       body: SafeArea(
         child: CustomScrollView(
+          controller: _pageScrollController,
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           slivers: [
-            // Top Search Bar (Clean and direct)
             SliverToBoxAdapter(
               key: const ValueKey('places_top_bar'),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  isMobile ? 16 : 36,
-                  isMobile ? 16 : 28,
-                  isMobile ? 16 : 36,
-                  20,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.showBackButton && widget.onBack != null) ...[
-                      TextButton.icon(
-                        onPressed: widget.onBack,
-                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                        label: const Text('Volver'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: OhtliColors.stormyTeal,
-                          padding: EdgeInsets.zero,
-                          textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ] else if (FirebaseAuth.instance.currentUser == null) ...[
-                      Row(
-                        children: [
-                          SvgPicture.asset(
-                            'assets/logo.svg',
-                            height: 24,
-                            fit: BoxFit.contain,
-                            colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-                          ),
-                          const Spacer(),
-                          if (widget.onLoginClick != null)
-                            ElevatedButton(
-                              onPressed: widget.onLoginClick,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: OhtliColors.stormyTeal,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
-                              ),
-                              child: const Text('Iniciar sesión'),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Título de la sección
-                    Text(
-                      'Lugares',
-                      style: GoogleFonts.outfit(
-                        fontSize: isMobile ? 28 : 34,
-                        fontWeight: FontWeight.w800,
-                        color: OhtliColors.onyx,
-                        letterSpacing: -0.6,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Descubre ${allPois.length} rincones culturales de la Ciudad de México',
-                      style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Search Bar
-                    Container(
-                      key: const ValueKey('places_search_box'),
-                      decoration: BoxDecoration(
-                        color: OhtliColors.cardBg,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: OhtliColors.cardBorder),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 20,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: TextField(
-                        key: const ValueKey('places_search_field'),
-                        controller: _searchController,
-                        focusNode: _searchFocusNode,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 15),
-                        decoration: InputDecoration(
-                          hintText: 'Buscar lugares, colonias, museos, cafés...',
-                          hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14),
-                          prefixIcon: const Padding(
-                            padding: EdgeInsets.only(left: 6),
-                            child: Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 22),
-                          ),
-                          suffixIcon: _searchController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear_rounded, size: 20),
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    _searchFocusNode.requestFocus();
-                                  },
-                                )
-                              : null,
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                        ),
-                      ),
-                    ),
-                    _buildFilterBar(isMobile),
-                  ],
-                ),
+              child: _buildHero(
+                isMobile: isMobile,
+                placesCount: allPois.length,
+                categoriesCount: categoriesCount,
+                coverUrl: CdmxPhotos.covers.first,
               ),
             ),
 
-            // If user is searching or filtering, display Filtered Results Grid
+            // Barra de filtros fija con efecto de vidrio
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _StickyFilterDelegate(
+                height: isMobile ? 112 : 72,
+                builder: (context, overlaps) => _buildStickyFilters(isMobile, overlaps),
+              ),
+            ),
+
             if (isFiltering) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text.rich(
-                              TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: _searchQuery.isNotEmpty
-                                        ? 'Resultados para "${_searchController.text}"'
-                                        : 'Lugares encontrados',
-                                  ),
-                                  TextSpan(
-                                    text: '  ${searchResults.length}',
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      color: OhtliColors.stormyTeal,
-                                    ),
-                                  ),
-                                ],
-                              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(hPad, 18, hPad, 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _searchQuery.isNotEmpty ? 'Resultados para "${_searchController.text}"' : 'Lugares encontrados',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
+                              style: GoogleFonts.outfit(
+                                fontSize: isMobile ? 22 : 26,
+                                fontWeight: FontWeight.w800,
+                                color: OhtliColors.onyx,
+                                letterSpacing: -0.4,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          TextButton.icon(
-                            onPressed: _clearAllFilters,
-                            icon: const Icon(Icons.close_rounded, size: 16),
-                            label: Text(isMobile ? 'Limpiar' : 'Limpiar y ver secciones'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: OhtliColors.stormyTeal,
-                              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${searchResults.length} ${searchResults.length == 1 ? 'lugar coincide' : 'lugares coinciden'} con tu búsqueda',
+                              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (searchResults.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _buildEmptySearchState(),
-                    )
-                  else
-                    SliverPadding(
-                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 16),
-                      sliver: SliverGrid(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: isMobile
-                              ? 1
-                              : (screenSize.width < 1150 ? 2 : (screenSize.width < 1600 ? 3 : 4)),
-                          crossAxisSpacing: 18,
-                          mainAxisSpacing: 18,
-                          mainAxisExtent: 440,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final poi = searchResults[index];
-                            final isSaved = _savedPoiIds.contains(poi.poiId);
-                            return PoiCard(
-                              poi: poi,
-                              height: 440,
-                              isSaved: isSaved,
-                              onToggleSave: () => _toggleSavePoi(poi.poiId),
-                              onCreateRoute: () => _createRouteFromPlace(poi),
-                              onTap: () => _onPoiTapped(poi),
-                            );
-                          },
-                          childCount: searchResults.length,
+                          ],
                         ),
                       ),
-                    ),
-                ] else ...[
-                  // ================= SECCIÓN 1: "PARA TI" =================
-                  // Horizontal carousel limited to exactly 5 cards, 2x width
-                  SliverToBoxAdapter(
-                    child: _buildCleanSectionHeader(
-                      title: 'Para ti',
-                      isMobile: isMobile,
-                      controller: _paraTiScrollController,
-                      scrollStep: doubleWidth + 18,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: isMobile ? 480 : 540,
-                      child: ListView.builder(
-                        controller: _paraTiScrollController,
-                        scrollDirection: Axis.horizontal,
-                        padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36),
-                        itemCount: paraTiCards.length,
-                        itemBuilder: (context, index) {
-                          final poi = paraTiCards[index];
-                          final isSaved = _savedPoiIds.contains(poi.poiId);
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
-                            child: PoiCard(
-                              poi: poi,
-                              width: doubleWidth,
-                              height: isMobile ? 460 : 520,
-                              isDoubleWidth: true,
-                              affinity: _calculateAffinity(poi, index),
-                              isSaved: isSaved,
-                              onToggleSave: () => _toggleSavePoi(poi.poiId),
-                              onCreateRoute: () => _createRouteFromPlace(poi),
-                              onTap: () => _onPoiTapped(poi),
-                            ),
-                          );
-                        },
+                      const SizedBox(width: 12),
+                      _pillButton(
+                        icon: Icons.close_rounded,
+                        label: isMobile ? 'Limpiar' : 'Limpiar filtros',
+                        onTap: _clearAllFilters,
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              if (searchResults.isEmpty)
+                SliverFillRemaining(hasScrollBody: false, child: _buildEmptySearchState())
+              else
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(hPad, 18, hPad, 60),
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: isMobile ? 520 : 320,
+                      crossAxisSpacing: 22,
+                      mainAxisSpacing: 30,
+                      mainAxisExtent: isMobile ? 400 : standardHeight - 20,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final poi = searchResults[index];
+                        return PoiCard(
+                          poi: poi,
+                          variant: PoiCardVariant.standard,
+                          isSaved: _savedPoiIds.contains(poi.poiId),
+                          onToggleSave: () => _toggleSavePoi(poi.poiId),
+                          onCreateRoute: () => _createRouteFromPlace(poi),
+                          onTap: () => _onPoiTapped(poi),
+                        );
+                      },
+                      childCount: searchResults.length,
                     ),
                   ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-                  // ================= SECCIÓN 2: "DESCUBRE NUEVOS LUGARES" =================
-                  // 8 cards in CDMX, 1x width
-                  SliverToBoxAdapter(
-                    child: _buildCleanSectionHeader(
-                      title: 'Descubre nuevos lugares',
-                      isMobile: isMobile,
-                      controller: _descubreScrollController,
-                      scrollStep: standardWidth + 18,
-                    ),
+                ),
+            ] else ...[
+              // ================= PARA TI =================
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  eyebrow: 'Recomendado',
+                  title: 'Para ti',
+                  subtitle: _userTasteVector.isNotEmpty
+                      ? 'Elegidos según tus gustos y tu forma de viajar'
+                      : 'Una selección de imperdibles para empezar',
+                  icon: Icons.auto_awesome_rounded,
+                  color: OhtliColors.stormyTeal,
+                  isMobile: isMobile,
+                  controller: _paraTiScrollController,
+                  scrollStep: doubleWidth + 22,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: shelf(
+                  controller: _paraTiScrollController,
+                  pois: paraTiCards,
+                  height: immersiveHeight + 34,
+                  gap: 22,
+                  builder: (poi, index) => PoiCard(
+                    poi: poi,
+                    width: doubleWidth,
+                    height: immersiveHeight,
+                    variant: PoiCardVariant.immersive,
+                    affinity: _calculateAffinity(poi, index),
+                    isSaved: _savedPoiIds.contains(poi.poiId),
+                    onToggleSave: () => _toggleSavePoi(poi.poiId),
+                    onCreateRoute: () => _createRouteFromPlace(poi),
+                    onTap: () => _onPoiTapped(poi),
                   ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 440,
-                      child: ListView.builder(
-                        controller: _descubreScrollController,
-                        scrollDirection: Axis.horizontal,
-                        padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36),
-                        itemCount: descubrePois.length,
-                        itemBuilder: (context, index) {
-                          final poi = descubrePois[index];
-                          final isSaved = _savedPoiIds.contains(poi.poiId);
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
-                            child: PoiCard(
-                              poi: poi,
-                              width: standardWidth,
-                              height: 420,
-                              isSaved: isSaved,
-                              onToggleSave: () => _toggleSavePoi(poi.poiId),
-                              onCreateRoute: () => _createRouteFromPlace(poi),
-                              onTap: () => _onPoiTapped(poi),
-                            ),
-                          );
-                        },
+                ),
+              ),
+
+              // ================= DESCUBRE =================
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  eyebrow: 'Explora',
+                  title: 'Descubre nuevos lugares',
+                  subtitle: 'Rincones de toda la ciudad que aún no conoces',
+                  icon: Icons.explore_rounded,
+                  color: OhtliColors.xoconostle,
+                  isMobile: isMobile,
+                  controller: _descubreScrollController,
+                  scrollStep: (standardWidth + 20) * 2,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: shelf(
+                  controller: _descubreScrollController,
+                  pois: descubrePois,
+                  height: standardHeight,
+                  builder: (poi, _) => standardCard(poi),
+                ),
+              ),
+
+              // ================= MIS LUGARES =================
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  eyebrow: 'Guardados',
+                  title: 'Mis lugares',
+                  subtitle: 'Tus favoritos, listos para tu próxima ruta',
+                  icon: Icons.favorite_rounded,
+                  color: OhtliColors.cempasuchil,
+                  count: misLugaresPois.length,
+                  isMobile: isMobile,
+                  controller: _misLugaresScrollController,
+                  scrollStep: (standardWidth + 20) * 2,
+                  showArrows: misLugaresPois.isNotEmpty,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: misLugaresPois.isEmpty
+                    ? Padding(
+                        padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 12),
+                        child: _buildEmptyMisLugaresBanner(),
+                      )
+                    : shelf(
+                        controller: _misLugaresScrollController,
+                        pois: misLugaresPois,
+                        height: standardHeight,
+                        builder: (poi, _) => standardCard(poi, saved: true),
                       ),
-                    ),
-                  ),
+              ),
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              // ================= REVISITA =================
+              SliverToBoxAdapter(
+                child: _buildSectionHeader(
+                  eyebrow: 'Historial',
+                  title: 'Revisita tus lugares',
+                  subtitle: 'Lo último que exploraste',
+                  icon: Icons.history_rounded,
+                  color: const Color(0xFF3949AB),
+                  count: revisitaPois.length,
+                  isMobile: isMobile,
+                  controller: _revisitaScrollController,
+                  scrollStep: 680,
+                  showArrows: revisitaPois.isNotEmpty,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: revisitaPois.isEmpty
+                    ? Padding(
+                        padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 12),
+                        child: _buildEmptyRevisitaBanner(),
+                      )
+                    : shelf(
+                        controller: _revisitaScrollController,
+                        pois: revisitaPois,
+                        height: 96 + 28,
+                        gap: 14,
+                        builder: (poi, _) => PoiCard(
+                          poi: poi,
+                          width: isMobile ? screenSize.width * 0.8 : 340,
+                          height: 96,
+                          variant: PoiCardVariant.compact,
+                          onTap: () => _onPoiTapped(poi),
+                        ),
+                      ),
+              ),
 
-                  // ================= SECCIÓN 3: "MIS LUGARES" (ANTES DEL HISTORIAL) =================
-                  // Lugares guardados por el usuario
-                  SliverToBoxAdapter(
-                    child: _buildCleanSectionHeader(
-                      title: 'Mis lugares',
-                      count: misLugaresPois.length,
-                      isMobile: isMobile,
-                      controller: _misLugaresScrollController,
-                      scrollStep: standardWidth + 18,
-                      showArrows: misLugaresPois.isNotEmpty,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: misLugaresPois.isEmpty
-                        ? Padding(
-                            padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
-                            child: _buildEmptyMisLugaresBanner(),
-                          )
-                        : SizedBox(
-                            height: 440,
-                            child: ListView.builder(
-                              controller: _misLugaresScrollController,
-                              scrollDirection: Axis.horizontal,
-                              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36),
-                              itemCount: misLugaresPois.length,
-                              itemBuilder: (context, index) {
-                                final poi = misLugaresPois[index];
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
-                                  child: PoiCard(
-                                    poi: poi,
-                                    width: standardWidth,
-                                    height: 420,
-                                    isSaved: true,
-                                    onToggleSave: () => _toggleSavePoi(poi.poiId),
-                                    onCreateRoute: () => _createRouteFromPlace(poi),
-                                    onTap: () => _onPoiTapped(poi),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                  ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-                  // ================= SECCIÓN 4: "REVISITA TUS LUGARES" (HISTORIAL) =================
-                  // Historial de lugares consultados
-                  SliverToBoxAdapter(
-                    child: _buildCleanSectionHeader(
-                      title: 'Revisita tus lugares',
-                      count: revisitaPois.length,
-                      isMobile: isMobile,
-                      controller: _revisitaScrollController,
-                      scrollStep: standardWidth + 18,
-                      showArrows: revisitaPois.isNotEmpty,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: revisitaPois.isEmpty
-                        ? Padding(
-                            padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36, vertical: 8),
-                            child: _buildEmptyRevisitaBanner(),
-                          )
-                        : SizedBox(
-                            height: 440,
-                            child: ListView.builder(
-                              controller: _revisitaScrollController,
-                              scrollDirection: Axis.horizontal,
-                              padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 36),
-                              itemCount: revisitaPois.length,
-                              itemBuilder: (context, index) {
-                                final poi = revisitaPois[index];
-                                final isSaved = _savedPoiIds.contains(poi.poiId);
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
-                                  child: PoiCard(
-                                    poi: poi,
-                                    width: standardWidth,
-                                    height: 420,
-                                    isSaved: isSaved,
-                                    onToggleSave: () => _toggleSavePoi(poi.poiId),
-                                    onCreateRoute: () => _createRouteFromPlace(poi),
-                                    onTap: () => _onPoiTapped(poi),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                  ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 60)),
-                ],
-              ],
-            ),
-          ),
-        );
+              const SliverToBoxAdapter(child: SizedBox(height: 72)),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
-  /// Clean section header without description and without icon
-  Widget _buildCleanSectionHeader({
+  double _hPad(bool isMobile) => isMobile ? 16 : 40;
+
+  // ───────────────────────── Portada ─────────────────────────
+
+  Widget _buildHero({
+    required bool isMobile,
+    required int placesCount,
+    required int categoriesCount,
+    required String coverUrl,
+  }) {
+    final hPad = _hPad(isMobile);
+    final isGuest = FirebaseAuth.instance.currentUser == null;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(isMobile ? 10 : hPad, isMobile ? 10 : 24, isMobile ? 10 : hPad, 6),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(isMobile ? 26 : 34),
+        child: Stack(
+          children: [
+            // Fotografía de fondo
+            Positioned.fill(
+              child: Image.network(
+                coverUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+            // Velo de color de marca para legibilidad
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      const Color(0xFF123338).withValues(alpha: 0.97),
+                      const Color(0xFF1B4A51).withValues(alpha: 0.90),
+                      OhtliColors.stormyTeal.withValues(alpha: 0.45),
+                      OhtliColors.xoconostle.withValues(alpha: 0.30),
+                    ],
+                    stops: const [0.0, 0.42, 0.75, 1.0],
+                  ),
+                ),
+              ),
+            ),
+            // Destellos decorativos
+            Positioned(
+              right: -80,
+              top: -90,
+              child: _glowOrb(260, OhtliColors.cempasuchil.withValues(alpha: 0.35)),
+            ),
+            Positioned(
+              left: -60,
+              bottom: -120,
+              child: _glowOrb(240, Colors.white.withValues(alpha: 0.10)),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(isMobile ? 20 : 40, isMobile ? 18 : 28, isMobile ? 20 : 40, isMobile ? 22 : 36),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Barra superior
+                  Row(
+                    children: [
+                      if (widget.showBackButton && widget.onBack != null)
+                        _heroGlassButton(
+                          icon: Icons.arrow_back_rounded,
+                          label: 'Volver',
+                          onTap: widget.onBack!,
+                        )
+                      else
+                        SvgPicture.asset(
+                          'assets/logo.svg',
+                          height: 22,
+                          fit: BoxFit.contain,
+                          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                        ),
+                      const Spacer(),
+                      if (isGuest && widget.onLoginClick != null)
+                        ElevatedButton(
+                          onPressed: widget.onLoginClick,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: OhtliColors.stormyTeal,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                            shape: const StadiumBorder(),
+                            textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
+                          child: const Text('Iniciar sesión'),
+                        ),
+                    ],
+                  ),
+                  SizedBox(height: isMobile ? 26 : 40),
+                  // Etiqueta superior
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(color: OhtliColors.cempasuchil, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'CIUDAD DE MÉXICO',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.6,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: Text(
+                      'Descubre tu próximo\nlugar favorito',
+                      style: GoogleFonts.outfit(
+                        fontSize: isMobile ? 32 : 50,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.02,
+                        letterSpacing: isMobile ? -0.8 : -1.6,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Text(
+                      'Museos, cafés, cantinas y miradores curados por Ohtli para armar rutas a tu medida.',
+                      style: GoogleFonts.inter(
+                        fontSize: isMobile ? 14 : 15.5,
+                        color: Colors.white.withValues(alpha: 0.82),
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: isMobile ? 22 : 30),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 680),
+                    child: _buildSearchField(isMobile),
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 18,
+                    runSpacing: 8,
+                    children: [
+                      _heroStat(Icons.place_rounded, '$placesCount', 'lugares'),
+                      _heroStat(Icons.category_rounded, '$categoriesCount', 'categorías'),
+                      _heroStat(Icons.favorite_rounded, '${_savedPoiIds.length}', 'guardados'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _glowOrb(double size, Color color) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
+        ),
+      ),
+    );
+  }
+
+  Widget _heroGlassButton({required IconData icon, required String label, required VoidCallback onTap}) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.14),
+      shape: StadiumBorder(side: BorderSide(color: Colors.white.withValues(alpha: 0.22), width: 0.8)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 16, 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 17, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _heroStat(IconData icon, String value, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: OhtliColors.cempasuchil),
+        const SizedBox(width: 6),
+        Text(value, style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+        const SizedBox(width: 4),
+        Text(label, style: GoogleFonts.inter(fontSize: 13, color: Colors.white.withValues(alpha: 0.75))),
+      ],
+    );
+  }
+
+  Widget _buildSearchField(bool isMobile) {
+    return Container(
+      key: const ValueKey('places_search_box'),
+      height: isMobile ? 56 : 62,
+      padding: const EdgeInsets.only(left: 6, right: 6),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(40),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 30, offset: const Offset(0, 14)),
+        ],
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 12),
+          Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 24),
+          Expanded(
+            child: TextField(
+              key: const ValueKey('places_search_field'),
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 15, fontWeight: FontWeight.w500),
+              cursorColor: OhtliColors.stormyTeal,
+              decoration: InputDecoration(
+                hintText: isMobile ? 'Busca lugares o colonias' : 'Busca museos, cafés, colonias o un ambiente…',
+                hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14.5),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              ),
+            ),
+          ),
+          if (_searchController.text.isNotEmpty)
+            IconButton(
+              tooltip: 'Borrar búsqueda',
+              icon: Icon(Icons.close_rounded, size: 20, color: OhtliColors.subtleText),
+              onPressed: () {
+                _searchController.clear();
+                _searchFocusNode.requestFocus();
+              },
+            ),
+          if (!isMobile)
+            ElevatedButton(
+              onPressed: () => _searchFocusNode.requestFocus(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: OhtliColors.stormyTeal,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                shape: const StadiumBorder(),
+                textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+              child: const Text('Buscar'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ───────────────────────── Barra de filtros fija ─────────────────────────
+
+  Widget _buildStickyFilters(bool isMobile, bool overlaps) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          decoration: BoxDecoration(
+            color: OhtliColors.cloudDancer.withValues(alpha: overlaps ? 0.82 : 1.0),
+            border: Border(
+              bottom: BorderSide(color: overlaps ? OhtliColors.cardBorder : Colors.transparent),
+            ),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: _hPad(isMobile)),
+          alignment: Alignment.center,
+          child: _buildFilterBar(isMobile, showSearchShortcut: overlaps),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterBar(bool isMobile, {bool showSearchShortcut = false}) {
+    final categoryRow = ShaderMask(
+      // Desvanecido en los bordes para sugerir que la fila se desplaza
+      shaderCallback: (rect) => const LinearGradient(
+        colors: [Colors.white, Colors.white, Colors.transparent],
+        stops: [0.0, 0.94, 1.0],
+      ).createShader(rect),
+      blendMode: BlendMode.dstIn,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(right: 28),
+        child: Row(
+          children: [
+            if (showSearchShortcut)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _buildFilterChip(
+                  label: 'Buscar',
+                  icon: Icons.search_rounded,
+                  isSelected: false,
+                  onTap: () {
+                    _pageScrollController.animateTo(0, duration: const Duration(milliseconds: 450), curve: Curves.easeOutCubic);
+                    Future.delayed(const Duration(milliseconds: 460), () {
+                      if (mounted) _searchFocusNode.requestFocus();
+                    });
+                  },
+                ),
+              ),
+            ..._categoryFilters.map((cat) {
+              final id = cat['id']!;
+              final isSelected = (_selectedCategoryFilter == null && id == 'all') || (_selectedCategoryFilter == id);
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _buildFilterChip(
+                  label: cat['label']!,
+                  icon: _categoryIcons[id],
+                  isSelected: isSelected,
+                  onTap: () {
+                    setState(() {
+                      if (id == 'all' || _selectedCategoryFilter == id) {
+                        _selectedCategoryFilter = null;
+                      } else {
+                        _selectedCategoryFilter = id;
+                      }
+                    });
+                  },
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+
+    final priceSelector = _buildPriceSelector();
+
+    return isMobile
+        ? Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              categoryRow,
+              const SizedBox(height: 10),
+              SingleChildScrollView(scrollDirection: Axis.horizontal, child: priceSelector),
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(child: categoryRow),
+              const SizedBox(width: 12),
+              priceSelector,
+            ],
+          );
+  }
+
+  // Selector de precio segmentado
+  Widget _buildPriceSelector() {
+    final prices = [
+      {'level': null, 'symbol': 'Todo', 'label': 'Cualquier precio'},
+      {'level': 1, 'symbol': '\$', 'label': 'Económico'},
+      {'level': 2, 'symbol': '\$\$', 'label': 'Moderado'},
+      {'level': 3, 'symbol': '\$\$\$', 'label': 'Costoso'},
+      {'level': 4, 'symbol': '\$\$\$\$', 'label': 'Exclusivo'},
+    ];
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: OhtliColors.cardBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: prices.map((p) {
+          final level = p['level'] as int?;
+          final isSelected = _selectedPriceFilter == level;
+          return Tooltip(
+            message: p['label'] as String,
+            child: GestureDetector(
+              onTap: () => setState(() {
+                _selectedPriceFilter = (level != null && _selectedPriceFilter == level) ? null : level;
+              }),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected ? OhtliColors.onyx : Colors.transparent,
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Text(
+                    p['symbol'] as String,
+                    style: GoogleFonts.inter(
+                      fontSize: 12.5,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected ? OhtliColors.cloudDancer : OhtliColors.subtleText,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    IconData? icon,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBg,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder),
+            boxShadow: isSelected
+                ? [BoxShadow(color: OhtliColors.stormyTeal.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: isSelected ? Colors.white : OhtliColors.stormyTeal),
+                const SizedBox(width: 7),
+              ],
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  color: isSelected ? Colors.white : OhtliColors.onyx,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pillButton({required IconData icon, required String label, required VoidCallback onTap}) {
+    return Material(
+      color: OhtliColors.cardBg,
+      shape: StadiumBorder(side: BorderSide(color: OhtliColors.cardBorder)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: OhtliColors.onyx),
+              const SizedBox(width: 6),
+              Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ───────────────────────── Encabezados de sección ─────────────────────────
+
+  Widget _buildSectionHeader({
+    required String eyebrow,
     required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
     required bool isMobile,
     required ScrollController controller,
     required double scrollStep,
@@ -1037,57 +1421,73 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     int? count,
   }) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        isMobile ? 16 : 36,
-        14,
-        isMobile ? 16 : 36,
-        12,
-      ),
+      padding: EdgeInsets.fromLTRB(_hPad(isMobile), isMobile ? 26 : 36, _hPad(isMobile), 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Flexible(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.outfit(
-                      fontSize: isMobile ? 21 : 25,
-                      fontWeight: FontWeight.w800,
-                      color: OhtliColors.onyx,
-                      letterSpacing: -0.3,
+                Row(
+                  children: [
+                    Icon(icon, size: 14, color: color),
+                    const SizedBox(width: 6),
+                    Text(
+                      eyebrow.toUpperCase(),
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: color),
                     ),
-                  ),
+                  ],
                 ),
-                if (count != null && count > 0) ...[
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: OhtliColors.stormyTeal,
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.outfit(
+                          fontSize: isMobile ? 24 : 30,
+                          fontWeight: FontWeight.w800,
+                          color: OhtliColors.onyx,
+                          letterSpacing: -0.6,
+                          height: 1.1,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    if (count != null && count > 0) ...[
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: color),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText),
+                ),
               ],
             ),
           ),
           if (!isMobile && showArrows)
             Row(
               children: [
-                _buildShelfArrow(Icons.arrow_back_ios_new_rounded, 'Anterior', () => _scrollSection(controller, -scrollStep)),
+                _buildShelfArrow(Icons.arrow_back_rounded, 'Anterior', () => _scrollSection(controller, -scrollStep)),
                 const SizedBox(width: 8),
-                _buildShelfArrow(Icons.arrow_forward_ios_rounded, 'Siguiente', () => _scrollSection(controller, scrollStep)),
+                _buildShelfArrow(Icons.arrow_forward_rounded, 'Siguiente', () => _scrollSection(controller, scrollStep)),
               ],
             ),
         ],
@@ -1098,16 +1498,19 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   Widget _buildShelfArrow(IconData icon, String tooltip, VoidCallback onPressed) {
     return IconButton(
       onPressed: onPressed,
-      icon: Icon(icon, size: 14),
+      icon: Icon(icon, size: 18),
       color: OhtliColors.onyx,
       tooltip: tooltip,
       style: IconButton.styleFrom(
         backgroundColor: OhtliColors.cardBg,
-        fixedSize: const Size(38, 38),
+        hoverColor: OhtliColors.stormyTeal.withValues(alpha: 0.1),
+        fixedSize: const Size(44, 44),
         shape: CircleBorder(side: BorderSide(color: OhtliColors.cardBorder)),
       ),
     );
   }
+
+  // ───────────────────────── Estados vacíos y error ─────────────────────────
 
   Widget _buildEmptyShelf({
     required IconData icon,
@@ -1117,36 +1520,45 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
       decoration: BoxDecoration(
-        color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: OhtliColors.cardBorder),
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [color.withValues(alpha: 0.10), OhtliColors.cardBg],
+        ),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Row(
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [color, Color.lerp(color, Colors.black, 0.25)!],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 6))],
             ),
-            child: Icon(icon, size: 22, color: color),
+            child: Icon(icon, size: 24, color: Colors.white),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 18),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                  style: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   message,
-                  style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4),
+                  style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.45),
                 ),
               ],
             ),
@@ -1158,19 +1570,19 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
 
   Widget _buildEmptyMisLugaresBanner() {
     return _buildEmptyShelf(
-      icon: Icons.bookmark_border_rounded,
+      icon: Icons.favorite_rounded,
       color: OhtliColors.cempasuchil,
       title: 'Aún no guardas lugares',
-      message: 'Guarda tus rincones favoritos tocando el ícono de marcador en cualquier tarjeta o modal para tenerlos a mano.',
+      message: 'Toca el corazón en cualquier tarjeta para tener tus rincones favoritos siempre a la mano.',
     );
   }
 
   Widget _buildEmptyRevisitaBanner() {
     return _buildEmptyShelf(
       icon: Icons.history_rounded,
-      color: OhtliColors.stormyTeal,
+      color: const Color(0xFF3949AB),
       title: 'Tu historial está vacío',
-      message: 'Los lugares que explores se guardarán aquí automáticamente para que puedas revisarlos cuando quieras.',
+      message: 'Los lugares que abras aparecerán aquí automáticamente para que vuelvas a ellos cuando quieras.',
     );
   }
 
@@ -1178,44 +1590,51 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(48),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [OhtliColors.stormyTeal.withValues(alpha: 0.18), OhtliColors.xoconostle.withValues(alpha: 0.14)],
+                  ),
+                ),
+                child: const Icon(Icons.travel_explore_rounded, size: 40, color: OhtliColors.stormyTeal),
               ),
-              child: const Icon(Icons.search_off_rounded, size: 34, color: OhtliColors.stormyTeal),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              'No encontramos resultados',
-              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Intenta con otra palabra clave como cafetería, museo o una colonia, o quita algún filtro.',
-              style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.4),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: _clearAllFilters,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Limpiar búsqueda y filtros'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              const SizedBox(height: 20),
+              Text(
+                'No encontramos resultados',
+                style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'Prueba con otra palabra, como "cafetería", "museo" o el nombre de una colonia, o quita algún filtro.',
+                style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText, height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 22),
+              ElevatedButton.icon(
+                onPressed: _clearAllFilters,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Limpiar búsqueda y filtros'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                  textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                  shape: const StadiumBorder(),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1225,50 +1644,71 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline_rounded, size: 48, color: OhtliColors.xoconostle),
-            const SizedBox(height: 16),
-            Text(
-              'Error al cargar los lugares',
-              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              error,
-              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _fetchPois(forceRefresh: true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 84,
+                height: 84,
+                decoration: BoxDecoration(
+                  color: OhtliColors.xoconostle.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.cloud_off_rounded, size: 38, color: OhtliColors.xoconostle),
               ),
-              child: const Text('Reintentar'),
-            ),
-          ],
+              const SizedBox(height: 18),
+              Text(
+                'No pudimos cargar los lugares',
+                style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Revisa tu conexión e inténtalo de nuevo en unos segundos.',
+                style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText, height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+              if (kDebugMode) ...[
+                const SizedBox(height: 8),
+                Text(error, style: GoogleFonts.firaCode(fontSize: 11, color: OhtliColors.subtleText), textAlign: TextAlign.center),
+              ],
+              const SizedBox(height: 22),
+              ElevatedButton.icon(
+                onPressed: () => _fetchPois(forceRefresh: true),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Reintentar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                  shape: const StadiumBorder(),
+                  textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  // ───────────────────────── Esqueleto de carga ─────────────────────────
 
   Widget _buildShimmerBox({
     required double width,
     required double height,
     double borderRadius = 8,
   }) {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final base = isDark ? const Color(0xFF1E1E22) : const Color(0xFFE6E2DA);
+    final highlight = isDark ? const Color(0xFF2C2C33) : const Color(0xFFF6F4EF);
     if (_shimmerController == null) {
       return Container(
         width: width,
         height: height,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE2E8F0),
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
+        decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(borderRadius)),
       );
     }
     return AnimatedBuilder(
@@ -1283,11 +1723,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
             gradient: LinearGradient(
               begin: Alignment(-1.5 + (v * 3.0), -0.2),
               end: Alignment(0.5 + (v * 3.0), 0.2),
-              colors: const [
-                Color(0xFFE8EEF3),
-                Color(0xFFF8FAFC),
-                Color(0xFFE8EEF3),
-              ],
+              colors: [base, highlight, base],
               stops: const [0.0, 0.5, 1.0],
             ),
           ),
@@ -1296,361 +1732,167 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildSkeletonCard(double width) {
-    return Container(
+  Widget _buildSkeletonStandardCard(double width, double height) {
+    return SizedBox(
       width: width,
-      decoration: BoxDecoration(
-        color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: OhtliColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+      height: height,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _buildShimmerBox(width: width, height: double.infinity, borderRadius: 24)),
+          const SizedBox(height: 14),
+          _buildShimmerBox(width: width * 0.75, height: 18, borderRadius: 6),
+          const SizedBox(height: 8),
+          _buildShimmerBox(width: width * 0.5, height: 13, borderRadius: 6),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildShimmerBox(width: 64, height: 22, borderRadius: 20),
+              const SizedBox(width: 6),
+              _buildShimmerBox(width: 54, height: 22, borderRadius: 20),
+            ],
           ),
         ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: _buildShimmerBox(
-                width: double.infinity,
-                height: double.infinity,
-                borderRadius: 0,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _buildShimmerBox(width: 80, height: 18, borderRadius: 12),
-                      const Spacer(),
-                      _buildShimmerBox(width: 24, height: 24, borderRadius: 12),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _buildShimmerBox(width: width * 0.7, height: 20, borderRadius: 6),
-                  const SizedBox(height: 8),
-                  _buildShimmerBox(width: width * 0.45, height: 14, borderRadius: 6),
-                  const SizedBox(height: 14),
-                  _buildShimmerBox(width: double.infinity, height: 12, borderRadius: 4),
-                  const SizedBox(height: 6),
-                  _buildShimmerBox(width: width * 0.8, height: 12, borderRadius: 4),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildShimmerBox(width: 50, height: 16, borderRadius: 6),
-                      _buildShimmerBox(width: 90, height: 32, borderRadius: 8),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 
   Widget _buildSkeletonView(bool isMobile, Size screenSize) {
-    final standardWidth = 280.0;
-    final doubleWidth = isMobile ? math.min(560.0, screenSize.width - 48) : 560.0;
+    final hPad = _hPad(isMobile);
+    final doubleWidth = isMobile ? math.min(520.0, screenSize.width - 48) : 560.0;
+
+    Widget headerSkeleton(double titleWidth) => Padding(
+          padding: EdgeInsets.fromLTRB(hPad, 34, hPad, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildShimmerBox(width: 90, height: 11, borderRadius: 4),
+              const SizedBox(height: 10),
+              _buildShimmerBox(width: titleWidth, height: 26, borderRadius: 8),
+            ],
+          ),
+        );
 
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const NeverScrollableScrollPhysics(),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              isMobile ? 16 : 36,
-              isMobile ? 16 : 28,
-              isMobile ? 16 : 36,
-              40,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top placeholder / title
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildShimmerBox(width: 140, height: 28, borderRadius: 8),
-                    _buildShimmerBox(width: 100, height: 36, borderRadius: 20),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                // Search bar shimmer placeholder
-                _buildShimmerBox(
-                  width: double.infinity,
-                  height: 52,
-                  borderRadius: 16,
-                ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  child: _isSlowLoad
-                      ? Padding(
-                          padding: const EdgeInsets.only(top: 16),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            decoration: BoxDecoration(
-                              color: OhtliColors.cardBg,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: OhtliColors.cardBorder),
-                            ),
-                            child: Row(
-                              children: [
-                                const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2.2, color: OhtliColors.stormyTeal),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Portada
+              Padding(
+                padding: EdgeInsets.fromLTRB(isMobile ? 10 : hPad, isMobile ? 10 : 24, isMobile ? 10 : hPad, 6),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(isMobile ? 26 : 34),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.fromLTRB(isMobile ? 20 : 40, isMobile ? 18 : 28, isMobile ? 20 : 40, isMobile ? 22 : 36),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [const Color(0xFF173F45), OhtliColors.stormyTeal, OhtliColors.xoconostle.withValues(alpha: 0.8)],
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SvgPicture.asset(
+                          'assets/logo.svg',
+                          height: 22,
+                          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                        ),
+                        SizedBox(height: isMobile ? 26 : 40),
+                        Text(
+                          'Descubre tu próximo\nlugar favorito',
+                          style: GoogleFonts.outfit(
+                            fontSize: isMobile ? 32 : 50,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1.02,
+                            letterSpacing: isMobile ? -0.8 : -1.6,
+                          ),
+                        ),
+                        SizedBox(height: isMobile ? 22 : 30),
+                        Container(
+                          height: isMobile ? 56 : 62,
+                          constraints: const BoxConstraints(maxWidth: 680),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(40),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                          ),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
                                   child: Text(
-                                    'Preparando el catálogo de lugares… La primera carga puede tardar unos segundos mientras el servidor arranca.',
-                                    style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4),
+                                    _isSlowLoad
+                                        ? 'Despertando el servidor… la primera carga puede tardar unos segundos.'
+                                        : 'Preparando el catálogo de lugares…',
+                                    key: ValueKey(_isSlowLoad),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(fontSize: 13.5, color: Colors.white.withValues(alpha: 0.9)),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        )
-                      : const SizedBox(width: double.infinity),
-                ),
-                const SizedBox(height: 36),
-
-                // Section 1: "Para ti" skeleton
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildShimmerBox(width: 120, height: 24, borderRadius: 6),
-                    Row(
-                      children: [
-                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
-                        const SizedBox(width: 8),
-                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
+                        ),
                       ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: isMobile ? 480 : 540,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: 3,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
-                        child: _buildSkeletonCard(doubleWidth),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Section 2: "Descubre nuevos lugares" skeleton
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildShimmerBox(width: 220, height: 24, borderRadius: 6),
-                    Row(
-                      children: [
-                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
-                        const SizedBox(width: 8),
-                        _buildShimmerBox(width: 32, height: 32, borderRadius: 16),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 480,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: 4,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 18, top: 4, bottom: 16),
-                        child: _buildSkeletonCard(standardWidth),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterBar(bool isMobile) {
-    final categoryRow = ShaderMask(
-      // Desvanecido en los bordes para sugerir que la fila se desplaza
-      shaderCallback: (rect) => const LinearGradient(
-        colors: [Colors.white, Colors.white, Colors.transparent],
-        stops: [0.0, 0.94, 1.0],
-      ).createShader(rect),
-      blendMode: BlendMode.dstIn,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.only(right: 24),
-        child: Row(
-          children: _categoryFilters.map((cat) {
-            final id = cat['id']!;
-            final isSelected = (_selectedCategoryFilter == null && id == 'all') || (_selectedCategoryFilter == id);
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _buildFilterChip(
-                label: cat['label']!,
-                icon: _categoryIcons[id],
-                isSelected: isSelected,
-                onTap: () {
-                  setState(() {
-                    if (id == 'all' || _selectedCategoryFilter == id) {
-                      _selectedCategoryFilter = null;
-                    } else {
-                      _selectedCategoryFilter = id;
-                    }
-                  });
-                },
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-
-    final priceSelector = _buildPriceSelector();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                categoryRow,
-                const SizedBox(height: 10),
-                SingleChildScrollView(scrollDirection: Axis.horizontal, child: priceSelector),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(child: categoryRow),
-                const SizedBox(width: 12),
-                priceSelector,
-              ],
-            ),
-    );
-  }
-
-  // Selector de precio segmentado compacto
-  Widget _buildPriceSelector() {
-    final prices = [
-      {'level': null, 'symbol': 'Todos', 'label': 'Cualquier precio'},
-      {'level': 1, 'symbol': '\$', 'label': 'Económico'},
-      {'level': 2, 'symbol': '\$\$', 'label': 'Moderado'},
-      {'level': 3, 'symbol': '\$\$\$', 'label': 'Costoso'},
-      {'level': 4, 'symbol': '\$\$\$\$', 'label': 'Exclusivo'},
-    ];
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: OhtliColors.cardBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8, right: 4),
-            child: Icon(Icons.payments_outlined, size: 16, color: OhtliColors.subtleText),
-          ),
-          ...prices.map((p) {
-            final level = p['level'] as int?;
-            final isSelected = _selectedPriceFilter == level;
-            return Tooltip(
-              message: p['label'] as String,
-              child: InkWell(
-                onTap: () => setState(() {
-                  _selectedPriceFilter = (level != null && _selectedPriceFilter == level) ? null : level;
-                }),
-                borderRadius: BorderRadius.circular(10),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: isSelected ? OhtliColors.stormyTeal : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    p['symbol'] as String,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                      color: isSelected ? Colors.white : OhtliColors.onyx,
                     ),
                   ),
                 ),
               ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildFilterChip({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-    IconData? icon,
-    String? tooltip,
-  }) {
-    final chip = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: isSelected ? OhtliColors.onyx : OhtliColors.cardBg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: isSelected ? OhtliColors.onyx : OhtliColors.cardBorder),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 15, color: isSelected ? OhtliColors.cloudDancer : OhtliColors.stormyTeal),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? OhtliColors.cloudDancer : OhtliColors.onyx,
+              // Filtros
+              Padding(
+                padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 0),
+                child: Row(
+                  children: List.generate(
+                    isMobile ? 3 : 7,
+                    (i) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _buildShimmerBox(width: i == 0 ? 80 : 120, height: 42, borderRadius: 30),
+                    ),
+                  ),
+                ),
+              ),
+
+              headerSkeleton(140),
+              SizedBox(
+                height: isMobile ? 470 : 520,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.symmetric(horizontal: hPad),
+                  itemCount: 3,
+                  separatorBuilder: (_, _) => const SizedBox(width: 22),
+                  itemBuilder: (_, _) => _buildShimmerBox(width: doubleWidth, height: isMobile ? 470 : 520, borderRadius: 28),
+                ),
+              ),
+
+              headerSkeleton(240),
+              SizedBox(
+                height: 344,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.symmetric(horizontal: hPad),
+                  itemCount: 6,
+                  separatorBuilder: (_, _) => const SizedBox(width: 20),
+                  itemBuilder: (_, _) => _buildSkeletonStandardCard(268, 344),
                 ),
               ),
             ],
@@ -1658,10 +1900,27 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         ),
       ),
     );
-
-    if (tooltip != null) {
-      return Tooltip(message: tooltip, child: chip);
-    }
-    return chip;
   }
+}
+
+/// Encabezado fijo para la barra de filtros; avisa cuando el contenido pasa por debajo.
+class _StickyFilterDelegate extends SliverPersistentHeaderDelegate {
+  final double height;
+  final Widget Function(BuildContext context, bool overlaps) builder;
+
+  _StickyFilterDelegate({required this.height, required this.builder});
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return SizedBox.expand(child: builder(context, overlapsContent || shrinkOffset > 0));
+  }
+
+  @override
+  bool shouldRebuild(covariant _StickyFilterDelegate oldDelegate) => true;
 }

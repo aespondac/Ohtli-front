@@ -25,6 +25,13 @@ class CdmxPhotos {
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Al_pastor_tacos_%2829161834548%29.jpg/1280px-Al_pastor_tacos_%2829161834548%29.jpg', // Al pastor tacos (29161834548)
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Casa_de_Azulejos_3.jpg/1280px-Casa_de_Azulejos_3.jpg', // Casa de Azulejos 3
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Casa_de_los_Azulejos%2C_M%C3%A9xico_D.F.%2C_M%C3%A9xico%2C_2014-10-13%2C_DD_47.JPG/1280px-Casa_de_los_Azulejos%2C_M%C3%A9xico_D.F.%2C_M%C3%A9xico%2C_2014-10-13%2C_DD_47.JPG', // Casa de los Azulejos, México D.F., México, 2014-10-13, DD 47
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Street_tacos_in_Mexico_City_%288495923877%29.jpg/1280px-Street_tacos_in_Mexico_City_%288495923877%29.jpg', // Street tacos in Mexico City (8495923877)
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5e/Tacos_de_suadero_en_Tacos_Charly.jpg/1280px-Tacos_de_suadero_en_Tacos_Charly.jpg', // Tacos de suadero en Tacos Charly
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/42/El_Califa_de_Le%C3%B3n_%282026%29_1.jpg/1280px-El_Califa_de_Le%C3%B3n_%282026%29_1.jpg', // El Califa de León (2026) 1
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bc/Tres_tipos_de_salsa_en_una_taquer%C3%ADa_de_la_Ciudad_de_M%C3%A9xico.jpg/1280px-Tres_tipos_de_salsa_en_una_taquer%C3%ADa_de_la_Ciudad_de_M%C3%A9xico.jpg', // Tres tipos de salsa en una taquería de la Ciudad de México
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Restaurante_Rosetta%2C_Ciudad_de_M%C3%A9xico%2C_Mexico_%28Unsplash%29.jpg/1280px-Restaurante_Rosetta%2C_Ciudad_de_M%C3%A9xico%2C_Mexico_%28Unsplash%29.jpg', // Restaurante Rosetta, Ciudad de México
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d9/Street_taco_stall_in_Mexico_City.jpg/1280px-Street_taco_stall_in_Mexico_City.jpg', // Street taco stall in Mexico City
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Street_Food_Vendors_in_Mexico_City_%2846733015744%29.jpg/1280px-Street_Food_Vendors_in_Mexico_City_%2846733015744%29.jpg', // Street Food Vendors in Mexico City (46733015744)
     ],
     'museum': [
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b2/Museo_Soumaya%2C_Ciudad_de_M%C3%A9xico%2C_M%C3%A9xico%2C_2015-07-18%2C_DD_12.JPG/1280px-Museo_Soumaya%2C_Ciudad_de_M%C3%A9xico%2C_M%C3%A9xico%2C_2015-07-18%2C_DD_12.JPG', // Museo Soumaya, Ciudad de México, México, 2015-07-18, DD 12
@@ -43,6 +50,8 @@ class CdmxPhotos {
     'bar': [
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Bar_La_Opera_Centro_Historico_Mexico.JPG/1280px-Bar_La_Opera_Centro_Historico_Mexico.JPG', // Bar La Opera Centro Historico Mexico
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1e/Cantina_El_Nivel.jpg/1280px-Cantina_El_Nivel.jpg', // Cantina El Nivel
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2d/Cantina_El_Nivel_2.jpg/1280px-Cantina_El_Nivel_2.jpg', // Cantina El Nivel 2
+      'https://upload.wikimedia.org/wikipedia/commons/f/fa/Cantina_La_Guadalupana.jpg', // Cantina La Guadalupana
     ],
     'market': [
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Interior_del_Mercado_de_San_Juan_08.jpg/1280px-Interior_del_Mercado_de_San_Juan_08.jpg', // Interior del Mercado de San Juan 08
@@ -69,6 +78,8 @@ class CdmxPhotos {
     'monument': [
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ec/Angel_de_la_independencia170409.jpg/1280px-Angel_de_la_independencia170409.jpg', // Angel de la independencia170409
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ec/Angel_of_Independence_%28Angel_de_la_Independencia%29.jpg/1280px-Angel_of_Independence_%28Angel_de_la_Independencia%29.jpg', // Angel of Independence (Angel de la Independencia)
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/57/Monumento_a_la_Revolucion_%282695029304%29.jpg/1280px-Monumento_a_la_Revolucion_%282695029304%29.jpg', // Monumento a la Revolución (2695029304)
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Monumento_a_la_Revolucion_Mexicana.JPG/1280px-Monumento_a_la_Revolucion_Mexicana.JPG', // Monumento a la Revolución Mexicana
     ],
     'general': [
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/Paseo_de_la_Reforma_Skyline_Mexico_City.jpg/1280px-Paseo_de_la_Reforma_Skyline_Mexico_City.jpg', // Paseo de la Reforma Skyline Mexico City
