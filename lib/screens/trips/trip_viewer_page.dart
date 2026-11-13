@@ -551,6 +551,40 @@ class _TripViewerPageState extends State<TripViewerPage> {
       );
     }
 
+    // Sin conexión, "no encontrado" significa que el viaje no está en la caché local
+    // (persistencia de Firestore), no que el autor lo haya eliminado.
+    if (_errorCode == 404 && !(html.window.navigator.onLine ?? true)) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.cloud_off_rounded, color: OhtliColors.xoconostle, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  "Sin conexión",
+                  style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Este viaje no está guardado en este dispositivo. Ábrelo una vez con conexión para poder consultarlo después sin red.",
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 14, color: Colors.black54),
+                ),
+                const SizedBox(height: 20),
+                TextButton(
+                  onPressed: widget.onBackToDashboard ?? () {},
+                  child: Text("explorar inicio", style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     if (_errorCode == 404) {
       return Error404Page(
         onExploreHome: widget.onBackToDashboard ?? () {},
