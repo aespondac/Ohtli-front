@@ -1236,7 +1236,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     return Container(
       key: const ValueKey('places_search_box'),
       height: isMobile ? 56 : 62,
-      padding: const EdgeInsets.only(left: 6, right: 6),
+      // El botón queda con el mismo margen arriba, abajo y a la derecha
+      padding: isMobile ? const EdgeInsets.symmetric(horizontal: 6) : const EdgeInsets.fromLTRB(6, 7, 7, 7),
       decoration: BoxDecoration(
         color: OhtliColors.cardBg,
         borderRadius: BorderRadius.circular(40),
@@ -1276,17 +1277,22 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
               },
             ),
           if (!isMobile)
-            ElevatedButton(
-              onPressed: _isSearchingRemote ? null : _submitSearch,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                shape: const StadiumBorder(),
-                textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+            SizedBox(
+              height: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSearchingRemote ? null : _submitSearch,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.7),
+                  disabledForegroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  shape: const StadiumBorder(),
+                  textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                child: Text(_isSearchingRemote ? 'Buscando…' : 'Buscar'),
               ),
-              child: Text(_isSearchingRemote ? 'Buscando…' : 'Buscar'),
             ),
         ],
       ),

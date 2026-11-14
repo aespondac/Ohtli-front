@@ -39,7 +39,7 @@ class PlaceAffinity {
       final response = await http.get(
         Uri.parse('$_apiUrl/v1/user/${user.uid}/affinity?top_k=60'),
         headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 75)); // cubre el arranque en frío del motor
       if (response.statusCode != 200) {
         debugPrint('[PlaceAffinity] HTTP ${response.statusCode}');
         return const [];
