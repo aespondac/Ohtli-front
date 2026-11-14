@@ -968,7 +968,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           Text('${rated.length} de ${places.length} paradas calificadas.', style: GoogleFonts.inter(fontSize: 12, color: sub)),
         ] else
           Text(
-            past ? 'Ya pasó el ${_formatSpanishDate(t.travelDate)}. ¿Qué tal estuvo cada parada?' : 'Podrás calificar las paradas después del ${_formatSpanishDate(t.travelDate)}.',
+            past ? 'Ya pasó ${_formatSpanishDate(t.travelDate)}. ¿Qué tal estuvo cada parada?' : 'Podrás calificar las paradas después ${_formatSpanishDate(t.travelDate).replaceFirst('el ', 'del ')}.',
             style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg),
           ),
         if (past && canEdit) ...[
@@ -2984,6 +2984,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
       final notes = _notes.where((n) => n.blockId == section.id).toList();
       final open = _openThreads.contains(section.id);
       final names = _memberNames;
+      // Copia fija: el Builder se evalúa después y no debe ver la reasignación de blockContent.
+      final Widget inner = blockContent;
       blockContent = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2997,7 +2999,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 isDark: isDark,
                 onPick: (k) => _reactToBlock(section.id, k),
               ),
-              child: blockContent,
+              child: inner,
             ),
           ),
           BlockSocialBar(
