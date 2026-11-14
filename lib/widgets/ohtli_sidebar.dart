@@ -490,7 +490,9 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     final user = FirebaseAuth.instance.currentUser;
     final saved = SavedAccounts.list();
     final bool currentSaved = user != null && SavedAccounts.isSaved(user.uid);
-    final others = saved.where((a) => a.uid != user?.uid && SavedAccounts.isSaved(a.uid)).toList();
+    // Todas las demás cuentas recordadas; las que perdieron su sesión se muestran como
+    // "Inicia sesión de nuevo" en vez de desaparecer.
+    final others = saved.where((a) => a.uid != user?.uid).toList();
 
     // Se abre justo encima del botón: alto estimado de las opciones y separadores.
     final double scale = MediaQuery.textScalerOf(context).scale(1);
@@ -550,6 +552,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       required String name,
       required String email,
       required bool current,
+      bool needsLogin = false,
     }) {
       return Row(
         children: [
@@ -566,7 +569,13 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
                 ),
-                if (name.isNotEmpty && email.isNotEmpty)
+                if (needsLogin)
+                  Text(
+                    'Inicia sesión de nuevo',
+                    maxLines: 1,
+                    style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.xoconostle),
+                  )
+                else if (name.isNotEmpty && email.isNotEmpty)
                   Text(
                     email,
                     maxLines: 1,
@@ -577,6 +586,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
             ),
           ),
           if (current) Icon(Icons.check_rounded, size: 18, color: _accent),
+          if (needsLogin) Icon(Icons.login_rounded, size: 17, color: OhtliColors.onyx.withOpacity(0.5)),
         ],
       );
     }
@@ -619,9 +629,18 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
             value: 'switch:${a.uid}',
             height: 54,
             child: Tooltip(
-              message: 'Cambiar a esta cuenta',
+              message: SavedAccounts.needsLogin(a.uid)
+                  ? 'Su sesión ya no es válida: inicia sesión con ${a.email.isNotEmpty ? a.email : 'esa cuenta'}'
+                  : 'Cambiar a esta cuenta',
               waitDuration: const Duration(milliseconds: 600),
-              child: accountRow(initials: a.initials, photo: a.photoURL, name: a.name, email: a.email, current: false),
+              child: accountRow(
+                initials: a.initials,
+                photo: a.photoURL,
+                name: a.name,
+                email: a.email,
+                current: false,
+                needsLogin: SavedAccounts.needsLogin(a.uid),
+              ),
             ),
           ),
         if (!currentSaved && user != null)
@@ -653,7 +672,12 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     );
     if (!mounted || choice == null) return;
     if (choice.startsWith('switch:')) {
-      await _switchAccount(others.firstWhere((a) => 'switch:${a.uid}' == choice));
+      final target = others.firstWhere((a) => 'switch:${a.uid}' == choice);
+      if (SavedAccounts.needsLogin(target.uid)) {
+        await _addAccount(currentSaved: currentSaved);
+      } else {
+        await _switchAccount(target);
+      }
       return;
     }
     switch (choice) {

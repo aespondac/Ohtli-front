@@ -63,6 +63,7 @@ class SavedAccounts {
   static const String _sessionPrefix = 'ohtli_saved_session_';
   static const String _pendingSwitchKey = 'ohtli_switch_target';
   static const int maxAccounts = 5;
+  static const String _logKey = 'ohtli_accounts_log';
 
   // Persistencia del SDK de Firebase Auth (IndexedDB).
   static const String _dbName = 'firebaseLocalStorageDb';
@@ -71,6 +72,26 @@ class SavedAccounts {
 
   /// Aumenta cada vez que cambia la lista, para redibujar el menú.
   static final ValueNotifier<int> changes = ValueNotifier<int>(0);
+
+  // ---------------------------------------------------------------------------
+  // Registro de diagnóstico (sin tokens ni contraseñas): últimos 40 eventos
+  // ---------------------------------------------------------------------------
+
+  static String _short(String? uid) => uid == null ? '-' : (uid.length > 6 ? uid.substring(uid.length - 6) : uid);
+
+  static void _log(String event, {String? uid, String? detail}) {
+    final line = '${DateTime.now().toIso8601String()} $event uid=${_short(uid)}${detail == null ? '' : ' $detail'}';
+    print('[ohtli-accounts] $line');
+    try {
+      final raw = html.window.localStorage[_logKey];
+      final entries = raw == null ? <dynamic>[] : (jsonDecode(raw) as List);
+      entries.add(line);
+      while (entries.length > 40) {
+        entries.removeAt(0);
+      }
+      html.window.localStorage[_logKey] = jsonEncode(entries);
+    } catch (_) {}
+  }
 
   // ---------------------------------------------------------------------------
   // Lista local
@@ -92,6 +113,16 @@ class SavedAccounts {
 
   /// La cuenta está recordada y tiene su sesión guardada (se puede cambiar a ella).
   static bool isSaved(String uid) => list().any((a) => a.uid == uid) && _readSession(uid) != null;
+
+  /// La cuenta está en la lista pero su sesión ya no sirve: hay que iniciar sesión de nuevo.
+  static bool needsLogin(String uid) => list().any((a) => a.uid == uid) && _readSession(uid) == null;
+
+  /// Marca que la sesión guardada ya no sirve, sin quitar la cuenta del menú.
+  static void _markNeedsLogin(String uid, String reason) {
+    _writeSession(uid, null);
+    _log('needs-login', uid: uid, detail: reason);
+    changes.value++;
+  }
 
   static void _writeList(List<SavedAccount> accounts) {
     try {
@@ -238,7 +269,10 @@ class SavedAccounts {
     if (!kIsWeb) return false;
     try {
       final session = _currentSessionJson(user.uid);
-      if (session == null) return false;
+      if (session == null) {
+        _log('remember-fail', uid: user.uid, detail: 'la sesión activa no es esta cuenta');
+        return false;
+      }
       _writeSession(user.uid, session);
 
       final accounts = list().where((a) => a.uid != user.uid).toList();
@@ -248,12 +282,15 @@ class SavedAccounts {
       );
       // Si se pasa del límite, se olvida la que lleva más tiempo sin usarse.
       while (accounts.length > maxAccounts) {
-        _writeSession(accounts.removeLast().uid, null);
+        final dropped = accounts.removeLast().uid;
+        _writeSession(dropped, null);
+        _log('drop-oldest', uid: dropped);
       }
       _writeList(accounts);
+      _log('remember', uid: user.uid, detail: 'cuentas=${accounts.length}');
       return true;
     } catch (e) {
-      print('Error remembering account: $e');
+      _log('remember-error', uid: user.uid, detail: '$e');
       return false;
     }
   }
@@ -265,12 +302,8 @@ class SavedAccounts {
     if (list().any((a) => a.uid == user.uid)) {
       await remember(user);
     }
-    // Las cuentas recordadas con la versión anterior no tienen sesión guardada: no se
-    // puede cambiar a ellas, así que se quitan (al volver a entrar con "Recordar
-    // sesión" reaparecen).
-    final all = list();
-    final usable = all.where((a) => _readSession(a.uid) != null).toList();
-    if (usable.length != all.length) _writeList(usable);
+    // Las cuentas sin sesión guardada (p. ej. de la versión anterior) se quedan en el
+    // menú como "Inicia sesión de nuevo"; nunca se quitan solas.
     await _cleanupLegacy();
   }
 
@@ -279,6 +312,7 @@ class SavedAccounts {
     if (!kIsWeb) return;
     _writeSession(uid, null);
     _writeList(list().where((a) => a.uid != uid).toList());
+    _log('forget', uid: uid, detail: 'cerrar sesión');
   }
 
   /// Pone como sesión activa una cuenta recordada. Tras [SwitchAccountResult.switched]
@@ -286,21 +320,26 @@ class SavedAccounts {
   static Future<SwitchAccountResult> switchTo(String uid) async {
     if (!kIsWeb) return SwitchAccountResult.failed;
     final raw = _readSession(uid);
+    _log('switch-start', uid: uid, detail: 'desde=${_short(FirebaseAuth.instance.currentUser?.uid)}');
     if (raw == null) {
-      await forget(uid);
+      _markNeedsLogin(uid, 'sin sesión guardada');
       return SwitchAccountResult.expired;
     }
     try {
       final blob = jsonDecode(raw);
       if (blob is! Map<String, dynamic> || blob['uid'] != uid) {
-        await forget(uid);
+        _markNeedsLogin(uid, 'sesión guardada inválida');
         return SwitchAccountResult.expired;
       }
       // Guarda la sesión más reciente de la cuenta actual para poder volver a ella.
       final current = FirebaseAuth.instance.currentUser;
       if (current != null && list().any((a) => a.uid == current.uid)) {
         final session = _currentSessionJson(current.uid);
-        if (session != null) _writeSession(current.uid, session);
+        if (session != null) {
+          _writeSession(current.uid, session);
+        } else {
+          _log('switch-save-current-fail', uid: current.uid);
+        }
       }
 
       await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
@@ -313,22 +352,31 @@ class SavedAccounts {
       html.window.sessionStorage[_pendingSwitchKey] = uid;
       final accounts = list();
       _writeList([...accounts.where((a) => a.uid == uid), ...accounts.where((a) => a.uid != uid)]);
+      _log('switch-written', uid: uid);
       return SwitchAccountResult.switched;
     } catch (e) {
-      print('Error switching account: $e');
+      _log('switch-error', uid: uid, detail: '$e');
       return SwitchAccountResult.failed;
     }
   }
 
   /// Primer estado de sesión tras recargar por un cambio de cuenta. Si la cuenta
-  /// elegida no entró (sesión revocada), la olvida y devuelve su nombre para avisar.
+  /// elegida no entró (sesión revocada), la marca para volver a iniciar sesión y
+  /// devuelve su nombre para avisar.
   static String? checkPendingSwitch(User? user) {
     if (!kIsWeb) return null;
     try {
       final target = html.window.sessionStorage.remove(_pendingSwitchKey);
-      if (target == null || user?.uid == target) return null;
+      if (target == null) return null;
+      if (user?.uid == target) {
+        _log('switch-ok', uid: target);
+        return null;
+      }
       final account = list().where((a) => a.uid == target).firstOrNull;
-      forget(target);
+      _markNeedsLogin(
+        target,
+        'tras recargar entró ${user == null ? 'sin sesión' : 'otra cuenta (${_short(user.uid)})'}',
+      );
       return account == null ? 'esa cuenta' : (account.name.isNotEmpty ? account.name : account.email);
     } catch (_) {
       return null;
