@@ -1,23 +1,36 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Entrada de la fe de erratas: quién cambió qué y cuándo (después del viaje).
 class ErrataEntry {
   final String id;
   final String note;
   final DateTime date;
 
+  /// Quién hizo el cambio (vacío en entradas antiguas).
+  final String authorId;
+  final String authorName;
+
+  /// Lo que cambió, una línea por cambio (p. ej. "Gasto real de «Tacos»: $180 → $236").
+  final List<String> changes;
+
   ErrataEntry({
     required this.id,
     required this.note,
     required this.date,
+    this.authorId = '',
+    this.authorName = '',
+    this.changes = const [],
   });
 
   factory ErrataEntry.fromMap(Map<String, dynamic> data) {
+    final d = data['date'];
     return ErrataEntry(
       id: data['id'] ?? '',
       note: data['note'] ?? '',
-      date: data['date'] != null 
-          ? (data['date'] as Timestamp).toDate() 
-          : DateTime.now(),
+      date: d is Timestamp ? d.toDate() : (d is DateTime ? d : DateTime.now()),
+      authorId: (data['authorId'] ?? '').toString(),
+      authorName: (data['authorName'] ?? '').toString(),
+      changes: data['changes'] is List ? List<String>.from((data['changes'] as List).map((e) => e.toString())) : const [],
     );
   }
 
@@ -26,6 +39,9 @@ class ErrataEntry {
       'id': id,
       'note': note,
       'date': Timestamp.fromDate(date),
+      if (authorId.isNotEmpty) 'authorId': authorId,
+      if (authorName.isNotEmpty) 'authorName': authorName,
+      if (changes.isNotEmpty) 'changes': changes,
     };
   }
 }
@@ -63,6 +79,9 @@ class Trip {
   /// Cuándo el autor calificó las paradas después del viaje (T5). Null = pendiente.
   final DateTime? reviewedAt;
 
+  /// Cuándo terminaron el viaje desde el modo viaje: desde ahí el viaje está en "después".
+  final DateTime? finishedAt;
+
   /// Tipo de publicación: 'trip' (viaje/crónica) o 'release_notes' (notas de
   /// versión de Ohtli, que se destacan en Explorar).
   final String kind;
@@ -93,6 +112,7 @@ class Trip {
     this.unlockOnPublish = false,
     this.surpriseOpenedBy = const [],
     this.reviewedAt,
+    this.finishedAt,
     this.kind = kTripKindTrip,
     this.version,
   });
@@ -147,6 +167,7 @@ class Trip {
       unlockOnPublish: data['unlockOnPublish'] ?? false,
       surpriseOpenedBy: surpriseOpenedBy,
       reviewedAt: (data['reviewedAt'] as Timestamp?)?.toDate(),
+      finishedAt: (data['finishedAt'] as Timestamp?)?.toDate(),
       kind: (data['kind'] ?? kTripKindTrip).toString(),
       version: data['version']?.toString(),
     );
@@ -174,6 +195,7 @@ class Trip {
       'surpriseOpenedBy': surpriseOpenedBy,
       // Solo si existe: el editor guarda con merge y no debe borrar la reseña.
       if (reviewedAt != null) 'reviewedAt': Timestamp.fromDate(reviewedAt!),
+      if (finishedAt != null) 'finishedAt': Timestamp.fromDate(finishedAt!),
       'kind': kind,
       'version': version,
     };

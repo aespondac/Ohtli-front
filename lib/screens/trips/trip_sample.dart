@@ -57,6 +57,34 @@ class TripSample {
       surpriseTargetIds: const ['muestra-mar'],
       surpriseTargetNames: const ['Mar'],
       reviewedAt: stage == SampleStage.despues ? day.add(const Duration(days: 1)) : null,
+      finishedAt: stage == SampleStage.despues ? DateTime(day.year, day.month, day.day, 19, 25) : null,
+      // Después del viaje cada cambio queda en la fe de erratas con quién y cuándo.
+      errataHistory: stage == SampleStage.despues
+          ? [
+              ErrataEntry(
+                id: 'e1',
+                note: '',
+                date: DateTime(day.year, day.month, day.day, 21, 10),
+                authorId: kSampleOwnerId,
+                authorName: 'Ana López',
+                changes: const [
+                  'Gasto real de «Tacos de suadero en el Centro»: \$180 → \$236',
+                  'Se agregó una foto a «Parque México»',
+                ],
+              ),
+              ErrataEntry(
+                id: 'e2',
+                note: 'La cantina cerró temprano; ajusto la hora de salida.',
+                date: DateTime(day.year, day.month, day.day + 1, 10, 4),
+                authorId: 'muestra-luis',
+                authorName: 'Luis Ramírez',
+                changes: const [
+                  'Hora real en «Cantina La Guadalupana»: 16:55–20:00 → 16:55–19:20',
+                  'Calificación de «Cantina La Guadalupana»: 4 ★ → 3 ★',
+                ],
+              ),
+            ]
+          : const [],
     );
   }
 

@@ -37,6 +37,7 @@ import '../../widgets/trip_mini_map.dart';
 import '../../widgets/reveal_on_scroll.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../services/place_locator.dart';
+import '../../services/trip_changes.dart';
 import 'trip_sample.dart';
 import 'trip_traveler_tools.dart';
 import '../../config/admin.dart' show isSuperUser;
@@ -688,16 +689,36 @@ class _TripViewerPageState extends State<TripViewerPage> {
         ]));
       }
     } else {
-      body.add(Text('Visitaron todas las paradas. Mañana podrán completar precios, agregar portadas y convertirlo en crónica.',
+      body.add(Text('Visitaron todas las paradas. Al terminar el viaje pasa a "después": calificar, completar precios, portadas y crónica.',
           style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg)));
       if (edit) {
         body.add(const SizedBox(height: 10));
-        body.add(Wrap(spacing: 6, runSpacing: 6, children: [
+        body.add(Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+            onPressed: _finishTrip,
+            style: FilledButton.styleFrom(
+              backgroundColor: OhtliColors.stormyTeal,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.flag_circle_rounded, size: 18),
+            label: Text('Terminar el viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+          ),
           chip(Icons.photo_camera_rounded, 'Foto', _addPhoto),
-          chip(Icons.notes_rounded, 'Texto', () => _addContentBlock(BlockKind.text)),
-          chip(Icons.star_rounded, 'Calificar', () async => _showReviewDialog(isDark)),
         ]));
       }
+    }
+    // Se puede terminar antes de visitar todo (p. ej. si se cancela una parada).
+    if (edit && (here != null || next != null)) {
+      body.add(Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: _finishTrip,
+          style: TextButton.styleFrom(foregroundColor: sub, visualDensity: VisualDensity.compact),
+          icon: const Icon(Icons.flag_circle_outlined, size: 16),
+          label: Text('Terminar el viaje', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+        ),
+      ));
     }
 
     return Material(
@@ -1259,18 +1280,25 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   /// Aplica un cambio al contenido: lee la versión guardada (por si otro viajero cambió algo),
   /// lo aplica y la guarda. En la muestra solo cambia en memoria.
-  Future<bool> _changeContent(List<TripSection> Function(List<TripSection> sections) change, {String? done}) async {
+  Future<bool> _changeContent(List<TripSection> Function(List<TripSection> sections) change,
+      {String? done, List<String> extraChanges = const []}) async {
     final t = _trip;
     if (t == null) return false;
     if (_isSample) {
-      setState(() => _sections = change(List.of(_sections)));
+      final before = _sections;
+      final next = change(List.of(_sections));
+      setState(() => _sections = next);
+      if (_phase == TripPhase.despues) await _recordErrata([...describeTripChanges(before, next), ...extraChanges]);
       if (done != null) _notice('$done. En la muestra no se guarda.');
       return true;
     }
     try {
       final saved = await TripService().getTripContent(t.userId, t.id);
-      final next = change(List.of(saved?.sections ?? _sections));
+      final before = saved?.sections ?? _sections;
+      final next = change(List.of(before));
       await TripService().updateTripContent(t.userId, t.id, TripContent(sections: next));
+      // Después del viaje, cada cambio queda en la fe de erratas con quién y cuándo.
+      if (_phase == TripPhase.despues) await _recordErrata([...describeTripChanges(before, next), ...extraChanges]);
       if (!mounted) return true;
       setState(() => _sections = next);
       if (done != null) _notice(done);
@@ -1469,6 +1497,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
         SampleStage.despues => TripPhase.despues,
       };
     }
+    // Al terminar el viaje desde el modo viaje, ya es "después" aunque sea el mismo día.
+    if (_trip?.finishedAt != null) return TripPhase.despues;
     final d = _trip?.travelDate;
     if (d == null) return TripPhase.antes;
     final now = DateTime.now();
@@ -1623,11 +1653,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
       _toolGrid(isDark, [
         if (canEdit) (Icons.star_rounded, 'Calificar', () => run(() async => _showReviewDialog(isDark))),
         if (_canEditContent) (Icons.receipt_long_rounded, 'Precios', () => run(_completePrices)),
-        (canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, canEdit ? 'Modificar' : 'Erratas', () => run(() async => _openEditorOrErrata(canEdit))),
+        if (canEdit) (Icons.edit_rounded, 'Modificar', () => run(() async => _openEditorOrErrata(canEdit))),
         if (_canEditContent) (Icons.wallpaper_rounded, 'Portadas', () => run(_setCover)),
         if (_canEditContent) (Icons.photo_camera_rounded, 'Fotos', () => run(_addPhoto)),
         if (_isOwner) (Icons.auto_stories_rounded, isChronicle ? 'Crónica ✓' : 'Crónica', () => run(_convertToChronicle)),
+        (Icons.history_edu_rounded, t.errataHistory.isEmpty ? 'Erratas' : 'Erratas (${t.errataHistory.length})', () => run(_showErrataLog)),
       ]),
+      const SizedBox(height: 10),
+      Text('Después del viaje todo se puede editar; cada cambio queda en la fe de erratas con quién y cuándo.',
+          style: GoogleFonts.inter(fontSize: 11.5, height: 1.4, color: sub)),
     ]);
   }
 
@@ -1775,7 +1809,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
         subtitle: 'Lo que realmente gastaron en cada parada.',
         icon: Icons.receipt_long_rounded,
         action: 'Guardar precios',
-        rows: [for (final p in places) (id: p.id, name: p.title.isEmpty ? 'Parada' : p.title, value: p.realCost ?? p.cost, isTransfer: false)],
+        // Solo lo ya registrado: el estimado no se toma como gasto real.
+        rows: [for (final p in places) (id: p.id, name: p.title.isEmpty ? 'Parada' : p.title, value: p.realCost ?? 0, isTransfer: false)],
         isDark: _dark);
     if (r == null) return;
     await _changeContent(
@@ -1802,7 +1837,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
         isDark: _dark);
     if (o == null) return;
     final removeIds = {if (o.removeUnvisited) ...unvisited.map((p) => p.id)};
-    final ok = await _changeContent((l) {
+    final bool willPublish = o.makePublic && !(t.visibility == 'public' && t.status == 'published');
+    final ok = await _changeContent(extraChanges: [if (willPublish) 'Se convirtió en crónica pública'], (l) {
       final kept = <TripSection>[];
       for (final s in l) {
         if (removeIds.contains(s.id)) continue;
@@ -1837,6 +1873,233 @@ class _TripViewerPageState extends State<TripViewerPage> {
     } catch (e) {
       _notice(friendlyError(e, fallback: 'Se limpió el plan, pero no se pudo publicar.'));
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fe de erratas: después del viaje, cada cambio queda con quién, cuándo y qué
+  // ---------------------------------------------------------------------------
+  Future<void> _recordErrata(List<String> changes, {String note = ''}) async {
+    final t = _trip;
+    if (t == null || (changes.isEmpty && note.trim().isEmpty)) return;
+    final entry = ErrataEntry(
+      id: 'e${DateTime.now().microsecondsSinceEpoch}',
+      note: note.trim(),
+      date: DateTime.now(),
+      authorId: _myUid ?? '',
+      authorName: _myDisplayName,
+      changes: changes,
+    );
+    try {
+      if (!_isSample) {
+        await FirebaseFirestore.instance.collection('users').doc(t.userId).collection('trips').doc(t.id).update({
+          'errataHistory': FieldValue.arrayUnion([entry.toMap()]),
+          'updatedAt': Timestamp.now(),
+        });
+      }
+      if (!mounted) return;
+      final current = _trip!;
+      setState(() => _trip = Trip.fromMap({
+            ...current.toMap(),
+            'errataHistory': [...current.errataHistory.map((e) => e.toMap()), entry.toMap()],
+          }, current.id));
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'El cambio se guardó, pero no quedó en la fe de erratas.'));
+    }
+  }
+
+  /// Termina el viaje desde el modo viaje: desde ahí está en "después".
+  Future<void> _finishTrip() async {
+    final t = _trip;
+    if (t == null) return;
+    final isDark = _dark;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Text('¿Terminar el viaje?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: 420,
+          child: Text(
+            'Sale el modo viaje y pasa a "después": calificar, completar precios, agregar portadas y fotos, y convertirlo en crónica. '
+            'Desde ahí, cada cambio queda en la fe de erratas con quién y cuándo lo hizo.',
+            style: GoogleFonts.inter(fontSize: 13.5, height: 1.45),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Seguir en el viaje')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Terminar el viaje'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final now = DateTime.now();
+    try {
+      if (_isSample) {
+        _setSampleStage(SampleStage.despues);
+        _notice('Viaje terminado: ya está en "después". En la muestra no se guarda.');
+        return;
+      }
+      await FirebaseFirestore.instance.collection('users').doc(t.userId).collection('trips').doc(t.id).update({
+        'finishedAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      });
+      if (!mounted) return;
+      setState(() {
+        _tripMode = false;
+        _trip = Trip.fromMap({...t.toMap(), 'finishedAt': Timestamp.fromDate(now)}, t.id);
+      });
+      _notice('Viaje terminado. Ya pueden calificar, completar precios y convertirlo en crónica.');
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'No se pudo terminar el viaje.'));
+    }
+  }
+
+  static String _errataStamp(DateTime d) {
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return '${d.day} ${months[d.month - 1]} ${d.year} · ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Ver fe de erratas: quién cambió qué y cuándo, lo más reciente primero.
+  Future<void> _showErrataLog() async {
+    final isDark = _dark;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final noteCtrl = TextEditingController();
+    final bool canNote = _canEditContent;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final entries = (_trip?.errataHistory ?? const <ErrataEntry>[]).reversed.toList();
+          return Dialog(
+            backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+            insetPadding: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text('Fe de erratas', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: fg))),
+                        IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close_rounded)),
+                      ],
+                    ),
+                    Text('Lo que se cambió después del viaje, quién y cuándo.', style: GoogleFonts.inter(fontSize: 12.5, color: sub)),
+                    const SizedBox(height: 14),
+                    Flexible(
+                      child: entries.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 24),
+                              child: Text('Todavía no hay cambios después del viaje.', textAlign: TextAlign.center, style: GoogleFonts.inter(color: sub)),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: entries.length,
+                              separatorBuilder: (_, __) => Divider(height: 22, color: isDark ? Colors.white10 : OhtliColors.cardBorder),
+                              itemBuilder: (_, i) {
+                                final e = entries[i];
+                                final who = e.authorName.isNotEmpty ? e.authorName : 'Autor del viaje';
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 15,
+                                      backgroundColor: OhtliColors.xoconostle.withValues(alpha: 0.15),
+                                      child: Text(who.characters.first.toUpperCase(),
+                                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.xoconostle)),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text.rich(TextSpan(children: [
+                                            TextSpan(text: who, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: fg)),
+                                            TextSpan(text: '  ${_errataStamp(e.date)}', style: GoogleFonts.inter(fontSize: 12, color: sub)),
+                                          ])),
+                                          if (e.note.isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Text(e.note, style: GoogleFonts.inter(fontSize: 13.5, height: 1.45, color: fg)),
+                                          ],
+                                          for (final c in e.changes)
+                                            Padding(
+                                              padding: const EdgeInsets.only(top: 4),
+                                              child: Row(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Padding(
+                                                    padding: const EdgeInsets.only(top: 7, right: 8),
+                                                    child: Container(width: 5, height: 5, decoration: const BoxDecoration(color: OhtliColors.xoconostle, shape: BoxShape.circle)),
+                                                  ),
+                                                  Expanded(child: Text(c, style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg.withValues(alpha: 0.85)))),
+                                                ],
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                    ),
+                    if (canNote) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: noteCtrl,
+                              onChanged: (_) => setLocal(() {}),
+                              minLines: 1,
+                              maxLines: 3,
+                              style: GoogleFonts.inter(fontSize: 13.5, color: fg),
+                              decoration: InputDecoration(
+                                hintText: 'Agregar una aclaración o corrección',
+                                isDense: true,
+                                filled: true,
+                                fillColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF4F6F5),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: noteCtrl.text.trim().isEmpty
+                                ? null
+                                : () async {
+                                    final text = noteCtrl.text.trim();
+                                    noteCtrl.clear();
+                                    await _recordErrata(const [], note: text);
+                                    setLocal(() {});
+                                  },
+                            style: FilledButton.styleFrom(backgroundColor: OhtliColors.xoconostle, foregroundColor: Colors.white),
+                            child: const Text('Publicar'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    noteCtrl.dispose();
   }
 
   /// Calificar la parada en curso desde el modo viaje.
@@ -2307,12 +2570,14 @@ class _TripViewerPageState extends State<TripViewerPage> {
       );
     }).toList();
 
+    final reviewChanges = _phase == TripPhase.despues ? describeTripChanges(_sections, updated) : const <String>[];
     if (_isSample) {
       final t = _trip!;
       setState(() {
         _sections = updated;
         _trip = Trip.fromMap({...t.toMap(), 'reviewedAt': Timestamp.now()}, t.id);
       });
+      await _recordErrata(reviewChanges);
       _sampleNotice('En la muestra la calificación se ve, pero no se guarda.');
       return;
     }
@@ -2326,6 +2591,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         _trip = Trip.fromMap({...t.toMap(), 'reviewedAt': Timestamp.now()}, t.id);
         _isSavingReview = false;
       });
+      await _recordErrata(reviewChanges);
       final bool canEditNow = t.userId == FirebaseAuth.instance.currentUser?.uid || t.status == 'draft';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2897,7 +3163,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final bool isOwner = _isSample ? _sampleAsMember : (currentUser != null && _trip != null && _trip!.userId == currentUser.uid);
     final bool isCoAuthor = !_isSample && currentUser != null && _trip != null && _trip!.coAuthorIds.contains(currentUser.uid);
     final bool showErrataButton = isOwner || isCoAuthor;
-    final bool canEdit = isOwner || (isCoAuthor && _trip != null && _trip!.status == 'draft');
+    // Después del viaje, los coautores también editan todo; cada cambio queda en la fe de erratas.
+    final bool canEdit = isOwner || (isCoAuthor && _trip != null && (_trip!.status == 'draft' || _phase == TripPhase.despues));
 
     final isSurpriseForMe = _trip != null &&
         _trip!.isSurprise &&
@@ -3692,79 +3959,46 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
+  /// Al final del viaje: "Ver fe de erratas" con cuántos cambios y el más reciente.
   Widget _buildErrataHistorySection(bool isDark) {
     final errata = _trip?.errataHistory ?? [];
     if (errata.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 20),
-        Divider(color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3), height: 40),
-        Row(
-          children: [
-            const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              "Notas de Cambios y Fe de Erratas",
-              style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : OhtliColors.onyx,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        ...errata.reversed.map((entry) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF231E1E) : const Color(0xFFFFF5F5),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? const Color(0xFF5A2C2C) : const Color(0xFFFEE2E2),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final last = errata.last;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final who = last.authorName.isNotEmpty ? last.authorName : 'Autor del viaje';
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Material(
+        color: OhtliColors.xoconostle.withValues(alpha: isDark ? 0.14 : 0.06),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: _showErrataLog,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Corrección publicada",
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: OhtliColors.xoconostle,
-                      ),
-                    ),
-                    Text(
-                      "${entry.date.day}/${entry.date.month}/${entry.date.year}",
-                      style: GoogleFonts.inter(
-                        fontSize: 10.5,
-                        color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.4),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  entry.note,
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5,
-                    color: isDark ? Colors.white70 : OhtliColors.onyx,
-                    height: 1.4,
+                const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Fe de erratas · ${errata.length} ${errata.length == 1 ? 'cambio' : 'cambios'}',
+                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
+                      const SizedBox(height: 2),
+                      Text('Último: $who, ${_errataStamp(last.date)}', style: GoogleFonts.inter(fontSize: 12.5, color: sub)),
+                    ],
                   ),
                 ),
+                Text('Ver', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.xoconostle)),
+                const Icon(Icons.chevron_right_rounded, color: OhtliColors.xoconostle),
               ],
             ),
-          );
-        }),
-      ],
+          ),
+        ),
+      ),
     );
   }
 

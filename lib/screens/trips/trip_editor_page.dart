@@ -26,6 +26,7 @@ import 'trip_viewer_page.dart';
 import '../places/places_page.dart';
 import '../../models/poi_model.dart';
 import '../../services/trip_transfers.dart';
+import '../../services/trip_changes.dart';
 import '../../config/editorial.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../widgets/place_details_form.dart';
@@ -99,6 +100,42 @@ class _TripEditorPageState extends State<TripEditorPage> {
   String? _cloudSaveError;
   int _failedUploads = 0;
   bool get _hasPendingCloudChanges => _editVersion != _savedEditVersion;
+
+  // Fe de erratas: contenido y datos del viaje al abrir el editor (o al último registro).
+  // Después del viaje, al salir se registra quién cambió qué y cuándo.
+  List<TripSection>? _errataBaseline;
+  Trip? _errataBaselineTrip;
+
+  bool get _isPostTrip {
+    if (widget.trip.finishedAt != null) return true;
+    final d = _travelDate;
+    if (d == null) return false;
+    final now = DateTime.now();
+    return DateTime(d.year, d.month, d.day).isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  /// Lo que cambió desde la referencia, como entrada de la fe de erratas (o null si nada).
+  ErrataEntry? _errataSinceBaseline({String note = ''}) {
+    final base = _errataBaseline, baseTrip = _errataBaselineTrip;
+    if (base == null || baseTrip == null) return null;
+    final changes = [...describeTripInfoChanges(baseTrip, _buildCurrentTrip()), ...describeTripChanges(base, _sections)];
+    if (changes.isEmpty && note.trim().isEmpty) return null;
+    final u = FirebaseAuth.instance.currentUser;
+    final name = (u?.displayName ?? '').trim().isNotEmpty ? u!.displayName!.trim() : ((u?.email ?? '').split('@').first);
+    return ErrataEntry(
+      id: const Uuid().v4(),
+      note: note.trim(),
+      date: DateTime.now(),
+      authorId: u?.uid ?? '',
+      authorName: name.isEmpty ? 'Viajero' : name,
+      changes: changes,
+    );
+  }
+
+  void _resetErrataBaseline() {
+    _errataBaseline = List.of(_sections);
+    _errataBaselineTrip = _buildCurrentTrip();
+  }
 
   // New fields for co-authors & surprise
   List<String> _coAuthorIds = [];
@@ -222,8 +259,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
             _sections = cloudContent.sections;
             _isLoadingContent = false;
           });
+          _resetErrataBaseline();
         }
       } else {
+        _resetErrataBaseline();
         if (mounted) {
           setState(() {
             _isLoadingContent = false;
@@ -505,6 +544,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       unlockOnPublish: _unlockOnPublish,
       surpriseOpenedBy: widget.trip.surpriseOpenedBy,
       reviewedAt: widget.trip.reviewedAt,
+      finishedAt: widget.trip.finishedAt,
       kind: _kind,
       version: _kind == kTripKindReleaseNotes && _versionController.text.trim().isNotEmpty
           ? _versionController.text.trim()
@@ -1870,11 +1910,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           final String noteText = noteController.text.trim();
                           Navigator.pop(dialogContext);
 
-                          final newErrata = ErrataEntry(
-                            id: const Uuid().v4(),
-                            note: noteText,
-                            date: DateTime.now(),
-                          );
+                          _syncAllTables();
+                          final newErrata = _errataSinceBaseline(note: noteText) ??
+                              ErrataEntry(id: const Uuid().v4(), note: noteText, date: DateTime.now());
+                          _resetErrataBaseline();
 
                           setState(() {
                             _isPublishing = true;
@@ -2075,6 +2114,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
   Future<bool> _onWillPop() async {
     _debounceTimer?.cancel();
     _syncAllTables();
+    if (_isPostTrip) {
+      final entry = _errataSinceBaseline();
+      if (entry != null) {
+        _errataHistory.add(entry);
+        _resetErrataBaseline();
+        _editVersion++; // queda pendiente: se guarda abajo antes de salir
+      }
+    }
     if (!_hasPendingCloudChanges && _cloudSaveError == null && !_isSavingCloud) return true;
 
     // Guarda antes de salir, pero sin dejar el botón "atrás" colgado si no hay conexión
