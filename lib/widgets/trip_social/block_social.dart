@@ -10,6 +10,34 @@ import '../../theme/colors.dart';
 const Color kBubbleMine = Color(0xFF0A84FF);
 Color bubbleOther(bool isDark) => isDark ? const Color(0xFF3A3A3C) : const Color(0xFFE9E9EB);
 
+/// Rojo del corazón clásico.
+const Color kHeartRed = Color(0xFFE8253F);
+
+final RegExp _heartRe = RegExp('\u2764\uFE0F?|\u2665\uFE0F?');
+
+/// Dibuja una reacción. El corazón va como ícono rojo: en la web, la tipografía de la app
+/// trae su propio ❤ en blanco y negro y lo usa en lugar del emoji de color.
+Widget tapbackGlyph(Tapback t, double size) => t.id == 'heart'
+    ? Icon(Icons.favorite_rounded, size: size * 1.05, color: kHeartRed)
+    : Text(t.emoji, style: TextStyle(fontSize: size, height: 1.15));
+
+/// Texto con cada ❤ (o ♥) cambiado por el corazón rojo.
+InlineSpan heartSafeSpan(String text, TextStyle style) {
+  if (!_heartRe.hasMatch(text)) return TextSpan(text: text, style: style);
+  final spans = <InlineSpan>[];
+  int last = 0;
+  for (final m in _heartRe.allMatches(text)) {
+    if (m.start > last) spans.add(TextSpan(text: text.substring(last, m.start)));
+    spans.add(WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Icon(Icons.favorite_rounded, size: (style.fontSize ?? 14) * 1.05, color: kHeartRed),
+    ));
+    last = m.end;
+  }
+  if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
+  return TextSpan(style: style, children: spans);
+}
+
 /// Fila con las 6 reacciones rápidas. [selected] resalta la reacción actual.
 class TapbackPicker extends StatelessWidget {
   final String? selected;
@@ -57,7 +85,7 @@ class TapbackPicker extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: selected == t.id ? kBubbleMine.withValues(alpha: 0.22) : Colors.transparent,
                   ),
-                  child: Text(t.emoji, style: TextStyle(fontSize: compact ? 17 : 21)),
+                  child: tapbackGlyph(t, compact ? 17 : 21),
                 ),
               ),
             ),
@@ -385,7 +413,7 @@ class ReactionSummary extends StatelessWidget {
         .map((e) => '${tapbackOf(e.value)!.emoji} ${e.key == myUid ? 'Tú' : (memberNames[e.key] ?? 'Viajero')}')
         .join('\n');
     return Tooltip(
-      message: who,
+      richMessage: heartSafeSpan(who, const TextStyle(color: Colors.white, fontSize: 12.5)),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 9, vertical: compact ? 2 : 4),
         decoration: BoxDecoration(
@@ -398,7 +426,7 @@ class ReactionSummary extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final e in summary) ...[
-              Text(e.key.emoji, style: TextStyle(fontSize: compact ? 12 : 14)),
+              tapbackGlyph(e.key, compact ? 12 : 14),
               if (e.value > 1 || !compact)
                 Padding(
                   padding: const EdgeInsets.only(left: 2, right: 4),
@@ -450,7 +478,7 @@ class BlockSocialBar extends StatelessWidget {
         Builder(
           builder: (btnCtx) => _PillButton(
             icon: mine == null ? Icons.add_reaction_outlined : null,
-            leading: mine != null ? Text(tapbackOf(mine)!.emoji, style: const TextStyle(fontSize: 14)) : null,
+            leading: mine != null ? tapbackGlyph(tapbackOf(mine)!, 14) : null,
             label: mine == null ? 'Reaccionar' : 'Tu reacción',
             color: tone,
             isDark: isDark,
@@ -904,7 +932,7 @@ class _Bubble extends StatelessWidget {
             borderRadius: radius,
             boxShadow: compact ? [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, 2))] : null,
           ),
-          child: Text(note.text, style: GoogleFonts.inter(fontSize: compact ? 13 : 14, height: 1.35, color: fg)),
+          child: Text.rich(heartSafeSpan(note.text, GoogleFonts.inter(fontSize: compact ? 13 : 14, height: 1.35, color: fg))),
         ),
         if (hasReactions)
           Positioned(

@@ -2016,7 +2016,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
-                        Text(n.text, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5, height: 1.35, color: sub)),
+                        Text.rich(heartSafeSpan(n.text, GoogleFonts.inter(fontSize: 12.5, height: 1.35, color: sub)), maxLines: 2, overflow: TextOverflow.ellipsis),
                       ],
                     ),
                   ),
