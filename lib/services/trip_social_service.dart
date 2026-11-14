@@ -10,8 +10,6 @@ class Tapback {
 
 const List<Tapback> kTapbacks = [
   Tapback('heart', '❤️', 'Me encanta'),
-  Tapback('like', '👍', 'Me gusta'),
-  Tapback('dislike', '👎', 'No me convence'),
   Tapback('haha', '😂', 'Jaja'),
   Tapback('surprise', '😮', '¡Sorpresa!'),
   Tapback('hundred', '💯', 'Cien por ciento'),
