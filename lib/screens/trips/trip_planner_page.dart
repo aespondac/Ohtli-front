@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
 import '../../services/user_private_data.dart';
+import '../../services/saved_places.dart';
 import 'dart:async';
 import 'dart:html' as html;
 import 'dart:ui' show lerpDouble;
@@ -16,10 +17,13 @@ import '../../models/trip_model.dart';
 import '../../services/itinerary_blackboard_service.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
+import '../../widgets/ohtli_ui.dart';
+import '../../widgets/ohtli_service_icon.dart';
 import '../../widgets/osrm_map_widget.dart';
 import '../../utils/friendly_errors.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
+import '../places/places_page.dart';
 import 'trip_viewer_page.dart';
 import 'trip_editor_page.dart';
 
@@ -76,6 +80,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   final ItineraryBlackboardService _blackboardService = ItineraryBlackboardService();
   final TextEditingController _originSearchController = TextEditingController();
   final TextEditingController _customMoodController = TextEditingController();
+  final TextEditingController _budgetController = TextEditingController(text: '450');
+  int _ideaIndex = 0;
 
   PlannerStep _currentStep = PlannerStep.bifurcation;
 
@@ -83,6 +89,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   String _selectedOriginName = '';
   Map<String, double>? _selectedOriginCoords;
   List<Map<String, dynamic>> _userSavedAddresses = [];
+  // Lugares guardados en "Mis lugares" (máximo 3) como puntos de partida
+  List<Poi> _savedPlaces = [];
 
   double _budgetMxn = 450.0;
   String _selectedMood = 'Bohemio y Cafés';
@@ -138,24 +146,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final isSelected = _selectedTravelDate.year == targetDate.year &&
         _selectedTravelDate.month == targetDate.month &&
         _selectedTravelDate.day == targetDate.day;
-
-    return ActionChip(
-      label: Text(label),
-      labelStyle: GoogleFonts.inter(
-        fontSize: 11,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-        color: isSelected ? Colors.white : OhtliColors.onyx,
-      ),
-      backgroundColor: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder.withOpacity(0.2),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-        ),
-      ),
-      onPressed: () {
-        setState(() => _selectedTravelDate = targetDate);
-      },
+    return OhtliChoiceChip(
+      label: label,
+      selected: isSelected,
+      onTap: () => setState(() => _selectedTravelDate = targetDate),
     );
   }
 
@@ -309,26 +303,50 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     return _triadPageController!;
   }
 
-  final List<Map<String, dynamic>> _cdmxKeyZones = [
+  // Seis puntos de partida populares de la CDMX. Si la cuenta tiene direcciones o
+  // lugares guardados, éstos ocupan los primeros lugares y se recorta esta lista.
+  static const List<Map<String, dynamic>> _popularStartPoints = [
     {
-      'name': 'Centro Histórico (Zócalo)',
+      'name': 'Palacio de Bellas Artes',
+      'area': 'Centro Histórico',
+      'match': 'bellas artes',
+      'coords': {'lat': 19.4352, 'lng': -99.1412},
+      'icon': Icons.theater_comedy_rounded,
+    },
+    {
+      'name': 'Museo Soumaya',
+      'area': 'Plaza Carso, Polanco',
+      'match': 'soumaya',
+      'coords': {'lat': 19.4406, 'lng': -99.2047},
+      'icon': Icons.museum_rounded,
+    },
+    {
+      'name': 'Zócalo',
+      'area': 'Plaza de la Constitución, Centro',
+      'match': 'zócalo',
       'coords': {'lat': 19.4326, 'lng': -99.1332},
       'icon': Icons.account_balance_rounded,
     },
     {
-      'name': 'Coyoacán (Jardín Centenario)',
-      'coords': {'lat': 19.3497, 'lng': -99.1622},
-      'icon': Icons.palette_rounded,
-    },
-    {
-      'name': 'Roma / Condesa',
-      'coords': {'lat': 19.4198, 'lng': -99.1599},
-      'icon': Icons.local_cafe_rounded,
-    },
-    {
-      'name': 'Polanco / Chapultepec',
+      'name': 'Museo Nacional de Antropología',
+      'area': 'Bosque de Chapultepec',
+      'match': 'antropología',
       'coords': {'lat': 19.4260, 'lng': -99.1863},
-      'icon': Icons.nature_people_rounded,
+      'icon': Icons.account_balance_outlined,
+    },
+    {
+      'name': 'Ángel de la Independencia',
+      'area': 'Paseo de la Reforma, Juárez',
+      'match': 'ángel de la independencia',
+      'coords': {'lat': 19.4270, 'lng': -99.1677},
+      'icon': Icons.flag_rounded,
+    },
+    {
+      'name': 'Museo Frida Kahlo',
+      'area': 'Casa Azul, Coyoacán',
+      'match': 'frida kahlo',
+      'coords': {'lat': 19.3551, 'lng': -99.1625},
+      'icon': Icons.palette_rounded,
     },
   ];
 
@@ -345,6 +363,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   void initState() {
     super.initState();
     _loadUserSavedAddresses();
+    SavedPlaces.ensureStarted();
+    SavedPlaces.ids.addListener(_loadSavedPlaces);
+    _loadSavedPlaces();
 
     if (widget.initialOriginPoi != null) {
       _selectedOriginName = widget.initialOriginPoi!.name;
@@ -381,8 +402,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     for (final c in _cardScrollControllers.values) {
       c.dispose();
     }
+    SavedPlaces.ids.removeListener(_loadSavedPlaces);
     _originSearchController.dispose();
     _customMoodController.dispose();
+    _budgetController.dispose();
     super.dispose();
   }
 
@@ -404,6 +427,157 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     } catch (e) {
       debugPrint('Error cargando direcciones guardadas: $e');
     }
+  }
+
+  /// Lugares guardados de la cuenta (SavedPlaces, del más reciente al más antiguo) con datos del catálogo.
+  Future<void> _loadSavedPlaces() async {
+    try {
+      final ids = SavedPlaces.ids.value;
+      if (ids.isEmpty) {
+        if (mounted && _savedPlaces.isNotEmpty) setState(() => _savedPlaces = []);
+        return;
+      }
+      final catalog = await PlacesPage.loadCatalog();
+      final byId = {for (final p in catalog) p.poiId: p};
+      final places = <Poi>[];
+      for (final id in ids) {
+        final poi = byId[id];
+        if (poi != null && poi.location.isValid) places.add(poi);
+        if (places.length == 3) break;
+      }
+      if (mounted) setState(() => _savedPlaces = places);
+    } catch (e) {
+      debugPrint('Error cargando lugares guardados: $e');
+    }
+  }
+
+  /// Tarjeta de punto de partida (dirección, lugar guardado o zona).
+  Widget _buildOriginCard({
+    required Widget leading,
+    required String title,
+    String? subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return OhtliSurface(
+      selected: selected,
+      radius: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      onTap: onTap,
+      child: Row(
+        children: [
+          leading,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12.5)),
+                ],
+              ],
+            ),
+          ),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: selected ? 1 : 0,
+            child: const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _thumb(String? url, IconData icon, Color color, bool selected) {
+    final fallback = OhtliServiceIcon(icon: icon, color: color, size: 44, soft: !selected);
+    if (url == null || url.isEmpty) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        width: 44,
+        height: 44,
+        child: Image.network(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback),
+      ),
+    );
+  }
+
+  /// Hasta 6 tarjetas: direcciones guardadas, lugares guardados (máx. 3) y,
+  /// para completar, los puntos populares de la CDMX.
+  List<Widget> _startPointCards() {
+    const total = 6;
+    final cards = <Widget>[];
+    void select(String name, double lat, double lng) => setState(() {
+          _selectedOriginName = name;
+          _selectedOriginCoords = {'lat': lat, 'lng': lng};
+          _originSearchController.text = name;
+        });
+
+    for (final addr in _userSavedAddresses) {
+      if (cards.length == total) break;
+      final label = (addr['label'] ?? addr['name'] ?? 'Dirección').toString();
+      final addressStr = (addr['address'] ?? '').toString();
+      final lat = (addr['lat'] as num?)?.toDouble() ?? 19.4326;
+      final lng = (addr['lng'] as num?)?.toDouble() ?? -99.1332;
+      final lower = label.toLowerCase();
+      final icon = lower.contains('casa') || lower.contains('home')
+          ? Icons.home_rounded
+          : (lower.contains('trabajo') || lower.contains('oficina') ? Icons.work_rounded : Icons.bookmark_rounded);
+      final isSelected = _selectedOriginName == label || _selectedOriginName == addressStr;
+      cards.add(_buildOriginCard(
+        leading: OhtliServiceIcon(icon: icon, color: OhtliColors.stormyTeal, size: 44, soft: !isSelected),
+        title: 'Inicia en $label',
+        subtitle: addressStr.isEmpty ? 'Tu dirección guardada' : addressStr,
+        selected: isSelected,
+        onTap: () => select(label, lat, lng),
+      ));
+    }
+
+    for (final poi in _savedPlaces.take(3)) {
+      if (cards.length == total) break;
+      final isSelected = _selectedOriginName == poi.name;
+      cards.add(_buildOriginCard(
+        leading: _thumb(poi.imageUrl, poi.categoryIcon, poi.categoryColor, isSelected),
+        title: 'Inicia en ${poi.name}',
+        subtitle: 'Guardado · ${poi.coloniaAlcaldiaDisplay}',
+        selected: isSelected,
+        onTap: () => select(poi.name, poi.location.lat, poi.location.lng),
+      ));
+    }
+
+    final taken = {for (final p in _savedPlaces) p.name.toLowerCase()};
+    for (final point in _popularStartPoints) {
+      if (cards.length == total) break;
+      final name = point['name'] as String;
+      if (taken.any((t) => t.contains((point['match'] as String)))) continue;
+      final coords = point['coords'] as Map<String, double>;
+      final isSelected = _selectedOriginName == name;
+      cards.add(_buildOriginCard(
+        leading: OhtliServiceIcon(icon: point['icon'] as IconData, color: OhtliColors.stormyTeal, size: 44, soft: !isSelected),
+        title: 'Inicia en $name',
+        subtitle: point['area'] as String,
+        selected: isSelected,
+        onTap: () => select(name, coords['lat']!, coords['lng']!),
+      ));
+    }
+    return cards;
+  }
+
+  Widget _buildOriginGrid(bool isMobile, List<Widget> cards) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: isMobile ? 1 : 2,
+      mainAxisSpacing: 14,
+      crossAxisSpacing: 14,
+      childAspectRatio: isMobile ? 4.6 : 4.4,
+      children: cards,
+    );
   }
 
   Future<void> _launchBlackboardJob() async {
@@ -1200,41 +1374,37 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '¿Desde dónde inicia tu recorrido?',
-          style: GoogleFonts.outfit(
-            fontSize: isMobile ? 22 : 26,
-            fontWeight: FontWeight.w800,
-            color: OhtliColors.onyx,
-          ),
-        ),
+        // El indicador de pasos ya muestra la etiqueta; aquí solo título y descripción
+        Text('¿Desde dónde inicia tu recorrido?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
         const SizedBox(height: 6),
-        Text(
-          'Elige tu hotel, tu casa o cualquier punto de partida en la Ciudad de México para calcular traslados realistas.',
-          style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
-        ),
+        Text('Elige tu hotel, tu casa o cualquier punto de partida en la Ciudad de México para calcular traslados realistas.',
+            style: OhtliUi.body(size: 14)),
         const SizedBox(height: 24),
 
-        // Campo de búsqueda libre
+        // Campo de búsqueda libre (píldora, como el buscador de Lugares)
         Container(
+          height: 56,
+          padding: const EdgeInsets.only(left: 18, right: 6),
           decoration: BoxDecoration(
-            color: OhtliColors.inputBg,
-            borderRadius: BorderRadius.circular(16),
+            color: OhtliColors.cardBg,
+            borderRadius: BorderRadius.circular(40),
             border: Border.all(color: OhtliColors.cardBorder),
+            boxShadow: OhtliUi.softShadow(),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
             children: [
-              const Icon(Icons.search_rounded, color: OhtliColors.stormyTeal, size: 20),
+              Icon(Icons.search_rounded, color: OhtliColors.accentText, size: 22),
               const SizedBox(width: 12),
               Expanded(
                 child: TextField(
                   controller: _originSearchController,
-                  style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx),
+                  style: GoogleFonts.inter(fontSize: 14.5, color: OhtliColors.onyx, fontWeight: FontWeight.w500),
+                  cursorColor: OhtliColors.stormyTeal,
                   decoration: InputDecoration(
-                    hintText: 'Ingresa una dirección, colonia o POI...',
-                    hintStyle: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
+                    hintText: 'Ingresa una dirección, colonia o lugar…',
+                    hintStyle: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText),
                     border: InputBorder.none,
+                    isDense: true,
                   ),
                   onSubmitted: (val) {
                     if (val.trim().isNotEmpty) {
@@ -1248,7 +1418,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               ),
               if (_originSearchController.text.isNotEmpty)
                 IconButton(
-                  icon: const Icon(Icons.clear_rounded, size: 18),
+                  tooltip: 'Borrar',
+                  icon: Icon(Icons.close_rounded, size: 18, color: OhtliColors.subtleText),
                   onPressed: () {
                     setState(() {
                       _originSearchController.clear();
@@ -1260,171 +1431,25 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
 
-        // Direcciones Guardadas del Usuario
-        if (_userSavedAddresses.isNotEmpty) ...[
-          Text(
-            'TUS DIRECCIONES GUARDADAS',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.0,
-              color: OhtliColors.subtleText,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _userSavedAddresses.map((addr) {
-              final label = (addr['label'] ?? addr['name'] ?? 'Dirección').toString();
-              final addressStr = (addr['address'] ?? '').toString();
-              final isSelected = _selectedOriginName == label || _selectedOriginName == addressStr;
-              final lat = (addr['lat'] as num?)?.toDouble() ?? 19.4326;
-              final lng = (addr['lng'] as num?)?.toDouble() ?? -99.1332;
-
-              return ActionChip(
-                avatar: Icon(
-                  Icons.bookmark_rounded,
-                  size: 15,
-                  color: isSelected ? Colors.white : OhtliColors.stormyTeal,
-                ),
-                label: Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: isSelected ? Colors.white : OhtliColors.onyx,
-                  ),
-                ),
-                backgroundColor: isSelected ? OhtliColors.stormyTeal : OhtliColors.innerCardBg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                  ),
-                ),
-                onPressed: () {
-                  setState(() {
-                    _selectedOriginName = label;
-                    _selectedOriginCoords = {'lat': lat, 'lng': lng};
-                    _originSearchController.text = label;
-                  });
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 24),
-        ],
-
-        // Zonas Clave sugeridas en CDMX
+        // Seis puntos de partida: lo guardado en la cuenta primero, luego los populares
         Text(
-          'O SELECCIONA UNA ZONA ICÓNICA DE CDMX',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-            color: OhtliColors.subtleText,
-          ),
+          _userSavedAddresses.isNotEmpty || _savedPlaces.isNotEmpty ? 'TUS PUNTOS Y LOS MÁS POPULARES' : 'PUNTOS POPULARES PARA EMPEZAR',
+          style: OhtliUi.eyebrow(OhtliColors.subtleText),
         ),
         const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: isMobile ? 1 : 2,
-            childAspectRatio: isMobile ? 4.2 : 3.4,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-          ),
-          itemCount: _cdmxKeyZones.length,
-          itemBuilder: (context, idx) {
-            final zone = _cdmxKeyZones[idx];
-            final name = zone['name'] as String;
-            final icon = zone['icon'] as IconData;
-            final coords = Map<String, double>.from(zone['coords'] as Map);
-            final isSelected = _selectedOriginName == name;
-
-            return InkWell(
-              onTap: () {
-                setState(() {
-                  _selectedOriginName = name;
-                  _selectedOriginCoords = coords;
-                  _originSearchController.text = name;
-                });
-              },
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? OhtliColors.stormyTeal.withOpacity(0.08) : OhtliColors.innerCardBg,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                    width: isSelected ? 1.8 : 1.0,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(icon, size: 18, color: isSelected ? Colors.white : OhtliColors.onyx),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        name,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.onyx,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (isSelected)
-                      const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 18),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 32),
+        _buildOriginGrid(isMobile, _startPointCards()),
+        const SizedBox(height: 36),
 
         // Botón Continuar
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            ElevatedButton(
-              onPressed: _selectedOriginName.trim().isEmpty
-                  ? null
-                  : () {
-                      setState(() => _currentStep = PlannerStep.preferences);
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 15),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Continuar a Preferencias', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward_rounded, size: 16),
-                ],
-              ),
-            ),
-          ],
+        Align(
+          alignment: Alignment.centerRight,
+          child: OhtliPrimaryButton(
+            label: 'Continuar a preferencias',
+            icon: Icons.arrow_forward_rounded,
+            onPressed: _selectedOriginName.trim().isEmpty ? null : () => setState(() => _currentStep = PlannerStep.preferences),
+          ),
         ),
       ],
     );
@@ -1434,304 +1459,304 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   // PASO 2: PREFERENCIAS & PRESUPUESTO
   // ==========================================
   Widget _buildPreferencesStep(bool isMobile) {
+    Widget label(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(text, style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '¿Cuál es la vibra y presupuesto de tu día?',
-          style: GoogleFonts.outfit(
-            fontSize: isMobile ? 22 : 26,
-            fontWeight: FontWeight.w800,
-            color: OhtliColors.onyx,
-          ),
-        ),
+        Text('¿Cuál es la vibra y el presupuesto de tu día?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
         const SizedBox(height: 6),
-        Text(
-          'Cuéntanos qué te late hoy y cuánto quieres gastar. Con eso te proponemos varias rutas para elegir.',
-          style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
-        ),
-        const SizedBox(height: 24),
+        Text('Cuéntanos qué te late hoy y cuánto quieres gastar. Con eso te proponemos varias rutas para elegir.',
+            style: OhtliUi.body(size: 14)),
+        const SizedBox(height: 28),
 
-        // Fecha del Viaje
-        Text(
-          'FECHA DEL VIAJE',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-            color: OhtliColors.subtleText,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: OhtliColors.innerCardBg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: OhtliColors.cardBorder),
-          ),
+        // Fecha del viaje
+        label('FECHA DEL VIAJE'),
+        OhtliSurface(
+          radius: 22,
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: OhtliColors.stormyTeal.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.calendar_today_rounded, color: OhtliColors.stormyTeal, size: 20),
-                      ),
-                      const SizedBox(width: 14),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _formatDate(_selectedTravelDate),
-                            style: GoogleFonts.outfit(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: OhtliColors.onyx,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Fecha programada para el itinerario',
-                            style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText),
-                          ),
-                        ],
-                      ),
-                    ],
+                  const OhtliServiceIcon(icon: Icons.calendar_today_rounded, color: OhtliColors.stormyTeal, size: 46, soft: true),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_formatDate(_selectedTravelDate),
+                            style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                        const SizedBox(height: 2),
+                        Text('Fecha programada para el itinerario', style: OhtliUi.body(size: 12.5)),
+                      ],
+                    ),
                   ),
                   TextButton.icon(
                     onPressed: _pickTravelDate,
-                    icon: const Icon(Icons.edit_calendar_rounded, size: 16, color: OhtliColors.stormyTeal),
-                    label: Text(
-                      'Cambiar',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: OhtliColors.stormyTeal),
-                    ),
+                    icon: const Icon(Icons.edit_calendar_rounded, size: 16),
+                    label: const Text('Cambiar'),
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      backgroundColor: OhtliColors.stormyTeal.withOpacity(0.08),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      foregroundColor: OhtliColors.accentText,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      shape: const StadiumBorder(),
+                      textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              // Chips de acceso rápido
+              const SizedBox(height: 16),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   _buildQuickDateChip('Hoy', DateTime.now()),
                   _buildQuickDateChip('Mañana', DateTime.now().add(const Duration(days: 1))),
-                  _buildQuickDateChip('Este Fin de Semana', _getNextWeekend()),
+                  _buildQuickDateChip('Este fin de semana', _getNextWeekend()),
                   _buildQuickDateChip('En 1 semana', DateTime.now().add(const Duration(days: 7))),
                 ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
 
-        // Slider de Presupuesto
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: OhtliColors.innerCardBg,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: OhtliColors.cardBorder),
-          ),
+        // Presupuesto
+        label('PRESUPUESTO POR PERSONA'),
+        OhtliSurface(
+          radius: 22,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Presupuesto objetivo por persona',
-                    style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal,
-                      borderRadius: BorderRadius.circular(12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('¿Cuánto quieres gastar?',
+                            style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                        const SizedBox(height: 2),
+                        Text('Escribe el monto o usa la barra', style: OhtliUi.body(size: 12.5)),
+                      ],
                     ),
-                    child: Text(
-                      '\$${_budgetMxn.toStringAsFixed(0)} MXN',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
+                  ),
+                  // Monto libre: cualquier cantidad, sincronizada con la barra
+                  Container(
+                    width: 150,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.innerCardBg,
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: OhtliColors.cardBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        Text('\$', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.accentText)),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: TextField(
+                            controller: _budgetController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+                            cursorColor: OhtliColors.stormyTeal,
+                            style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.accentText),
+                            decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12)),
+                            onChanged: (v) {
+                              final value = double.tryParse(v);
+                              if (value != null && value > 0) setState(() => _budgetMxn = value);
+                            },
+                          ),
+                        ),
+                        Text('MXN', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: OhtliColors.subtleText)),
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   activeTrackColor: OhtliColors.stormyTeal,
-                  inactiveTrackColor: OhtliColors.stormyTeal.withOpacity(0.15),
+                  inactiveTrackColor: OhtliColors.stormyTeal.withValues(alpha: 0.15),
                   thumbColor: OhtliColors.stormyTeal,
-                  overlayColor: OhtliColors.stormyTeal.withOpacity(0.12),
+                  overlayColor: OhtliColors.stormyTeal.withValues(alpha: 0.12),
+                  trackHeight: 5,
                 ),
                 child: Slider(
-                  value: _budgetMxn,
+                  value: _budgetMxn.clamp(150.0, 2000.0),
                   min: 150.0,
                   max: 2000.0,
                   divisions: 37,
-                  onChanged: (val) {
-                    setState(() => _budgetMxn = val);
-                  },
+                  onChanged: (val) => setState(() {
+                    _budgetMxn = val;
+                    _budgetController.text = val.toStringAsFixed(0);
+                  }),
                 ),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Económico (\$150 MXN)', style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText)),
-                  Text('Experiencia Premium (\$2,000 MXN)', style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText)),
+                  Text('Económico · \$150', style: OhtliUi.body(size: 12)),
+                  Text('Premium · \$2,000', style: OhtliUi.body(size: 12)),
                 ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
 
-        // Moods Presets
-        Text(
-          'ESTILO / MOOD CULTURAL',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-            color: OhtliColors.subtleText,
-          ),
-        ),
-        const SizedBox(height: 10),
+        // Estilo / mood
+        label('ESTILO DEL DÍA'),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: _moodPresets.map((mood) {
-            final isSelected = _selectedMood == mood && _customMoodController.text.trim().isEmpty;
-            return ChoiceChip(
-              label: Text(mood),
-              labelStyle: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? Colors.white : OhtliColors.onyx,
-              ),
+            final isSelected = _selectedMood == mood;
+            return OhtliChoiceChip(
+              label: mood,
               selected: isSelected,
-              selectedColor: OhtliColors.stormyTeal,
-              backgroundColor: OhtliColors.innerCardBg,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                ),
-              ),
-              onSelected: (val) {
-                if (val) {
-                  setState(() {
-                    _selectedMood = mood;
-                    _customMoodController.clear();
-                  });
+              onTap: () => setState(() {
+                final hadIdea = _moodIdeas.values.any((l) => l.contains(_customMoodController.text));
+                _selectedMood = mood;
+                // Si el texto era una idea generada, se sustituye por la del nuevo estilo
+                if (hadIdea && _customMoodController.text.isNotEmpty) {
+                  _ideaIndex = 0;
+                  _customMoodController.text = (_moodIdeas[mood] ?? const [''])[0];
                 }
-              },
+              }),
             );
           }).toList(),
         ),
         const SizedBox(height: 14),
-
-        // Custom Mood Input
         Container(
+          padding: const EdgeInsets.fromLTRB(18, 4, 8, 4),
           decoration: BoxDecoration(
-            color: OhtliColors.inputBg,
-            borderRadius: BorderRadius.circular(16),
+            color: OhtliColors.cardBg,
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: OhtliColors.cardBorder),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: TextField(
-            controller: _customMoodController,
-            style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx),
-            decoration: InputDecoration(
-              hintText: 'O escribe tu vibra personalizada (ej. "librerías viejas y café solo")...',
-              hintStyle: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
-              border: InputBorder.none,
-            ),
-            onChanged: (val) {
-              setState(() {});
-            },
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(Icons.edit_note_rounded, size: 20, color: OhtliColors.accentText),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _customMoodController,
+                  minLines: 1,
+                  maxLines: 3,
+                  style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx, height: 1.45),
+                  cursorColor: OhtliColors.stormyTeal,
+                  decoration: InputDecoration(
+                    hintText: 'Describe tu día ideal o pide una idea',
+                    hintStyle: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText),
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (val) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _giveMoodIdea,
+                icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                label: const Text('Dame una idea'),
+                style: TextButton.styleFrom(
+                  foregroundColor: OhtliColors.accentText,
+                  backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: const StadiumBorder(),
+                  textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
 
-        // Topología de Ruta
-        Text(
-          'TIPO DE RECORRIDO',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-            color: OhtliColors.subtleText,
-          ),
-        ),
-        const SizedBox(height: 10),
+        // Tipo de recorrido
+        label('TIPO DE RUTA'),
         Row(
           children: [
             Expanded(
               child: _buildTopologyOption(
                 key: 'anillo',
-                title: 'Ruta en Anillo',
-                desc: 'Inicia y regresa cerca del mismo punto',
+                title: 'Ida y vuelta',
+                desc: 'Empiezas y terminas cerca del mismo punto',
                 icon: Icons.loop_rounded,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: _buildTopologyOption(
                 key: 'radio',
-                title: 'Ruta Abierta',
-                desc: 'Avanza explorando sin volver al origen',
+                title: 'Abierta',
+                desc: 'Terminas en otro lugar, sin volver al inicio',
                 icon: Icons.trending_flat_rounded,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 36),
 
-        // Botón Lanzar Generación con IA
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            ElevatedButton(
-              onPressed: _launchBlackboardJob,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 4,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Calcular Opciones de Viaje', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.arrow_forward_rounded, size: 16),
-                ],
-              ),
-            ),
-          ],
+        // Lanzar generación con IA
+        Align(
+          alignment: Alignment.centerRight,
+          child: OhtliPrimaryButton(
+            label: 'Calcular opciones de viaje',
+            icon: Icons.auto_awesome_rounded,
+            highlight: true,
+            onPressed: _launchBlackboardJob,
+          ),
         ),
       ],
     );
+  }
+
+  // Ideas de ejemplo por estilo para "Dame una idea"
+  static const Map<String, List<String>> _moodIdeas = {
+    'Bohemio y Cafés': [
+      'Una mañana tranquila entre cafés de especialidad, librerías de viejo y calles arboladas para caminar sin prisa.',
+      'Café de olla para empezar, una galería pequeña y terminar con pan dulce en una terraza con buena vista.',
+      'Barrios bohemios, cafeterías con historia y alguna tienda de vinilos para perderme un rato.',
+    ],
+    'Muralismo e Historia': [
+      'Murales de Rivera y Orozco, edificios coloniales y un buen lugar para comer cerca del Centro.',
+      'Quiero entender la historia de la ciudad a través de su arte público y sus museos más emblemáticos.',
+      'Un recorrido por palacios y murales con pausas para un café y algo típico.',
+    ],
+    'Cantinas Tradicionales': [
+      'Tarde de cantinas clásicas con botana, música en vivo y algo de historia entre una y otra.',
+      'Probar pulque y mezcal en lugares de tradición, caminando entre barrios con carácter.',
+      'Empezar con una comida corrida y terminar en una cantina con mucho ambiente.',
+    ],
+    'Senderos Verdes y Calma': [
+      'Un día al aire libre entre parques, jardines y lagos, con poco tráfico y ritmo relajado.',
+      'Caminar por bosques urbanos, sentarme a leer y comer algo ligero cerca de la naturaleza.',
+      'Viveros, jardines botánicos y miradores para desconectarme de la ciudad.',
+    ],
+    'Gastronomía y Mercados': [
+      'Recorrer mercados tradicionales probando antojitos, frutas y dulces mexicanos.',
+      'Tacos, tortas y un buen postre, visitando fondas y mercados con historia.',
+      'Comer como local: mercado por la mañana, fonda al mediodía y café por la tarde.',
+    ],
+    'Arquitectura y Museos': [
+      'Museos de arte y arquitectura moderna con edificios icónicos y buenas vistas.',
+      'Un día de museos con pausas en cafés de diseño y paseos por avenidas emblemáticas.',
+      'Ver contrastes entre lo colonial y lo contemporáneo, terminando en un mirador.',
+    ],
+  };
+
+  void _giveMoodIdea() {
+    final ideas = _moodIdeas[_selectedMood] ?? _moodIdeas.values.first;
+    setState(() {
+      _customMoodController.text = ideas[_ideaIndex % ideas.length];
+      _ideaIndex++;
+    });
   }
 
   Widget _buildTopologyOption({
@@ -1741,46 +1766,30 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     required IconData icon,
   }) {
     final isSelected = _selectedTopology == key;
-    return InkWell(
+    return OhtliSurface(
+      selected: isSelected,
+      radius: 22,
+      padding: const EdgeInsets.all(18),
       onTap: () => setState(() => _selectedTopology = key),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isSelected ? OhtliColors.stormyTeal.withOpacity(0.08) : OhtliColors.innerCardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-            width: isSelected ? 1.8 : 1.0,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(icon, color: isSelected ? OhtliColors.stormyTeal : OhtliColors.onyx, size: 20),
-                if (isSelected)
-                  const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 16),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: GoogleFonts.outfit(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: isSelected ? OhtliColors.stormyTeal : OhtliColors.onyx,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              OhtliServiceIcon(icon: icon, color: OhtliColors.stormyTeal, size: 42, soft: !isSelected),
+              const Spacer(),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isSelected ? 1 : 0,
+                child: const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              desc,
-              style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText),
-            ),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(title, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+          const SizedBox(height: 4),
+          Text(desc, style: OhtliUi.body(size: 12.5)),
+        ],
       ),
     );
   }
@@ -2146,17 +2155,26 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'ALTERNATIVAS DISEÑADAS POR IA · ${_activeCarouselIndex + 1} DE ${_generatedOptions.length}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.stormyTeal),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome_rounded, size: 13, color: OhtliColors.accentText),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            'PROPUESTAS CON IA · ${_activeCarouselIndex + 1} DE ${_generatedOptions.length}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: OhtliUi.eyebrow(OhtliColors.accentText),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       'Elige tu ruta',
                       maxLines: 1,
-                      style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w700, color: OhtliColors.onyx, height: 1.1),
+                      style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800, color: OhtliColors.onyx, height: 1.05, letterSpacing: -0.5),
                     ),
                   ],
                 ),
@@ -2176,7 +2194,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       width: isSelected ? 28 : 10,
                       height: 8,
-                      decoration: BoxDecoration(color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder, borderRadius: BorderRadius.circular(4)),
+                      decoration: BoxDecoration(color: isSelected ? OhtliColors.stormyTeal : OhtliColors.onyx.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
                     ),
                   );
                 }),
@@ -2316,27 +2334,31 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(color: OhtliColors.stormyTeal, borderRadius: BorderRadius.circular(8)),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [Color(0xFF2C666E), Color(0xFF3E8A8F)]),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.8),
+          ),
           child: Text(
-            'OPCIÓN ${index + 1}',
-            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.0, color: Colors.white),
+            'Opción ${index + 1}',
+            style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white),
           ),
         ),
         const SizedBox(width: 8),
         Flexible(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.45),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white.withOpacity(0.15)),
+              color: Colors.black.withValues(alpha: 0.38),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
             ),
             child: Text(
-              (option['theme'] ?? 'EXPERIENCIA').toString().toUpperCase(),
+              (option['theme'] ?? 'Experiencia').toString(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: Colors.white.withOpacity(0.9)),
+              style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
             ),
           ),
         ),
@@ -2345,21 +2367,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   Widget _buildChooseRouteButton(Map<String, dynamic> option, double cost, bool isMobile, {bool compact = false}) {
+    const fg = Color(0xFF1A120B);
     return ElevatedButton.icon(
       onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
       icon: _isSavingTrip
-          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-          : Icon(Icons.play_arrow_rounded, color: Colors.black, size: compact ? 18 : 20),
+          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: fg))
+          : Icon(Icons.alt_route_rounded, color: fg, size: compact ? 17 : 19),
       label: Text(
-        _isSavingTrip ? (compact ? 'Creando...' : 'Creando viaje...') : (compact ? 'Elegir (\$${cost.toStringAsFixed(0)})' : 'Elegir esta ruta (\$${cost.toStringAsFixed(0)} MXN)'),
-        style: GoogleFonts.outfit(fontSize: compact ? 13 : (isMobile ? 13 : 14.5), fontWeight: FontWeight.w800, color: Colors.black, letterSpacing: 0.2),
+        _isSavingTrip ? (compact ? 'Creando…' : 'Creando viaje…') : (compact ? 'Elegir · \$${cost.toStringAsFixed(0)}' : 'Elegir esta ruta · \$${cost.toStringAsFixed(0)} MXN'),
+        style: GoogleFonts.outfit(fontSize: compact ? 13.5 : (isMobile ? 14 : 15), fontWeight: FontWeight.w800, color: fg),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        padding: compact ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : EdgeInsets.symmetric(horizontal: isMobile ? 18 : 26, vertical: isMobile ? 12 : 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        elevation: 6,
+        backgroundColor: OhtliColors.cempasuchil,
+        foregroundColor: fg,
+        disabledBackgroundColor: OhtliColors.cempasuchil.withValues(alpha: 0.6),
+        padding: compact ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : EdgeInsets.symmetric(horizontal: isMobile ? 20 : 26, vertical: isMobile ? 14 : 17),
+        shape: const StadiumBorder(),
+        elevation: 0,
       ),
     );
   }
@@ -2384,14 +2408,14 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           curve: Curves.easeOutCubic,
           margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(28),
             border: Border.all(color: isFocused ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.08), width: isFocused ? 1.8 : 1.0),
             boxShadow: [
               BoxShadow(color: Colors.black.withOpacity(isFocused ? (hovering ? 0.45 : 0.35) : 0.15), blurRadius: isFocused ? (hovering ? 40 : 28) : 14, offset: Offset(0, hovering ? 18 : 10)),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(28),
             child: Stack(
               children: [
                 Positioned.fill(child: _buildCoverImage(data.coverUrl, parallax: Offset(-tilt.dx * 14, -tilt.dy * 10))),
@@ -2562,7 +2586,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     // La portada arranca ocupando toda la tarjeta y se reduce a banner mientras la tarjeta crece
     final double bannerTarget = isMobile ? 300 : 320;
     final double bannerH = lerpDouble(startHeight, bannerTarget, t)!.clamp(bannerTarget, double.infinity);
-    final double radius = lerpDouble(24, isMobile ? 0 : 20, t)!;
+    final double radius = lerpDouble(28, isMobile ? 0 : 20, t)!;
     final double contentReveal = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
 
     return Listener(
@@ -2696,9 +2720,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.45),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
+        color: Colors.black.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2758,12 +2782,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                       onTap: () {
                         _openStopPoiModal(stop);
                       },
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(30),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(30),
                           border: Border.all(color: Colors.white.withOpacity(0.12)),
                         ),
                         child: Row(

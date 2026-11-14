@@ -1,6 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <script>
+    // Solo en desarrollo local: token de depuración de App Check guardado en el navegador
+    // (localStorage "ohtli_appcheck_debug_token"). En producción no hace nada.
+    (function () {
+      var h = location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1') {
+        try {
+          var t = localStorage.getItem('ohtli_appcheck_debug_token');
+          if (t) self.FIREBASE_APPCHECK_DEBUG_TOKEN = t;
+        } catch (e) {}
+      }
+    })();
+  </script>
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
