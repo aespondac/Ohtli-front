@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/colors.dart';
+import 'lab_access.dart';
 import 'lab_aggregates.dart';
+import 'lab_publishing.dart';
 import 'lab_repository.dart';
 import 'lab_runner.dart';
 import 'lab_studies.dart';
@@ -14,10 +15,15 @@ import 'lab_widgets.dart';
 
 /// Consola interna de lab.ohtli.quest (solo superusuario): configurar, ejecutar, monitorear,
 /// exportar y publicar cada prueba del Trabajo Terminal.
+/// Rol de la sesión de consola (lo fija LabConsolePage); decide qué controles se muestran.
+/// Las reglas de Firestore son las que protegen los datos.
+LabRole currentLabRole = LabRole.none;
+
 class LabConsolePage extends StatefulWidget {
+  final LabRole role;
   final VoidCallback onOpenTechnical;
   final VoidCallback onLogout;
-  const LabConsolePage({super.key, required this.onOpenTechnical, required this.onLogout});
+  const LabConsolePage({super.key, required this.role, required this.onOpenTechnical, required this.onLogout});
 
   @override
   State<LabConsolePage> createState() => _LabConsolePageState();
@@ -25,22 +31,28 @@ class LabConsolePage extends StatefulWidget {
 
 class _LabConsolePageState extends State<LabConsolePage> {
   String _selected = kLabStudies.first.id;
-  bool _paper = false;
+  String _section = 'study'; // study | posts | members
 
   @override
   Widget build(BuildContext context) {
+    currentLabRole = widget.role;
     final isMobile = MediaQuery.of(context).size.width < 900;
     final study = studyById(_selected)!;
     final nav = _StudyNav(
-      selected: _paper ? null : _selected,
-      paperSelected: _paper,
+      selected: _section == 'study' ? _selected : null,
+      section: _section,
+      isAdmin: widget.role == LabRole.admin,
       onSelect: (id) => setState(() {
         _selected = id;
-        _paper = false;
+        _section = 'study';
       }),
-      onPaper: () => setState(() => _paper = true),
+      onSection: (s) => setState(() => _section = s),
     );
-    final panel = _paper ? const _PaperEditor() : _StudyPanel(key: ValueKey(study.id), study: study);
+    final Widget panel = switch (_section) {
+      'posts' => LabPostsPanel(role: widget.role),
+      'members' => const LabMembersPanel(),
+      _ => _StudyPanel(key: ValueKey(study.id), study: study),
+    };
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       appBar: AppBar(
@@ -86,10 +98,11 @@ class _LabConsolePageState extends State<LabConsolePage> {
 
 class _StudyNav extends StatelessWidget {
   final String? selected;
-  final bool paperSelected;
+  final String section;
+  final bool isAdmin;
   final ValueChanged<String> onSelect;
-  final VoidCallback onPaper;
-  const _StudyNav({required this.selected, required this.paperSelected, required this.onSelect, required this.onPaper});
+  final ValueChanged<String> onSection;
+  const _StudyNav({required this.selected, required this.section, required this.isAdmin, required this.onSelect, required this.onSection});
 
   @override
   Widget build(BuildContext context) {
@@ -141,12 +154,20 @@ class _StudyNav extends StatelessWidget {
       Text('PUBLICACIÓN', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1, color: OhtliColors.subtleText)),
       const SizedBox(height: 8),
       tile(
-        sel: paperSelected,
+        sel: section == 'posts',
         icon: Icons.article_outlined,
-        title: 'Reporte público (labs.ohtli.quest)',
-        sub: 'Resumen, conclusiones y visibilidad',
-        onTap: onPaper,
+        title: 'Artículos y resultados',
+        sub: 'Privado → testers → público (labs.ohtli.quest/news)',
+        onTap: () => onSection('posts'),
       ),
+      if (isAdmin)
+        tile(
+          sel: section == 'members',
+          icon: Icons.manage_accounts_outlined,
+          title: 'Miembros del laboratorio',
+          sub: 'Invitaciones, roles y testers',
+          onTap: () => onSection('members'),
+        ),
     ]);
   }
 }
@@ -708,32 +729,11 @@ class _TesterStudy extends StatelessWidget {
               return LabCard(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   LabSectionTitle('Respuestas (${docs.length})',
-                      caption: 'Agregados calculados en vivo. Publicarlos los hace visibles en labs.ohtli.quest.'),
+                      caption: 'Agregados calculados en vivo, visibles solo para el laboratorio. Para liberarlos, '
+                          'cítalos en un artículo (Artículos y resultados) con la visibilidad que corresponda.'),
                   AggregateView(kind: study.kind, agg: agg),
                   const SizedBox(height: 12),
                   Wrap(spacing: 10, runSpacing: 10, children: [
-                    ElevatedButton.icon(
-                      onPressed: docs.isEmpty
-                          ? null
-                          : () async {
-                              await repo.aggregate(study.id).set({
-                                ...agg,
-                                'studyId': study.id,
-                                'published': true,
-                                'updatedAt': FieldValue.serverTimestamp(),
-                              });
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Agregados publicados')));
-                              }
-                            },
-                      icon: const Icon(Icons.public_rounded),
-                      label: const Text('Publicar agregados'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => repo.aggregate(study.id).set({'published': false}, SetOptions(merge: true)),
-                      icon: const Icon(Icons.visibility_off_outlined),
-                      label: const Text('Ocultar'),
-                    ),
                     OutlinedButton.icon(
                       onPressed: docs.isEmpty ? null : () => downloadText('${study.id}_respuestas.json', toJsonPretty(docs), mime: 'application/json'),
                       icon: const Icon(Icons.download_rounded),
@@ -863,7 +863,8 @@ class _RunTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final published = data['published'] == true;
+    final vis = LabVisibility.of(data);
+    final published = vis != LabVisibility.private;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -881,16 +882,11 @@ class _RunTile extends StatelessWidget {
           Text(fmtDate(data['startedAt']), style: labCell(bold: true)),
           if ((data['label'] ?? '').toString().isNotEmpty) Text('“${data['label']}”', style: labCell()),
           ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: Text(_headline(), style: labCell())),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('Publicada', style: labCell()),
-            Switch(
-              value: published,
-              activeColor: OhtliColors.stormyTeal,
-              onChanged: data['status'] == 'running'
-                  ? null
-                  : (v) => LabRepository.instance.updateRun(id, {'published': v, if (v) 'publishedAt': FieldValue.serverTimestamp()}),
-            ),
-          ]),
+          VisibilityPicker(
+            value: vis,
+            role: currentLabRole,
+            onChanged: data['status'] == 'running' ? null : (v) => LabRepository.instance.setRunVisibility(id, v),
+          ),
           TextButton.icon(onPressed: () => _export(context, csv: true), icon: const Icon(Icons.table_chart_outlined, size: 16), label: const Text('CSV')),
           TextButton.icon(onPressed: () => _export(context, csv: false), icon: const Icon(Icons.data_object_rounded, size: 16), label: const Text('JSON')),
           TextButton.icon(
@@ -941,103 +937,4 @@ String runRowsCsv(LabStudyKind kind, List<Map<String, dynamic>> rows) {
       ];
     }).toList(),
   );
-}
-
-// ---------------------------------------------------------------------------------------------
-// Reporte público
-// ---------------------------------------------------------------------------------------------
-
-class _PaperEditor extends StatefulWidget {
-  const _PaperEditor();
-
-  @override
-  State<_PaperEditor> createState() => _PaperEditorState();
-}
-
-class _PaperEditorState extends State<_PaperEditor> {
-  final _title = TextEditingController();
-  final _authors = TextEditingController();
-  final _abstract = TextEditingController();
-  final _method = TextEditingController();
-  final _conclusions = TextEditingController();
-  bool _published = false;
-  bool _newsEnabled = false;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    LabRepository.instance.paper.get().then((d) {
-      final m = d.data() ?? {};
-      setState(() {
-        _title.text = m['title'] ?? 'Ohtli: evaluación de un sistema multiagente para itinerarios turísticos en la CDMX';
-        _authors.text = m['authors'] ?? 'Trabajo Terminal 2026-B156 · ESCOM-IPN';
-        _abstract.text = m['abstract'] ?? '';
-        _method.text = m['method'] ?? '';
-        _conclusions.text = m['conclusions'] ?? '';
-        _published = m['published'] == true;
-        _newsEnabled = m['newsEnabled'] == true;
-        _loaded = true;
-      });
-    }).catchError((Object _) {
-      if (mounted) setState(() => _loaded = true);
-    });
-  }
-
-  Future<void> _save() async {
-    await LabRepository.instance.paper.set({
-      'title': _title.text.trim(),
-      'authors': _authors.text.trim(),
-      'abstract': _abstract.text.trim(),
-      'method': _method.text.trim(),
-      'conclusions': _conclusions.text.trim(),
-      'published': _published,
-      'newsEnabled': _newsEnabled,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'updatedBy': FirebaseAuth.instance.currentUser?.uid,
-    }, SetOptions(merge: true));
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reporte guardado')));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_loaded) return const Center(child: CircularProgressIndicator());
-    return LabCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const LabSectionTitle('Reporte público de labs.ohtli.quest',
-            caption: 'Texto del “paper”. Las tablas y gráficas salen de las corridas y agregados publicados.'),
-        _field(_title, 'Título'),
-        const SizedBox(height: 10),
-        _field(_authors, 'Autoría'),
-        const SizedBox(height: 10),
-        _field(_abstract, 'Resumen', maxLines: 5),
-        const SizedBox(height: 10),
-        _field(_method, 'Método (cómo se ejecutaron las pruebas)', maxLines: 5),
-        const SizedBox(height: 10),
-        _field(_conclusions, 'Conclusiones', maxLines: 6),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _published,
-          activeColor: OhtliColors.stormyTeal,
-          title: Text('Reporte visible en labs.ohtli.quest', style: labCell(bold: true)),
-          onChanged: (v) => setState(() => _published = v),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _newsEnabled,
-          activeColor: OhtliColors.stormyTeal,
-          title: Text('Publicar novedades en labs.ohtli.quest/news', style: labCell(bold: true)),
-          subtitle: Text('Lista las corridas publicadas como entradas de noticias.', style: labCell()),
-          onChanged: (v) => setState(() => _newsEnabled = v),
-        ),
-        const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: _save,
-          icon: const Icon(Icons.save_rounded),
-          label: const Text('Guardar reporte'),
-          style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
-        ),
-      ]),
-    );
-  }
 }
