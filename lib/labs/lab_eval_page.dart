@@ -15,151 +15,103 @@ import 'lab_studies.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
 
-/// lab.ohtli.quest/eval — entrada pública para testers de los estudios que lo requieren.
-/// También es el espacio de testers en lab.ohtli.quest: alta como tester, estudios abiertos y
-/// resultados liberados para testers.
-class LabEvalPage extends StatefulWidget {
+/// labs.ohtli.quest/eval sin sesión: qué es el estudio y cómo participar. Con sesión, la app
+/// muestra el Labs unificado (LabsAppPage) en la sección "Participa".
+class LabEvalPage extends StatelessWidget {
   final VoidCallback onLogin;
-  final VoidCallback onOpenTerms;
-  final VoidCallback? onOpenConsole;
-  final VoidCallback? onOpenTechnical;
-  const LabEvalPage({super.key, required this.onLogin, required this.onOpenTerms, this.onOpenConsole, this.onOpenTechnical});
-
-  @override
-  State<LabEvalPage> createState() => _LabEvalPageState();
-}
-
-class _LabEvalPageState extends State<LabEvalPage> {
-  bool _consent = false;
-  String? _studyId;
-  Map<String, dynamic>? _post;
-  LabRole _role = LabRole.none;
-  bool _roleLoaded = false;
-  // Se crean al mostrarse por primera vez y no en cada build: si no, cada redibujo
-  // (girar el móvil, cambiar el tamaño) volvía a suscribirse y mostraba el spinner.
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _releasedPosts =
-      LabRepository.instance.watchPublishedPosts([LabVisibility.testers, LabVisibility.public]);
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _activeStudies =
-      LabRepository.instance.studies.where('active', isEqualTo: true).snapshots();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadRole();
-  }
-
-  Future<void> _loadRole() async {
-    final r = await LabAccess.roleOf(FirebaseAuth.instance.currentUser);
-    if (mounted) {
-      setState(() {
-        _role = r;
-        _roleLoaded = true;
-        if (r.isTester) _consent = true; // ya aceptó al unirse
-      });
-    }
-  }
+  const LabEvalPage({super.key, required this.onLogin});
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
     final isMobile = MediaQuery.of(context).size.width < 700;
-    Widget body;
-    if (user == null) {
-      body = _intro(signedIn: false);
-    } else if (!_roleLoaded) {
-      body = const Center(child: CircularProgressIndicator());
-    } else if (!_consent) {
-      body = _consentCard();
-    } else if (_post != null) {
-      body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        TextButton.icon(onPressed: () => setState(() => _post = null), icon: const Icon(Icons.arrow_back), label: const Text('Volver')),
-        LabCard(padding: const EdgeInsets.all(28), child: LabArticleView(post: _post!)),
-      ]);
-    } else if (_studyId == null) {
-      body = Column(children: [_hubHeader(), const SizedBox(height: 12), _studyPicker(), const SizedBox(height: 12), _released()]);
-    } else if (_studyId == 'sus') {
-      body = _SusFlow(onDone: () => setState(() => _studyId = null));
-    } else {
-      body = _RelevanceFlow(onDone: () => setState(() => _studyId = null));
-    }
-    Future<void> signOut() async {
-      await FirebaseAuth.instance.signOut();
-      if (!mounted) return;
-      setState(() {
-        _consent = false;
-        _studyId = null;
-        _role = LabRole.none;
-      });
-    }
-
-    final showConsole = _role.isMember && widget.onOpenConsole != null;
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
-      appBar: LabsTopBar(
-        current: LabsSection.participate,
-        trailing: user == null
-            ? null
-            : MediaQuery.of(context).size.width < 820 // mismo corte que LabsTopBar
-                ? PopupMenuButton<String>(
-                    tooltip: 'Tu cuenta',
-                    icon: Icon(Icons.account_circle_outlined, color: OhtliColors.onyx),
-                    onSelected: (v) {
-                      if (v == 'console') widget.onOpenConsole?.call();
-                      if (v == 'technical') widget.onOpenTechnical?.call();
-                      if (v == 'signout') signOut();
-                    },
-                    itemBuilder: (_) => [
-                      if (showConsole) const PopupMenuItem(value: 'console', child: Text('Consola')),
-                      if (widget.onOpenTechnical != null) const PopupMenuItem(value: 'technical', child: Text('Experimentos')),
-                      const PopupMenuItem(value: 'signout', child: Text('Salir')),
-                    ],
-                  )
-                : Row(mainAxisSize: MainAxisSize.min, children: [
-                if (showConsole)
-                  TextButton.icon(onPressed: widget.onOpenConsole, icon: const Icon(Icons.biotech_rounded, size: 16), label: const Text('Consola')),
-                if (widget.onOpenTechnical != null) TextButton(onPressed: widget.onOpenTechnical, child: const Text('Experimentos')),
-                TextButton(onPressed: signOut, child: const Text('Salir')),
-              ]),
-      ),
+      appBar: const LabsTopBar(current: LabsSection.participate),
       body: SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 24),
-        child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: body)),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 820),
+            child: LabCard(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Ayúdanos a evaluar Ohtli', style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+                const SizedBox(height: 8),
+                Text(
+                  'Ohtli es un planificador de itinerarios turísticos para la Ciudad de México desarrollado como Trabajo Terminal '
+                  'en ESCOM-IPN. Buscamos personas que prueben la aplicación y califiquen sus recomendaciones. '
+                  'Toma entre 5 y 15 minutos y tus respuestas se usan de forma anónima y solo con fines académicos.',
+                  style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText, height: 1.5),
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton.icon(
+                  onPressed: onLogin,
+                  icon: const Icon(Icons.login_rounded),
+                  // En labs/lab.ohtli.quest la sesión llega por SSO con la cuenta de ohtli.quest: si ya
+                  // la tienes abierta allá, no hay que "iniciar sesión" de nuevo, solo continuar con ella.
+                  label: Text(OhtliSso.isSubdomain ? 'Continuar con tu cuenta de Ohtli' : 'Iniciar sesión para participar'),
+                  style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text('Usamos tu cuenta solo para evitar respuestas duplicadas; tu nombre y correo no se guardan con las respuestas.',
+                    style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText)),
+              ]),
+            ),
+          ),
+        ),
       ),
     );
   }
+}
 
-  Widget _intro({required bool signedIn}) => LabCard(
+/// Consentimiento único de Ohtli Labs: al aceptarlo la cuenta queda como tester y tiene acceso a
+/// estudios, experimentos y resultados liberados (sustituye la lista de espera del panel anterior).
+class LabConsentCard extends StatefulWidget {
+  final VoidCallback onOpenTerms;
+  final VoidCallback onAccepted;
+  const LabConsentCard({super.key, required this.onOpenTerms, required this.onAccepted});
+
+  @override
+  State<LabConsentCard> createState() => _LabConsentCardState();
+}
+
+class _LabConsentCardState extends State<LabConsentCard> {
+  bool _sending = false;
+
+  Future<void> _accept() async {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return;
+    setState(() => _sending = true);
+    try {
+      await LabAccess.joinAsTester(u);
+      if (mounted) widget.onAccepted();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No pudimos registrarte como tester. Inténtalo de nuevo en un momento.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LabCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Ayúdanos a evaluar Ohtli', style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-          const SizedBox(height: 8),
+          Text('Bienvenido a Ohtli Labs', style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+          const SizedBox(height: 6),
           Text(
-            'Ohtli es un planificador de itinerarios turísticos para la Ciudad de México desarrollado como Trabajo Terminal '
-            'en ESCOM-IPN. Buscamos personas que prueben la aplicación y califiquen sus recomendaciones. '
-            'Toma entre 5 y 15 minutos y tus respuestas se usan de forma anónima y solo con fines académicos.',
-            style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText, height: 1.5),
+            'Aquí participas en los estudios del laboratorio, pruebas funciones experimentales antes de que lleguen a Ohtli '
+            'y ves los resultados que se liberan para testers. Para entrar, acepta el consentimiento:',
+            style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.5),
           ),
-          const SizedBox(height: 18),
-          ElevatedButton.icon(
-            onPressed: widget.onLogin,
-            icon: const Icon(Icons.login_rounded),
-            // En labs/lab.ohtli.quest la sesión llega por SSO con la cuenta de ohtli.quest: si ya
-            // la tienes abierta allá, no hay que "iniciar sesión" de nuevo, solo continuar con ella.
-            label: Text(OhtliSso.isSubdomain ? 'Continuar con tu cuenta de Ohtli' : 'Iniciar sesión para participar'),
-            style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
-          ),
-          const SizedBox(height: 8),
-          Text('Usamos tu cuenta solo para evitar respuestas duplicadas; tu nombre y correo no se guardan con las respuestas.',
-              style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText)),
-        ]),
-      );
-
-  Widget _consentCard() => LabCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SizedBox(height: 14),
           const LabSectionTitle('Consentimiento informado'),
           for (final t in [
-            'Participo de forma voluntaria y puedo dejar el estudio en cualquier momento.',
+            'Participo de forma voluntaria y puedo dejar Labs en cualquier momento.',
             'Mis respuestas se guardan sin nombre ni correo, ligadas a un identificador interno de la cuenta para evitar duplicados.',
             'Los resultados agregados pueden publicarse en el Trabajo Terminal y en labs.ohtli.quest.',
+            'Lo que vea en Labs es experimental y confidencial hasta su lanzamiento.',
             'No se me pedirán datos sensibles ni de pago.',
           ])
             Padding(
@@ -173,75 +125,63 @@ class _LabEvalPageState extends State<LabEvalPage> {
           TextButton(onPressed: widget.onOpenTerms, child: const Text('Leer los términos de Ohtli Labs')),
           const SizedBox(height: 8),
           ElevatedButton(
-            onPressed: () async {
-              final u = FirebaseAuth.instance.currentUser;
-              if (u == null) return;
-              if (!_role.isTester) await LabAccess.joinAsTester(u);
-              setState(() {
-                _consent = true;
-                if (!_role.isTester) _role = LabRole.tester;
-              });
-            },
+            onPressed: _sending ? null : _accept,
             style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
-            child: const Text('Acepto y me uno como tester'),
+            child: Text(_sending ? 'Registrando…' : 'Acepto y entro a Labs'),
           ),
         ]),
       );
+}
 
-  Widget _hubHeader() => LabCard(
+/// Sección "Participa": estudios abiertos para testers (SUS y relevancia).
+class LabParticipateView extends StatefulWidget {
+  final LabRole role;
+
+  /// "Dejar de ser tester": la cuenta vuelve a ver el consentimiento.
+  final VoidCallback onLeft;
+  const LabParticipateView({super.key, required this.role, required this.onLeft});
+
+  @override
+  State<LabParticipateView> createState() => _LabParticipateViewState();
+}
+
+class _LabParticipateViewState extends State<LabParticipateView> {
+  String? _studyId;
+  // Una sola suscripción (no en cada build: cada redibujo volvía a mostrar el spinner).
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _activeStudies =
+      LabRepository.instance.studies.where('active', isEqualTo: true).snapshots();
+
+  @override
+  Widget build(BuildContext context) {
+    if (_studyId == 'sus') return _SusFlow(onDone: () => setState(() => _studyId = null));
+    if (_studyId != null) return _RelevanceFlow(onDone: () => setState(() => _studyId = null));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      LabCard(
         child: Row(children: [
           const Icon(Icons.verified_user_outlined, color: OhtliColors.stormyTeal),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Espacio de testers', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-              Text('Tu rol: ${_role.label}. Aquí participas en estudios y ves los resultados que el laboratorio libera para testers.',
+              Text('Estudios abiertos', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+              Text('Tu rol: ${widget.role.label}. Cada estudio toma pocos minutos y tus respuestas son anónimas.',
                   style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
             ]),
           ),
-          if (_role == LabRole.tester)
+          if (widget.role == LabRole.tester)
             TextButton(
               onPressed: () async {
                 final u = FirebaseAuth.instance.currentUser;
                 if (u == null) return;
                 await LabAccess.leave(u);
-                setState(() {
-                  _role = LabRole.none;
-                  _consent = false;
-                });
+                widget.onLeft();
               },
               child: const Text('Dejar de ser tester'),
             ),
         ]),
-      );
-
-  Widget _released() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _releasedPosts,
-      builder: (context, snap) {
-        final docs = snap.data?.docs ?? [];
-        return LabCard(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const LabSectionTitle('Resultados liberados', caption: 'Artículos del laboratorio disponibles para testers.'),
-            if (snap.hasError && docs.isEmpty)
-              Text('No pudimos cargar los resultados. Recarga la página para intentar de nuevo.', style: labCell())
-            else if (!snap.hasData)
-              const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
-            else if (docs.isEmpty)
-              Text('Todavía no hay resultados liberados.', style: labCell()),
-            for (final d in docs)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(LabVisibility.icon(LabVisibility.of(d.data())), color: OhtliColors.stormyTeal),
-                title: Text('${d.data()['title']}', style: labCell(bold: true)),
-                subtitle: Text('${fmtDate(d.data()['publishedAt'])} · ${LabVisibility.label(LabVisibility.of(d.data()))}', style: labCell()),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => setState(() => _post = d.data()),
-              ),
-          ]),
-        );
-      },
-    );
+      ),
+      const SizedBox(height: 12),
+      _studyPicker(),
+    ]);
   }
 
   Widget _studyPicker() {
@@ -282,6 +222,56 @@ class _LabEvalPageState extends State<LabEvalPage> {
               ),
             ),
         ]);
+      },
+    );
+  }
+}
+
+/// Sección "Resultados": artículos liberados para testers (y públicos), leídos dentro de Labs.
+class LabReleasedView extends StatefulWidget {
+  const LabReleasedView({super.key});
+
+  @override
+  State<LabReleasedView> createState() => _LabReleasedViewState();
+}
+
+class _LabReleasedViewState extends State<LabReleasedView> {
+  Map<String, dynamic>? _post;
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _releasedPosts =
+      LabRepository.instance.watchPublishedPosts([LabVisibility.testers, LabVisibility.public]);
+
+  @override
+  Widget build(BuildContext context) {
+    if (_post != null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextButton.icon(onPressed: () => setState(() => _post = null), icon: const Icon(Icons.arrow_back), label: const Text('Todos los resultados')),
+        LabCard(padding: const EdgeInsets.all(28), child: LabArticleView(post: _post!)),
+      ]);
+    }
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _releasedPosts,
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? [];
+        return LabCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const LabSectionTitle('Resultados liberados', caption: 'Artículos del laboratorio disponibles para testers.'),
+            if (snap.hasError && docs.isEmpty)
+              Text('No pudimos cargar los resultados. Recarga la página para intentar de nuevo.', style: labCell())
+            else if (!snap.hasData)
+              const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
+            else if (docs.isEmpty)
+              Text('Todavía no hay resultados liberados.', style: labCell()),
+            for (final d in docs)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(LabVisibility.icon(LabVisibility.of(d.data())), color: OhtliColors.stormyTeal),
+                title: Text('${d.data()['title']}', style: labCell(bold: true)),
+                subtitle: Text('${fmtDate(d.data()['publishedAt'])} · ${LabVisibility.label(LabVisibility.of(d.data()))}', style: labCell()),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => setState(() => _post = d.data()),
+              ),
+          ]),
+        );
       },
     );
   }

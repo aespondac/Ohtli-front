@@ -6,14 +6,19 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../labs/labs_top_bar.dart';
+import '../../labs/lab_experiments.dart';
 import 'widgets/particles_background.dart';
 
 class LabLandingPage extends StatefulWidget {
   final VoidCallback onLoginRedirect;
 
+  /// "Probar ahora" de una tarjeta: abre ese experimento dentro de Labs.
+  final ValueChanged<String>? onTryExperiment;
+
   const LabLandingPage({
     super.key,
     required this.onLoginRedirect,
+    this.onTryExperiment,
   });
 
   @override
@@ -217,7 +222,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
       child: isMobile
           ? Column(
               children: [
-                _buildKpiItem('5 experimentos', 'En evaluación activa', Icons.science_rounded),
+                _buildKpiItem('${kLabExperiments.length} experimentos', 'En evaluación activa', Icons.science_rounded),
                 const Divider(height: 24),
                 _buildKpiItem('IA aplicada', 'Modelos culturales propios', Icons.psychology_rounded),
                 const Divider(height: 24),
@@ -229,7 +234,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
           : Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildKpiItem('5 experimentos', 'En evaluación activa', Icons.science_rounded),
+                _buildKpiItem('${kLabExperiments.length} experimentos', 'En evaluación activa', Icons.science_rounded),
                 _buildVerticalDivider(),
                 _buildKpiItem('IA aplicada', 'Modelos culturales propios', Icons.psychology_rounded),
                 _buildVerticalDivider(),
@@ -542,62 +547,21 @@ class _LabLandingPageState extends State<LabLandingPage> {
             spacing: 24,
             runSpacing: 24,
             alignment: WrapAlignment.center,
+            // Misma lista que el menú de Labs (lab_experiments.dart): nombre y estado coinciden.
             children: [
-              _buildExperimentCard(
-                category: 'GEOINTELIGENCIA',
-                status: 'CASI LISTO',
-                statusColor: const Color(0xFF10B981),
-                targetModule: 'Ohtli.quest / Lugares',
-                title: 'Descubridor de lugares',
-                description: 'Encuentra y consolida lugares de varias fuentes para una zona de la ciudad y los valida antes de publicarlos.',
-                icon: Icons.travel_explore_rounded,
-                color: OhtliColors.stormyTeal,
-                metrics: 'Cobertura CDMX · Validación previa',
-              ),
-              _buildExperimentCard(
-                category: 'MODELOS SEMÁNTICOS',
-                status: 'BETA',
-                statusColor: OhtliColors.xoconostle,
-                targetModule: 'Ohtli.quest / Recomendaciones',
-                title: 'Perfil cultural con IA',
-                description: 'Traduce los gustos de cada viajero en una huella cultural y la compara con los lugares para encontrar los más afines.',
-                icon: Icons.fingerprint_rounded,
-                color: OhtliColors.xoconostle,
-                metrics: 'Afinidad semántica · Privado por diseño',
-              ),
-              _buildExperimentCard(
-                category: 'MOVILIDAD URBANA',
-                status: 'BETA',
-                statusColor: const Color(0xFFE2711D),
-                targetModule: 'Ohtli.quest / Planificador',
-                title: 'Motor de rutas',
-                description: 'Calcula recorridos a pie, en bici y en auto sobre la red de la ciudad, con infraestructura propia.',
-                icon: Icons.route_rounded,
-                color: const Color(0xFFE2711D),
-                metrics: 'A pie · Bici · Auto',
-              ),
-              _buildExperimentCard(
-                category: 'AGENTES AUTÓNOMOS',
-                status: 'ALFA',
-                statusColor: const Color(0xFF6C5CE7),
-                targetModule: 'Ohtli.quest / Asistente Virtual',
-                title: 'Consola de agentes',
-                description: 'Conversa con los agentes de IA de Ohtli y revisa paso a paso cómo razonan y responden.',
-                icon: Icons.smart_toy_rounded,
-                color: const Color(0xFF6C5CE7),
-                metrics: 'Transparencia · Diagnóstico',
-              ),
-              _buildExperimentCard(
-                category: 'NUEVOS SERVICIOS',
-                status: 'EN PRUEBAS',
-                statusColor: const Color(0xFF00CEC9),
-                targetModule: 'api.ohtli.quest',
-                title: 'Servicios experimentales',
-                description: 'Nuevos análisis de ambiente y estado de ánimo que se evalúan antes de sumarse a la API de Ohtli.',
-                icon: Icons.auto_awesome_rounded,
-                color: const Color(0xFF00CEC9),
-                metrics: 'Ambiente · Estado de ánimo',
-              ),
+              for (final e in kLabExperiments)
+                _buildExperimentCard(
+                  id: e.id,
+                  category: e.category,
+                  status: e.status,
+                  statusColor: e.statusColor,
+                  targetModule: e.targetModule,
+                  title: e.title,
+                  description: e.description,
+                  icon: e.icon,
+                  color: e.color,
+                  metrics: e.metrics,
+                ),
             ],
           ),
         ],
@@ -606,6 +570,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
   }
 
   Widget _buildExperimentCard({
+    required String id,
     required String category,
     required String status,
     required Color statusColor,
@@ -752,7 +717,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: widget.onLoginRedirect,
+                    onPressed: widget.onTryExperiment == null ? widget.onLoginRedirect : () => widget.onTryExperiment!(id),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: OhtliColors.cardBg,
                       foregroundColor: OhtliColors.onyx,

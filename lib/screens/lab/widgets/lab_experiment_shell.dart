@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../theme/colors.dart';
+import '../../../labs/lab_experiments.dart';
 
 /// Shell estándar y prolijo para todas las pantallas de experimentos en Ohtli Labs.
 /// Proporciona navegación consistente, migas de pan (breadcrumbs), indicación de
@@ -35,6 +36,25 @@ class LabExperimentShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 768;
+
+    // Dentro del Labs unificado: solo el contenido (el menú y el encabezado los pone Labs).
+    if (LabEmbedded.of(context)) {
+      return SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24, 8, isMobile ? 16 : 24, 32),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (actions != null && actions!.isNotEmpty) ...[
+                Wrap(alignment: WrapAlignment.end, children: actions!),
+                const SizedBox(height: 8),
+              ],
+              child,
+            ]),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,

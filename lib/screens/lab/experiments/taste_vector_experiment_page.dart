@@ -1,3 +1,4 @@
+import '../../../labs/lab_experiments.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -869,9 +870,10 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
 
   @override
   Widget build(BuildContext context) {
+    final embedded = LabEmbedded.of(context);
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
-      appBar: AppBar(
+      appBar: embedded ? null : AppBar(
         backgroundColor: OhtliColors.cardBg,
         elevation: 0,
         scrolledUnderElevation: 1,
@@ -930,7 +932,21 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1280),
-            child: LayoutBuilder(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // Dentro de Labs no hay barra propia: el acceso al asistente va aquí.
+            if (embedded)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: OutlinedButton.icon(
+                    onPressed: _openFullWizard,
+                    icon: const Icon(Icons.auto_awesome_motion_rounded, size: 18),
+                    label: const Text('Abrir asistente de 5 pasos (modo de prueba)'),
+                  ),
+                ),
+              ),
+            LayoutBuilder(
               builder: (context, constraints) {
                 final isDesktop = constraints.maxWidth > 940;
                 if (isDesktop) {
@@ -953,6 +969,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                 }
               },
             ),
+            ]),
           ),
         ),
       ),

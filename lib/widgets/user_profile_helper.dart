@@ -230,48 +230,5 @@ class UserProfileHelper {
       }
     }
   }
-
-  /// Registers a user specifically into the Labs Waitlist collection
-  /// keeping them isolated from the main app 'users' collection.
-  static Future<void> syncLabsWaitlistProfile(User user) async {
-    final firestore = FirebaseFirestore.instance;
-    final docRef = firestore.collection('labs_waitlist').doc(user.uid);
-
-    // Get current doc to not overwrite createdAt or status if they already exist
-    DocumentSnapshot? currentDoc;
-    try {
-      currentDoc = await docRef.get();
-    } catch (e) {
-      print("Error fetching current labs waitlist document: $e");
-    }
-    
-    final currentData = currentDoc?.data() as Map<String, dynamic>?;
-    
-    // Default photo handling
-    String photoURL = '';
-    if (currentData != null && currentData['photoURL'] != null && currentData['photoURL'].toString().isNotEmpty) {
-      photoURL = currentData['photoURL'].toString();
-    } else if (user.photoURL != null && user.photoURL!.isNotEmpty) {
-      photoURL = user.photoURL!;
-    }
-
-    Map<String, dynamic> dataToSave = {
-      'uid': user.uid,
-      'displayName': currentData?['displayName'] ?? user.displayName ?? '',
-      'email': user.email ?? '',
-      'photoURL': photoURL,
-      'agreedToTerms': true, // User must check the box in the UI before Google Sign-In
-      // 'status' is used for the Whitelist mechanism: "pending" by default, admin changes to "approved"
-      'status': currentData?['status'] ?? 'pending',
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    if (currentData == null || currentData['createdAt'] == null) {
-      dataToSave['createdAt'] = FieldValue.serverTimestamp();
-    }
-
-    await docRef.set(dataToSave, SetOptions(merge: true));
-    print("Labs waitlist profile synchronized in Firestore.");
-  }
 }
 

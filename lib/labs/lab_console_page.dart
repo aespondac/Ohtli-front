@@ -1,4 +1,3 @@
-import '../widgets/ohtli_account_chip.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,163 +13,29 @@ import 'lab_runner.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
 
-/// Consola interna de lab.ohtli.quest (solo superusuario): configurar, ejecutar, monitorear,
-/// exportar y publicar cada prueba del Trabajo Terminal.
-/// Rol de la sesión de consola (lo fija LabConsolePage); decide qué controles se muestran.
+/// Paneles de las pruebas del Trabajo Terminal (configurar, ejecutar, monitorear, exportar).
+/// Se muestran dentro del Labs unificado (LabsAppPage), en la sección "Pruebas del TT", solo para
+/// miembros del laboratorio.
+///
+/// Rol de la sesión (lo fija LabsAppPage); decide qué controles se muestran.
 /// Las reglas de Firestore son las que protegen los datos.
 LabRole currentLabRole = LabRole.none;
 
-class LabConsolePage extends StatefulWidget {
-  final LabRole role;
-  final VoidCallback onOpenTechnical;
-  final VoidCallback onLogout;
-  const LabConsolePage({super.key, required this.role, required this.onOpenTechnical, required this.onLogout});
-
-  @override
-  State<LabConsolePage> createState() => _LabConsolePageState();
-}
-
-class _LabConsolePageState extends State<LabConsolePage> {
-  String _selected = kLabStudies.first.id;
-  String _section = 'study'; // study | posts | members
-
-  @override
-  Widget build(BuildContext context) {
-    currentLabRole = widget.role;
-    final isMobile = MediaQuery.of(context).size.width < 900;
-    final study = studyById(_selected)!;
-    final nav = _StudyNav(
-      selected: _section == 'study' ? _selected : null,
-      section: _section,
-      isAdmin: widget.role == LabRole.admin,
-      onSelect: (id) => setState(() {
-        _selected = id;
-        _section = 'study';
-      }),
-      onSection: (s) => setState(() => _section = s),
-    );
-    final Widget panel = switch (_section) {
-      'posts' => LabPostsPanel(role: widget.role),
-      'members' => const LabMembersPanel(),
-      _ => _StudyPanel(key: ValueKey(study.id), study: study),
+IconData labStudyIcon(LabStudyKind k) => switch (k) {
+      LabStudyKind.scenarios => Icons.route_rounded,
+      LabStudyKind.load => Icons.speed_rounded,
+      LabStudyKind.checklist => Icons.wifi_off_rounded,
+      LabStudyKind.relevance => Icons.thumbs_up_down_rounded,
+      LabStudyKind.sus => Icons.groups_rounded,
     };
-    return Scaffold(
-      backgroundColor: OhtliColors.cloudDancer,
-      appBar: AppBar(
-        backgroundColor: OhtliColors.cardBg,
-        elevation: 0,
-        titleSpacing: 16,
-        title: Row(children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: OhtliColors.stormyTeal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.biotech_rounded, size: 18, color: OhtliColors.stormyTeal),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text('Ohtli Lab · Consola de pruebas',
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-          ),
-        ]),
-        actions: [
-          TextButton.icon(
-            onPressed: widget.onOpenTechnical,
-            icon: const Icon(Icons.science_outlined, size: 16),
-            label: Text(isMobile ? 'Técnicos' : 'Experimentos técnicos'),
-          ),
-          // Cuenta: "Cambiar de cuenta" y "Cerrar sesión".
-          OhtliAccountChip(
-            compact: isMobile,
-            onSignOut: () async => widget.onLogout(),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: isMobile
-          ? ListView(padding: const EdgeInsets.all(16), children: [nav, const SizedBox(height: 16), panel])
-          : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(width: 300, child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: nav)),
-              Expanded(child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(8, 16, 24, 32), child: panel)),
-            ]),
-    );
-  }
-}
 
-class _StudyNav extends StatelessWidget {
-  final String? selected;
-  final String section;
-  final bool isAdmin;
-  final ValueChanged<String> onSelect;
-  final ValueChanged<String> onSection;
-  const _StudyNav({required this.selected, required this.section, required this.isAdmin, required this.onSelect, required this.onSection});
+/// Panel de una prueba (escenarios, carga, verificación o estudio con testers).
+class LabStudyPanel extends StatelessWidget {
+  final LabStudy study;
+  const LabStudyPanel({super.key, required this.study});
 
   @override
-  Widget build(BuildContext context) {
-    Widget tile({required bool sel, required IconData icon, required String title, required String sub, required VoidCallback onTap}) =>
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: sel ? OhtliColors.stormyTeal.withValues(alpha: 0.10) : OhtliColors.cardBg,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: sel ? OhtliColors.stormyTeal : OhtliColors.cardBorder),
-              ),
-              child: Row(children: [
-                Icon(icon, size: 18, color: sel ? OhtliColors.stormyTeal : OhtliColors.subtleText),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(title, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-                    Text(sub, style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText)),
-                  ]),
-                ),
-              ]),
-            ),
-          ),
-        );
-    IconData iconFor(LabStudyKind k) => switch (k) {
-          LabStudyKind.scenarios => Icons.route_rounded,
-          LabStudyKind.load => Icons.speed_rounded,
-          LabStudyKind.checklist => Icons.wifi_off_rounded,
-          LabStudyKind.relevance => Icons.thumbs_up_down_rounded,
-          LabStudyKind.sus => Icons.groups_rounded,
-        };
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('ESTUDIOS', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1, color: OhtliColors.subtleText)),
-      const SizedBox(height: 8),
-      for (final s in kLabStudies)
-        tile(
-          sel: s.id == selected,
-          icon: iconFor(s.kind),
-          title: s.title,
-          sub: '${s.chapter} · ${s.criterion}${s.needsTesters ? ' · testers' : ''}',
-          onTap: () => onSelect(s.id),
-        ),
-      const SizedBox(height: 12),
-      Text('PUBLICACIÓN', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1, color: OhtliColors.subtleText)),
-      const SizedBox(height: 8),
-      tile(
-        sel: section == 'posts',
-        icon: Icons.article_outlined,
-        title: 'Artículos y resultados',
-        sub: 'Privado → testers → público (labs.ohtli.quest/news)',
-        onTap: () => onSection('posts'),
-      ),
-      if (isAdmin)
-        tile(
-          sel: section == 'members',
-          icon: Icons.manage_accounts_outlined,
-          title: 'Miembros del laboratorio',
-          sub: 'Invitaciones, roles y testers',
-          onTap: () => onSection('members'),
-        ),
-    ]);
-  }
+  Widget build(BuildContext context) => _StudyPanel(study: study);
 }
 
 class _StudyPanel extends StatelessWidget {

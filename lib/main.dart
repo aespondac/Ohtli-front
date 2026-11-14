@@ -26,8 +26,8 @@ import 'screens/trips/trip_viewer_page.dart';
 import 'screens/trips/trip_sample.dart';
 import 'screens/error_404_page.dart';
 import 'screens/lab/lab_landing_page.dart';
-import 'screens/lab/labs_dashboard_page.dart';
-import 'labs/lab_console_page.dart';
+import 'labs/labs_app_page.dart';
+import 'labs/lab_experiments.dart';
 import 'labs/lab_eval_page.dart';
 import 'labs/labs_results_page.dart';
 import 'labs/lab_access.dart';
@@ -35,12 +35,7 @@ import 'config/admin.dart' show isSuperUser;
 import 'screens/api/api_landing_page.dart';
 import 'screens/legal/legal_center_page.dart';
 import 'screens/legal/legal_content.dart';
-import 'screens/lab/experiments/recolector_experiment_page.dart';
-import 'screens/lab/experiments/osrm_experiment_page.dart';
-import 'screens/lab/experiments/agents_experiment_page.dart';
-import 'screens/lab/experiments/apis_experiment_page.dart';
 import 'screens/onboarding/onboarding_wizard_page.dart';
-import 'screens/lab/experiments/taste_vector_experiment_page.dart';
 import 'screens/places/places_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'services/ohtli_sso.dart';
@@ -226,16 +221,10 @@ enum OhtliScreen {
   publicViewer, // Visor de viajes públicos / compartidos
   test404, // Temporal para visualizar el 404
   labLanding, // Landing Page para lab.ohtli.quest
-  labsDashboard, // Dashboard interno de Labs (T&C y experimentos)
   apiLanding, // Landing Page para api.ohtli.quest
   termsAndConditions, // Pantalla de TyC de Ohtli
   labsTermsAndConditions, // Pantalla de TyC de Ohtli Labs
-  labsOsrm, // Experimento de OSRM
-  labsAgents, // Experimento de Agentes
-  labsApis, // Experimento de APIs
-  labsRecolector, // Experimento de Caza Lugares (Recolector)
-  labsTasteVector, // Experimento de Vector de Gustos e Identidad Cultural
-  labConsole, // lab.ohtli.quest: consola de pruebas del TT (superusuario)
+  labApp, // Ohtli Labs con sesión: una sola interfaz con menú (participa, experimentos, pruebas del TT, publicación)
   labEval, // lab.ohtli.quest/eval: entrada pública para testers
   labsResults, // labs.ohtli.quest: reporte y tablero de resultados públicos
   labsNews, // labs.ohtli.quest/news: novedades publicadas
@@ -276,7 +265,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   bool _switchChecked = false;
   bool _intentEval = false;
   OhtliScreen? _labsTermsReturn; // a dónde vuelve "Volver" de los TyC de Labs
-  LabRole _labRole = LabRole.none;
+  String? _labSection; // sección inicial de Labs (p. ej. exp:osrm desde /labs/osrm)
   String? _newsSlug;
 
   bool _isOnline = true;
@@ -335,11 +324,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       // Por segmentos completos: /news/evaluacion-… no debe abrir /eval (ver app_route.dart).
       bool hasRoute(String r) => routeMatches(r, path: path, fragment: fragment);
       final isLabsTyc = hasRoute('/labs/tyc');
-      final isLabsOsrm = hasRoute('/labs/osrm');
-      final isLabsAgents = hasRoute('/labs/agents');
-      final isLabsApis = hasRoute('/labs/apis');
-      final isLabsRecolector = hasRoute('/labs/recolector');
-      final isLabsTaste = hasRoute('/labs/taste') || hasRoute('/labs/vibe');
+      // /labs/<experimento>: abre ese experimento dentro de Labs (con sesión).
+      String? experimentRoute = hasRoute('/labs/vibe') ? 'taste' : null;
+      for (final e in kLabExperiments) {
+        if (hasRoute(e.path)) experimentRoute = e.id;
+      }
       final isPlaces = hasRoute('/lugares') || hasRoute('/places') || params.containsKey('lugares') || params.containsKey('places');
       final isAppTyc = hasRoute('/tyc');
       final legalRoute = hasRoute('/privacidad')
@@ -352,16 +341,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
       if (isLabsTyc) {
         _currentScreen = OhtliScreen.labsTermsAndConditions;
-      } else if (isLabsOsrm) {
-        _currentScreen = OhtliScreen.labsOsrm;
-      } else if (isLabsAgents) {
-        _currentScreen = OhtliScreen.labsAgents;
-      } else if (isLabsApis) {
-        _currentScreen = OhtliScreen.labsApis;
-      } else if (isLabsRecolector) {
-        _currentScreen = OhtliScreen.labsRecolector;
-      } else if (isLabsTaste) {
-        _currentScreen = OhtliScreen.labsTasteVector;
+      } else if (experimentRoute != null) {
+        _labSection = 'exp:$experimentRoute';
+        _currentScreen = OhtliScreen.labApp;
+        // En lab.ohtli.quest la sesión llega por SSO como en el resto del laboratorio.
+        if (hostname == 'lab.ohtli.quest' || params.containsKey('testLabApp')) _isLabAppHost = true;
       } else if (legalRoute != null) {
         _legalDoc = legalRoute;
         _currentScreen = OhtliScreen.termsAndConditions;
@@ -498,9 +482,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _replaceNextUrl = true;
           _navigateTo(_loginScreen);
         }
-        if (_currentScreen == OhtliScreen.labsDashboard || _currentScreen == OhtliScreen.labConsole) {
-          if (_isLabAppHost) _intentLabs = true;
-          _navigateTo(_isLabAppHost ? OhtliScreen.login : OhtliScreen.labLanding);
+        if (_currentScreen == OhtliScreen.labApp) {
+          // Labs pide sesión: se inicia y se vuelve a la misma sección.
+          _intentLabs = true;
+          _navigateTo(OhtliScreen.login);
         } else if (_currentScreen == OhtliScreen.home ||
             _currentScreen == OhtliScreen.accountManagement) {
           _navigateTo(OhtliScreen.underConstruction);
@@ -536,11 +521,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       return;
     }
     if (_intentLabs) {
-      // Tras "Ingresar a Labs": miembros del laboratorio → consola de pruebas; el resto → espacio
-      // de testers. La landing pública se queda donde está aunque haya sesión.
+      // Tras "Ingresar a Labs": el Labs unificado (miembros arrancan en las pruebas del TT; el resto,
+      // en Participa). La landing pública se queda donde está aunque haya sesión.
       _intentLabs = false;
-      _labRole = await LabAccess.roleOf(user);
-      _navigateTo(_labRole.isMember ? OhtliScreen.labConsole : OhtliScreen.labEval);
+      _navigateTo(OhtliScreen.labApp);
       return;
     }
 
@@ -549,17 +533,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen == OhtliScreen.authAction ||
         _currentScreen == OhtliScreen.accountManagement ||
         _currentScreen == OhtliScreen.publicViewer ||
-        _currentScreen == OhtliScreen.labsDashboard ||
+        _currentScreen == OhtliScreen.labApp ||
         _currentScreen == OhtliScreen.labLanding ||
         _currentScreen == OhtliScreen.apiLanding ||
         _currentScreen == OhtliScreen.termsAndConditions ||
         _currentScreen == OhtliScreen.labsTermsAndConditions ||
-        _currentScreen == OhtliScreen.labsOsrm ||
-        _currentScreen == OhtliScreen.labsAgents ||
-        _currentScreen == OhtliScreen.labsApis ||
-        _currentScreen == OhtliScreen.labsRecolector ||
-        _currentScreen == OhtliScreen.labsTasteVector ||
-        _currentScreen == OhtliScreen.labConsole ||
         _currentScreen == OhtliScreen.labEval ||
         _currentScreen == OhtliScreen.labsResults ||
         _currentScreen == OhtliScreen.labsNews ||
@@ -775,17 +753,24 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     _navigateTo(OhtliScreen.underConstruction);
   }
 
-  /// "Volver" desde un experimento: al panel de Labs con sesión; sin sesión (se abrió por la
-  /// URL) a la landing o al inicio de sesión de lab.ohtli.quest, en vez de un panel vacío.
-  void _backFromExperiment() {
-    if (FirebaseAuth.instance.currentUser != null) {
-      _navigateTo(OhtliScreen.labsDashboard);
-    } else if (_isLabAppHost) {
+  /// Cerrar sesión desde Labs: en lab.ohtli.quest vuelve al inicio de sesión; en labs.ohtli.quest
+  /// /eval muestra su entrada pública y en otro caso la landing.
+  Future<void> _signOutOfLabs() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    if (_isLabAppHost) {
       _intentLabs = true;
       _navigateTo(OhtliScreen.login);
+    } else if (_currentScreen == OhtliScreen.labEval) {
+      setState(() {});
     } else {
       _navigateTo(OhtliScreen.labLanding);
     }
+  }
+
+  void _openLabsTerms() {
+    _labsTermsReturn = _currentScreen;
+    _navigateTo(OhtliScreen.labsTermsAndConditions);
   }
 
   void _navigateTo(OhtliScreen screen) {
@@ -914,30 +899,35 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           });
           _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
         },
-      );
-    } else if (_currentScreen == OhtliScreen.labsDashboard) {
-      activeView = LabsDashboardPage(
-        onLogout: () async {
-          await FirebaseAuth.instance.signOut();
-          if (_isLabAppHost) _intentLabs = true;
-          _navigateTo(_isLabAppHost ? OhtliScreen.login : OhtliScreen.labLanding);
-        },
-        onTryOsrm: () => _navigateTo(OhtliScreen.labsOsrm),
-        onTryAgents: () => _navigateTo(OhtliScreen.labsAgents),
-        onTryApis: () => _navigateTo(OhtliScreen.labsApis),
-        onTryRecolector: () => _navigateTo(OhtliScreen.labsRecolector),
-        onTryTasteVector: () => _navigateTo(OhtliScreen.labsTasteVector),
-      );
-    } else if (_currentScreen == OhtliScreen.labConsole) {
-      activeView = LabConsolePage(
-        role: isSuperUser(FirebaseAuth.instance.currentUser) ? LabRole.admin : _labRole,
-        onOpenTechnical: () => _navigateTo(OhtliScreen.labsDashboard),
-        onLogout: () async {
-          await FirebaseAuth.instance.signOut();
-          if (_isLabAppHost) _intentLabs = true;
-          _navigateTo(_isLabAppHost ? OhtliScreen.login : OhtliScreen.labLanding);
+        onTryExperiment: (id) {
+          // "Probar ahora": abre ese experimento dentro de Labs (en producción, en lab.ohtli.quest).
+          final host = kIsWeb ? (html.window.location.hostname ?? '') : '';
+          if (host == 'labs.ohtli.quest') {
+            html.window.location.href = 'https://lab.ohtli.quest/labs/$id';
+            return;
+          }
+          _labSection = 'exp:$id';
+          if (FirebaseAuth.instance.currentUser != null) {
+            _navigateTo(OhtliScreen.labApp);
+          } else {
+            _intentLabs = true;
+            _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+          }
         },
       );
+    } else if (_currentScreen == OhtliScreen.labApp ||
+        (_currentScreen == OhtliScreen.labEval && FirebaseAuth.instance.currentUser != null)) {
+      // Ohtli Labs con sesión: una sola interfaz con menú y vistas según el rol. /eval con sesión
+      // abre en Participa.
+      final user = FirebaseAuth.instance.currentUser;
+      activeView = user == null
+          ? const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal))
+          : LabsAppPage(
+              key: ValueKey('labs-${user.uid}'),
+              initialSection: _currentScreen == OhtliScreen.labEval ? 'participa' : _labSection,
+              onSignOut: _signOutOfLabs,
+              onOpenTerms: _openLabsTerms,
+            );
     } else if (_currentScreen == OhtliScreen.labEval) {
       activeView = LabEvalPage(
         onLogin: () {
@@ -949,15 +939,6 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           setState(() => _intentEval = true);
           _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
         },
-        onOpenTerms: () {
-          _labsTermsReturn = OhtliScreen.labEval;
-          _navigateTo(OhtliScreen.labsTermsAndConditions);
-        },
-        onOpenConsole: () async {
-          _labRole = await LabAccess.roleOf(FirebaseAuth.instance.currentUser);
-          if (_labRole.isMember) _navigateTo(OhtliScreen.labConsole);
-        },
-        onOpenTechnical: () => _navigateTo(OhtliScreen.labsDashboard),
       );
     } else if (_currentScreen == OhtliScreen.labsResults || _currentScreen == OhtliScreen.labsNews) {
       activeView = LabsResultsPage(
@@ -1012,29 +993,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           }
         },
       );
-    } else if (_currentScreen == OhtliScreen.labsOsrm) {
-      activeView = OsrmExperimentPage(
-        onBack: _backFromExperiment,
-      );
-    } else if (_currentScreen == OhtliScreen.labsAgents) {
-      activeView = AgentsExperimentPage(
-        onBack: _backFromExperiment,
-      );
-    } else if (_currentScreen == OhtliScreen.labsApis) {
-      activeView = ApisExperimentPage(
-        onBack: _backFromExperiment,
-      );
-    } else if (_currentScreen == OhtliScreen.labsRecolector) {
-      activeView = RecolectorExperimentPage(
-        onBack: _backFromExperiment,
-      );
     } else if (_currentScreen == OhtliScreen.onboarding) {
       activeView = OnboardingWizardPage(
         onCompleted: _goHomeAfterAuth,
-      );
-    } else if (_currentScreen == OhtliScreen.labsTasteVector) {
-      activeView = TasteVectorExperimentPage(
-        onBack: _backFromExperiment,
       );
     } else if (_currentScreen == OhtliScreen.places) {
       final user = FirebaseAuth.instance.currentUser;
