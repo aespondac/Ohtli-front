@@ -98,7 +98,7 @@ Future<void> showTapbackMenu({
     barrierColor: Colors.black.withValues(alpha: 0.12),
     builder: (ctx) {
       final size = MediaQuery.of(ctx).size;
-      const pickerWidth = 6 * 38.0 + 12;
+      final pickerWidth = kTapbacks.length * 38.0 + 12;
       final left = (origin.dx).clamp(8.0, size.width - pickerWidth - 8);
       final top = (origin.dy - 58).clamp(8.0, size.height - 160);
       return Stack(

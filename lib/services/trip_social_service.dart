@@ -13,8 +13,10 @@ const List<Tapback> kTapbacks = [
   Tapback('like', '👍', 'Me gusta'),
   Tapback('dislike', '👎', 'No me convence'),
   Tapback('haha', '😂', 'Jaja'),
+  Tapback('surprise', '😮', '¡Sorpresa!'),
   Tapback('hundred', '💯', 'Cien por ciento'),
   Tapback('fire', '🔥', '¡Está buenísimo!'),
+  Tapback('photo', '📸', '¡Qué foto!'),
 ];
 
 Tapback? tapbackOf(String? id) {

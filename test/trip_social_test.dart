@@ -29,8 +29,8 @@ void main() {
     expect(pending.reactions, isEmpty);
   });
 
-  test('tapbackOf reconoce los seis tipos', () {
-    expect(kTapbacks.length, 6);
+  test('tapbackOf reconoce los ocho tipos', () {
+    expect(kTapbacks.length, 8);
     for (final t in kTapbacks) {
       expect(tapbackOf(t.id), same(t));
     }
