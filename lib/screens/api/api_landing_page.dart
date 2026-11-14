@@ -8,6 +8,7 @@ import '../../theme/colors.dart';
 import '../../widgets/ohtli_theme_toggle.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../places/places_page.dart';
+import '../legal/legal_content.dart';
 
 /// Estado comercial de cada producto de la API.
 enum _ApiStatus { available, beta, soon }
@@ -28,11 +29,13 @@ class _ApiProduct {
 class ApiLandingPage extends StatefulWidget {
   final VoidCallback onLoginRedirect;
   final VoidCallback? onRegisterRedirect;
+  final void Function(LegalDocId doc)? onOpenLegal;
 
   const ApiLandingPage({
     super.key,
     required this.onLoginRedirect,
     this.onRegisterRedirect,
+    this.onOpenLegal,
   });
 
   @override
@@ -636,6 +639,26 @@ class _ApiLandingPageState extends State<ApiLandingPage> {
           const SizedBox(width: 12, height: 8),
           Text('Ohtli API · © ${DateTime.now().year} Ohtli',
               style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+          if (!isMobile) const Spacer(),
+          if (widget.onOpenLegal != null)
+            Wrap(
+              spacing: 4,
+              children: [
+                for (final (label, doc) in const [
+                  ('Términos de la API', LegalDocId.api),
+                  ('Privacidad', LegalDocId.privacy),
+                  ('Cookies', LegalDocId.cookies),
+                ])
+                  TextButton(
+                    onPressed: () => widget.onOpenLegal!(doc),
+                    style: TextButton.styleFrom(
+                      foregroundColor: OhtliColors.subtleText,
+                      textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    child: Text(label),
+                  ),
+              ],
+            ),
         ],
       ),
     );

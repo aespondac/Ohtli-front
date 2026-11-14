@@ -449,7 +449,22 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                       recognizer: TapGestureRecognizer()
                                         ..onTap = () {
                                           if (kIsWeb) {
-                                            html.window.open('/#/tyc', '_blank');
+                                            html.window.open('/tyc', '_blank');
+                                          }
+                                        },
+                                    ),
+                                    TextSpan(text: ' y nuestro '),
+                                    TextSpan(
+                                      text: 'Aviso de Privacidad',
+                                      style: GoogleFonts.inter(
+                                        color: OhtliColors.stormyTeal,
+                                        fontWeight: FontWeight.w600,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                      recognizer: TapGestureRecognizer()
+                                        ..onTap = () {
+                                          if (kIsWeb) {
+                                            html.window.open('/privacidad', '_blank');
                                           }
                                         },
                                     ),

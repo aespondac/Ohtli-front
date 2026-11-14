@@ -26,8 +26,8 @@ import 'screens/error_404_page.dart';
 import 'screens/lab/lab_landing_page.dart';
 import 'screens/lab/labs_dashboard_page.dart';
 import 'screens/api/api_landing_page.dart';
-import 'screens/legal/terms_and_conditions_page.dart';
-import 'screens/legal/labs_terms_and_conditions_page.dart';
+import 'screens/legal/legal_center_page.dart';
+import 'screens/legal/legal_content.dart';
 import 'screens/lab/experiments/recolector_experiment_page.dart';
 import 'screens/lab/experiments/osrm_experiment_page.dart';
 import 'screens/lab/experiments/agents_experiment_page.dart';
@@ -230,10 +230,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   String _oobCode = '';
   String _authMode = '';
   String _publicTripId = '';
+  LegalDocId _legalDoc = LegalDocId.terms;
   String _publicAuthorId = '';
   int _homeInitialIndex = 0;
   bool _isAuthInitialized = false;
   bool _intentLabs = false;
+  bool _isLabAppHost = false;
 
   bool _isOnline = true;
   bool _showBanner = false;
@@ -283,6 +285,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final isLabsTaste = path.contains('/labs/taste') || fragment.contains('/labs/taste') || path.contains('/labs/vibe') || fragment.contains('/labs/vibe');
       final isPlaces = path.contains('/lugares') || fragment.contains('/lugares') || path.contains('/places') || fragment.contains('/places') || params.containsKey('lugares') || params.containsKey('places');
       final isAppTyc = path.contains('/tyc') || fragment.contains('/tyc');
+      bool hasRoute(String r) => path.contains(r) || fragment.contains(r);
+      final legalRoute = hasRoute('/privacidad')
+          ? LegalDocId.privacy
+          : hasRoute('/cookies')
+              ? LegalDocId.cookies
+              : hasRoute('/terminos-api')
+                  ? LegalDocId.api
+                  : null;
 
       if (isLabsTyc) {
         _currentScreen = OhtliScreen.labsTermsAndConditions;
@@ -296,9 +306,22 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.labsRecolector;
       } else if (isLabsTaste) {
         _currentScreen = OhtliScreen.labsTasteVector;
+      } else if (legalRoute != null) {
+        _legalDoc = legalRoute;
+        _currentScreen = OhtliScreen.termsAndConditions;
       } else if (isPlaces) {
         _currentScreen = OhtliScreen.places;
-      } else if (hostname.contains('lab.ohtli.quest') || hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
+      } else if (hostname == 'lab.ohtli.quest' || params.containsKey('testLabApp')) {
+        // lab.ohtli.quest: laboratorio individual. Sin sesión pide iniciarla y luego abre el panel de Labs
+        _isLabAppHost = true;
+        if (isAppTyc) {
+          _currentScreen = OhtliScreen.labsTermsAndConditions;
+        } else {
+          _intentLabs = true;
+          _currentScreen = OhtliScreen.login;
+        }
+      } else if (hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
+        // labs.ohtli.quest: landing pública de Labs
         if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
         } else {
@@ -356,7 +379,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         await _handlePostAuthRedirect(user);
       } else {
         if (_currentScreen == OhtliScreen.labsDashboard) {
-          _navigateTo(OhtliScreen.labLanding);
+          if (_isLabAppHost) _intentLabs = true;
+          _navigateTo(_isLabAppHost ? OhtliScreen.login : OhtliScreen.labLanding);
         } else if (_currentScreen == OhtliScreen.home ||
             _currentScreen == OhtliScreen.accountManagement) {
           _navigateTo(OhtliScreen.underConstruction);
@@ -449,6 +473,22 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     super.dispose();
   }
 
+  void _openLegal(LegalDocId doc) {
+    setState(() {
+      _legalDoc = doc;
+      _currentScreen = OhtliScreen.termsAndConditions;
+    });
+  }
+
+  /// "Volver" desde el inicio de sesión: en lab.ohtli.quest regresa a la landing de Labs.
+  void _goPublicHome() {
+    if (_isLabAppHost && kIsWeb) {
+      html.window.location.href = 'https://labs.ohtli.quest/';
+      return;
+    }
+    _navigateTo(OhtliScreen.underConstruction);
+  }
+
   void _navigateTo(OhtliScreen screen) {
     setState(() {
       _currentScreen = screen;
@@ -487,7 +527,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
                   _currentScreen = OhtliScreen.publicViewer;
                 });
               },
-              onOpenTerms: () => _navigateTo(OhtliScreen.termsAndConditions),
+              onOpenTerms: () => _openLegal(LegalDocId.terms),
+              onOpenLegal: _openLegal,
             );
     } else if (_currentScreen == OhtliScreen.forgotPassword) {
       activeView = ForgotPasswordPage(
@@ -555,6 +596,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.labLanding) {
       activeView = LabLandingPage(
         onLoginRedirect: () {
+          // En producción, "Ingresar a Labs" abre el laboratorio individual en lab.ohtli.quest
+          final host = kIsWeb ? (html.window.location.hostname ?? '') : '';
+          if (host == 'labs.ohtli.quest') {
+            html.window.location.href = 'https://lab.ohtli.quest/';
+            return;
+          }
           setState(() {
             _intentLabs = true;
           });
@@ -565,7 +612,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       activeView = LabsDashboardPage(
         onLogout: () async {
           await FirebaseAuth.instance.signOut();
-          _navigateTo(OhtliScreen.labLanding);
+          if (_isLabAppHost) _intentLabs = true;
+          _navigateTo(_isLabAppHost ? OhtliScreen.login : OhtliScreen.labLanding);
         },
         onTryOsrm: () => _navigateTo(OhtliScreen.labsOsrm),
         onTryAgents: () => _navigateTo(OhtliScreen.labsAgents),
@@ -577,13 +625,18 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       activeView = ApiLandingPage(
         onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
         onRegisterRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register),
+        onOpenLegal: _openLegal,
       );
     } else if (_currentScreen == OhtliScreen.termsAndConditions) {
-      activeView = TermsAndConditionsPage(
-        onBack: () => _navigateTo(OhtliScreen.underConstruction),
+      activeView = LegalCenterPage(
+        key: ValueKey(_legalDoc),
+        initialDoc: _legalDoc,
+        onBack: () => _navigateTo(
+            FirebaseAuth.instance.currentUser != null ? OhtliScreen.home : OhtliScreen.underConstruction),
       );
     } else if (_currentScreen == OhtliScreen.labsTermsAndConditions) {
-      activeView = LabsTermsAndConditionsPage(
+      activeView = LegalCenterPage(
+        initialDoc: LegalDocId.labs,
         onBack: () => _navigateTo(OhtliScreen.labLanding),
       );
     } else if (_currentScreen == OhtliScreen.labsOsrm) {
@@ -626,7 +679,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       switch (_currentScreen) {
         case OhtliScreen.mobileWelcome:
           activeView = MobileWelcomePage(
-            onBack: () => _navigateTo(OhtliScreen.underConstruction),
+            onBack: _goPublicHome,
             onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
             onJoinClick: () => _navigateTo(OhtliScreen.mobileRegister),
           );
@@ -660,7 +713,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       switch (_currentScreen) {
         case OhtliScreen.login:
           activeView = DesktopLoginPage(
-            onBack: () => _navigateTo(OhtliScreen.underConstruction),
+            onBack: _goPublicHome,
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
             onLoginSuccess: _onAuthSuccess,
             onForgotPasswordClick: () =>
@@ -676,7 +729,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           break;
         default:
           activeView = DesktopLoginPage(
-            onBack: () => _navigateTo(OhtliScreen.underConstruction),
+            onBack: _goPublicHome,
             onRegisterClick: () => _navigateTo(OhtliScreen.register),
             onLoginSuccess: _onAuthSuccess,
             onForgotPasswordClick: () =>

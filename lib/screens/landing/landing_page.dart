@@ -12,6 +12,7 @@ import '../../models/poi_model.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../../widgets/ohtli_theme_toggle.dart';
+import '../legal/legal_content.dart';
 import '../places/places_page.dart';
 
 /// Crónica pública resumida para la portada.
@@ -40,6 +41,7 @@ class LandingPage extends StatefulWidget {
   final VoidCallback onOpenPlaces;
   final void Function(String tripId, String authorId) onOpenPublicTrip;
   final VoidCallback? onOpenTerms;
+  final void Function(LegalDocId doc)? onOpenLegal;
 
   const LandingPage({
     super.key,
@@ -48,6 +50,7 @@ class LandingPage extends StatefulWidget {
     required this.onOpenPlaces,
     required this.onOpenPublicTrip,
     this.onOpenTerms,
+    this.onOpenLegal,
   });
 
   @override
@@ -1075,7 +1078,11 @@ class _LandingPageState extends State<LandingPage> {
       runSpacing: 4,
       children: [
         _footerLink('Lugares', widget.onOpenPlaces),
-        if (widget.onOpenTerms != null)
+        if (widget.onOpenLegal != null) ...[
+          _footerLink('Términos', () => widget.onOpenLegal!(LegalDocId.terms)),
+          _footerLink('Privacidad', () => widget.onOpenLegal!(LegalDocId.privacy)),
+          _footerLink('Cookies', () => widget.onOpenLegal!(LegalDocId.cookies)),
+        ] else if (widget.onOpenTerms != null)
           _footerLink('Términos y condiciones', widget.onOpenTerms!),
         _footerLink(
           'Ohtli Labs',
