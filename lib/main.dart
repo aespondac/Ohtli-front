@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -44,6 +45,7 @@ import 'screens/places/places_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'services/ohtli_sso.dart';
 import 'services/app_route.dart';
+import 'services/app_url.dart';
 import 'services/saved_accounts.dart';
 import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
@@ -53,6 +55,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // SSO entre subdominios: toma el código #ohtli_sso=… antes de que el enrutador lea la URL.
   OhtliSso.captureFromUrl();
+  // URLs sin "#" (ohtli.quest/lugares). La URL de arranque se guarda antes de que el
+  // enrutador reescriba el historial (los enlaces antiguos traen la ruta en el fragmento).
+  AppUrl.launchUri = Uri.base;
+  usePathUrlStrategy();
   // Sigue en vivo el modo claro/oscuro del sistema cuando el tema está en "Sistema"
   OhtliSettings.instance.attachToSystem();
 
@@ -128,6 +134,9 @@ void main() async {
 class OhtliApp extends StatelessWidget {
   const OhtliApp({super.key});
 
+  static final OhtliRouterDelegate _routerDelegate = OhtliRouterDelegate(const MainNavigationController());
+  static final OhtliRouteParser _routeParser = OhtliRouteParser();
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -176,7 +185,9 @@ class OhtliApp extends StatelessWidget {
             break;
         }
 
-        return MaterialApp(
+        return MaterialApp.router(
+          routerDelegate: _routerDelegate,
+          routeInformationParser: _routeParser,
           title: appTitleForHost(kIsWeb ? (html.window.location.hostname ?? '') : ''),
           debugShowCheckedModeBanner: false,
           theme: lightTheme,
@@ -193,7 +204,6 @@ class OhtliApp extends StatelessWidget {
               child: child!,
             );
           },
-          home: const MainNavigationController(),
         );
       },
     );
@@ -250,6 +260,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   LegalDocId _legalDoc = LegalDocId.terms;
   String _publicAuthorId = '';
   int _homeInitialIndex = 0;
+  // Pantalla pedida en la URL (p. ej. /mis-viajes) que se abre al confirmar la sesión
+  int? _pendingHomeIndex;
+  bool _pendingAccount = false;
+  // La siguiente actualización de la URL reemplaza la entrada (redirecciones automáticas)
+  bool _replaceNextUrl = true;
+  bool _lastIsMobile = false;
   bool _isAuthInitialized = false;
   bool _intentLabs = false;
   bool _isLabAppHost = false;
@@ -309,12 +325,13 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     super.initState();
 
     // Check for Firebase Auth Action parameters in URL on startup
-    final params = Uri.base.queryParameters;
+    final launch = AppUrl.launchUri;
+    final params = launch.queryParameters;
     // Routing de Subdominios
     if (kIsWeb) {
       final hostname = html.window.location.hostname ?? '';
-      final path = Uri.base.path;
-      final fragment = Uri.base.fragment;
+      final path = launch.path;
+      final fragment = launch.fragment;
       // Por segmentos completos: /news/evaluacion-… no debe abrir /eval (ver app_route.dart).
       bool hasRoute(String r) => routeMatches(r, path: path, fragment: fragment);
       final isLabsTyc = hasRoute('/labs/tyc');
@@ -350,6 +367,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.termsAndConditions;
       } else if (isPlaces) {
         _currentScreen = OhtliScreen.places;
+        _pendingHomeIndex = 5; // con sesión abre la pestaña Lugares
       } else if ((hostname == 'lab.ohtli.quest' || hostname == 'labs.ohtli.quest' || params.containsKey('testLabApp') ||
               params.containsKey('testLab') || params.containsKey('testEval')) &&
           (hasRoute('/eval') || params.containsKey('testEval'))) {
@@ -386,7 +404,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
     // ohtli.quest/sso?return=https://<sub>.ohtli.quest/…: con sesión entrega la cuenta al
     // subdominio; sin sesión, primero pide iniciarla.
-    if (kIsWeb && OhtliSso.isMainHost && Uri.base.path.startsWith('/sso')) {
+    if (kIsWeb && OhtliSso.isMainHost && launch.path.startsWith('/sso')) {
       _ssoTarget = OhtliSso.parseReturnTarget(params['return']);
       if (_ssoTarget != null) _currentScreen = OhtliScreen.login;
     }
@@ -397,7 +415,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _authMode = params['mode']!;
         _oobCode = params['oobCode']!;
         _currentScreen = OhtliScreen.authAction;
-      } else if (params.containsKey('muestra') || Uri.base.path == '/muestra' || Uri.base.path == '/muestra/' || Uri.base.fragment == '/muestra') {
+      } else if (params.containsKey('muestra') || launch.path == '/muestra' || launch.path == '/muestra/' || launch.fragment == '/muestra') {
         // Viaje de muestra con todos los elementos (no lee ni escribe datos reales).
         _publicTripId = kSampleTripId;
         _publicAuthorId = kSampleOwnerId;
@@ -408,8 +426,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.publicViewer;
       } else if (params.containsKey('test404')) {
         _currentScreen = OhtliScreen.test404;
+      } else if (AppUrl.enabled) {
+        _applyLaunchPath(launch.path);
       }
     }
+    AppUrl.instance.onExternal = _onExternalUrl;
 
     // Initialize connection status
     if (kIsWeb) {
@@ -467,6 +488,16 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       if (user != null) {
         await _handlePostAuthRedirect(user);
       } else {
+        // Al cerrar sesión la pantalla ya cambió antes de que terminara: actualizar la URL
+        WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
+        WidgetsBinding.instance.scheduleFrame();
+        // Sin sesión, un enlace a una pantalla privada (/mis-viajes, /cuenta…) pide iniciarla;
+        // al entrar se abre esa pantalla. /lugares es pública y se queda como está.
+        if (_currentScreen == OhtliScreen.underConstruction &&
+            (_pendingAccount || (_pendingHomeIndex != null && _pendingHomeIndex != 5))) {
+          _replaceNextUrl = true;
+          _navigateTo(_loginScreen);
+        }
         if (_currentScreen == OhtliScreen.labsDashboard || _currentScreen == OhtliScreen.labConsole) {
           if (_isLabAppHost) _intentLabs = true;
           _navigateTo(_isLabAppHost ? OhtliScreen.login : OhtliScreen.labLanding);
@@ -558,18 +589,164 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       }
 
       if (!flagDone) {
+        _replaceNextUrl = true;
         _navigateTo(OhtliScreen.onboarding);
       } else {
-        _navigateTo(OhtliScreen.home);
+        _goHomeAfterAuth();
       }
     } catch (e) {
       print("Error or timeout checking onboarding status: $e");
-      _navigateTo(OhtliScreen.home);
+      _goHomeAfterAuth();
     }
+  }
+
+  /// Tras confirmar la sesión: la pantalla que pedía la URL (/mis-viajes, /cuenta…) o Explorar.
+  void _goHomeAfterAuth() {
+    setState(() {
+      _replaceNextUrl = true;
+      if (_pendingAccount) {
+        _currentScreen = OhtliScreen.accountManagement;
+      } else {
+        _homeInitialIndex = _pendingHomeIndex ?? _homeInitialIndex;
+        _currentScreen = OhtliScreen.home;
+      }
+      _pendingAccount = false;
+      _pendingHomeIndex = null;
+    });
+  }
+
+  // ───────────────────────── URL del navegador ─────────────────────────
+
+  static String? _legalPath(LegalDocId doc) => switch (doc) {
+        LegalDocId.terms => '/tyc',
+        LegalDocId.privacy => '/privacidad',
+        LegalDocId.cookies => '/cookies',
+        LegalDocId.api => '/terminos-api',
+        LegalDocId.labs => null,
+      };
+
+  OhtliScreen get _loginScreen => _lastIsMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login;
+  OhtliScreen get _registerScreen => _lastIsMobile ? OhtliScreen.mobileRegister : OhtliScreen.register;
+
+  /// Ruta de las pantallas del sitio principal que se abren por URL (al arrancar).
+  void _applyLaunchPath(String rawPath) {
+    final path = AppUrl.normalize(rawPath);
+    final tab = AppUrl.homeTabForPath(path);
+    if (tab != null) {
+      _pendingHomeIndex = tab;
+    } else if (path == '/cuenta') {
+      _pendingAccount = true;
+    } else if (path == '/entrar') {
+      _currentScreen = OhtliScreen.login;
+    } else if (path == '/registro') {
+      _currentScreen = OhtliScreen.register;
+    } else if (path == '/recuperar') {
+      _currentScreen = OhtliScreen.forgotPassword;
+    }
+  }
+
+  /// Ruta que corresponde a la pantalla actual, o null si la URL no se toca.
+  String? _pathForState() {
+    switch (_currentScreen) {
+      case OhtliScreen.home:
+        return AppUrl.homeTabPaths[_homeInitialIndex] ?? '/explorar';
+      case OhtliScreen.accountManagement:
+        return '/cuenta';
+      case OhtliScreen.places:
+        return '/lugares';
+      case OhtliScreen.underConstruction:
+        return ConstructionPage.isOldDomain ? null : '/';
+      case OhtliScreen.login:
+      case OhtliScreen.mobileWelcome:
+      case OhtliScreen.mobileLogin:
+        return '/entrar';
+      case OhtliScreen.register:
+      case OhtliScreen.mobileRegister:
+        return '/registro';
+      case OhtliScreen.forgotPassword:
+        return '/recuperar';
+      case OhtliScreen.onboarding:
+        return '/gustos';
+      case OhtliScreen.termsAndConditions:
+        return _legalPath(_legalDoc);
+      default:
+        return null; // visor de viajes (?tripId=…), acciones de correo, Labs…
+    }
+  }
+
+  void _syncUrl() {
+    if (!AppUrl.enabled || !mounted || !_isAuthInitialized || _ssoTarget != null) return;
+    // Con sesión, la portada es solo un paso hacia la pantalla principal (redirección pendiente)
+    if (FirebaseAuth.instance.currentUser != null && _currentScreen == OhtliScreen.underConstruction) return;
+    final path = _pathForState();
+    if (path == null) return;
+    AppUrl.instance.show(path, replace: _replaceNextUrl);
+    _replaceNextUrl = false;
+  }
+
+  /// El navegador cambió la URL (Atrás/Adelante): se muestra la pantalla de esa ruta.
+  void _onExternalUrl(Uri uri) {
+    if (!mounted || !AppUrl.enabled) return;
+    final path = AppUrl.normalize(uri.path);
+    final params = uri.queryParameters;
+    final user = FirebaseAuth.instance.currentUser;
+    final tab = AppUrl.homeTabForPath(path);
+    final legal = {
+      for (final d in LegalDocId.values)
+        if (_legalPath(d) != null) _legalPath(d)!: d,
+    }[path];
+    setState(() {
+      if (params.containsKey('tripId') && params.containsKey('authorId')) {
+        _publicTripId = params['tripId']!;
+        _publicAuthorId = params['authorId']!;
+        _currentScreen = OhtliScreen.publicViewer;
+      } else if (path == '/muestra') {
+        _publicTripId = kSampleTripId;
+        _publicAuthorId = kSampleOwnerId;
+        _currentScreen = OhtliScreen.publicViewer;
+      } else if (tab != null) {
+        if (user != null) {
+          _homeInitialIndex = tab;
+          _currentScreen = OhtliScreen.home;
+        } else if (tab == 5) {
+          _currentScreen = OhtliScreen.places;
+        } else {
+          _pendingHomeIndex = tab;
+          _currentScreen = _loginScreen;
+        }
+      } else if (path == '/cuenta') {
+        if (user != null) {
+          _currentScreen = OhtliScreen.accountManagement;
+        } else {
+          _pendingAccount = true;
+          _currentScreen = _loginScreen;
+        }
+      } else if (legal != null) {
+        _legalDoc = legal;
+        _currentScreen = OhtliScreen.termsAndConditions;
+      } else if (user != null) {
+        // Con sesión, la portada y el acceso llevan a la pantalla principal
+        if (path == '/gustos') {
+          _currentScreen = OhtliScreen.onboarding;
+        } else {
+          _replaceNextUrl = true;
+          _currentScreen = OhtliScreen.home;
+        }
+      } else if (path == '/entrar') {
+        _currentScreen = _loginScreen;
+      } else if (path == '/registro') {
+        _currentScreen = _registerScreen;
+      } else if (path == '/recuperar') {
+        _currentScreen = OhtliScreen.forgotPassword;
+      } else {
+        _currentScreen = OhtliScreen.underConstruction;
+      }
+    });
   }
 
   @override
   void dispose() {
+    if (AppUrl.instance.onExternal == _onExternalUrl) AppUrl.instance.onExternal = null;
     _authSubscription.cancel();
     _onlineSub?.cancel();
     _offlineSub?.cancel();
@@ -630,6 +807,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 800;
+    _lastIsMobile = isMobile;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
 
     Widget activeView;
     if (_currentScreen == OhtliScreen.ssoBridge && _ssoTarget != null && FirebaseAuth.instance.currentUser != null) {
@@ -682,6 +861,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.home) {
       activeView = HomePage(
         initialIndex: _homeInitialIndex,
+        onTabChanged: (index) => setState(() => _homeInitialIndex = index),
         onLogout: () => _navigateTo(OhtliScreen.underConstruction),
         onNavigateToAccount: () {
           setState(() {
@@ -850,7 +1030,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.onboarding) {
       activeView = OnboardingWizardPage(
-        onCompleted: () => _navigateTo(OhtliScreen.home),
+        onCompleted: _goHomeAfterAuth,
       );
     } else if (_currentScreen == OhtliScreen.labsTasteVector) {
       activeView = TasteVectorExperimentPage(

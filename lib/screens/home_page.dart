@@ -24,13 +24,18 @@ import '../widgets/trip_planner_dialog.dart';
 class HomePage extends StatefulWidget {
   final VoidCallback onLogout;
   final VoidCallback onNavigateToAccount;
+  /// Pestaña mostrada; si cambia (p. ej. Atrás del navegador), la página la sigue.
   final int initialIndex;
+
+  /// Avisa cada cambio de pestaña (la URL se actualiza con él).
+  final ValueChanged<int>? onTabChanged;
 
   const HomePage({
     super.key,
     required this.onLogout,
     required this.onNavigateToAccount,
     this.initialIndex = 0,
+    this.onTabChanged,
   });
 
   @override
@@ -67,6 +72,20 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _currentIndex = widget.initialIndex;
     _syncProfilePic();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialIndex != oldWidget.initialIndex && widget.initialIndex != _currentIndex) {
+      _currentIndex = widget.initialIndex;
+    }
+  }
+
+  void _selectTab(int index) {
+    if (index == _currentIndex) return;
+    setState(() => _currentIndex = index);
+    widget.onTabChanged?.call(index);
   }
 
   void _syncProfilePic() {
@@ -234,7 +253,7 @@ class _HomePageState extends State<HomePage> {
       return const NotificationsPage();
     }
     return ExplorePage(
-      onOpenTab: (index) => setState(() => _currentIndex = index),
+      onOpenTab: (index) => _selectTab(index),
       onPlanTrip: _openTripPlanner,
     );
   }
@@ -242,7 +261,7 @@ class _HomePageState extends State<HomePage> {
   void _openTripPlanner() {
     TripPlannerDialog.show(
       context,
-      onManualPlanSelected: () => setState(() => _currentIndex = 1),
+      onManualPlanSelected: () => _selectTab(1),
     );
   }
 
@@ -325,9 +344,7 @@ class _HomePageState extends State<HomePage> {
                       IconButton(
                         icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
                         onPressed: () {
-                          setState(() {
-                            _currentIndex = 6;
-                          });
+                          _selectTab(6);
                         },
                       ),
                       if (unreadCount > 0)
@@ -365,9 +382,7 @@ class _HomePageState extends State<HomePage> {
               IconButton(
                 icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
                 onPressed: () {
-                  setState(() {
-                    _currentIndex = 6;
-                  });
+                  _selectTab(6);
                 },
               ),
             Padding(
@@ -387,7 +402,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: () {
             TripPlannerDialog.show(
               context,
-              onManualPlanSelected: () => setState(() => _currentIndex = 1),
+              onManualPlanSelected: () => _selectTab(1),
             );
           },
           backgroundColor: OhtliColors.stormyTeal,
@@ -405,10 +420,8 @@ class _HomePageState extends State<HomePage> {
               ? (_lastBottomNavIndex = _bottomNavPages.indexOf(_currentIndex))
               : _lastBottomNavIndex,
           onTap: (index) {
-            setState(() {
-              _lastBottomNavIndex = index;
-              _currentIndex = _bottomNavPages[index];
-            });
+            _lastBottomNavIndex = index;
+            _selectTab(_bottomNavPages[index]);
           },
           backgroundColor: colorSidebar,
           selectedItemColor: OhtliColors.stormyTeal,
@@ -456,7 +469,7 @@ class _HomePageState extends State<HomePage> {
           // ========= SIDEBAR =========
           OhtliSidebar(
             currentIndex: _currentIndex,
-            onTabSelected: (index) => setState(() => _currentIndex = index),
+            onTabSelected: (index) => _selectTab(index),
             onNavigateToAccount: widget.onNavigateToAccount,
             onLogout: _handleLogout,
           ),
