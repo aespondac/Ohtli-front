@@ -9,6 +9,7 @@ import '../theme/colors.dart';
 import 'lab_repository.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
+import 'labs_top_bar.dart';
 
 /// lab.ohtli.quest/eval — entrada pública para testers de los estudios que lo requieren.
 class LabEvalPage extends StatefulWidget {
@@ -42,27 +43,20 @@ class _LabEvalPageState extends State<LabEvalPage> {
     }
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
-      appBar: AppBar(
-        backgroundColor: OhtliColors.cardBg,
-        elevation: 0,
-        title: Row(children: [
-          const Icon(Icons.volunteer_activism_outlined, color: OhtliColors.stormyTeal, size: 20),
-          const SizedBox(width: 8),
-          Text('Ohtli Lab · Participa', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-        ]),
-        actions: [
-          if (user != null)
-            TextButton(
-              onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-                setState(() {
-                  _consent = false;
-                  _studyId = null;
-                });
-              },
-              child: const Text('Salir'),
-            ),
-        ],
+      appBar: LabsTopBar(
+        current: LabsSection.participate,
+        trailing: user == null
+            ? null
+            : TextButton(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  setState(() {
+                    _consent = false;
+                    _studyId = null;
+                  });
+                },
+                child: const Text('Salir'),
+              ),
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 24),

@@ -1,4 +1,8 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+
+import 'dart:html' as html;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -7,6 +11,7 @@ import 'lab_aggregates.dart';
 import 'lab_repository.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
+import 'labs_top_bar.dart';
 
 /// labs.ohtli.quest — reporte público (tipo paper) y tablero de resultados.
 /// Solo muestra lo que el superusuario publicó desde lab.ohtli.quest.
@@ -21,20 +26,7 @@ class LabsResultsPage extends StatelessWidget {
     final repo = LabRepository.instance;
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
-      appBar: AppBar(
-        backgroundColor: OhtliColors.cardBg,
-        elevation: 0,
-        title: Row(children: [
-          const Icon(Icons.insights_rounded, color: OhtliColors.stormyTeal),
-          const SizedBox(width: 8),
-          Text(newsMode ? 'Ohtli Labs · Novedades' : 'Ohtli Labs · Resultados',
-              style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-        ]),
-        actions: [
-          TextButton.icon(onPressed: onOpenEval, icon: const Icon(Icons.volunteer_activism_outlined, size: 16), label: const Text('Participa')),
-          const SizedBox(width: 8),
-        ],
-      ),
+      appBar: const LabsTopBar(current: LabsSection.news),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: repo.paper.snapshots(),
         builder: (context, paperSnap) {
@@ -45,21 +37,33 @@ class LabsResultsPage extends StatelessWidget {
               final runs = runsSnap.data?.docs ?? [];
               final children = <Widget>[];
               if (newsMode) {
+                children.add(_BlogHeader(isMobile: isMobile));
+                if (paper['published'] == true) {
+                  // Entrada destacada: el reporte completo de resultados del laboratorio
+                  children.add(_BlogPost(
+                    tag: 'Reporte de resultados',
+                    date: fmtDate(paper['publishedAt'] ?? paper['updatedAt']),
+                    title: '${paper['title'] ?? 'Resultados de Ohtli Labs'}',
+                    excerpt: '${paper['abstract'] ?? paper['summary'] ?? 'Metodología, resultados por estudio y conclusiones de las pruebas del laboratorio.'}',
+                    cta: 'Leer el reporte completo',
+                    featured: true,
+                    onTap: () => _goResults(),
+                  ));
+                }
                 if (paper['newsEnabled'] != true || runs.isEmpty) {
-                  children.add(LabCard(child: Text('Aún no hay novedades publicadas.', style: labCell())));
+                  if (paper['published'] != true) {
+                    children.add(LabCard(child: Text('Aún no hay noticias publicadas. Vuelve pronto.', style: labCell())));
+                  }
                 } else {
                   for (final r in runs) {
                     final s = studyById('${r.data()['studyId']}');
-                    children.add(Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: LabCard(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(fmtDate(r.data()['publishedAt'] ?? r.data()['startedAt']), style: labCell()),
-                          Text(s?.title ?? '${r.data()['studyId']}', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-                          if ((r.data()['notes'] ?? '').toString().isNotEmpty)
-                            Padding(padding: const EdgeInsets.only(top: 6), child: Text('${r.data()['notes']}', style: GoogleFonts.inter(fontSize: 13, height: 1.45, color: OhtliColors.onyx))),
-                        ]),
-                      ),
+                    children.add(_BlogPost(
+                      tag: 'Resultados de laboratorio',
+                      date: fmtDate(r.data()['publishedAt'] ?? r.data()['startedAt']),
+                      title: s?.title ?? '${r.data()['studyId']}',
+                      excerpt: '${r.data()['notes'] ?? ''}',
+                      cta: 'Ver resultados',
+                      onTap: () => _goResults(),
                     ));
                   }
                 }
@@ -102,6 +106,137 @@ class LabsResultsPage extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+void _goResults() {
+  if (!kIsWeb) return;
+  final host = html.window.location.hostname ?? '';
+  html.window.location.href = host.endsWith('ohtli.quest') ? 'https://labs.ohtli.quest/resultados' : '/resultados?testLab';
+}
+
+/// Encabezado del blog de noticias de Labs.
+class _BlogHeader extends StatelessWidget {
+  final bool isMobile;
+  const _BlogHeader({required this.isMobile});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('NOTICIAS DEL LABORATORIO',
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6, color: OhtliColors.accentText)),
+          const SizedBox(height: 10),
+          Text('Lo que estamos probando y aprendiendo',
+              style: GoogleFonts.outfit(fontSize: isMobile ? 30 : 42, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -1, height: 1.08)),
+          const SizedBox(height: 10),
+          Text('Novedades de Ohtli Labs y resultados de cada estudio, publicados al concluir las pruebas.',
+              style: GoogleFonts.inter(fontSize: 15.5, color: OhtliColors.subtleText, height: 1.55)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Entrada del blog de Labs (noticia o resultado publicado).
+class _BlogPost extends StatefulWidget {
+  final String tag;
+  final String date;
+  final String title;
+  final String excerpt;
+  final String cta;
+  final bool featured;
+  final VoidCallback onTap;
+
+  const _BlogPost({
+    required this.tag,
+    required this.date,
+    required this.title,
+    required this.excerpt,
+    required this.cta,
+    required this.onTap,
+    this.featured = false,
+  });
+
+  @override
+  State<_BlogPost> createState() => _BlogPostState();
+}
+
+class _BlogPostState extends State<_BlogPost> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final featured = widget.featured;
+    final fg = featured ? Colors.white : OhtliColors.onyx;
+    final sub = featured ? Colors.white.withValues(alpha: 0.78) : OhtliColors.subtleText;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          width: double.infinity,
+          padding: EdgeInsets.all(featured ? 30 : 24),
+          transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            color: featured ? null : OhtliColors.cardBg,
+            gradient: featured
+                ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123338), OhtliColors.stormyTeal])
+                : null,
+            borderRadius: BorderRadius.circular(24),
+            border: featured ? null : Border.all(color: _hover ? OhtliColors.accentText.withValues(alpha: 0.5) : OhtliColors.cardBorder),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: _hover ? 0.14 : 0.05), blurRadius: _hover ? 26 : 12, offset: Offset(0, _hover ? 12 : 4))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: featured ? Colors.white.withValues(alpha: 0.16) : OhtliColors.stormyTeal.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Text(widget.tag,
+                        style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: featured ? Colors.white : OhtliColors.accentText)),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(widget.date, style: GoogleFonts.inter(fontSize: 12.5, color: sub)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(widget.title,
+                  style: GoogleFonts.outfit(fontSize: featured ? 26 : 21, fontWeight: FontWeight.w800, color: fg, height: 1.15)),
+              if (widget.excerpt.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(widget.excerpt, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14.5, color: sub, height: 1.55)),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(widget.cta,
+                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: featured ? OhtliColors.cempasuchil : OhtliColors.accentText)),
+                  const SizedBox(width: 6),
+                  AnimatedSlide(
+                    offset: Offset(_hover ? 0.3 : 0, 0),
+                    duration: const Duration(milliseconds: 220),
+                    child: Icon(Icons.arrow_forward_rounded, size: 17, color: featured ? OhtliColors.cempasuchil : OhtliColors.accentText),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

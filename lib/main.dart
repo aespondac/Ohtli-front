@@ -406,7 +406,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     ) async {
       // SSO en el subdominio (lab.ohtli.quest): sin sesión propia, canjea el código que
       // trajo de ohtli.quest o va por él. Mientras tanto se mantiene la pantalla de carga.
-      if (user == null && !_ssoChecked && _isLabAppHost && OhtliSso.isSubdomain) {
+      // /eval también queda protegida por el SSO: sin sesión trae la de ohtli.quest
+      if (user == null && !_ssoChecked && (_isLabAppHost || _currentScreen == OhtliScreen.labEval) && OhtliSso.isSubdomain) {
         _ssoChecked = true;
         if (OhtliSso.hasPendingCode) {
           if (await OhtliSso.redeemPendingCode()) return; // llegará otro evento con la sesión
@@ -702,6 +703,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.labEval) {
       activeView = LabEvalPage(
         onLogin: () {
+          // En labs/lab.ohtli.quest la sesión llega por el SSO con la cuenta de Ohtli
+          if (OhtliSso.isSubdomain) {
+            OhtliSso.continueWithOhtli();
+            return;
+          }
           setState(() => _intentEval = true);
           _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
         },

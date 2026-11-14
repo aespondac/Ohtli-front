@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
-import '../../widgets/ohtli_theme_toggle.dart';
 import '../../widgets/ohtli_service_icon.dart';
+import '../../labs/labs_top_bar.dart';
 import 'widgets/particles_background.dart';
 
 class LabLandingPage extends StatefulWidget {
@@ -75,7 +75,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                 child: Column(
                   children: [
                     // Header de navegación prolijo y funcional
-                    _buildHeader(isMobile),
+                    LabsTopBar(current: LabsSection.home, onEnter: widget.onLoginRedirect),
 
                     // Hero Principal con propósito explícito de banco de pruebas pre-producción
                     _buildHeroSection(isMobile),
@@ -120,146 +120,6 @@ class _LabLandingPageState extends State<LabLandingPage> {
     );
   }
 
-  Widget _buildHeader(bool isMobile) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16 : 40,
-        vertical: 18,
-      ),
-      decoration: BoxDecoration(
-        color: OhtliColors.cloudDancer.withValues(alpha: 0.85),
-        border: Border(
-          bottom: BorderSide(color: OhtliColors.cardBorder),
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Logo + Tag Labs
-          Row(
-            children: [
-              SvgPicture.asset(
-                'assets/logo.svg',
-                height: 30,
-                colorFilter: ColorFilter.mode(OhtliColors.onyx, BlendMode.srcIn),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: OhtliColors.stormyTeal,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.science_rounded, size: 14, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text(
-                      'LABS',
-                      style: GoogleFonts.outfit(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.0,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          // Opciones centrales para Desktop
-          if (!isMobile)
-            Row(
-              children: [
-                _buildNavTextButton(
-                  title: 'Cómo funciona',
-                  onTap: () => _scrollToKey(_pipelineSectionKey),
-                ),
-                const SizedBox(width: 8),
-                _buildNavTextButton(
-                  title: 'Experimentos',
-                  onTap: () => _scrollToKey(_experimentsSectionKey),
-                ),
-                const SizedBox(width: 8),
-                _buildNavTextButton(
-                  title: 'Participa',
-                  onTap: () => _scrollToKey(_participateSectionKey),
-                ),
-                const SizedBox(width: 8),
-                _buildNavTextButton(
-                  title: 'Ohtli.quest ↗',
-                  onTap: _openProductionSite,
-                  isExternal: true,
-                ),
-              ],
-            ),
-
-          // Botones de acción derecha
-          Row(
-            children: [
-              const OhtliThemeToggle(),
-              const SizedBox(width: 6),
-              // Reporte y tablero de resultados de las pruebas (labs.ohtli.quest/resultados)
-              TextButton.icon(
-                onPressed: () => html.window.location.href = '/resultados',
-                icon: const Icon(Icons.insights_rounded, size: 16),
-                label: Text(isMobile ? 'Resultados' : 'Resultados y paper',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-              ),
-              const SizedBox(width: 6),
-              ElevatedButton.icon(
-                onPressed: widget.onLoginRedirect,
-                icon: const Icon(Icons.login_rounded, size: 16),
-                label: Text(
-                  isMobile ? 'Acceso' : 'Ingresar a Labs',
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: OhtliColors.onyx,
-                  foregroundColor: OhtliColors.cloudDancer,
-                  elevation: 0,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 16 : 22,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavTextButton({
-    required String title,
-    required VoidCallback onTap,
-    bool isExternal = false,
-  }) {
-    return TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        foregroundColor: OhtliColors.subtleText,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      ),
-      child: Text(
-        title,
-        style: GoogleFonts.inter(
-          fontSize: 14,
-          fontWeight: isExternal ? FontWeight.w600 : FontWeight.w500,
-          color: isExternal ? OhtliColors.stormyTeal : OhtliColors.onyx,
-        ),
-      ),
-    );
-  }
-
   Widget _buildHeroSection(bool isMobile) {
     return Container(
       padding: EdgeInsets.symmetric(
@@ -270,40 +130,6 @@ class _LabLandingPageState extends State<LabLandingPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Chip superior de propósito
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: OhtliColors.cardBg,
-              borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: OhtliColors.cardBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: OhtliColors.stormyTeal.withValues(alpha: 0.05),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.auto_awesome_rounded, size: 16, color: OhtliColors.stormyTeal),
-                const SizedBox(width: 8),
-                Text(
-                  'PRUEBA LO NUEVO DE OHTLI ANTES QUE NADIE',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                    color: OhtliColors.stormyTeal,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 28),
-
           // Título Principal
           Text(
             'Donde la innovación se prueba\nantes de llegar a ti',
