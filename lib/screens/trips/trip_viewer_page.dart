@@ -27,6 +27,8 @@ import '../error_403_page.dart';
 import '../../services/pdf_export_service.dart';
 import '../../services/trip_transfers.dart';
 import '../../utils/friendly_errors.dart';
+import '../../services/poi_suggestion_service.dart';
+import '../../widgets/place_details_form.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -2648,6 +2650,92 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
+  final Set<String?> _contributedPlaces = {};
+
+  Future<void> _contributeToPlace(PlaceSection place) async {
+    final draft = PlaceDetailsDraft();
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        insetPadding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540, maxHeight: 720),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 8, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(place.title.isEmpty ? 'Completa este lugar' : place.title,
+                          style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: OhtliColors.onyx)),
+                    ),
+                    IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx, false)),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text('Si ya fuiste, cuéntanos lo que sepas. Ayuda a que Ohtli lo recomiende mejor.',
+                    style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.6))),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: PlaceDetailsFields(draft: draft),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      icon: const Icon(Icons.send_rounded, size: 18),
+                      label: const Text('Enviar'),
+                      style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white, elevation: 0),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (send != true || !mounted) return;
+    if (draft.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No escribiste nada todavía.', style: GoogleFonts.inter())),
+      );
+      return;
+    }
+    try {
+      await PoiSuggestionService.contribute(place.poiId!, draft.toMap());
+      if (!mounted) return;
+      setState(() => _contributedPlaces.add(place.poiId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('¡Gracias! Lo tendremos en cuenta.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.stormyTeal),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _contributedPlaces.add(place.poiId));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlyError(e, fallback: 'Este lugar ya fue revisado. ¡Gracias por querer ayudar!'), style: GoogleFonts.inter()),
+        ),
+      );
+    }
+  }
+
   Widget _buildPlaceBlockViewer(PlaceSection place, bool isDark, bool isDesktop) {
     // Collect active photo urls
     final List<Map<String, dynamic>> drawOrderSlots = [];
@@ -2772,6 +2860,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+        // Lugar nuevo propuesto por un viajero: quien lo conozca puede completar su información
+        if (place.isSuggestion && FirebaseAuth.instance.currentUser != null && !_contributedPlaces.contains(place.poiId)) ...[
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => _contributeToPlace(place),
+            icon: const Icon(Icons.edit_note_rounded, size: 18),
+            label: Text('¿Conoces este lugar? Ayuda a completar su información',
+                style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            style: TextButton.styleFrom(
+              foregroundColor: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45) : OhtliColors.stormyTeal,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             ),
           ),
         ],

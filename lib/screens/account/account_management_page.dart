@@ -18,6 +18,7 @@ import '../../utils/friendly_errors.dart';
 import '../construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'public_profile_page.dart';
 import '../admin/place_suggestions_page.dart';
+import '../admin/explore_featured_page.dart';
 import '../../config/admin.dart';
 import '../../services/poi_suggestion_service.dart';
 
@@ -1733,10 +1734,19 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         _SettingsItem(
                           icon: Icons.add_location_alt_outlined,
                           title: pending > 0 ? 'Lugares sugeridos · $pending por revisar' : 'Lugares sugeridos',
-                          subtitle: 'Aprueba o rechaza los lugares nuevos que proponen los viajeros',
+                          subtitle: 'Revisa, genera el perfil y aprueba los lugares nuevos que proponen los viajeros',
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => const PlaceSuggestionsPage()),
+                          ),
+                        ),
+                        _SettingsItem(
+                          icon: Icons.push_pin_outlined,
+                          title: 'Destacados de Explorar',
+                          subtitle: 'Elige los viajes del bloque principal y si se muestra la nota de versión',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ExploreFeaturedPage()),
                           ),
                         ),
                       ]);

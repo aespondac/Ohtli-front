@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 /// Categorías que se pueden elegir al sugerir un lugar (claves del catálogo → etiqueta).
 const Map<String, String> kSuggestionCategories = {
@@ -24,11 +26,18 @@ const String kSuggestionPending = 'pending';
 const String kSuggestionApproved = 'approved';
 const String kSuggestionRejected = 'rejected';
 
+/// Datos que la persona puede conocer y que el motor usa para el perfil del lugar
+/// (deben coincidir con los campos permitidos en firestore.rules).
+const List<String> kSuggestionDetailKeys = [
+  'subcategories', 'vibe_tags', 'ideal_for', 'price_level', 'opening_hours', 'wheelchair_accessible',
+  'musica_en_vivo', 'consumo_alcohol', 'area_verde_cercana', 'patrimonio_historico', 'tips',
+];
+
 /// Lugar sugerido por una persona desde el editor de viajes.
 ///
-/// Vive en `poi_suggestions/{id}` y solo se usa en el viaje de quien lo sugirió.
-/// Cuando el superusuario lo aprueba se copia a `pois/{id}` (mismo id), así las
-/// paradas que ya lo usan quedan vinculadas al catálogo sin tocar sus viajes.
+/// Vive en `poi_suggestions/{id}` y solo se usa en el viaje de quien lo sugirió. El
+/// superusuario genera su perfil (receta y vector, en el motor) y, al aprobarlo, el lugar
+/// entra a `pois/{id}` con el mismo id y lo puede usar el recomendador.
 class PoiSuggestion {
   final String id;
   final String name;
@@ -38,13 +47,15 @@ class PoiSuggestion {
   final String address;
   final String description;
   final String photoUrl;
-  final double? priceMxnAvg;
   final String status;
   final String createdBy;
   final String createdByName;
   final String? tripId;
   final DateTime? createdAt;
   final String? reviewNote;
+  final Map<String, dynamic> details;
+  final Map<String, dynamic>? profile;
+  final String? profileStatus;
 
   const PoiSuggestion({
     required this.id,
@@ -55,13 +66,15 @@ class PoiSuggestion {
     this.address = '',
     this.description = '',
     this.photoUrl = '',
-    this.priceMxnAvg,
     this.status = kSuggestionPending,
     required this.createdBy,
     this.createdByName = '',
     this.tripId,
     this.createdAt,
     this.reviewNote,
+    this.details = const {},
+    this.profile,
+    this.profileStatus,
   });
 
   bool get hasLocation => lat != null && lng != null;
@@ -78,38 +91,26 @@ class PoiSuggestion {
       address: (d['address'] ?? '').toString(),
       description: (d['description'] ?? '').toString(),
       photoUrl: (d['photo_url'] ?? '').toString(),
-      priceMxnAvg: (d['price_mxn_avg'] as num?)?.toDouble(),
       status: (d['status'] ?? kSuggestionPending).toString(),
       createdBy: (d['createdBy'] ?? '').toString(),
       createdByName: (d['createdByName'] ?? '').toString(),
       tripId: d['tripId']?.toString(),
       createdAt: d['createdAt'] is Timestamp ? (d['createdAt'] as Timestamp).toDate() : null,
       reviewNote: d['reviewNote']?.toString(),
+      details: {for (final k in kSuggestionDetailKeys) if (d.containsKey(k)) k: d[k]},
+      profile: d['profile'] is Map ? Map<String, dynamic>.from(d['profile'] as Map) : null,
+      profileStatus: d['profileStatus']?.toString(),
     );
   }
+}
 
-  /// Documento para `pois/{id}` con los campos que leen el catálogo y el motor.
-  Map<String, dynamic> toPoiDocument({required String approvedBy}) {
-    final name = this.name.trim();
-    return {
-      'poi_id': id,
-      'name': name,
-      'category': category,
-      'subcategories': <String>[],
-      if (hasLocation) 'location': {'lat': lat, 'lng': lng},
-      'address': address,
-      'description': description,
-      'editorial_summary': description,
-      'photo_url': photoUrl,
-      if (priceMxnAvg != null) 'price_mxn_avg': priceMxnAvg,
-      'price_level': priceMxnAvg == null ? 1 : (priceMxnAvg! <= 0 ? 0 : (priceMxnAvg! < 150 ? 1 : (priceMxnAvg! < 400 ? 2 : 3))),
-      'vibe_tags': <String>[],
-      'source': 'user_suggestion',
-      'suggested_by': createdBy,
-      'approved_by': approvedBy,
-      'created_at': FieldValue.serverTimestamp(),
-    };
-  }
+/// Aporte de otra persona (desde el visor) para completar una sugerencia.
+class PoiContribution {
+  final String id;
+  final String byName;
+  final DateTime? createdAt;
+  final Map<String, dynamic> data;
+  const PoiContribution({required this.id, required this.byName, this.createdAt, required this.data});
 }
 
 class PoiSuggestionService {
@@ -118,8 +119,11 @@ class PoiSuggestionService {
   static final CollectionReference<Map<String, dynamic>> _col =
       FirebaseFirestore.instance.collection('poi_suggestions');
 
+  static const String _primaryApiUrl = String.fromEnvironment('yollotlApiUrl', defaultValue: 'https://api-xluju5gywq-uc.a.run.app');
+  static const String _secondaryApiUrl = 'https://api.ohtli.quest';
+
   /// Crea la sugerencia (pendiente) y devuelve su id, que también será el id del
-  /// lugar en `pois` si se aprueba.
+  /// lugar en `pois` si se aprueba. [details] viene de PlaceDetailsDraft.toMap().
   static Future<String> create({
     required String name,
     required String category,
@@ -128,8 +132,8 @@ class PoiSuggestionService {
     String address = '',
     String description = '',
     String photoUrl = '',
-    double? priceMxnAvg,
     String? tripId,
+    Map<String, dynamic> details = const {},
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('Inicia sesión para sugerir un lugar.');
@@ -141,7 +145,8 @@ class PoiSuggestionService {
       'address': address.trim(),
       'description': description.trim(),
       'photo_url': photoUrl,
-      if (priceMxnAvg != null) 'price_mxn_avg': priceMxnAvg,
+      for (final k in kSuggestionDetailKeys)
+        if (details.containsKey(k)) k: details[k],
       'status': kSuggestionPending,
       'createdBy': user.uid,
       'createdByName': user.displayName ?? user.email ?? 'Viajero',
@@ -149,6 +154,32 @@ class PoiSuggestionService {
       'createdAt': FieldValue.serverTimestamp(),
     });
     return ref.id;
+  }
+
+  /// Añade lo que otra persona sabe del lugar (desde el visor del viaje).
+  static Future<void> contribute(String suggestionId, Map<String, dynamic> details) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('Inicia sesión para aportar información.');
+    await _col.doc(suggestionId).collection('contributions').add({
+      for (final k in [...kSuggestionDetailKeys, 'description'])
+        if (details.containsKey(k)) k: details[k],
+      'by': user.uid,
+      'byName': user.displayName ?? 'Viajero',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Future<List<PoiContribution>> contributions(String suggestionId) async {
+    final q = await _col.doc(suggestionId).collection('contributions').orderBy('createdAt').get();
+    return q.docs.map((d) {
+      final data = d.data();
+      return PoiContribution(
+        id: d.id,
+        byName: (data['byName'] ?? 'Viajero').toString(),
+        createdAt: data['createdAt'] is Timestamp ? (data['createdAt'] as Timestamp).toDate() : null,
+        data: data,
+      );
+    }).toList();
   }
 
   /// Estado actual de varias sugerencias propias (las que no se pudieron leer se omiten).
@@ -176,21 +207,23 @@ class PoiSuggestionService {
   static Stream<int> watchPendingCount() =>
       _col.where('status', isEqualTo: kSuggestionPending).snapshots().map((q) => q.size);
 
-  /// Aprueba: crea `pois/{id}` y marca la sugerencia en una sola escritura atómica.
-  static Future<void> approve(PoiSuggestion s, {PoiSuggestion? edited}) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw StateError('Inicia sesión.');
-    final data = edited ?? s;
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(FirebaseFirestore.instance.collection('pois').doc(s.id), data.toPoiDocument(approvedBy: user.uid));
-    batch.update(_col.doc(s.id), {
-      'status': kSuggestionApproved,
-      'name': data.name.trim(),
-      'category': data.category,
-      'reviewedBy': user.uid,
-      'reviewedAt': FieldValue.serverTimestamp(),
+  /// Superusuario: corrige nombre, tipo o descripción antes de generar el perfil.
+  static Future<void> updateBasics(String id, {required String name, required String category, required String description}) {
+    return _col.doc(id).update({'name': name.trim(), 'category': category, 'description': description.trim()});
+  }
+
+  /// Superusuario: el motor redacta la receta de 4 ejes y calcula el vector del lugar.
+  static Future<Map<String, dynamic>> generateProfile(String id) async {
+    final res = await _postToEngine('/v1/admin/place-suggestions/$id/profile', {});
+    return Map<String, dynamic>.from(res['profile'] as Map? ?? {});
+  }
+
+  /// Superusuario: aprueba el perfil. El lugar entra a la base y al recomendador.
+  /// Si se corrigió la receta, el motor recalcula el vector con esa versión.
+  static Future<Map<String, dynamic>> approveProfile(String id, {String? semanticDescription}) {
+    return _postToEngine('/v1/admin/place-suggestions/$id/approve', {
+      if (semanticDescription != null) 'semantic_description': semanticDescription,
     });
-    await batch.commit();
   }
 
   static Future<void> reject(PoiSuggestion s, {String note = ''}) async {
@@ -202,5 +235,30 @@ class PoiSuggestionService {
       'reviewedBy': user.uid,
       'reviewedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  static Future<Map<String, dynamic>> _postToEngine(String path, Map<String, dynamic> body) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('Inicia sesión.');
+    final token = await user.getIdToken();
+    final headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'};
+    http.Response? res;
+    Object? lastError;
+    for (final base in [_primaryApiUrl, _secondaryApiUrl]) {
+      try {
+        // Generar el perfil usa IA y puede tardar
+        res = await http.post(Uri.parse('$base$path'), headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 120));
+        break;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (res == null) throw lastError ?? StateError('No pudimos conectar con el servidor.');
+    final decoded = res.body.isNotEmpty ? jsonDecode(utf8.decode(res.bodyBytes)) : {};
+    if (res.statusCode >= 400) {
+      final detail = decoded is Map ? (decoded['detail'] ?? '').toString() : '';
+      throw StateError(detail.isNotEmpty ? detail : 'El servidor respondió ${res.statusCode}.');
+    }
+    return decoded is Map ? Map<String, dynamic>.from(decoded) : {};
   }
 }

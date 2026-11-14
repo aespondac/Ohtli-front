@@ -27,6 +27,7 @@ import '../../models/poi_model.dart';
 import '../../services/trip_transfers.dart';
 import '../../config/editorial.dart';
 import '../../services/poi_suggestion_service.dart';
+import '../../widgets/place_details_form.dart';
 import 'package:http/http.dart' as http;
 
 class TripEditorPage extends StatefulWidget {
@@ -1074,8 +1075,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
       SnackBar(
         content: Text(
           poi.location.isValid
-              ? '${poi.name} quedó vinculado a la base de Ohtli y ya aparece en el mapa.'
-              : '${poi.name} quedó vinculado, pero no tiene coordenadas en el catálogo.',
+              ? '${poi.name} ya aparece en el mapa.'
+              : 'Elegiste ${poi.name}, pero no tiene coordenadas en el catálogo.',
           style: GoogleFonts.inter(),
         ),
         backgroundColor: OhtliColors.stormyTeal,
@@ -1168,12 +1169,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
       warnings.add(noLocation == 1
           ? '1 lugar no tiene ubicación y no saldrá bien en el mapa.'
           : '$noLocation lugares no tienen ubicación y no saldrán bien en el mapa.');
-    }
-    final generic = places.where((p) => p.isGeneric && p.title.trim().isNotEmpty).length;
-    if (generic > 0) {
-      warnings.add(generic == 1
-          ? '1 lugar es genérico: vincúlalo con la base de Ohtli o sugiérelo como lugar nuevo.'
-          : '$generic lugares son genéricos: vincúlalos con la base de Ohtli o sugiérelos como lugares nuevos.');
     }
     final noPhoto = places.where((p) => p.mainPhotoUrl.isEmpty).length;
     if (noPhoto > 0) warnings.add(noPhoto == 1 ? '1 lugar no tiene foto.' : '$noPhoto lugares no tienen foto.');
@@ -3970,41 +3965,22 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
-  /// Estado del vínculo de la parada con la base de Ohtli.
+  /// Acción para elegir el lugar de la parada en la base de Ohtli. No muestra estados
+  /// internos (catálogo/sugerencia): solo avisa si a la parada le falta ubicación.
   Widget _buildLocationChip(PlaceSection place, bool isDark) {
     final bool located = place.lat != null && place.lng != null;
-    final String? sugStatus = place.isSuggestion ? _suggestionStatus[place.poiId] : null;
-    IconData icon;
-    String label;
-    String tooltip;
-    Color tone;
-    if (place.isLinkedToCatalog) {
-      icon = Icons.verified_rounded;
-      label = located ? 'Lugar de Ohtli · Cambiar' : 'Lugar de Ohtli (sin coordenadas) · Cambiar';
-      tooltip = 'Vinculado a un lugar de la base de Ohtli';
-      tone = OhtliColors.stormyTeal;
-    } else if (place.isSuggestion && sugStatus == kSuggestionRejected) {
-      icon = Icons.do_not_disturb_on_outlined;
-      label = 'Sugerencia no aprobada · Vincular';
-      tooltip = 'El lugar que sugeriste no se aprobó. Sigue en tu viaje; puedes vincularlo con otro lugar de la base.';
-      tone = OhtliColors.xoconostle;
-    } else if (place.isSuggestion) {
-      icon = Icons.hourglass_top_rounded;
-      label = 'Sugerencia en revisión · Cambiar';
-      tooltip = 'Lugar nuevo sugerido por ti. Solo se usa en tu viaje hasta que se apruebe.';
-      tone = OhtliColors.cempasuchil;
-    } else {
-      icon = Icons.add_location_alt_outlined;
-      label = place.title.trim().isEmpty ? 'Elegir lugar de la base' : 'Lugar genérico · Vincular con la base';
-      tooltip = 'Busca este lugar en la base de Ohtli o sugiérelo como lugar nuevo';
-      tone = OhtliColors.xoconostle;
-    }
+    final bool chosen = place.isLinkedToCatalog || place.isSuggestion;
+    final IconData icon = chosen ? Icons.where_to_vote_rounded : (located ? Icons.travel_explore_rounded : Icons.location_off_outlined);
+    final String label = chosen
+        ? 'Cambiar lugar'
+        : (located ? 'Buscar en los lugares de Ohtli' : 'Sin ubicación · Buscar lugar');
+    Color tone = located || chosen ? OhtliColors.stormyTeal : OhtliColors.xoconostle;
     // En modo oscuro los tonos de marca se aclaran para que se lean sobre fondo oscuro
     if (isDark) tone = Color.lerp(tone, Colors.white, 0.45)!;
     return ActionChip(
       avatar: Icon(icon, size: 15, color: tone),
       label: Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: tone)),
-      tooltip: tooltip,
+      tooltip: 'Elige este lugar de la base de Ohtli o sugiere uno nuevo',
       backgroundColor: tone.withValues(alpha: isDark ? 0.18 : 0.07),
       side: BorderSide(color: tone.withValues(alpha: 0.3)),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4758,7 +4734,7 @@ class _SuggestPlaceDialog extends StatefulWidget {
 
 class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
   late final TextEditingController _name = TextEditingController(text: widget.initialName);
-  late final TextEditingController _description = TextEditingController(text: widget.initialDescription);
+  late final PlaceDetailsDraft _details = PlaceDetailsDraft()..description = widget.initialDescription;
   final TextEditingController _search = TextEditingController();
   final TextEditingController _coords = TextEditingController();
   String _category = 'attraction';
@@ -4780,12 +4756,16 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
       _address = 'Ubicación actual de la parada';
     }
     _search.text = widget.initialName;
+    // El costo que ya puso en la parada sugiere el rango de precio
+    final cost = widget.priceMxnAvg;
+    if (cost != null) {
+      _details.priceLevel = cost <= 0 ? 0 : (cost <= 100 ? 1 : (cost <= 300 ? 2 : (cost <= 600 ? 3 : 4)));
+    }
   }
 
   @override
   void dispose() {
     _name.dispose();
-    _description.dispose();
     _search.dispose();
     _coords.dispose();
     super.dispose();
@@ -4868,13 +4848,13 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
         lat: _lat,
         lng: _lng,
         address: _address.startsWith('Ubicación actual') || _address.startsWith('Coordenadas') ? '' : _address,
-        description: _description.text,
+        description: _details.description,
         photoUrl: widget.photoUrl,
-        priceMxnAvg: widget.priceMxnAvg,
         tripId: widget.tripId,
+        details: _details.toMap(),
       );
       if (!mounted) return;
-      Navigator.of(context).pop(_SuggestedPlace(id: id, name: name, description: _description.text.trim(), lat: _lat!, lng: _lng!));
+      Navigator.of(context).pop(_SuggestedPlace(id: id, name: name, description: _details.description.trim(), lat: _lat!, lng: _lng!));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -4942,8 +4922,8 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Lo usarás en tu viaje de inmediato. Para que aparezca en la base de Ohtli y '
-                              'otras personas lo encuentren, un administrador debe aprobarlo.',
+                              'Lo usarás en tu viaje de inmediato. Para que otras personas lo encuentren y '
+                              'Ohtli lo pueda recomendar, un administrador debe revisarlo.',
                               style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: OhtliColors.onyx.withValues(alpha: 0.8)),
                             ),
                           ),
@@ -5045,13 +5025,13 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
                               style: GoogleFonts.inter(fontSize: 12, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
                         ),
                     ],
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _description,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: _decoration('Descripción (opcional)', hint: '¿Qué lo hace especial?'),
-                    ),
+                    const SizedBox(height: 20),
+                    Text('Cuéntanos del lugar',
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                    Text('Todo es opcional, pero mientras más detalles des, mejor lo recomendará Ohtli.',
+                        style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.onyx.withValues(alpha: 0.55))),
+                    const SizedBox(height: 8),
+                    PlaceDetailsFields(draft: _details),
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),

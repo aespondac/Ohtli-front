@@ -175,10 +175,25 @@ service cloud.firestore {
         && request.resource.data.name.size() >= 3
         && request.resource.data.name.size() <= 120
         && request.resource.data.keys().hasOnly(['name', 'category', 'location', 'address', 'description',
-             'photo_url', 'price_mxn_avg', 'status', 'createdBy', 'createdByName', 'tripId', 'createdAt']);
+             'photo_url', 'price_mxn_avg', 'status', 'createdBy', 'createdByName', 'tripId', 'createdAt',
+             'subcategories', 'vibe_tags', 'ideal_for', 'price_level', 'opening_hours', 'wheelchair_accessible',
+             'musica_en_vivo', 'consumo_alcohol', 'area_verde_cercana', 'patrimonio_historico', 'tips']);
       allow read: if isSuperUser() || (request.auth != null && resource.data.createdBy == request.auth.uid);
+      // El perfil (receta y vector) y la aprobación los escribe el motor con su cuenta de servicio
       allow update: if isSuperUser();
       allow delete: if isSuperUser() || (request.auth != null && resource.data.createdBy == request.auth.uid && resource.data.status == 'pending');
+
+      // Información que aportan otras personas desde el visor mientras la sugerencia está pendiente
+      match /contributions/{contributionId} {
+        allow create: if request.auth != null
+          && request.resource.data.by == request.auth.uid
+          && get(/databases/$(database)/documents/poi_suggestions/$(suggestionId)).data.status == 'pending'
+          && request.resource.data.keys().hasOnly(['subcategories', 'vibe_tags', 'ideal_for', 'price_level',
+               'opening_hours', 'wheelchair_accessible', 'musica_en_vivo', 'consumo_alcohol', 'area_verde_cercana',
+               'patrimonio_historico', 'tips', 'description', 'by', 'byName', 'createdAt']);
+        allow read: if isSuperUser() || (request.auth != null && resource.data.by == request.auth.uid);
+        allow update, delete: if isSuperUser();
+      }
     }
 
     match /pois_lab/{poiId} {

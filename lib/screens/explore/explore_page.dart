@@ -11,6 +11,7 @@ import '../../widgets/poi_detail_dialog.dart';
 import '../places/places_page.dart';
 import '../trips/trip_viewer_page.dart';
 import '../../config/editorial.dart';
+import '../../services/explore_config_service.dart';
 
 // Crónicas destacadas (fijadas por el equipo editorial)
 class PinnedStory {
@@ -96,17 +97,40 @@ class _ExplorePageState extends State<ExplorePage> {
     super.initState();
     _placesFuture = _loadDailyPlaces();
     _communityFuture = _loadCommunityTrips();
-    _loadReleaseNotes();
+    _loadFeatured();
+  }
+
+  // Viajes que el superusuario eligió para el bloque principal (null = destacados por defecto)
+  List<PinnedStory>? _configuredPinned;
+
+  /// Bloque principal: la nota de versión (si el superusuario la tiene activada) y luego los
+  /// viajes que él eligió en Cuenta → Administración → Destacados de Explorar.
+  Future<void> _loadFeatured() async {
+    final config = await ExploreConfigService.load();
+    final pinned = config.pinned?.map((p) => PinnedStory(tripId: p.tripId, authorId: p.authorId)).toList();
+    final notes = config.showReleaseNotes ? await _loadReleaseNotes() : const <PinnedStory>[];
+    if (!mounted) return;
+    final base = pinned ?? kPinnedStories;
+    final ids = notes.map((n) => n.tripId).toSet();
+    final featured = [...notes, ...base.where((p) => !ids.contains(p.tripId))];
+    setState(() {
+      _configuredPinned = pinned;
+      _featured = featured;
+      _pinnedPage = 0;
+      // Lo que ya va en el bloque principal no se repite en el feed de la comunidad
+      if (pinned != null) _communityFuture = _loadCommunityTrips();
+    });
+    if (_pinnedController.hasClients) _pinnedController.jumpToPage(0);
   }
 
   /// Notas de versión publicadas por el equipo editorial, la más reciente primero.
   /// Solo filtros de igualdad: no requieren índice compuesto, y incluir
   /// visibility == public permite que las reglas acepten la consulta de cualquiera.
-  Future<void> _loadReleaseNotes() async {
+  Future<List<PinnedStory>> _loadReleaseNotes() async {
     try {
       // Solo las del superusuario (único que puede publicarlas, ver config/admin.dart)
       final superUid = await SuperUserDirectory.uid();
-      if (superUid == null) return;
+      if (superUid == null) return const [];
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(superUid)
@@ -127,15 +151,10 @@ class _ExplorePageState extends State<ExplorePage> {
           .take(kFeaturedReleaseNotes)
           .map((d) => PinnedStory(tripId: d.id, authorId: (d.data()['userId'] ?? d.reference.parent.parent!.id).toString()))
           .toList();
-      if (notes.isEmpty || !mounted) return;
-      final ids = notes.map((n) => n.tripId).toSet();
-      setState(() {
-        _featured = [...notes, ...kPinnedStories.where((p) => !ids.contains(p.tripId))];
-        _pinnedPage = 0;
-      });
-      if (_pinnedController.hasClients) _pinnedController.jumpToPage(0);
+      return notes;
     } catch (e) {
       print('No se pudieron cargar las notas de versión: $e');
+      return const [];
     }
   }
 
@@ -173,7 +192,7 @@ class _ExplorePageState extends State<ExplorePage> {
   }
 
   Future<List<_CommunityTrip>> _loadCommunityTrips() async {
-    final pinnedIds = kPinnedStories.map((p) => p.tripId).toSet();
+    final pinnedIds = (_configuredPinned ?? kPinnedStories).map((p) => p.tripId).toSet();
     final snapshot = await FirebaseFirestore.instance
         .collectionGroup('trips')
         .where('status', isEqualTo: 'published')
@@ -259,7 +278,7 @@ class _ExplorePageState extends State<ExplorePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildGreeting(isMobile, gutter),
-                        _buildPinnedStoriesCarousel(isMobile, isDark),
+                        if (_featured.isNotEmpty) _buildPinnedStoriesCarousel(isMobile, isDark),
                         if (_featured.length > 1) _buildPinnedDots(),
                         const SizedBox(height: 8),
                         _buildQuickActions(isMobile, gutter),
