@@ -2891,7 +2891,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 40),
-      child: _wrapBlock(section, framed, isDark),
+      child: _wrapBlock(section, framed, isDark, isDesktop),
     );
   }
 
@@ -2933,7 +2933,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
-  Widget _wrapBlock(TripSection section, Widget content, bool isDark) {
+  Widget _wrapBlock(TripSection section, Widget content, bool isDark, bool isDesktop) {
     final bool social = _socialVisible;
     final String? uid = FirebaseAuth.instance.currentUser?.uid;
     final reactions = social ? (_blockReactions[section.id] ?? const <String, String>{}) : const <String, String>{};
@@ -2942,12 +2942,21 @@ class _TripViewerPageState extends State<TripViewerPage> {
     // 1) Bloque con la pastilla de reacciones montada en su borde superior derecho.
     Widget block = content;
     if (social && (summarizeReactions(reactions).isNotEmpty || _canInteract)) {
+      // En las paradas la pastilla se monta sobre el borde superior de la tarjeta;
+      // en el resto de bloques va encima del texto para no taparlo.
+      double padTop = 30, pillTop = 0;
+      if (section is PlaceSection) {
+        final hasPhotos = section.mainPhotoUrl.isNotEmpty || section.secondaryPhotoUrls.any((u) => u.isNotEmpty);
+        final cardTop = !hasPhotos ? 0.0 : (isDesktop ? 14.0 : 86.0);
+        padTop = hasPhotos ? 0 : 12;
+        pillTop = cardTop + padTop - 12 + (_tripMode ? 52 : 0);
+      }
       block = Stack(
         clipBehavior: Clip.none,
         children: [
-          Padding(padding: const EdgeInsets.only(top: 14), child: content),
+          Padding(padding: EdgeInsets.only(top: padTop), child: content),
           Positioned(
-            top: 0,
+            top: pillTop,
             right: 18,
             child: ReactionSummary(byUser: reactions, myUid: uid, memberNames: names, isDark: isDark),
           ),
