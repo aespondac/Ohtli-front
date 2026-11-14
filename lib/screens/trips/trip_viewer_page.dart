@@ -1872,15 +1872,25 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
+  /// Sombra de los bloques flotantes del panel lateral.
+  static List<BoxShadow> _floatShadow(bool isDark) => [
+        BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.42 : 0.10), blurRadius: 22, offset: const Offset(0, 8)),
+        BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.04), blurRadius: 3, offset: const Offset(0, 1)),
+      ];
+
+  BoxDecoration _floatBlock(bool isDark, {double radius = 22}) => BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder.withValues(alpha: 0.7)),
+        boxShadow: _floatShadow(isDark),
+      );
+
+  /// Bloque flotante independiente del panel (viajeros, planear, después, actividad…).
   Widget _panelCard({required bool isDark, required IconData icon, required String title, required List<Widget> children}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder),
-      ),
+      decoration: _floatBlock(isDark),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4428,69 +4438,66 @@ class _TripViewerPageState extends State<TripViewerPage> {
       );
     }
 
-    // Panel abierto: tarjeta flotante a todo lo alto, con margen y esquinas redondeadas.
+    // Panel abierto: bloques flotantes independientes (encabezado, mini mapa, índice y
+    // herramientas), cada uno con su sombra; entre ellos se ve la página.
+    final header = Container(
+      padding: const EdgeInsets.fromLTRB(18, 6, 6, 6),
+      decoration: _floatBlock(isDark, radius: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(member ? 'Tu viaje' : 'Recorrido', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: fg)),
+          ),
+          if (showEditAction)
+            FilledButton.icon(
+              onPressed: () => _openEditorOrErrata(canEdit),
+              style: FilledButton.styleFrom(
+                backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
+                foregroundColor: Colors.white,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: Icon(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, size: 16),
+              label: Text(canEdit ? 'Editar' : 'Fe de erratas', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            ),
+          IconButton(
+            tooltip: 'Plegar panel',
+            onPressed: () => _setAsideCollapsed(true),
+            icon: Icon(Icons.keyboard_double_arrow_right_rounded, color: isDark ? Colors.white60 : OhtliColors.subtleText),
+          ),
+        ],
+      ),
+    );
+    final blocks = <Widget>[
+      Padding(padding: const EdgeInsets.only(bottom: 14), child: header),
+      if (_sections.any((s) => s is PlaceSection))
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: DecoratedBox(
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), boxShadow: _floatShadow(isDark)),
+            child: ClipRRect(borderRadius: BorderRadius.circular(18), child: _buildMiniMap(isDark)),
+          ),
+        ),
+      Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
+        decoration: _floatBlock(isDark),
+        child: _buildAsideIndex(isDark),
+      ),
+      if (member) ..._buildMemberPanelCards(isDark, canEdit),
+    ];
     return SafeArea(
       left: false,
-      child: Container(
-        width: _kAsideW,
-        margin: const EdgeInsets.all(_kAsideGap),
-        clipBehavior: Clip.antiAlias,
-        decoration: floating(26),
-        // Al desplegar el panel, su contenido entra en orden: encabezado, mapa, índice y tarjetas.
+      child: SizedBox(
+        width: _kAsideW + _kAsideGap * 2,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 14, 14, 24),
+          // Sin recorte: las sombras de los bloques se ven completas.
+          clipBehavior: Clip.none,
+          padding: const EdgeInsets.fromLTRB(_kAsideGap, _kAsideGap, _kAsideGap, 28),
           children: [
-            for (final (i, w) in <Widget>[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(member ? 'Tu viaje' : 'Recorrido',
-                      style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: fg)),
-                ),
-                if (showEditAction)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 2),
-                    child: FilledButton.icon(
-                      onPressed: () => _openEditorOrErrata(canEdit),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
-                        foregroundColor: Colors.white,
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: Icon(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, size: 16),
-                      label: Text(canEdit ? 'Editar' : 'Fe de erratas', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                    ),
-                  ),
-                IconButton(
-                  tooltip: 'Plegar panel',
-                  onPressed: () => _setAsideCollapsed(true),
-                  icon: Icon(Icons.keyboard_double_arrow_right_rounded, color: isDark ? Colors.white60 : OhtliColors.subtleText),
-                ),
-              ],
-            ),
-            if (_sections.any((s) => s is PlaceSection))
-              Padding(padding: const EdgeInsets.only(top: 8, bottom: 18), child: _buildMiniMap(isDark))
-            else
-              const SizedBox(height: 8),
-            _buildAsideIndex(isDark),
-            if (member) ...[
-              const SizedBox(height: 22),
-              Row(
-                children: [
-                  Icon(Icons.lock_outline_rounded, size: 14, color: isDark ? Colors.white54 : OhtliColors.subtleText),
-                  const SizedBox(width: 6),
-                  Text('HERRAMIENTAS DEL VIAJE',
-                      style: GoogleFonts.inter(
-                          fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.4, color: isDark ? Colors.white54 : OhtliColors.subtleText)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ..._buildMemberPanelCards(isDark, canEdit),
-            ],
-            ].indexed)
-              StaggerIn(index: i, child: w),
+            // Al desplegar el panel, los bloques entran uno tras otro.
+            for (final (i, w) in blocks.indexed) StaggerIn(index: i, child: w),
           ],
         ),
       ),
