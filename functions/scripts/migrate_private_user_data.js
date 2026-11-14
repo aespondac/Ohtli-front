@@ -4,8 +4,12 @@
  * privado `users/{uid}/private/account` y los borra del público.
  *
  * Campos: email, phone, addresses, privacy_share, privacy_notifications, privacy_public.
+ * También mueve el perfil de gustos (taste_vector, cultural_profile, ejes, receta…).
  * Para cuentas dadas de baja (isDeleted == true) copia también `isDeleted` al privado,
  * que es lo que usa la app para restaurar una cuenta por correo.
+ *
+ * "Perfil público" (privacy_public) antes no tenía efecto y venía apagado por defecto:
+ * todos los perfiles quedan públicos (privacy_public: true, profilePrivate: false).
  *
  * Por defecto solo informa qué cambiaría. Para aplicar los cambios:
  *   cd functions && npm install
@@ -22,6 +26,15 @@ const PRIVATE_FIELDS = [
   'privacy_share',
   'privacy_notifications',
   'privacy_public',
+  'cultural_profile',
+  'taste_axes',
+  'taste_axes_preview',
+  'taste_recipe',
+  'taste_vector',
+  'taste_vector_dim',
+  'taste_model',
+  'taste_updated_at',
+  'embedding_vector',
 ];
 const APPLY = process.argv.includes('--apply');
 
@@ -50,8 +63,10 @@ async function main() {
     // Lo que ya está en el privado manda: solo se copian campos que falten
     const toCopy = {};
     for (const k of legacyKeys) {
+      if (k === 'privacy_public') continue; // se reinicia a público (ver arriba)
       if (!Object.prototype.hasOwnProperty.call(existing, k)) toCopy[k] = data[k];
     }
+    if (!Object.prototype.hasOwnProperty.call(existing, 'privacy_public')) toCopy.privacy_public = true;
     if (deletedFlag && existing.isDeleted !== true) toCopy.isDeleted = true;
 
     console.log(
@@ -67,6 +82,7 @@ async function main() {
       if (legacyKeys.length > 0) {
         const removal = {};
         for (const k of legacyKeys) removal[k] = FieldValue.delete();
+        if (data.profilePrivate === undefined) removal.profilePrivate = existing.privacy_public === false;
         batch.update(doc.ref, removal);
       }
       await batch.commit();

@@ -640,7 +640,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         html.window.localStorage['ohtli_privacy_notifications_${user.uid}'] !=
         'false';
     _publicProfile =
-        html.window.localStorage['ohtli_privacy_public_${user.uid}'] == 'true';
+        html.window.localStorage['ohtli_privacy_public_${user.uid}'] != 'false';
   }
 
   void _savePrivacySetting(String key, bool value) {

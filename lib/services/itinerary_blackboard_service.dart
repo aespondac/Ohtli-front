@@ -1,3 +1,4 @@
+import 'user_private_data.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -39,9 +40,9 @@ class ItineraryBlackboardService {
     List<double> tasteVec = customTasteVector ?? [];
     if (tasteVec.isEmpty) {
       try {
-        final userDoc = await _firestore.collection('users').doc(userId).get();
-        if (userDoc.exists && userDoc.data() != null) {
-          final rawVec = userDoc.data()!['taste_vector'];
+        final data = await UserPrivateData.get(userId);
+        {
+          final rawVec = data['taste_vector'];
           if (rawVec is List && rawVec.isNotEmpty) {
             tasteVec = rawVec.map((e) => (e as num).toDouble()).toList();
           }

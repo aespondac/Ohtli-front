@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
+import '../../services/user_private_data.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
@@ -383,9 +384,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (doc.exists && doc.data() != null) {
-          final data = doc.data()!;
+        final data = await UserPrivateData.get(user.uid);
+        {
           final rawVec = data['taste_vector'];
           if (rawVec is List && rawVec.isNotEmpty) {
             _userTasteVector = rawVec.map((e) => (e as num).toDouble()).toList();

@@ -81,6 +81,43 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   final User? _currentUser = FirebaseAuth.instance.currentUser;
   bool get _isSelf => _currentUser != null && _currentUser.uid == widget.userId;
 
+  /// "Perfil público" apagado: quien no es su amigo solo ve nombre, foto y título.
+  bool get _isHiddenForViewer =>
+      !_isSelf && !_isFriend && _userProfile?['profilePrivate'] == true;
+
+  Widget _buildPrivateProfileNotice(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline_rounded,
+                size: 36, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.35)),
+            const SizedBox(height: 12),
+            Text(
+              'Este perfil es privado',
+              style: GoogleFonts.outfit(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : OhtliColors.onyx,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Sus viajes y amigos solo los ven sus amigos.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1068,10 +1105,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         },
         body: TabBarView(
           controller: _tabController,
-          children: [
-            _buildTripsList(isDesktop, isDark, isTrip: true),
-            _buildTripsList(isDesktop, isDark, isTrip: false),
-          ],
+          children: _isHiddenForViewer
+              ? [_buildPrivateProfileNotice(isDark), _buildPrivateProfileNotice(isDark)]
+              : [
+                  _buildTripsList(isDesktop, isDark, isTrip: true),
+                  _buildTripsList(isDesktop, isDark, isTrip: false),
+                ],
         ),
       ),
     );
@@ -1079,12 +1118,13 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   Widget _buildStatsRow(bool isDark, int followingCount) {
     final int friendsCount = (_userProfile?['friends'] as List<dynamic>?)?.length ?? 0;
+    final String friendsCountText = _isHiddenForViewer ? '—' : '$friendsCount';
 
     Widget friendsWidget = RichText(
       text: TextSpan(
         children: [
           TextSpan(
-            text: '$friendsCount ',
+            text: '$friendsCountText ',
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.bold,
               fontSize: 17,

@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-/// Datos personales del usuario que NO deben ser públicos.
+/// Datos personales del usuario que NO deben ser públicos (contacto, direcciones,
+/// privacidad y perfil de gustos).
 ///
 /// El documento `users/{uid}` es el perfil social (nombre, foto, título, amigos) y
 /// cualquiera puede leerlo. Los datos sensibles viven en `users/{uid}/private/account`,
@@ -23,6 +24,16 @@ class UserPrivateData {
     'privacy_share',
     'privacy_notifications',
     'privacy_public',
+    // Perfil de gustos (onboarding + vector de 768 dimensiones del motor Yollotl)
+    'cultural_profile',
+    'taste_axes',
+    'taste_axes_preview',
+    'taste_recipe',
+    'taste_vector',
+    'taste_vector_dim',
+    'taste_model',
+    'taste_updated_at',
+    'embedding_vector',
     // Copia de la marca de baja para poder restaurar la cuenta por correo
     'isDeleted',
   };
@@ -56,6 +67,11 @@ class UserPrivateData {
     final parts = split(data);
     final pub = Map<String, dynamic>.from(parts.public);
     if (data.containsKey('isDeleted')) pub['isDeleted'] = data['isDeleted'];
+    // Los demás no pueden leer el documento privado: el perfil público lleva una marca
+    // con la preferencia "Perfil público" para que la app oculte amigos y crónicas.
+    if (data['privacy_public'] is bool) {
+      pub['profilePrivate'] = data['privacy_public'] == false;
+    }
     final futures = <Future<void>>[];
     if (pub.isNotEmpty) {
       futures.add(publicRef(uid).set(pub, SetOptions(merge: true)));
@@ -134,7 +150,10 @@ class UserPrivateData {
       if (key == 'isDeleted') continue; // la marca pública se conserva
       if (publicData.containsKey(key)) legacy[key] = publicData[key];
     }
-    if (legacy.isEmpty) return;
+    // "Perfil público" antes no tenía efecto y venía apagado por defecto: al migrar,
+    // todos los perfiles quedan públicos hasta que el usuario decida otra cosa.
+    final hadLegacyPrivacy = legacy.remove('privacy_public') != null;
+    if (legacy.isEmpty && !hadLegacyPrivacy) return;
     try {
       final toCopy = <String, dynamic>{
         for (final e in legacy.entries)
@@ -148,6 +167,7 @@ class UserPrivateData {
       }
       await publicRef(uid).update({
         for (final key in legacy.keys) key: FieldValue.delete(),
+        if (hadLegacyPrivacy) 'privacy_public': FieldValue.delete(),
       });
       debugPrint('[UserPrivateData] campos privados movidos: ${legacy.keys.join(', ')}');
     } catch (e) {
@@ -159,6 +179,9 @@ class UserPrivateData {
   static Map<String, dynamic> _merge(
       Map<String, dynamic>? pub, Map<String, dynamic>? priv) {
     final merged = <String, dynamic>{...?pub};
+    // El valor antiguo de "Perfil público" en el documento público era solo el valor por
+    // defecto (no tenía efecto): no se toma como una elección del usuario.
+    merged.remove('privacy_public');
     if (priv != null) {
       for (final key in fields) {
         if (key == 'isDeleted') continue;

@@ -162,7 +162,7 @@ class UserProfileHelper {
           oldData?['privacy_notifications'] ??
           true,
       'privacy_public':
-          currentData?['privacy_public'] ?? oldData?['privacy_public'] ?? false,
+          currentData?['privacy_public'] ?? oldData?['privacy_public'] ?? true,
       'possessedTitles': currentData?['possessedTitles'] ?? oldData?['possessedTitles'] ?? ['viajero'],
       'activeTitleId': currentData?['activeTitleId'] ?? oldData?['activeTitleId'] ?? 'viajero',
       'following': currentData?['following'] ?? oldData?['following'] ?? [],

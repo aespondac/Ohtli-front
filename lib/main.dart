@@ -1,3 +1,4 @@
+import 'services/user_private_data.dart';
 import 'dart:async';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
@@ -404,12 +405,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
     // 2. Verificar si el usuario ya completó el onboarding con timeout para evitar bloqueos
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get()
-          .timeout(const Duration(seconds: 4));
-      final userData = userDoc.data();
+      // Perfil público + privado (el perfil de gustos vive en users/{uid}/private/account)
+      final Map<String, dynamic>? userData = await UserPrivateData.get(user.uid)
+          .timeout(const Duration(seconds: 4))
+          .then((d) => d.isEmpty ? null : d);
       final rawVector = userData != null ? userData['taste_vector'] : null;
       bool hasTasteVector = rawVector is List && rawVector.isNotEmpty;
       final bool flagDone = userData != null && (userData['onboarding_completed'] == true);

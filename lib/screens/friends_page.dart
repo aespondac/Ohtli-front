@@ -75,7 +75,11 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         for (final d in snap.docs) {
           _userCache[d.id] = d;
         }
-        _suggestionIds = snap.docs.map((d) => d.id).toList();
+        // Los perfiles privados no aparecen en sugerencias (sí en la búsqueda por nombre)
+        _suggestionIds = snap.docs
+            .where((d) => d.data()['profilePrivate'] != true)
+            .map((d) => d.id)
+            .toList();
       });
     } catch (e) {
       debugPrint('[Friends] sugeridos: $e');

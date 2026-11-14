@@ -1,3 +1,4 @@
+import '../../services/user_private_data.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -39,7 +40,7 @@ class OnboardingWizardPage extends StatefulWidget {
   }
 
   /// Invokes Yollotl Engine (/v1/user/cultural-profile) to compute the 768d
-  /// text-embedding-004 taste vector and persists it directly into /users/{uid}.
+  /// text-embedding-004 taste vector and persists it into /users/{uid}/private/account.
   static Future<List<double>> synthesizeAndSaveProfile(
     String uid,
     Map<String, dynamic> rawPayload, {
@@ -58,11 +59,20 @@ class OnboardingWizardPage extends StatefulWidget {
     Map<String, dynamic>? tasteAxes;
     String tasteModel = 'vertex_ai_text_embedding_004';
 
+    String? idToken;
+    try {
+      idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+    } catch (_) {}
+
     try {
       final response = await http
           .post(
             Uri.parse('$apiUrl/v1/user/cultural-profile'),
-            headers: {"Content-Type": "application/json"},
+            headers: {
+              "Content-Type": "application/json",
+              // El motor verifica que el token corresponda a user_id
+              if (idToken != null) "Authorization": "Bearer $idToken",
+            },
             body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 15));
@@ -104,8 +114,8 @@ class OnboardingWizardPage extends StatefulWidget {
     }
 
     try {
-      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
-      await userRef.set({
+      // onboarding_completed y updatedAt van al perfil público; el resto, al privado
+      await UserPrivateData.save(uid, {
         "cultural_profile": payload,
         "taste_axes": tasteAxes,
         if (previewAxes != null) "taste_axes_preview": previewAxes,
@@ -116,7 +126,7 @@ class OnboardingWizardPage extends StatefulWidget {
         "onboarding_completed": true,
         "taste_updated_at": FieldValue.serverTimestamp(),
         "updatedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      });
       print("Client-side Firestore user document synchronized successfully.");
     } catch (fsWriteErr) {
       print(
@@ -199,9 +209,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final data = doc.data();
-      final profile = data?['cultural_profile'];
+      final data = await UserPrivateData.get(user.uid);
+      final profile = data['cultural_profile'];
       if (profile is Map && mounted) {
         setState(() {
           if (profile['cultural_interests'] is List) {
