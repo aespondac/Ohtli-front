@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../../theme/colors.dart';
@@ -100,9 +101,11 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       }
 
       final uri = Uri.parse('https://api-xluju5gywq-uc.a.run.app$endpoint');
+      // La exploración (OEP) solo la aceptan miembros de Ohtli Labs: el motor verifica el ID token.
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
       final response = await http.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'},
         body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 10));
 

@@ -168,10 +168,11 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
     return;
   }
 
+  // replicate/cleanup también purgan el Firestore local, pero solo después de que el motor
+  // aceptó la petición (exige el ID token de un miembro de Ohtli Labs): una petición anónima
+  // no debe poder disparar la purga.
+  const purgesLocal = req.path.includes('/recolector/cleanup') || req.path.includes('/recolector/replicate');
   let localPurged = null;
-  if (req.path.includes('/recolector/cleanup') || req.path.includes('/recolector/replicate')) {
-    localPurged = await purgeInvalidPoisInLocalFirestore();
-  }
 
   // El backend Yollotl Engine está desplegado en Cloud Run / Cloud Functions Gen2
   const targetHost = 'https://api-xluju5gywq-uc.a.run.app';
@@ -185,11 +186,16 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
       headers: {
         'Content-Type': req.get('Content-Type') || 'application/json',
         'Accept': req.get('Accept') || '*/*',
+        // El motor valida el ID token de Firebase (endpoints con sesión y de laboratorio).
+        ...(req.get('Authorization') ? { 'Authorization': req.get('Authorization') } : {}),
       },
       body: req.method !== 'GET' && req.method !== 'HEAD' ? req.rawBody : undefined
     });
 
     const data = await fetchResponse.text();
+    if (purgesLocal && fetchResponse.ok) {
+      localPurged = await purgeInvalidPoisInLocalFirestore();
+    }
     
     // Copy some relevant headers back
     res.set('Content-Type', fetchResponse.headers.get('Content-Type') || 'application/json');
@@ -210,10 +216,6 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
     res.status(fetchResponse.status).send(data);
   } catch (error) {
     console.error('API Gateway Error:', error);
-    if (localPurged) {
-      res.status(200).send({ status: 'local_only_success', local_firestore_purged: localPurged });
-      return;
-    }
     res.status(500).send({ error: 'Gateway Error', details: error.toString() });
   }
 });

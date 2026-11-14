@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../../../theme/colors.dart';
 import '../../../models/poi_model.dart';
@@ -98,17 +99,28 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
     setState(() => _isReplicating = true);
 
     try {
+      // El motor solo acepta a miembros de Ohtli Labs (verifica el ID token).
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
       final response = await http.post(
         Uri.parse('https://api.ohtli.quest/v1/api/recolector/replicate'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'},
         body: jsonEncode({'poi_ids': _selectedPois.toList()}),
       );
 
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw Exception('solo los miembros de Ohtli Labs pueden replicar lugares a producción');
+      }
       if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final replicated = (body['replicated'] as num?)?.toInt() ?? 0;
+        final rejected = (body['errors'] as List?)?.length ?? 0;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Replicación exitosa: ${_selectedPois.length} POIs agregados a Ohtli.quest.', style: GoogleFonts.inter()),
+              content: Text(
+                  'Replicación: $replicated de ${_selectedPois.length} lugares agregados a Ohtli.quest'
+                  '${rejected > 0 ? ' ($rejected rechazados)' : ''}.',
+                  style: GoogleFonts.inter()),
               backgroundColor: OhtliColors.stormyTeal,
             ),
           );
