@@ -620,7 +620,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       'photo_url': _resolveStopPhoto(stop, 0),
       'address': stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México',
       'opening_hours': stop['opening_hours'] ?? '',
-      'rating': (stop['rating'] as num?)?.toDouble() ?? 4.8,
+      'rating': (stop['rating'] as num?)?.toDouble(),
+      'price_is_estimate': stop['price_is_estimate'] != false,
       'vibe_tags': stop['vibe_tags'] ?? [],
     };
     return Poi.fromMap(poiMap, poiId);
@@ -2973,7 +2974,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final catIcon = _getStopCategoryIcon(category);
       final catColor = _getStopCategoryColor(category);
       final address = (stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México').toString();
-      final rating = (stop['rating'] as num?)?.toDouble() ?? 4.8;
+      // Sin calificación en el catálogo no se muestra ninguna (antes se rellenaba con 4.8)
+      final rating = (stop['rating'] as num?)?.toDouble();
+      final priceIsEstimate = stop['price_is_estimate'] != false;
       final desc = _stopDetailDescription(stop);
       final photoSize = isMobile ? 92.0 : 128.0;
       Widget wrapInfo(Widget c) => isMobile ? c : Expanded(child: c);
@@ -3040,7 +3043,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                             ]),
                             catColor,
                           ),
-                          chip(
+                          if (rating != null) chip(
                             Row(mainAxisSize: MainAxisSize.min, children: [
                               const Icon(Icons.star_rounded, size: 12, color: Color(0xFFE0A100)),
                               const SizedBox(width: 3),
@@ -3084,7 +3087,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            stopPrice > 0 ? '\$${stopPrice.toStringAsFixed(0)} MXN' : 'Gratis',
+                            stopPrice > 0
+                                ? (priceIsEstimate ? '~\$${stopPrice.toStringAsFixed(0)} MXN (estimado)' : '\$${stopPrice.toStringAsFixed(0)} MXN')
+                                : (priceIsEstimate ? 'Gratis (estimado)' : 'Gratis'),
                             style: GoogleFonts.inter(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,

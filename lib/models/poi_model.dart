@@ -29,6 +29,9 @@ class Poi {
   final PoiLocation location;
   final int priceLevel; // 0: Gratis, 1: Económico, 2: Moderado, 3: Costoso, 4: Lujo
   final double? priceMxnAvg;
+  /// false solo cuando el precio proviene de un dato (etiquetas fee/charge de OSM);
+  /// en otro caso es una estimación por categoría.
+  final bool priceIsEstimate;
   final String description;
   final String editorialSummary;
   final String semanticDescription;
@@ -64,6 +67,7 @@ class Poi {
     required this.location,
     this.priceLevel = 1,
     this.priceMxnAvg,
+    this.priceIsEstimate = true,
     this.description = '',
     this.editorialSummary = '',
     this.semanticDescription = '',
@@ -176,6 +180,7 @@ class Poi {
       location: loc,
       priceLevel: resolvedPriceLvl,
       priceMxnAvg: rawPriceMxn,
+      priceIsEstimate: data['price_is_estimate'] != false,
       description: (data['description'] ?? '').toString(),
       editorialSummary: (data['editorial_summary'] ?? '').toString(),
       semanticDescription: (data['semantic_description'] ?? '').toString(),
@@ -529,20 +534,24 @@ class Poi {
   }
 
   String get priceRangeEstimate {
-    if (priceMxnAvg != null && priceMxnAvg! > 0) {
-      return '\$${priceMxnAvg!.toStringAsFixed(0)} MXN aprox.';
+    if (priceMxnAvg != null && priceMxnAvg! > 0 && !priceIsEstimate) {
+      return '\$${priceMxnAvg!.toStringAsFixed(0)} MXN';
     }
+    if (priceMxnAvg != null && priceMxnAvg == 0 && !priceIsEstimate) {
+      return 'Entrada libre / Gratis';
+    }
+    // Precio estimado por categoría: se muestra el rango del nivel, no una cifra exacta
     switch (priceLevel) {
       case 0:
         return 'Entrada libre / Gratis';
       case 1:
-        return 'Económico (~ \$50 - \$120 MXN)';
+        return 'Económico (~ \$50 - \$120 MXN, estimado)';
       case 2:
-        return 'Moderado (~ \$150 - \$300 MXN)';
+        return 'Moderado (~ \$150 - \$300 MXN, estimado)';
       case 3:
-        return 'Costoso (~ \$350 - \$600 MXN)';
+        return 'Costoso (~ \$350 - \$600 MXN, estimado)';
       case 4:
-        return 'Exclusivo (+ \$700 MXN)';
+        return 'Exclusivo (+ \$700 MXN, estimado)';
       default:
         return 'Asequible';
     }
