@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../../labs/lab_experiments.dart';
 import 'dart:convert';
 import 'dart:math';
@@ -392,6 +393,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _bioController.dispose();
     _moodController.dispose();
     super.dispose();
@@ -473,7 +475,20 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
     _generateTasteVectorAndMatch();
   }
 
-  Future<void> _generateTasteVectorAndMatch() async {
+  // Cada tecla, chip o deslizador pedía un cálculo al motor (con embeddings de Vertex). Ahora se
+  // espera a que la persona deje de cambiar cosas y solo cuenta la respuesta más reciente.
+  Timer? _debounce;
+  int _requestSeq = 0;
+  bool _usedLocalFallback = false;
+
+  void _generateTasteVectorAndMatch() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 450), _runMatch);
+  }
+
+  Future<void> _runMatch() async {
+    if (!mounted) return;
+    final seq = ++_requestSeq;
     setState(() {
       _isLoading = true;
     });
@@ -509,10 +524,12 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
           )
           .timeout(const Duration(seconds: 10));
 
+      if (!mounted || seq != _requestSeq) return; // llegó otra petición más nueva
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = jsonDecode(response.body) as Map<String, dynamic>;
         if (decoded["ranked_pois"] != null) {
           setState(() {
+            _usedLocalFallback = false;
             _responsePayload = decoded;
             _userAxes = (decoded["user_axes"] as Map?)?.map(
               (k, v) => MapEntry(k.toString(), v.toString()),
@@ -530,9 +547,10 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
       }
       _runLocalOntologicalEngine(payload);
     } catch (_) {
+      if (!mounted || seq != _requestSeq) return;
       _runLocalOntologicalEngine(payload);
     } finally {
-      if (mounted) {
+      if (mounted && seq == _requestSeq) {
         setState(() => _isLoading = false);
       }
     }
@@ -822,13 +840,15 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
     }
 
     setState(() {
+      _usedLocalFallback = true;
       _userAxes = userAxes;
       _tasteVector = queryVec;
       _rankedPois = passed;
       _filteredOutPois = filteredOut;
       _selectedPoiIndex = 0;
       _responsePayload = {
-        "status": "success (motor ontológico 4 ejes 768d)",
+        // Respaldo cuando el motor no responde: no es el ranking real del catálogo.
+        "status": "respaldo local: 12 lugares de prueba, sin el motor",
         "taste_vector_dim": 768,
         "alpha_fusion": _alphaFusion,
         "user_axes": userAxes,
@@ -1492,7 +1512,9 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    "3. Ranking Real de POIs CDMX (Cosine + MMR)",
+                    _usedLocalFallback
+                        ? "3. Ranking de prueba (respaldo local: el motor no respondió)"
+                        : "3. Ranking de lugares de la CDMX (coseno + MMR)",
                     style: GoogleFonts.fraunces(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,

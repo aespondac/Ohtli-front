@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../../theme/colors.dart';
 import '../../../widgets/address_picker_widget.dart';
 import '../widgets/lab_experiment_shell.dart';
+import '../../../labs/lab_access.dart';
 
 class ApisExperimentPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -18,7 +19,13 @@ class ApisExperimentPage extends StatefulWidget {
 }
 
 class _ApisExperimentPageState extends State<ApisExperimentPage> {
-  String _selectedMode = 'oep';
+  // La exploración (OEP) escribe en el catálogo y el motor solo la acepta de miembros del
+  // laboratorio; a los testers se les muestran Vibe y Mood.
+  final bool _canExplore = currentLabRole.isMember;
+  late String _selectedMode = _canExplore ? 'oep' : 'vibe';
+  // Cambia con cada ejecución o cambio de modo: un sondeo anterior se detiene al verlo distinto.
+  int _runSeq = 0;
+  static const int _maxPolls = 90; // ~90 s
   bool _isLoading = false;
   String _errorMessage = '';
 
@@ -31,8 +38,9 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   final TextEditingController _lngController = TextEditingController(text: '-99.1332');
   final TextEditingController _radiusController = TextEditingController(text: '500');
 
-  // Vibe & Mood Controllers
-  final TextEditingController _textController = TextEditingController();
+  // Vibe & Mood Controllers (los testers empiezan en Vibe: lleva un ejemplo para probar de inmediato)
+  late final TextEditingController _textController =
+      TextEditingController(text: _canExplore ? '' : 'tranquilo, histórico, arquitectura clásica, café de especialidad');
 
   // Result States
   Map<String, dynamic>? _explorationData;
@@ -50,6 +58,8 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   void _onModeChanged(String? newValue) {
     if (newValue != null) {
       setState(() {
+        _runSeq++; // detiene el sondeo de una exploración anterior
+        _isLoading = false;
         _selectedMode = newValue;
         _errorMessage = '';
         _explorationData = null;
@@ -68,6 +78,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   }
 
   Future<void> _runExperiment() async {
+    final seq = ++_runSeq;
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -110,17 +121,21 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       ).timeout(const Duration(seconds: 10));
 
       stopwatch.stop();
+      if (!mounted || seq != _runSeq) return;
       _latencyMs = stopwatch.elapsedMilliseconds;
 
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw Exception('solo los miembros del laboratorio pueden lanzar exploraciones');
+      }
       if (response.statusCode != 200) {
-        throw Exception('Server error ${response.statusCode}: ${response.body}');
+        throw Exception('el servicio respondió ${response.statusCode}');
       }
 
       final jsonResponse = jsonDecode(response.body);
 
       if (_selectedMode == 'oep') {
         final jobId = jsonResponse['job_id'];
-        _pollJobStatus(jobId);
+        _pollJobStatus(jobId, seq);
       } else {
         setState(() {
           _vectorResult = jsonResponse['vector'];
@@ -129,73 +144,52 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       }
     } catch (e) {
       stopwatch.stop();
-      _latencyMs = stopwatch.elapsedMilliseconds;
-
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Fallo en llamada real: $e. Proveyendo datos de prueba sintéticos para validación de UI.';
-          _isLoading = false;
-
-          if (_selectedMode != 'oep') {
-            _vectorResult = List.generate(768, (i) => ((i % 17) - 8) / 10.0);
-          } else {
-            _explorationData = {
-              "results": [
-                {
-                  "name": "Catedral Metropolitana",
-                  "poi_id": "poi_mock_001",
-                  "recipe": "arquitectura_virreinal, arte_sacro, historico, centro",
-                  "vector_sample": [0.042, -0.128, 0.354, -0.012, 0.089],
-                },
-                {
-                  "name": "Templo Mayor",
-                  "poi_id": "poi_mock_002",
-                  "recipe": "arqueologia, mexica, museos_historia, centro",
-                  "vector_sample": [0.091, 0.214, -0.115, 0.402, -0.055],
-                }
-              ],
-              "stats": {
-                "total_pois": 2,
-                "wiki_enriched": 2,
-                "foursquare_hits": 2,
-                "google_places_hits": 1,
-                "skipped_by_feedback": 0,
-              }
-            };
-          }
-        });
-      }
+      if (!mounted || seq != _runSeq) return;
+      // Sin datos inventados (antes se mostraba un vector de 768 valores y estadísticas falsas).
+      setState(() {
+        _latencyMs = stopwatch.elapsedMilliseconds;
+        _errorMessage = 'No se pudo completar la prueba: ${e.toString().replaceFirst('Exception: ', '')}.';
+        _isLoading = false;
+      });
     }
   }
 
-  Future<void> _pollJobStatus(String jobId) async {
-    while (_isLoading && mounted) {
+  /// Sondea la exploración hasta que termina, falla, se cambia de modo o pasan ~90 s.
+  Future<void> _pollJobStatus(String jobId, int seq) async {
+    for (var i = 0; i < _maxPolls; i++) {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted || seq != _runSeq) return;
       try {
         final uri = Uri.parse('https://api-xluju5gywq-uc.a.run.app/v1/api/recolector/job/$jobId');
-        final response = await http.get(uri);
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (!mounted) return;
-
-          setState(() {
-            _jobMessage = data['message'] ?? '';
-            _jobProgress = data['progress']?.toDouble() ?? 0.0;
-
-            if (data['status'] == 'completed') {
-              _isLoading = false;
-              _explorationData = data['result'];
-            } else if (data['status'] == 'error') {
-              _isLoading = false;
-              _errorMessage = data['error_detail'] ?? 'Error desconocido en ETL';
-            }
-          });
-
-          if (!_isLoading) break;
-        }
-      } catch (e) {
-        print("Polling error: $e");
+        final response = await http.get(uri).timeout(const Duration(seconds: 8));
+        if (!mounted || seq != _runSeq) return;
+        if (response.statusCode != 200) continue;
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final status = data['status'];
+        setState(() {
+          _jobMessage = data['message'] ?? '';
+          _jobProgress = (data['progress'] as num?)?.toDouble() ?? 0.0;
+          if (status == 'completed') {
+            _isLoading = false;
+            _explorationData = data['result'];
+          } else if (status == 'error') {
+            _isLoading = false;
+            _errorMessage = data['error_detail'] ?? 'La exploración terminó con error.';
+          } else if (status == 'not_found') {
+            _isLoading = false;
+            _errorMessage = 'El motor no encontró la exploración. Intenta lanzarla de nuevo.';
+          }
+        });
+        if (!_isLoading) return;
+      } catch (_) {
+        // un sondeo fallido no detiene la espera; el límite de intentos sí
       }
-      await Future.delayed(const Duration(seconds: 1));
+    }
+    if (mounted && seq == _runSeq) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'La exploración tardó demasiado. Puedes revisar el catálogo más tarde o lanzarla de nuevo.';
+      });
     }
   }
 
@@ -276,10 +270,10 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
               filled: true,
               fillColor: OhtliColors.innerCardBg,
             ),
-            items: const [
-              DropdownMenuItem(value: 'oep', child: Text('OEP (Exploración Geospacial Multi-Fuente)')),
-              DropdownMenuItem(value: 'vibe', child: Text('Vibe API (Vectorización de Estilo de Viajero)')),
-              DropdownMenuItem(value: 'mood', child: Text('Mood API (Vectorización de Estado de Ánimo)')),
+            items: [
+              if (_canExplore) const DropdownMenuItem(value: 'oep', child: Text('OEP (exploración geoespacial multifuente)')),
+              const DropdownMenuItem(value: 'vibe', child: Text('Vibe API (vectorización del estilo de viaje)')),
+              const DropdownMenuItem(value: 'mood', child: Text('Mood API (vectorización del estado de ánimo)')),
             ],
             onChanged: _onModeChanged,
           ),

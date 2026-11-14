@@ -55,6 +55,10 @@ LabRole _parse(dynamic r) => switch (r) {
       _ => LabRole.none,
     };
 
+/// Rol de la sesión en Labs (lo fija LabsAppPage); decide qué controles se muestran en la
+/// consola y en los experimentos. Las reglas de Firestore y el motor son los que protegen.
+LabRole currentLabRole = LabRole.none;
+
 class LabAccess {
   LabAccess._();
   static final _db = FirebaseFirestore.instance;

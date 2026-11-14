@@ -80,73 +80,43 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
     final stopwatch = Stopwatch()..start();
 
     try {
+      // /v1/** pasa por el gateway de api.ohtli.quest (la ruta antigua /api/osrm/route daba 404).
       final response = await http.post(
-        Uri.parse('https://api.ohtli.quest/api/osrm/route'),
+        Uri.parse('https://api.ohtli.quest/v1/osrm/route'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'origin': {'lat': _origin!['lat'], 'lng': _origin!['lng']},
           'destination': {'lat': _destination!['lat'], 'lng': _destination!['lng']},
           'profile': _profile,
         }),
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 25));
 
       stopwatch.stop();
+      if (!mounted) return;
       _latencyMs = stopwatch.elapsedMilliseconds;
 
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        setState(() {
-          _resultText = const JsonEncoder.withIndent('  ').convert(decoded);
-          if (decoded['routes'] != null && (decoded['routes'] as List).isNotEmpty) {
-            final route = decoded['routes'][0];
-            _routeSummary = {
-              'distance_km': ((route['distance'] ?? 0) / 1000.0).toStringAsFixed(2),
-              'duration_min': ((route['duration'] ?? 0) / 60.0).toStringAsFixed(1),
-            };
-          }
-        });
-      } else {
-        throw Exception('HTTP ${response.statusCode}: ${response.body}');
-      }
+      if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      setState(() {
+        _resultText = const JsonEncoder.withIndent('  ').convert(decoded);
+        final routes = decoded['routes'] as List?;
+        if (routes != null && routes.isNotEmpty) {
+          final route = routes.first as Map;
+          _routeSummary = {
+            'distance_km': (((route['distance'] ?? 0) as num) / 1000.0).toStringAsFixed(2),
+            'duration_min': (((route['duration'] ?? 0) as num) / 60.0).toStringAsFixed(0),
+            'provider': decoded['provider'],
+            'estimated': decoded['estimated'] == true,
+          };
+        }
+      });
     } catch (e) {
       stopwatch.stop();
-      _latencyMs = stopwatch.elapsedMilliseconds;
-
-      // Proveemos ruta sintética para validación en sandbox
+      if (!mounted) return;
+      // Sin datos inventados: antes se dibujaba una ruta falsa de 3.25 km y 13 min para cualquier par.
       setState(() {
-        _errorText = 'Fallo de conexión al motor OSRM ($e). Proveyendo geometría interpolada de prueba para validar el visor.';
-        final oLat = _origin!['lat'] as double;
-        final oLng = _origin!['lng'] as double;
-        final dLat = _destination!['lat'] as double;
-        final dLng = _destination!['lng'] as double;
-
-        final mockCoordinates = [
-          [oLng, oLat],
-          [oLng + (dLng - oLng) * 0.33, oLat + (dLat - oLat) * 0.25],
-          [oLng + (dLng - oLng) * 0.66, oLat + (dLat - oLat) * 0.75],
-          [dLng, dLat],
-        ];
-
-        final mockData = {
-          "code": "Ok (Sandbox Simulated)",
-          "routes": [
-            {
-              "geometry": {"coordinates": mockCoordinates, "type": "LineString"},
-              "legs": [],
-              "weight_name": "routability",
-              "weight": 842.1,
-              "duration": 780.0,
-              "distance": 3250.0
-            }
-          ],
-          "waypoints": []
-        };
-
-        _resultText = const JsonEncoder.withIndent('  ').convert(mockData);
-        _routeSummary = {
-          'distance_km': '3.25',
-          'duration_min': '13.0',
-        };
+        _latencyMs = stopwatch.elapsedMilliseconds;
+        _errorText = 'No pudimos calcular la ruta: el motor no respondió. Intenta de nuevo en un momento.';
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -354,7 +324,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                       children: [
                         Icon(Icons.directions_walk_rounded, size: 18, color: OhtliColors.stormyTeal),
                         const SizedBox(width: 8),
-                        const Text('Caminando (foot)'),
+                        const Text('A pie'),
                       ],
                     ),
                   ),
@@ -365,7 +335,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                       children: [
                         Icon(Icons.directions_bike_rounded, size: 18, color: OhtliColors.stormyTeal),
                         const SizedBox(width: 8),
-                        const Text('Bicicleta (bike)'),
+                        const Text('Bicicleta'),
                       ],
                     ),
                   ),
@@ -376,7 +346,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                       children: [
                         Icon(Icons.directions_car_rounded, size: 18, color: OhtliColors.stormyTeal),
                         const SizedBox(width: 8),
-                        const Text('Automóvil (car)'),
+                        const Text('Automóvil'),
                       ],
                     ),
                   ),
@@ -466,6 +436,16 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                     const SizedBox(width: 8),
                     _buildMetricPill('${_routeSummary!['duration_min']} min', Icons.timer_outlined),
                   ],
+                ),
+              if (_routeSummary != null && _routeSummary!['provider'] != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _routeSummary!['estimated'] == true
+                        ? 'Estimación: ningún servidor de rutas respondió (${_routeSummary!['provider']}).'
+                        : 'Calculado con ${_routeSummary!['provider']}.',
+                    style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
+                  ),
                 ),
             ],
           ),

@@ -16,10 +16,6 @@ import 'lab_widgets.dart';
 /// Paneles de las pruebas del Trabajo Terminal (configurar, ejecutar, monitorear, exportar).
 /// Se muestran dentro del Labs unificado (LabsAppPage), en la sección "Pruebas del TT", solo para
 /// miembros del laboratorio.
-///
-/// Rol de la sesión (lo fija LabsAppPage); decide qué controles se muestran.
-/// Las reglas de Firestore son las que protegen los datos.
-LabRole currentLabRole = LabRole.none;
 
 IconData labStudyIcon(LabStudyKind k) => switch (k) {
       LabStudyKind.scenarios => Icons.route_rounded,

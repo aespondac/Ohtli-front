@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../theme/colors.dart';
 import '../widgets/lab_experiment_shell.dart';
 
@@ -24,6 +25,13 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
   String? _rawResponse;
   String? _errorResponse;
   int? _latencyMs;
+  Map<String, dynamic>? _trace; // respuesta del motor: pasos de cada agente
+
+  static const Map<String, String> _agentIds = {
+    'Recolector': 'recolector',
+    'Comparador': 'comparador',
+    'Generador de Itinerarios': 'generador',
+  };
 
   final List<String> _presets = [
     'Cantinas históricas en Centro Histórico con ambiente bohemio',
@@ -45,6 +53,7 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
     setState(() {
       _isLoading = true;
       _rawResponse = null;
+      _trace = null;
       _errorResponse = null;
       _latencyMs = null;
     });
@@ -52,61 +61,108 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
     final stopwatch = Stopwatch()..start();
 
     try {
-      final response = await http.post(
-        Uri.parse('https://api.ohtli.quest/v1/agent/recolector/test'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'prompt': prompt,
-          'agent_type': _selectedAgent.toLowerCase(),
-          'sandbox_mode': true,
-        }),
-      ).timeout(const Duration(seconds: 8));
+      // Agentes reales del motor (antes el endpoint no existía y se mostraba una respuesta inventada).
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final response = await http
+          .post(
+            Uri.parse('https://api-xluju5gywq-uc.a.run.app/v1/labs/agents/run'), // directo: el gateway corta a los 60 s
+            headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'},
+            body: jsonEncode({'agent': _agentIds[_selectedAgent] ?? 'comparador', 'prompt': prompt}),
+          )
+          .timeout(const Duration(seconds: 90));
 
       stopwatch.stop();
+      if (!mounted) return;
       _latencyMs = stopwatch.elapsedMilliseconds;
 
       if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
         setState(() {
-          _rawResponse = response.body;
+          _trace = decoded;
+          _rawResponse = const JsonEncoder.withIndent('  ').convert(decoded);
         });
       } else {
-        throw Exception('Servidor respondió con código ${response.statusCode}: ${response.body}');
+        String detail = '';
+        try {
+          detail = '${(jsonDecode(response.body) as Map)['detail'] ?? ''}';
+        } catch (_) {}
+        setState(() => _errorResponse = switch (response.statusCode) {
+              401 || 403 => detail.isNotEmpty ? detail : 'Necesitas una sesión de Ohtli Labs para usar la consola.',
+              504 => 'El agente tardó demasiado. Intenta de nuevo.',
+              _ => 'El motor respondió con un error (${response.statusCode}). $detail',
+            });
       }
     } catch (e) {
       stopwatch.stop();
-      _latencyMs = stopwatch.elapsedMilliseconds;
-
-      // Proveemos respuesta simulada controlada en sandbox para que el tester pueda
-      // validar la estructura JSON esperada cuando el backend no esté desplegado
+      if (!mounted) return;
       setState(() {
-        _errorResponse = 'Fallo de conexión o timeout al endpoint en Staging ($e).';
-        _rawResponse = const JsonEncoder.withIndent('  ').convert({
-          "agent": _selectedAgent,
-          "sandbox_status": "MOCK_FALLBACK_TEST",
-          "intent": "cultural_recommendation",
-          "latency_simulated_ms": _latencyMs,
-          "prompt_analyzed": prompt,
-          "generated_recommendations": [
-            {
-              "name": "La Ópera Bar",
-              "category": "cantinas_tradicionales, historico",
-              "reason": "Techo dorado barroco y disparo de Pancho Villa en el techo.",
-              "confidence_score": 0.96
-            },
-            {
-              "name": "Cantina La Faena",
-              "category": "cantinas_tradicionales, taurino",
-              "reason": "Museo taurino popular y ambiente bohemio auténtico.",
-              "confidence_score": 0.89
-            }
-          ]
-        });
+        _latencyMs = stopwatch.elapsedMilliseconds;
+        _errorResponse = 'No pudimos contactar al motor. Revisa tu conexión e intenta de nuevo.';
       });
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  /// Resumen legible de un paso de la traza (la salida completa va en el JSON).
+  List<String> _stepLines(Map<String, dynamic> step) {
+    final out = Map<String, dynamic>.from((step['salida'] as Map?) ?? const {});
+    switch (step['agente']) {
+      case 'Interpretación':
+        return ['Modelo: ${out['modelo']} · ${out['dimensiones']} dimensiones${out['respaldo'] == true ? ' (respaldo)' : ''}'];
+      case 'Recolector':
+        final cats = (out['por_categoria'] as Map? ?? {}).entries.take(4).map((e) => '${e.key} (${e.value})').join(', ');
+        final near = (out['mas_cercanos'] as List? ?? []).take(5).map((p) => '${(p as Map)['nombre']} · ${p['distancia_km']} km').toList();
+        return ['${out['en_radio']} de ${out['catalogo_total']} lugares del catálogo a ${out['radio_km']} km', if (cats.isNotEmpty) 'Categorías: $cats', ...near];
+      case 'Comparador':
+        final best = (out['mejores'] as List? ?? []).take(5).map((c) => '${(c as Map)['nombre']} · afinidad ${c['afinidad']}').toList();
+        return ['${out['candidatos']} candidatos dentro de presupuesto y radio', ...best];
+      case 'Generador':
+        final alts = (out['alternativas'] as List? ?? []);
+        if (alts.isEmpty) return ['No se pudo armar un itinerario con estos candidatos.'];
+        return [
+          for (final a in alts.cast<Map>())
+            '${a['tema']}: ${(a['paradas'] as List? ?? []).map((p) => (p as Map)['nombre']).join(' → ')} · \$${a['costo_total_mxn']} · ${a['horario']}',
+        ];
+    }
+    return const [];
+  }
+
+  Widget _buildTrace() {
+    final steps = ((_trace?['steps'] as List?) ?? const []).cast<Map>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < steps.length; i++)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: OhtliColors.innerCardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: OhtliColors.cardBorder),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                Text('${i + 1}. ${steps[i]['agente']}',
+                    style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w800, color: const Color(0xFF6C5CE7))),
+                Text('${steps[i]['titulo']}', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+                Text('${steps[i]['ms']} ms', style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText)),
+              ]),
+              const SizedBox(height: 6),
+              for (final line in _stepLines(Map<String, dynamic>.from(steps[i])))
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text('• $line', style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx, height: 1.4)),
+                ),
+            ]),
+          ),
+        const SizedBox(height: 8),
+      ],
+    );
   }
 
   @override
@@ -250,7 +306,7 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
               icon: _isLoading
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.smart_toy_rounded, size: 20),
-              label: Text(_isLoading ? 'Ejecutando Agente...' : 'Ejecutar Agente en Staging'),
+              label: Text(_isLoading ? 'Ejecutando agente…' : 'Ejecutar agente'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6C5CE7),
                 foregroundColor: Colors.white,
@@ -340,7 +396,7 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Modo Simulado Activo: $_errorResponse Se muestra estructura de referencia.',
+                      _errorResponse!,
                       style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFFB85900), fontWeight: FontWeight.w500),
                     ),
                   ),
@@ -348,23 +404,25 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
               ),
             ),
 
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: OhtliColors.innerCardBg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: OhtliColors.cardBorder),
-            ),
-            child: SelectableText(
-              _rawResponse ?? 'Cargando respuesta...',
-              style: GoogleFonts.firaCode(
-                fontSize: 13,
-                color: const Color(0xFF55EFC4),
-                height: 1.45,
+          if (_trace != null) _buildTrace(),
+          if (_rawResponse != null || _isLoading)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                // Fondo oscuro fijo: el texto verde sobre fondo claro era ilegible en tema claro.
+                color: const Color(0xFF1E1E24),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: SelectableText(
+                _rawResponse ?? 'Ejecutando agente…',
+                style: GoogleFonts.firaCode(
+                  fontSize: 12.5,
+                  color: const Color(0xFF55EFC4),
+                  height: 1.45,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

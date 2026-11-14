@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../../../theme/colors.dart';
 import '../../../models/poi_model.dart';
 import '../../places/places_page.dart';
 import '../widgets/lab_experiment_shell.dart';
+import '../../../labs/lab_access.dart';
 
 class RecolectorExperimentPage extends StatefulWidget {
   final VoidCallback onBack;
@@ -23,7 +23,12 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
   final TextEditingController _lngController = TextEditingController(text: '-99.133209');
   final TextEditingController _radiusController = TextEditingController(text: '1000');
 
+  // Explorar y replicar escriben en el catálogo: el motor solo lo acepta de miembros del
+  // laboratorio. Los testers ven el catálogo ya indexado.
+  final bool _canWrite = currentLabRole.isMember;
   String? _currentJobId;
+  Map<String, dynamic>? _job; // estado del trabajo de exploración (lo da el motor)
+  int _pollSeq = 0;
   final Set<String> _selectedPois = {};
   bool _isReplicating = false;
 
@@ -63,33 +68,63 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
       return;
     }
 
+    // El trabajo lo encola el motor (antes se escribía en una colección del front que las reglas
+    // bloquean y que el motor no escucha, así que la exploración siempre fallaba).
     try {
-      final docRef = await FirebaseFirestore.instance.collection('recolector_jobs').add({
-        'status': 'pending',
-        'progress': 0,
-        'message': 'Encolando en Yollotl Engine...',
-        'created_at': FieldValue.serverTimestamp(),
-        'request': {
-          'lat': lat,
-          'lng': lng,
-          'radius': radius,
-          'max_pois': 20,
-        }
-      });
-
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      final response = await http
+          .post(
+            Uri.parse('https://api.ohtli.quest/v1/api/recolector/explore'),
+            headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'},
+            body: jsonEncode({'lat': lat, 'lng': lng, 'radius': radius, 'max_pois': 20}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw Exception('solo los miembros del laboratorio pueden explorar zonas');
+      }
+      if (response.statusCode != 200) throw Exception('el motor respondió ${response.statusCode}');
+      final jobId = (jsonDecode(response.body) as Map)['job_id'] as String;
+      if (!mounted) return;
+      final seq = ++_pollSeq;
       setState(() {
-        _currentJobId = docRef.id;
+        _currentJobId = jobId;
+        _job = {'status': 'pending', 'progress': 0, 'message': 'Encolando en Yollotl Engine...'};
         _selectedPois.clear();
       });
+      _pollJob(jobId, seq);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al crear job en Firestore: $e'),
+            content: Text('No se pudo iniciar la exploración: ${e.toString().replaceFirst('Exception: ', '')}.'),
             backgroundColor: OhtliColors.xoconostle,
           ),
         );
       }
+    }
+  }
+
+  /// Sigue el trabajo en el motor hasta que termina, falla o pasan ~3 minutos.
+  Future<void> _pollJob(String jobId, int seq) async {
+    for (var i = 0; i < 120; i++) {
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (!mounted || seq != _pollSeq) return;
+      try {
+        final res = await http
+            .get(Uri.parse('https://api.ohtli.quest/v1/api/recolector/job/$jobId'))
+            .timeout(const Duration(seconds: 10));
+        if (!mounted || seq != _pollSeq) return;
+        if (res.statusCode != 200) continue;
+        final data = Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+        setState(() => _job = data);
+        final status = data['status'];
+        if (status == 'completed' || status == 'error' || status == 'not_found') return;
+      } catch (_) {
+        // un sondeo fallido no detiene la espera; el límite de intentos sí
+      }
+    }
+    if (mounted && seq == _pollSeq) {
+      setState(() => _job = {'status': 'error', 'error_detail': 'La exploración tardó demasiado. Inténtalo de nuevo más tarde.'});
     }
   }
 
@@ -206,9 +241,31 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
             ),
           ),
           const SizedBox(height: 24),
-          _buildForm(),
-          const SizedBox(height: 32),
-          if (_currentJobId != null) _buildJobStream(),
+          if (_canWrite) ...[
+            _buildForm(),
+            const SizedBox(height: 32),
+            if (_currentJobId != null) _buildJobStream(),
+          ] else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: OhtliColors.cardBg,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: OhtliColors.cardBorder),
+              ),
+              child: Row(children: [
+                Icon(Icons.lock_outline_rounded, color: OhtliColors.subtleText),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Explorar zonas nuevas y publicar lugares en Ohtli es trabajo del equipo del laboratorio. '
+                    'Como tester puedes revisar el catálogo que ya procesó el Recolector y contarnos qué falta o qué está mal.',
+                    style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.45),
+                  ),
+                ),
+              ]),
+            ),
         ],
       ),
     );
@@ -349,14 +406,9 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
   }
 
   Widget _buildJobStream() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('recolector_jobs').doc(_currentJobId).snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
-        }
-
-        final data = snapshot.data!.data() as Map<String, dynamic>;
+    return Builder(
+      builder: (context) {
+        final data = _job ?? const <String, dynamic>{};
         final status = data['status'] ?? 'pending';
         final progress = data['progress'] ?? 0;
         final message = data['message'] ?? '';
@@ -383,9 +435,11 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
           ),
           child: Column(
             children: [
-              if (status == 'error')
+              if (status == 'error' || status == 'not_found')
                 Text(
-                  'Error en ejecución: ${data['error_detail'] ?? 'Detalle no provisto'}',
+                  status == 'not_found'
+                      ? 'El motor no encontró esta exploración. Lánzala de nuevo.'
+                      : 'Error en ejecución: ${data['error_detail'] ?? 'Detalle no provisto'}',
                   style: GoogleFonts.firaCode(color: OhtliColors.xoconostle),
                 )
               else ...[
