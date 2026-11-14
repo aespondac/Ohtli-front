@@ -8,7 +8,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme/colors.dart';
 import '../../models/poi_model.dart';
 import '../../widgets/poi_detail_dialog.dart';
-import '../construction_page.dart'; // RouteBackgroundPainter
 import '../places/places_page.dart';
 import '../trips/trip_viewer_page.dart';
 import '../../config/editorial.dart';
@@ -234,11 +233,6 @@ class _ExplorePageState extends State<ExplorePage> {
 
     return Stack(
       children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.95)),
-          ),
-        ),
         Positioned.fill(
           child: SafeArea(
             child: RefreshIndicator(
