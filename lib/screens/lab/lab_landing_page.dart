@@ -23,6 +23,7 @@ class LabLandingPage extends StatefulWidget {
 class _LabLandingPageState extends State<LabLandingPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _experimentsSectionKey = GlobalKey();
+  final GlobalKey _participateSectionKey = GlobalKey();
   final GlobalKey _pipelineSectionKey = GlobalKey();
 
   void _scrollToKey(GlobalKey key) {
@@ -98,6 +99,12 @@ class _LabLandingPageState extends State<LabLandingPage> {
                       child: _buildExperimentsSection(isMobile),
                     ),
 
+                    // Para quién es Labs y cómo unirse
+                    Container(
+                      key: _participateSectionKey,
+                      child: _buildParticipateSection(isMobile),
+                    ),
+
                     // Sección de aislamiento de sandbox y seguridad
                     _buildSandboxAssuranceSection(isMobile),
 
@@ -168,13 +175,18 @@ class _LabLandingPageState extends State<LabLandingPage> {
             Row(
               children: [
                 _buildNavTextButton(
-                  title: 'Pipeline a Ohtli.quest',
+                  title: 'Cómo funciona',
                   onTap: () => _scrollToKey(_pipelineSectionKey),
                 ),
                 const SizedBox(width: 8),
                 _buildNavTextButton(
                   title: 'Experimentos',
                   onTap: () => _scrollToKey(_experimentsSectionKey),
+                ),
+                const SizedBox(width: 8),
+                _buildNavTextButton(
+                  title: 'Participa',
+                  onTap: () => _scrollToKey(_participateSectionKey),
                 ),
                 const SizedBox(width: 8),
                 _buildNavTextButton(
@@ -188,40 +200,6 @@ class _LabLandingPageState extends State<LabLandingPage> {
           // Botones de acción derecha
           Row(
             children: [
-              if (!isMobile) ...[
-                // Badge de estado en tiempo real
-                Container(
-                  margin: const EdgeInsets.only(right: 16),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.cardBg,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: OhtliColors.cardBorder),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF10B981), // Verde activo
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Banco de Pruebas Activo',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: OhtliColors.subtleText,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               const OhtliThemeToggle(),
               const SizedBox(width: 6),
               // Reporte y tablero de resultados de las pruebas (labs.ohtli.quest/resultados)
@@ -310,10 +288,10 @@ class _LabLandingPageState extends State<LabLandingPage> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.hub_rounded, size: 16, color: OhtliColors.stormyTeal),
+                const Icon(Icons.auto_awesome_rounded, size: 16, color: OhtliColors.stormyTeal),
                 const SizedBox(width: 8),
                 Text(
-                  'LABORATORIO DE INNOVACIÓN DE OHTLI',
+                  'PRUEBA LO NUEVO DE OHTLI ANTES QUE NADIE',
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -344,7 +322,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
             child: Text(
-              'Ohtli Labs es nuestro laboratorio de innovación. Aquí nacen los nuevos modelos de recomendación cultural, de rutas y de agentes de IA, y se ponen a prueba en un entorno aislado y protegido. Solo lo que demuestra ser útil, estable y seguro llega a Ohtli.quest.',
+              'Ohtli Labs es el laboratorio abierto de Ohtli. Aquí puedes conocer y probar las funciones que estamos creando, como recomendaciones con IA, rutas y agentes, antes de que lleguen a la app. Tus pruebas y comentarios deciden qué se lanza, en un entorno seguro y separado de tus datos.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: isMobile ? 16 : 19,
@@ -365,7 +343,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
               ElevatedButton.icon(
                 onPressed: widget.onLoginRedirect,
                 icon: const Icon(Icons.science_rounded, size: 18),
-                label: const Text('Iniciar Banco de Pruebas'),
+                label: const Text('Únete como tester'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: OhtliColors.stormyTeal,
                   foregroundColor: Colors.white,
@@ -378,7 +356,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
               OutlinedButton.icon(
                 onPressed: () => _scrollToKey(_experimentsSectionKey),
                 icon: const Icon(Icons.explore_rounded, size: 18),
-                label: const Text('Ver Experimentos en Curso'),
+                label: const Text('Conoce los experimentos'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: OhtliColors.onyx,
                   side: BorderSide(color: OhtliColors.cardBorder),
@@ -961,7 +939,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          'Probar en Sandbox',
+                          'Probar ahora',
                           style: GoogleFonts.outfit(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
@@ -977,6 +955,151 @@ class _LabLandingPageState extends State<LabLandingPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildParticipateSection(bool isMobile) {
+    final audiences = [
+      (Icons.bug_report_rounded, 'Testers', 'Prueba funciones antes de su lanzamiento, reporta errores y ayúdanos a afinar las recomendaciones.', OhtliColors.stormyTeal),
+      (Icons.travel_explore_rounded, 'Público curioso', 'Descubre lo que viene en Ohtli y explora los experimentos; para probarlos solo necesitas tu cuenta gratuita.', OhtliColors.cempasuchil),
+      (Icons.insights_rounded, 'Comunidad e investigación', 'Consulta los resultados de las pruebas y el trabajo académico detrás de Ohtli.', OhtliColors.xoconostle),
+    ];
+    final steps = [
+      ('1', 'Crea tu cuenta', 'Es gratis y es la misma cuenta de Ohtli.'),
+      ('2', 'Acepta los términos de Labs', 'Para cuidar la confidencialidad de lo que aún no se lanza.'),
+      ('3', 'Prueba y comparte', 'Usa los experimentos y cuéntanos qué funciona y qué no.'),
+    ];
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 24 : 48, vertical: isMobile ? 56 : 88),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1100),
+          child: Column(
+            children: [
+              Text(
+                'PARTICIPA',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6, color: OhtliColors.accentText),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Labs es para quien quiera ver el futuro de Ohtli',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(fontSize: isMobile ? 28 : 40, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -0.8, height: 1.1),
+              ),
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 620),
+                child: Text(
+                  'No necesitas conocimientos técnicos: si viajas por la Ciudad de México o te interesa la cultura, tu opinión cuenta.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText, height: 1.55),
+                ),
+              ),
+              const SizedBox(height: 36),
+              LayoutBuilder(builder: (context, c) {
+                final cols = isMobile ? 1 : 3;
+                const gap = 18.0;
+                final w = (c.maxWidth - gap * (cols - 1)) / cols;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: audiences
+                      .map((a) => Container(
+                            width: w,
+                            padding: const EdgeInsets.all(26),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.cardBg,
+                              borderRadius: BorderRadius.circular(26),
+                              border: Border.all(color: OhtliColors.cardBorder),
+                              boxShadow: [BoxShadow(color: a.$4.withValues(alpha: 0.08), blurRadius: 24, offset: const Offset(0, 10))],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                OhtliServiceIcon(icon: a.$1, color: a.$4, size: 54),
+                                const SizedBox(height: 20),
+                                Text(a.$2, style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                                const SizedBox(height: 8),
+                                Text(a.$3, style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText, height: 1.55)),
+                              ],
+                            ),
+                          ))
+                      .toList(),
+                );
+              }),
+              const SizedBox(height: 28),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(isMobile ? 24 : 36),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF123338), OhtliColors.stormyTeal],
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Únete en tres pasos', style: GoogleFonts.outfit(fontSize: isMobile ? 24 : 30, fontWeight: FontWeight.w800, color: Colors.white)),
+                    const SizedBox(height: 22),
+                    Flex(
+                      direction: isMobile ? Axis.vertical : Axis.horizontal,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var i = 0; i < steps.length; i++) ...[
+                          if (i > 0) SizedBox(width: isMobile ? 0 : 24, height: isMobile ? 16 : 0),
+                          Flexible(
+                            fit: isMobile ? FlexFit.loose : FlexFit.tight,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 34,
+                                  height: 34,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.16), shape: BoxShape.circle),
+                                  child: Text(steps[i].$1, style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(steps[i].$2, style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
+                                      const SizedBox(height: 4),
+                                      Text(steps[i].$3, style: GoogleFonts.inter(fontSize: 13.5, color: Colors.white.withValues(alpha: 0.78), height: 1.45)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 26),
+                    ElevatedButton.icon(
+                      onPressed: widget.onLoginRedirect,
+                      icon: const Icon(Icons.science_rounded, size: 18),
+                      label: const Text('Únete como tester'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OhtliColors.cempasuchil,
+                        foregroundColor: const Color(0xFF1A120B),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 17),
+                        shape: const StadiumBorder(),
+                        textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

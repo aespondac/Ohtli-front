@@ -24,6 +24,22 @@ class LegalCenterPage extends StatefulWidget {
 
 class _LegalCenterPageState extends State<LegalCenterPage> {
   late LegalDocId _current = widget.initialDoc;
+  late final List<LegalDoc> _docs = _visibleDocs();
+
+  /// Términos, privacidad y cookies siempre; los de la API solo en api.ohtli.quest y los
+  /// de Labs solo en labs/lab.ohtli.quest (o si se abrió directamente ese documento).
+  List<LegalDoc> _visibleDocs() {
+    final host = kIsWeb ? (html.window.location.hostname ?? '') : '';
+    final params = Uri.base.queryParameters;
+    final isApi = host.startsWith('api.') || params.containsKey('testApi');
+    final isLabs = host.startsWith('labs.') || host.startsWith('lab.') || params.containsKey('testLab') || params.containsKey('testLabApp');
+    return kLegalDocs.where((d) {
+      if (d.id == widget.initialDoc) return true;
+      if (d.id == LegalDocId.api) return isApi;
+      if (d.id == LegalDocId.labs) return isLabs;
+      return true;
+    }).toList();
+  }
   final _scroll = ScrollController();
   final Map<int, GlobalKey> _sectionKeys = {};
 
@@ -159,7 +175,7 @@ class _LegalCenterPageState extends State<LegalCenterPage> {
         children: [
           Text('DOCUMENTOS', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.subtleText)),
           const SizedBox(height: 12),
-          for (final d in kLegalDocs) _sidebarItem(d),
+          for (final d in _docs) _sidebarItem(d),
           const SizedBox(height: 28),
           Text('EN ESTE DOCUMENTO', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.subtleText)),
           const SizedBox(height: 10),
@@ -222,7 +238,7 @@ class _LegalCenterPageState extends State<LegalCenterPage> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          for (final d in kLegalDocs)
+          for (final d in _docs)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
