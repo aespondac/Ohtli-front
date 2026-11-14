@@ -19,7 +19,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="Ohtli - Tus rutas e itinerarios personalizados en la Ciudad de México. Sitio en construcción.">
+  <meta name="description" content="Ohtli: rutas e itinerarios personalizados por la Ciudad de México según tu tiempo, presupuesto y gustos.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -31,7 +31,15 @@
   <link rel="icon" type="image/svg+xml" href="assets/assets/icon_isologo.svg"/>
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>Ohtli | Sitio en Construcción</title>
+  <title>Ohtli | El viaje empieza aquí</title>
+  <script>
+    // Título correcto desde la pantalla de carga en los subdominios (la app lo mantiene después).
+    (function () {
+      var h = location.hostname;
+      if (h === 'labs.ohtli.quest' || h === 'lab.ohtli.quest') document.title = 'Ohtli Labs';
+      else if (h === 'api.ohtli.quest') document.title = 'Ohtli API';
+    })();
+  </script>
   <link rel="manifest" href="manifest.json">
   <style>
     body {

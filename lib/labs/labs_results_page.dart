@@ -89,22 +89,31 @@ class _Header extends StatelessWidget {
                     ),
                   ),
                 )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Noticias',
+              : SizedBox(
+                  width: double.infinity,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Noticias',
                         style: GoogleFonts.outfit(
-                            fontSize: isMobile ? 30 : 44, fontWeight: FontWeight.w700, color: OhtliColors.onyx, letterSpacing: isMobile ? -0.5 : -1.0)),
-                    const SizedBox(height: 10),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: Text(
-                        'Artículos del laboratorio sobre la evaluación del sistema multiagente de itinerarios para la Ciudad de México '
-                        '(Trabajo Terminal 2026-B156, ESCOM-IPN). Cada artículo cita corridas reproducibles con su configuración.',
-                        style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText, height: 1.6),
+                          fontSize: isMobile ? 30 : 44,
+                          fontWeight: FontWeight.w700,
+                          color: OhtliColors.onyx,
+                          letterSpacing: isMobile ? -0.5 : -1.0,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: Text(
+                          'Artículos del laboratorio sobre la evaluación del sistema multiagente de itinerarios para la Ciudad de México '
+                          '(Trabajo Terminal 2026-B156, ESCOM-IPN). Cada artículo cita corridas reproducibles con su configuración.',
+                          style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText, height: 1.6),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
         ),
       ),
@@ -114,17 +123,33 @@ class _Header extends StatelessWidget {
 
 // ───────────────────────── Lista de entradas ─────────────────────────
 
-class _PostList extends StatelessWidget {
+class _PostList extends StatefulWidget {
   final bool isMobile;
   const _PostList({required this.isMobile});
 
   @override
+  State<_PostList> createState() => _PostListState();
+}
+
+class _PostListState extends State<_PostList> {
+  // Una sola suscripción: si se creara en build, cada redibujo (girar el móvil, cambiar el
+  // tamaño de la ventana) volvería a mostrar el spinner.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _posts = LabRepository.instance.watchPublishedPosts([LabVisibility.public]);
+
+  @override
   Widget build(BuildContext context) {
+    final isMobile = widget.isMobile;
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: LabRepository.instance.watchPublishedPosts([LabVisibility.public]),
+      stream: _posts,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal)));
+        if (snap.hasError && !snap.hasData) {
+          return const _Notice('No pudimos cargar las noticias. Revisa tu conexión y recarga la página.');
+        }
+        if (!snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal)),
+          );
         }
         final posts = (snap.data?.docs ?? []).map((d) => d.data()).toList()
           ..sort((a, b) {
@@ -138,25 +163,38 @@ class _PostList extends StatelessWidget {
 
             return at(b).compareTo(at(a));
           });
-        if (posts.isEmpty) return const _Empty();
+        if (posts.isEmpty) return const _Notice('Aún no hay artículos publicados. Vuelve pronto.');
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _Featured(post: posts.first, isMobile: isMobile),
             if (posts.length > 1) ...[
               const SizedBox(height: 48),
-              Text('Más entradas', style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+              Text(
+                'Más entradas',
+                style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+              ),
               const SizedBox(height: 16),
-              LayoutBuilder(builder: (context, c) {
-                final cols = isMobile ? 1 : (c.maxWidth < 760 ? 2 : 3);
-                const gap = 20.0;
-                final w = (c.maxWidth - gap * (cols - 1)) / cols;
-                return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
-                  children: posts.skip(1).map((p) => SizedBox(width: w, child: _EntryCard(post: p))).toList(),
-                );
-              }),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final cols = isMobile ? 1 : (c.maxWidth < 760 ? 2 : 3);
+                  const gap = 20.0;
+                  final w = (c.maxWidth - gap * (cols - 1)) / cols;
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: posts
+                        .skip(1)
+                        .map(
+                          (p) => SizedBox(
+                            width: w,
+                            child: _EntryCard(post: p),
+                          ),
+                        )
+                        .toList(),
+                  );
+                },
+              ),
             ],
           ],
         );
@@ -165,8 +203,9 @@ class _PostList extends StatelessWidget {
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty();
+class _Notice extends StatelessWidget {
+  final String text;
+  const _Notice(this.text);
 
   @override
   Widget build(BuildContext context) {
@@ -178,19 +217,22 @@ class _Empty extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: OhtliColors.cardBorder),
       ),
-      child: Text('Aún no hay artículos publicados. Vuelve pronto.', style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText)),
+      child: Text(text, style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText)),
     );
   }
 }
 
 Widget _readMore(String label) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.accentText)),
-        const SizedBox(width: 6),
-        Icon(Icons.arrow_forward_rounded, size: 16, color: OhtliColors.accentText),
-      ],
-    );
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Text(
+      label,
+      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.accentText),
+    ),
+    const SizedBox(width: 6),
+    Icon(Icons.arrow_forward_rounded, size: 16, color: OhtliColors.accentText),
+  ],
+);
 
 /// Entrada principal: el artículo más reciente.
 class _Featured extends StatelessWidget {
@@ -209,26 +251,40 @@ class _Featured extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: EdgeInsets.all(isMobile ? 24 : 40),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: OhtliColors.cardBorder)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: OhtliColors.cardBorder),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('ARTÍCULO MÁS RECIENTE',
-                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.6, color: OhtliColors.accentText)),
+              Text(
+                'ARTÍCULO MÁS RECIENTE',
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.6, color: OhtliColors.accentText),
+              ),
               const SizedBox(height: 16),
-              Text('${post['title'] ?? ''}',
-                  style: GoogleFonts.outfit(
-                      fontSize: isMobile ? 26 : 36, fontWeight: FontWeight.w700, color: OhtliColors.onyx, height: 1.15, letterSpacing: -0.6)),
+              Text(
+                '${post['title'] ?? ''}',
+                style: GoogleFonts.outfit(
+                  fontSize: isMobile ? 26 : 36,
+                  fontWeight: FontWeight.w700,
+                  color: OhtliColors.onyx,
+                  height: 1.15,
+                  letterSpacing: -0.6,
+                ),
+              ),
               const SizedBox(height: 10),
               Text(_byline(post), style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText)),
               if (summary.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 760),
-                  child: Text(summary,
-                      maxLines: 5,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 16, color: OhtliColors.onyx.withValues(alpha: 0.82), height: 1.7)),
+                  child: Text(
+                    summary,
+                    maxLines: 5,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(fontSize: 16, color: OhtliColors.onyx.withValues(alpha: 0.82), height: 1.7),
+                  ),
                 ),
               ],
               const SizedBox(height: 22),
@@ -258,21 +314,29 @@ class _EntryCard extends StatelessWidget {
         child: Container(
           height: 240,
           padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: OhtliColors.cardBorder)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: OhtliColors.cardBorder),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(fmtDate(post['publishedAt'] ?? post['updatedAt']),
-                  style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+              Text(fmtDate(post['publishedAt'] ?? post['updatedAt']), style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
               const SizedBox(height: 10),
-              Text('${post['title'] ?? ''}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w700, color: OhtliColors.onyx, height: 1.2)),
+              Text(
+                '${post['title'] ?? ''}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w700, color: OhtliColors.onyx, height: 1.2),
+              ),
               if (summary.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text(summary,
-                    maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.55)),
+                Text(
+                  summary,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.55),
+                ),
               ],
               const Spacer(),
               _readMore('Leer artículo'),
@@ -286,18 +350,32 @@ class _EntryCard extends StatelessWidget {
 
 // ───────────────────────── Artículo ─────────────────────────
 
-class _Article extends StatelessWidget {
+class _Article extends StatefulWidget {
   final String slug;
   final bool isMobile;
   const _Article({required this.slug, required this.isMobile});
 
   @override
+  State<_Article> createState() => _ArticleState();
+}
+
+class _ArticleState extends State<_Article> {
+  late final Future<Map<String, dynamic>?> _post = LabRepository.instance.postBySlug(widget.slug, [LabVisibility.public]);
+
+  @override
   Widget build(BuildContext context) {
+    final isMobile = widget.isMobile;
     return FutureBuilder<Map<String, dynamic>?>(
-      future: LabRepository.instance.postBySlug(slug, [LabVisibility.public]),
+      future: _post,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal)));
+          return const Padding(
+            padding: EdgeInsets.all(40),
+            child: Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal)),
+          );
+        }
+        if (snap.hasError) {
+          return const _Notice('No pudimos cargar este artículo. Revisa tu conexión y recarga la página.');
         }
         final post = snap.data;
         if (post == null) {
@@ -309,12 +387,17 @@ class _Article extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: OhtliColors.cardBorder),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Este artículo no existe o aún no es público.',
-                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-              const SizedBox(height: 10),
-              TextButton(onPressed: () => html.window.location.href = '/news', child: const Text('Ver todas las noticias')),
-            ]),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Este artículo no existe o aún no es público.',
+                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                ),
+                const SizedBox(height: 10),
+                TextButton(onPressed: () => html.window.location.href = '/news', child: const Text('Ver todas las noticias')),
+              ],
+            ),
           );
         }
         return Container(

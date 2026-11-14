@@ -43,6 +43,7 @@ import 'screens/lab/experiments/taste_vector_experiment_page.dart';
 import 'screens/places/places_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'services/ohtli_sso.dart';
+import 'services/app_route.dart';
 import 'services/saved_accounts.dart';
 import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
@@ -176,7 +177,7 @@ class OhtliApp extends StatelessWidget {
         }
 
         return MaterialApp(
-          title: 'Ohtli | El viaje empieza aquí',
+          title: appTitleForHost(kIsWeb ? (html.window.location.hostname ?? '') : ''),
           debugShowCheckedModeBanner: false,
           theme: lightTheme,
           darkTheme: darkTheme,
@@ -258,6 +259,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   bool _hadUser = false;
   bool _switchChecked = false;
   bool _intentEval = false;
+  OhtliScreen? _labsTermsReturn; // a dónde vuelve "Volver" de los TyC de Labs
   LabRole _labRole = LabRole.none;
   String? _newsSlug;
 
@@ -313,15 +315,16 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final hostname = html.window.location.hostname ?? '';
       final path = Uri.base.path;
       final fragment = Uri.base.fragment;
-      final isLabsTyc = path.contains('/labs/tyc') || fragment.contains('/labs/tyc');
-      final isLabsOsrm = path.contains('/labs/osrm') || fragment.contains('/labs/osrm');
-      final isLabsAgents = path.contains('/labs/agents') || fragment.contains('/labs/agents');
-      final isLabsApis = path.contains('/labs/apis') || fragment.contains('/labs/apis');
-      final isLabsRecolector = path.contains('/labs/recolector') || fragment.contains('/labs/recolector');
-      final isLabsTaste = path.contains('/labs/taste') || fragment.contains('/labs/taste') || path.contains('/labs/vibe') || fragment.contains('/labs/vibe');
-      final isPlaces = path.contains('/lugares') || fragment.contains('/lugares') || path.contains('/places') || fragment.contains('/places') || params.containsKey('lugares') || params.containsKey('places');
-      final isAppTyc = path.contains('/tyc') || fragment.contains('/tyc');
-      bool hasRoute(String r) => path.contains(r) || fragment.contains(r);
+      // Por segmentos completos: /news/evaluacion-… no debe abrir /eval (ver app_route.dart).
+      bool hasRoute(String r) => routeMatches(r, path: path, fragment: fragment);
+      final isLabsTyc = hasRoute('/labs/tyc');
+      final isLabsOsrm = hasRoute('/labs/osrm');
+      final isLabsAgents = hasRoute('/labs/agents');
+      final isLabsApis = hasRoute('/labs/apis');
+      final isLabsRecolector = hasRoute('/labs/recolector');
+      final isLabsTaste = hasRoute('/labs/taste') || hasRoute('/labs/vibe');
+      final isPlaces = hasRoute('/lugares') || hasRoute('/places') || params.containsKey('lugares') || params.containsKey('places');
+      final isAppTyc = hasRoute('/tyc');
       final legalRoute = hasRoute('/privacidad')
           ? LegalDocId.privacy
           : hasRoute('/cookies')
@@ -356,8 +359,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           (hasRoute('/resultados') || hasRoute('/news'))) {
         // labs.ohtli.quest/resultados: reporte tipo paper y tablero; /news: novedades publicadas
         _currentScreen = hasRoute('/news') ? OhtliScreen.labsNews : OhtliScreen.labsResults;
-        final m = RegExp(r'/news/([A-Za-z0-9-]+)').firstMatch('$path $fragment');
-        _newsSlug = m?.group(1);
+        _newsSlug = newsSlugFrom(path: path, fragment: fragment);
       } else if (hostname == 'lab.ohtli.quest' || params.containsKey('testLabApp')) {
         // lab.ohtli.quest: laboratorio individual. Sin sesión pide iniciarla y luego abre el panel de Labs
         // (la consola de pruebas del TT si la sesión es del superusuario)
@@ -502,8 +504,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       _navigateTo(OhtliScreen.labEval);
       return;
     }
-    if (_currentScreen == OhtliScreen.labLanding || _intentLabs) {
-      // Miembros del laboratorio → consola de pruebas; el resto → espacio de testers
+    if (_intentLabs) {
+      // Tras "Ingresar a Labs": miembros del laboratorio → consola de pruebas; el resto → espacio
+      // de testers. La landing pública se queda donde está aunque haya sesión.
       _intentLabs = false;
       _labRole = await LabAccess.roleOf(user);
       _navigateTo(_labRole.isMember ? OhtliScreen.labConsole : OhtliScreen.labEval);
@@ -516,6 +519,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen == OhtliScreen.accountManagement ||
         _currentScreen == OhtliScreen.publicViewer ||
         _currentScreen == OhtliScreen.labsDashboard ||
+        _currentScreen == OhtliScreen.labLanding ||
         _currentScreen == OhtliScreen.apiLanding ||
         _currentScreen == OhtliScreen.termsAndConditions ||
         _currentScreen == OhtliScreen.labsTermsAndConditions ||
@@ -579,13 +583,32 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     });
   }
 
-  /// "Volver" desde el inicio de sesión: en lab.ohtli.quest regresa a la landing de Labs.
+  /// "Volver" desde el inicio de sesión: en lab.ohtli.quest regresa a la landing de Labs y en
+  /// ohtli.quest/sso al subdominio que pidió la sesión.
   void _goPublicHome() {
+    // ohtli.quest/sso: quien llegó desde un subdominio (p. ej. "Participa" en Labs) vuelve allá.
+    if (_ssoTarget != null && kIsWeb) {
+      OhtliSso.cancelAndReturn(_ssoTarget!);
+      return;
+    }
     if (_isLabAppHost && kIsWeb) {
       html.window.location.href = 'https://labs.ohtli.quest/';
       return;
     }
     _navigateTo(OhtliScreen.underConstruction);
+  }
+
+  /// "Volver" desde un experimento: al panel de Labs con sesión; sin sesión (se abrió por la
+  /// URL) a la landing o al inicio de sesión de lab.ohtli.quest, en vez de un panel vacío.
+  void _backFromExperiment() {
+    if (FirebaseAuth.instance.currentUser != null) {
+      _navigateTo(OhtliScreen.labsDashboard);
+    } else if (_isLabAppHost) {
+      _intentLabs = true;
+      _navigateTo(OhtliScreen.login);
+    } else {
+      _navigateTo(OhtliScreen.labLanding);
+    }
   }
 
   void _navigateTo(OhtliScreen screen) {
@@ -746,7 +769,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           setState(() => _intentEval = true);
           _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
         },
-        onOpenTerms: () => _navigateTo(OhtliScreen.labsTermsAndConditions),
+        onOpenTerms: () {
+          _labsTermsReturn = OhtliScreen.labEval;
+          _navigateTo(OhtliScreen.labsTermsAndConditions);
+        },
         onOpenConsole: () async {
           _labRole = await LabAccess.roleOf(FirebaseAuth.instance.currentUser);
           if (_labRole.isMember) _navigateTo(OhtliScreen.labConsole);
@@ -785,23 +811,36 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.labsTermsAndConditions) {
       activeView = LegalCenterPage(
         initialDoc: LegalDocId.labs,
-        onBack: () => _navigateTo(OhtliScreen.labLanding),
+        onBack: () {
+          // Vuelve a donde se abrieron (p. ej. el consentimiento de /eval); si se llegó por la URL,
+          // en lab.ohtli.quest al inicio de sesión y en labs.ohtli.quest a la landing.
+          final back = _labsTermsReturn;
+          _labsTermsReturn = null;
+          if (back != null) {
+            _navigateTo(back);
+          } else if (_isLabAppHost) {
+            _intentLabs = true;
+            _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+          } else {
+            _navigateTo(OhtliScreen.labLanding);
+          }
+        },
       );
     } else if (_currentScreen == OhtliScreen.labsOsrm) {
       activeView = OsrmExperimentPage(
-        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+        onBack: _backFromExperiment,
       );
     } else if (_currentScreen == OhtliScreen.labsAgents) {
       activeView = AgentsExperimentPage(
-        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+        onBack: _backFromExperiment,
       );
     } else if (_currentScreen == OhtliScreen.labsApis) {
       activeView = ApisExperimentPage(
-        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+        onBack: _backFromExperiment,
       );
     } else if (_currentScreen == OhtliScreen.labsRecolector) {
       activeView = RecolectorExperimentPage(
-        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+        onBack: _backFromExperiment,
       );
     } else if (_currentScreen == OhtliScreen.onboarding) {
       activeView = OnboardingWizardPage(
@@ -809,7 +848,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.labsTasteVector) {
       activeView = TasteVectorExperimentPage(
-        onBack: () => _navigateTo(OhtliScreen.labsDashboard),
+        onBack: _backFromExperiment,
       );
     } else if (_currentScreen == OhtliScreen.places) {
       final user = FirebaseAuth.instance.currentUser;
@@ -905,6 +944,36 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     }
 
+    // ohtli.quest/sso sin sesión: dice para qué sitio se inicia sesión y permite volver a él.
+    if (_ssoTarget != null &&
+        FirebaseAuth.instance.currentUser == null &&
+        (_currentScreen == OhtliScreen.login ||
+            _currentScreen == OhtliScreen.register ||
+            _currentScreen == OhtliScreen.mobileLogin ||
+            _currentScreen == OhtliScreen.mobileWelcome ||
+            _currentScreen == OhtliScreen.mobileRegister)) {
+      final target = _ssoTarget!;
+      activeView = Stack(
+        children: [
+          activeView,
+          Positioned(
+            top: 14,
+            left: 12,
+            right: 12,
+            child: Center(
+              child: _OhtliSsoBanner(
+                icon: Icons.science_outlined,
+                message: 'Inicia sesión con tu cuenta de Ohtli para continuar en ${siteNameForHost(target.host)}.',
+                actionLabel: 'Volver',
+                outlined: true,
+                onContinue: () => OhtliSso.cancelAndReturn(target),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     final pageView = AnimatedSwitcher(
       duration: const Duration(milliseconds: 600),
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -955,7 +1024,17 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 /// Aviso en el inicio de sesión de un subdominio: "Continuar con tu cuenta de Ohtli".
 class _OhtliSsoBanner extends StatelessWidget {
   final VoidCallback onContinue;
-  const _OhtliSsoBanner({required this.onContinue});
+  final String message;
+  final String actionLabel;
+  final IconData icon;
+  final bool outlined;
+  const _OhtliSsoBanner({
+    required this.onContinue,
+    this.message = '¿Ya iniciaste sesión en ohtli.quest?',
+    this.actionLabel = 'Continuar con Ohtli',
+    this.icon = Icons.verified_user_outlined,
+    this.outlined = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -969,20 +1048,26 @@ class _OhtliSsoBanner extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.verified_user_outlined, color: OhtliColors.stormyTeal, size: 20),
+            Icon(icon, color: OhtliColors.stormyTeal, size: 20),
             const SizedBox(width: 10),
             Flexible(
               child: Text(
-                '¿Ya iniciaste sesión en ohtli.quest?',
+                message,
                 style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx),
               ),
             ),
             const SizedBox(width: 10),
-            FilledButton(
-              onPressed: onContinue,
-              style: FilledButton.styleFrom(backgroundColor: OhtliColors.stormyTeal),
-              child: Text('Continuar con Ohtli', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-            ),
+            outlined
+                ? OutlinedButton(
+                    onPressed: onContinue,
+                    style: OutlinedButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
+                    child: Text(actionLabel, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  )
+                : FilledButton(
+                    onPressed: onContinue,
+                    style: FilledButton.styleFrom(backgroundColor: OhtliColors.stormyTeal),
+                    child: Text(actionLabel, style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  ),
           ],
         ),
       ),

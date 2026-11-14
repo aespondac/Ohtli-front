@@ -33,6 +33,12 @@ class _LabEvalPageState extends State<LabEvalPage> {
   Map<String, dynamic>? _post;
   LabRole _role = LabRole.none;
   bool _roleLoaded = false;
+  // Se crean al mostrarse por primera vez y no en cada build: si no, cada redibujo
+  // (girar el móvil, cambiar el tamaño) volvía a suscribirse y mostraba el spinner.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _releasedPosts =
+      LabRepository.instance.watchPublishedPosts([LabVisibility.testers, LabVisibility.public]);
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _activeStudies =
+      LabRepository.instance.studies.where('active', isEqualTo: true).snapshots();
 
   @override
   void initState() {
@@ -74,27 +80,43 @@ class _LabEvalPageState extends State<LabEvalPage> {
     } else {
       body = _RelevanceFlow(onDone: () => setState(() => _studyId = null));
     }
+    Future<void> signOut() async {
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      setState(() {
+        _consent = false;
+        _studyId = null;
+        _role = LabRole.none;
+      });
+    }
+
+    final showConsole = _role.isMember && widget.onOpenConsole != null;
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       appBar: LabsTopBar(
         current: LabsSection.participate,
         trailing: user == null
             ? null
-            : Row(mainAxisSize: MainAxisSize.min, children: [
-                if (_role.isMember && widget.onOpenConsole != null)
+            : MediaQuery.of(context).size.width < 820 // mismo corte que LabsTopBar
+                ? PopupMenuButton<String>(
+                    tooltip: 'Tu cuenta',
+                    icon: Icon(Icons.account_circle_outlined, color: OhtliColors.onyx),
+                    onSelected: (v) {
+                      if (v == 'console') widget.onOpenConsole?.call();
+                      if (v == 'technical') widget.onOpenTechnical?.call();
+                      if (v == 'signout') signOut();
+                    },
+                    itemBuilder: (_) => [
+                      if (showConsole) const PopupMenuItem(value: 'console', child: Text('Consola')),
+                      if (widget.onOpenTechnical != null) const PopupMenuItem(value: 'technical', child: Text('Experimentos')),
+                      const PopupMenuItem(value: 'signout', child: Text('Salir')),
+                    ],
+                  )
+                : Row(mainAxisSize: MainAxisSize.min, children: [
+                if (showConsole)
                   TextButton.icon(onPressed: widget.onOpenConsole, icon: const Icon(Icons.biotech_rounded, size: 16), label: const Text('Consola')),
                 if (widget.onOpenTechnical != null) TextButton(onPressed: widget.onOpenTechnical, child: const Text('Experimentos')),
-                TextButton(
-                  onPressed: () async {
-                    await FirebaseAuth.instance.signOut();
-                    setState(() {
-                      _consent = false;
-                      _studyId = null;
-                      _role = LabRole.none;
-                    });
-                  },
-                  child: const Text('Salir'),
-                ),
+                TextButton(onPressed: signOut, child: const Text('Salir')),
               ]),
       ),
       body: SingleChildScrollView(
@@ -190,15 +212,19 @@ class _LabEvalPageState extends State<LabEvalPage> {
       );
 
   Widget _released() {
-    final levels = [LabVisibility.testers, LabVisibility.public];
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: LabRepository.instance.watchPublishedPosts(levels),
+      stream: _releasedPosts,
       builder: (context, snap) {
         final docs = snap.data?.docs ?? [];
         return LabCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const LabSectionTitle('Resultados liberados', caption: 'Artículos del laboratorio disponibles para testers.'),
-            if (docs.isEmpty) Text('Todavía no hay resultados liberados.', style: labCell()),
+            if (snap.hasError && docs.isEmpty)
+              Text('No pudimos cargar los resultados. Recarga la página para intentar de nuevo.', style: labCell())
+            else if (!snap.hasData)
+              const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
+            else if (docs.isEmpty)
+              Text('Todavía no hay resultados liberados.', style: labCell()),
             for (final d in docs)
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -216,11 +242,14 @@ class _LabEvalPageState extends State<LabEvalPage> {
 
   Widget _studyPicker() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: LabRepository.instance.studies.where('active', isEqualTo: true).snapshots(),
+      stream: _activeStudies,
       builder: (context, snap) {
         final active = snap.data?.docs.map((d) => d.id).toSet() ?? {};
         final list = kLabStudies.where((s) => s.needsTesters && active.contains(s.id)).toList();
-        if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (snap.hasError && !snap.hasData) {
+          return LabCard(child: Text('No pudimos cargar los estudios. Recarga la página para intentar de nuevo.', style: labCell()));
+        }
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
         if (list.isEmpty) {
           return LabCard(child: Text('Por ahora no hay estudios abiertos. ¡Gracias por tu interés!', style: labCell()));
         }
