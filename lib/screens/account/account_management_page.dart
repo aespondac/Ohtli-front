@@ -10,6 +10,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../../services/user_private_data.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_sidebar.dart';
 import '../../widgets/image_cropper_dialog.dart';
@@ -81,7 +82,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   // Synchronous loader state for AddressPickerWidget (to avoid browser loading locks)
   final bool _isAddressPickerLoaded = true;
   final bool _isLoadingAddressPicker = false;
-  StreamSubscription<DocumentSnapshot>? _userDataSubscription;
+  StreamSubscription<Map<String, dynamic>?>? _userDataSubscription;
   bool _isInitialSyncDone = false;
 
   Future<void> _loadAddressPicker() async {
@@ -171,13 +172,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     }
 
     // 2. Subscribe to real-time updates from Cloud Firestore
-    _userDataSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .snapshots()
+    // Perfil público + datos privados (users/{uid}/private/account) combinados
+    _userDataSubscription = UserPrivateData.watch(user.uid)
         .listen(
-          (doc) {
-            if (!doc.exists) {
+          (data) {
+            if (data == null) {
               if (!_isInitialSyncDone) {
                 print(
                   "User document does not exist in Firestore. Creating it with local caches...",
@@ -203,10 +202,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   initialData['addresses'] = _addresses;
                 }
 
-                FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user.uid)
-                    .set(initialData, SetOptions(merge: true))
+                UserPrivateData.save(user.uid, initialData)
                     .then((_) {
                       print(
                         "Successfully initialized user cloud document with local caches.",
@@ -220,8 +216,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               return;
             }
 
-            final data = doc.data();
-            if (data != null) {
+            {
               bool needUpload = false;
               final Map<String, dynamic> uploadData = {};
 
@@ -387,10 +382,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               }
 
               if (needUpload && uploadData.isNotEmpty) {
-                FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user.uid)
-                    .set(uploadData, SetOptions(merge: true))
+                UserPrivateData.save(user.uid, uploadData)
                     .catchError((e) {
                       print("Error syncing local caches to Firestore: $e");
                     });
@@ -476,9 +468,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         return copy;
       }).toList();
 
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'addresses': uploadList,
-      }, SetOptions(merge: true));
+      await UserPrivateData.save(user.uid, {'addresses': uploadList});
 
       // Successfully wrote to Firestore! Clean 'isOffline' locally too
       setState(() {
@@ -660,10 +650,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         .toString();
 
     // Also sync to Cloud Firestore!
-    FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .set({'privacy_$key': value}, SetOptions(merge: true))
+    UserPrivateData.save(user.uid, {'privacy_$key': value})
         .catchError((e) {
           print("Error saving privacy setting to Firestore: $e");
         });
@@ -876,15 +863,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
         // Also persist name, email, and phone to Cloud Firestore for robust cross-device sync
         try {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .set({
+          // displayName va al perfil público; email y teléfono, al documento privado
+          await UserPrivateData.save(user.uid, {
                 'displayName': newName,
                 'email': user.email ?? '',
                 'phone': phoneText,
                 'updatedAt': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
+              });
           print("Successfully synced profile changes to Firestore.");
         } catch (fsError) {
           print("Firestore error syncing user profile details: $fsError");
@@ -1201,10 +1186,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
                             // Flag Firestore document as deleted (to be deleted permanently in 30 days)
                             try {
-                              await FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(user.uid)
-                                  .set({
+                              await UserPrivateData.save(user.uid, {
+                                    'email': user.email ?? '',
                                     'isDeleted': true,
                                     'deletedAt': FieldValue.serverTimestamp(),
                                     'scheduledDeletionAt': Timestamp.fromDate(
@@ -1213,7 +1196,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                       ),
                                     ),
                                     'updatedAt': FieldValue.serverTimestamp(),
-                                  }, SetOptions(merge: true));
+                                  });
                               print(
                                 "Successfully marked Firestore user document as deleted for 30 days.",
                               );

@@ -1,6 +1,17 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // Solo imágenes de hasta 10 MB (la app sube JPEG ya recortados y comprimidos)
+    function isOwnerImageUpload(userId) {
+      return request.auth != null && request.auth.uid == userId
+        && request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
     // Denegar accesos por defecto
     match /{allPaths=**} {
       allow read, write: if false;
@@ -10,13 +21,15 @@ service firebase.storage {
     // pero escritura restringida exclusivamente al dueño autenticado.
     match /users/{userId}/profile.jpg {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if isOwnerImageUpload(userId);
+      allow delete: if isOwner(userId);
     }
 
     // Regla de portadas: lectura pública y escritura restringida al dueño
     match /users/{userId}/cover.jpg {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if isOwnerImageUpload(userId);
+      allow delete: if isOwner(userId);
     }
     
     // Regla para imágenes de viajes
@@ -24,7 +37,8 @@ service firebase.storage {
       // Lectura pública de fotos de viaje para compartición en redes y visitantes
       allow read: if true;
       // Sólo el dueño puede subir, modificar o borrar
-      allow write, delete: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if isOwnerImageUpload(userId);
+      allow delete: if isOwner(userId);
     }
   }
 }

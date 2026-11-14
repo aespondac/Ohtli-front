@@ -20,6 +20,37 @@ service cloud.firestore {
         || request.resource.data.kind != 'release_notes'
         || isSuperUser();
     }
+
+    // --- Viajes: qué puede cambiar cada participante ---
+    // Coautor: edita el contenido, pero no el dueño ni quién participa.
+    function coAuthorUpdateOk() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['userId', 'coAuthorIds', 'surpriseTargetIds']);
+    }
+    // Destinatario de una sorpresa: solo marca que la abrió (agregándose a sí mismo).
+    function surpriseOpenUpdateOk() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['surpriseOpenedBy'])
+        && request.resource.data.surpriseOpenedBy.toSet()
+             .difference(resource.data.get('surpriseOpenedBy', []).toSet())
+             .hasOnly([request.auth.uid]);
+    }
+    function tripUpdateAllowed(data) {
+      return request.auth != null && (
+        request.auth.uid == data.get('userId', '') ||
+        (data.get('coAuthorIds', []) is list && request.auth.uid in data.get('coAuthorIds', []) && coAuthorUpdateOk()) ||
+        (data.get('surpriseTargetIds', []) is list && request.auth.uid in data.get('surpriseTargetIds', []) && surpriseOpenUpdateOk())
+      );
+    }
+
+    // --- Amistades ---
+    // Otro usuario solo puede tocar el campo 'friends' de tu perfil, y únicamente para
+    // agregarse o quitarse a sí mismo (aceptar una solicitud o terminar la amistad).
+    function onlyOwnUidInFriendsChange() {
+      let before = resource.data.get('friends', []).toSet();
+      let after = request.resource.data.get('friends', []).toSet();
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends'])
+        && after.difference(before).union(before.difference(after)).hasOnly([request.auth.uid]);
+    }
     
     // User profile rule: allow reading/deleting old profile matching user's authenticated email,
     // and full access to their own UID document.
@@ -33,33 +64,43 @@ service cloud.firestore {
         (resource.data != null && 'surpriseTargetIds' in resource.data && resource.data.surpriseTargetIds is list && request.auth.uid in resource.data.surpriseTargetIds)
       )) || (resource != null && resource.data != null && 'status' in resource.data && resource.data.status == 'published' && 'visibility' in resource.data && resource.data.visibility == 'public');
       
-      allow update: if request.auth != null && notReleaseNotesUnlessSuper() && (
-        (resource.data != null && 'userId' in resource.data && request.auth.uid == resource.data.userId) || 
-        (resource.data != null && 'coAuthorIds' in resource.data && resource.data.coAuthorIds is list && request.auth.uid in resource.data.coAuthorIds) ||
-        (resource.data != null && 'surpriseTargetIds' in resource.data && resource.data.surpriseTargetIds is list && request.auth.uid in resource.data.surpriseTargetIds)
-      );
+      allow update: if tripUpdateAllowed(resource.data) && notReleaseNotesUnlessSuper();
     }
 
     match /users/{userId} {
-      // Lectura pública: el visor de viajes públicos muestra nombre, foto y título del autor a
-      // visitantes sin sesión. Pendiente: mover esos campos a /public_profiles para no exponer
-      // email ni taste_vector.
+      // Lectura pública: es el perfil social (nombre, foto, título, amigos) que se muestra
+      // en crónicas, amistades y perfiles. Los datos personales (correo, teléfono,
+      // direcciones, privacidad) viven en /users/{userId}/private/account.
+      // Pendiente: mover también el perfil de gustos (taste_vector y preferencias), que
+      // hoy escribe el motor Yollotl en este documento.
       allow read: if true;
+      // Borrar un perfil antiguo dado de baja: solo con el mismo correo verificado
+      // (el correo vive en el documento privado).
       allow delete: if request.auth != null && (
-        request.auth.uid == userId || 
-        (resource != null && resource.data != null && request.auth.token.email == resource.data.email)
+        request.auth.uid == userId ||
+        (request.auth.token.email_verified == true &&
+         exists(/databases/$(database)/documents/users/$(userId)/private/account) &&
+         get(/databases/$(database)/documents/users/$(userId)/private/account).data.get('email', '') == request.auth.token.email)
       );
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && (
-        request.auth.uid == userId || 
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']))
+        request.auth.uid == userId || onlyOwnUidInFriendsChange()
       );
+
+      // Datos personales (correo, teléfono, direcciones, privacidad): solo su dueño.
+      match /private/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
       
       // Notifications Subcollection: Users can see their own notifications.
       // Anyone authenticated can create notifications (for sending friend requests).
       match /notifications/{notificationId} {
         allow read: if request.auth != null && request.auth.uid == userId;
-        allow create: if request.auth != null;
+        // Crear: para ti mismo, o a otro usuario firmando con tu propio uid como remitente.
+        allow create: if request.auth != null && (
+          request.auth.uid == userId ||
+          request.resource.data.get('senderId', '') == request.auth.uid
+        );
         allow update, delete: if request.auth != null && request.auth.uid == userId;
       }
       
@@ -77,11 +118,7 @@ service cloud.firestore {
         allow delete: if request.auth != null && request.auth.uid == userId;
         
         // Update: Owner, co-author, or surprise target (to mark as opened)
-        allow update: if request.auth != null && notReleaseNotesUnlessSuper() && (
-          request.auth.uid == userId || 
-          (resource.data.coAuthorIds != null && request.auth.uid in resource.data.coAuthorIds) ||
-          (resource.data.surpriseTargetIds != null && request.auth.uid in resource.data.surpriseTargetIds)
-        );
+        allow update: if tripUpdateAllowed(resource.data) && notReleaseNotesUnlessSuper();
         
         // Trip Details Content
         match /details/content {
@@ -105,14 +142,32 @@ service cloud.firestore {
     }
 
     // Friend Requests Collection: Authenticated users can read/write requests where they are sender or receiver.
+    // Solo el remitente y el destinatario ven o modifican la solicitud.
     match /friend_requests/{requestId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null &&
+        request.auth.uid in [resource.data.get('senderId', ''), resource.data.get('receiverId', '')];
+      allow create: if request.auth != null && request.resource.data.senderId == request.auth.uid;
+      allow update: if request.auth != null &&
+        request.auth.uid in [resource.data.get('senderId', ''), resource.data.get('receiverId', '')] &&
+        request.resource.data.senderId == resource.data.senderId &&
+        request.resource.data.receiverId == resource.data.receiverId;
+      allow delete: if request.auth != null &&
+        request.auth.uid in [resource.data.get('senderId', ''), resource.data.get('receiverId', '')];
+    }
+
+    // Restaurar una cuenta dada de baja: buscar su documento privado por correo, solo si
+    // el correo coincide con el de la sesión y está verificado.
+    match /{path=**}/private/{docId} {
+      allow read, delete: if request.auth != null &&
+        request.auth.token.email_verified == true &&
+        resource.data.get('email', '') == request.auth.token.email;
     }
 
     // Titles Collection
     match /titles/{titleId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      // Los títulos son un catálogo fijo: se administran desde la consola
+      allow write: if false;
     }
 
     // Labs Waitlist Collection

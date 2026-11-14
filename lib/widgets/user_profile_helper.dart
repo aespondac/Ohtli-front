@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:html' as html;
+import '../services/user_private_data.dart';
 
 class UserProfileHelper {
   /// Fetches bytes from a Google photo URL using a native web request
@@ -44,26 +45,41 @@ class UserProfileHelper {
     } catch (e) {
       print("Error fetching current user document: $e");
     }
-    final currentData = currentDoc?.data() as Map<String, dynamic>?;
+    // Perfil público + datos privados (users/{uid}/private/account) combinados
+    Map<String, dynamic>? currentData = currentDoc?.data() as Map<String, dynamic>?;
+    if (currentData != null) {
+      try {
+        currentData = await UserPrivateData.get(user.uid);
+      } catch (e) {
+        print("Error fetching private user data: $e");
+      }
+    }
 
-    // 2. Check if there is an existing deleted document with the same email to restore
+    // 2. Check if there is an existing deleted account with the same email to restore.
+    // El correo vive en el documento privado; las reglas solo permiten esta consulta
+    // si el correo coincide con el de la sesión y está verificado.
     String? oldUid;
     Map<String, dynamic>? oldData;
 
-    if (email.isNotEmpty) {
+    if (email.isNotEmpty && user.emailVerified) {
       try {
         final query = await firestore
-            .collection('users')
+            .collectionGroup('private')
             .where('email', isEqualTo: email)
             .where('isDeleted', isEqualTo: true)
             .limit(1)
             .get();
 
         if (query.docs.isNotEmpty) {
-          final oldDoc = query.docs.first;
-          oldUid = oldDoc.id;
-          oldData = oldDoc.data();
-          print("Found a deleted user profile to restore: oldUid = $oldUid");
+          final oldPrivate = query.docs.first;
+          oldUid = oldPrivate.reference.parent.parent?.id;
+          if (oldUid != null && oldUid != user.uid) {
+            final oldPublic = await firestore.collection('users').doc(oldUid).get();
+            oldData = {...?oldPublic.data(), ...oldPrivate.data()};
+            print("Found a deleted user profile to restore: oldUid = $oldUid");
+          } else {
+            oldUid = null;
+          }
         }
       } catch (e) {
         print("Error checking for deleted user profile: $e");
@@ -183,13 +199,14 @@ class UserProfileHelper {
       dataToSave['createdAt'] = FieldValue.serverTimestamp();
     }
 
-    // Save to the new UID document
-    await docRef.set(dataToSave, SetOptions(merge: true));
+    // Save to the new UID: el perfil público y los datos privados por separado
+    await UserPrivateData.save(user.uid, dataToSave);
     print("User profile fully synchronized in Firestore.");
 
     // 4. Clean up the old deleted document if UID changed
     if (oldUid != null && oldUid != user.uid) {
       try {
+        await UserPrivateData.privateRef(oldUid).delete();
         await firestore.collection('users').doc(oldUid).delete();
         print("Cleaned up legacy deleted profile document $oldUid");
       } catch (e) {

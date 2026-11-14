@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
+import '../../services/user_private_data.dart';
 import 'dart:async';
 import 'dart:html' as html;
 import 'dart:ui' show lerpDouble;
@@ -390,9 +391,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     if (user == null) return;
 
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      if (doc.exists && doc.data() != null) {
-        final list = doc.data()!['addresses'];
+      // Las direcciones viven en el documento privado (users/{uid}/private/account)
+      final data = await UserPrivateData.get(user.uid);
+      if (data.isNotEmpty) {
+        final list = data['addresses'];
         if (list is List) {
           setState(() {
             _userSavedAddresses = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
