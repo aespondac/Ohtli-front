@@ -13,12 +13,15 @@ import 'package:uuid/uuid.dart';
 import '../../widgets/ohtli_ui.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../theme/colors.dart';
+import '../../theme/cdmx_photos.dart';
 import '../../utils/friendly_errors.dart';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
-import '../../widgets/gift_wrapped_card.dart';
+import '../../widgets/surprise_polaroid_card.dart';
+import '../../widgets/trip_polaroid.dart';
+import '../../services/trip_activity.dart';
 import '../../services/itinerary_blackboard_service.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import 'trip_editor_page.dart';
@@ -43,6 +46,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   StreamSubscription? _ownedSub;
   StreamSubscription? _coAuthorSub;
   StreamSubscription? _surpriseSub;
+  StreamSubscription? _jobsSub;
+
+  /// Planes con IA terminados que todavía no abres.
+  Set<String> _newJobIds = {};
 
   List<Trip> _ownedTrips = [];
   List<Trip> _coAuthorTrips = [];
@@ -75,15 +82,30 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     if (initialUser != null) {
       _subscribeToStreams(initialUser.uid);
     }
+    TripActivity.instance.addListener(_onActivity);
+  }
+
+  void _onActivity() {
+    if (mounted) setState(() {});
+  }
+
+  static bool _jobIsReady(Map<String, dynamic> data) {
+    final status = (data['status'] ?? '').toString();
+    final res = data['result'] as Map<String, dynamic>? ?? {};
+    final options = (res['options'] as List<dynamic>?) ?? [];
+    final chosen = data['created_trip_id'] != null || status == 'chosen' || status == 'dismissed';
+    return !chosen && options.isNotEmpty;
   }
 
   void _cancelStreams() {
     _ownedSub?.cancel();
     _coAuthorSub?.cancel();
     _surpriseSub?.cancel();
+    _jobsSub?.cancel();
     _ownedSub = null;
     _coAuthorSub = null;
     _surpriseSub = null;
+    _jobsSub = null;
   }
 
   void _subscribeToStreams(String uid) {
@@ -98,6 +120,24 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
     // Sincronizar y recuperar jobs calculados en segundo plano por Yollotl Engine
     _blackboardService.syncUserJobsFromBackend(uid);
+
+    // Novedades: comentarios en viajes publicados y planes con IA recién terminados
+    TripActivity.instance.start(uid);
+    _jobsSub = FirebaseFirestore.instance
+        .collection('itinerary_jobs')
+        .where('user_id', isEqualTo: uid)
+        .snapshots()
+        .listen((snap) {
+      final ready = snap.docs.where((d) => _jobIsReady(d.data())).map((d) => d.id).toList();
+      TripActivity.instance.baselineJobs(ready);
+      final fresh = ready.where(TripActivity.instance.isJobNew).toSet();
+      if (mounted) {
+        setState(() {
+          _newJobIds = fresh;
+          _readyJobCount = ready.length;
+        });
+      }
+    }, onError: (_) {});
 
     _ownedSub = _tripService.getTripsStream(uid).listen((trips) {
       if (mounted) {
@@ -152,6 +192,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
   @override
   void dispose() {
+    TripActivity.instance.removeListener(_onActivity);
     _authSub?.cancel();
     _cancelStreams();
     super.dispose();
@@ -753,6 +794,64 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     );
   }
 
+  int _readyJobCount = 0;
+
+  /// Etiqueta de pestaña: nombre, contador en su propia píldora y punto si hay algo nuevo.
+  Widget _tabLabel(String label, int count, bool hasNews) {
+    return Builder(builder: (context) {
+      final selected = DefaultTextStyle.of(context).style.color == Colors.white;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          if (count > 0) ...[
+            const SizedBox(width: 8),
+            Container(
+              constraints: const BoxConstraints(minWidth: 22),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: selected ? Colors.white.withValues(alpha: 0.22) : OhtliColors.onyx.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Text('$count', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800)),
+            ),
+          ],
+          if (hasNews) ...[
+            const SizedBox(width: 6),
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: OhtliColors.xoconostle,
+                shape: BoxShape.circle,
+                border: Border.all(color: selected ? Colors.white : Colors.transparent, width: 1.5),
+              ),
+            ),
+          ],
+        ],
+      );
+    });
+  }
+
+  bool _isSurpriseLocked(Trip trip) {
+    final DateTime? unlockDate = trip.surpriseUnlockDates[_userId];
+    if (trip.unlockOnPublish) return trip.status != 'published';
+    if (unlockDate == null) return false;
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day).isBefore(DateTime(unlockDate.year, unlockDate.month, unlockDate.day));
+  }
+
+  void _openTrip(Trip trip) {
+    if (trip.status == 'published') TripActivity.instance.markTripSeen(trip.id);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => trip.status == 'published' ? TripViewerPage(trip: trip) : TripEditorPage(trip: trip)),
+    ).then((_) {
+      if (trip.status == 'published') TripActivity.instance.markTripSeen(trip.id);
+      if (mounted) setState(() {});
+    });
+  }
+
   Widget _countBadge(int n, Color color, {bool filled = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -771,16 +870,16 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   Widget _buildSkeletonGrid(int crossAxisCount, double width, double padding) {
     final isDark = OhtliSettings.instance.isDarkMode;
     final base = isDark ? const Color(0xFF26262B) : OhtliColors.cantera.withValues(alpha: 0.35);
-    final cardWidth = (width - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
-    final cardHeight = crossAxisCount == 1 ? 125.0 : (cardWidth * 9 / 16) + 140.0;
+    final cardWidth = (width - padding * 2 - (crossAxisCount - 1) * 18) / crossAxisCount;
+    final cardHeight = crossAxisCount == 1 ? 112.0 : (cardWidth * 0.6) + 112.0;
     Widget bar(double w, double h) => Container(width: w, height: h, decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(6)));
     return GridView.builder(
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(padding, 20, padding, 20),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 24,
-        crossAxisSpacing: 24,
+        mainAxisSpacing: 18,
+        crossAxisSpacing: 18,
         childAspectRatio: cardWidth / cardHeight,
       ),
       itemCount: crossAxisCount == 1 ? 4 : crossAxisCount * 2,
@@ -858,7 +957,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final double width = constraints.maxWidth;
-        final int crossAxisCount = width > 1200 ? 4 : (width > 800 ? 3 : (width > 550 ? 2 : 1));
+        final int crossAxisCount = width > 1500 ? 5 : (width > 1100 ? 4 : (width > 760 ? 3 : (width > 520 ? 2 : 1)));
         final double padding = width > 800 ? 40.0 : 16.0;
         final bool isDark = OhtliSettings.instance.isDarkMode;
 
@@ -882,7 +981,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         allTrips.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
         final publishedTrips = allTrips.where((t) => t.status == 'published').toList();
-        final draftTrips = allTrips.where((t) => t.status == 'draft').toList();
+        final draftTrips = allTrips.where((t) => t.status == 'draft' && !(t.isSurprise && t.userId == _userId)).toList();
+        // Sorpresas que tú preparas para tus amigos (aún sin publicar)
+        final mySurpriseDrafts = allTrips.where((t) => t.status == 'draft' && t.isSurprise && t.userId == _userId).toList();
 
         final unopenedSurprises = _surpriseTrips.where((t) {
           final bool isOpened = t.surpriseOpenedBy.contains(_userId);
@@ -894,17 +995,24 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           surpriseSection = _buildSurprisePlansSection(unopenedSurprises, crossAxisCount, width, padding, isDark);
         }
 
-        final int planCount = draftTrips.length + unopenedSurprises.length;
+        final int planCount = draftTrips.length + mySurpriseDrafts.length + unopenedSurprises.length;
+
+        // Revisa comentarios nuevos en los viajes publicados (una vez por sesión)
+        for (final t in publishedTrips) {
+          TripActivity.instance.check(t);
+        }
+        final bool publishedNews = publishedTrips.any((t) => TripActivity.instance.tripsWithNews.contains(t.id));
+        final bool plansNews = _newJobIds.isNotEmpty || unopenedSurprises.any((t) => !_isSurpriseLocked(t));
         final bool isMobileHeader = width <= 600;
         String summary;
         if (_isLoading) {
           summary = 'Cargando tus viajes…';
-        } else if (publishedTrips.isEmpty && planCount == 0) {
+        } else if (publishedTrips.isEmpty && planCount + _readyJobCount == 0) {
           summary = 'Organiza y comparte tus caminos';
         } else {
           final parts = <String>[
             '${publishedTrips.length} ${publishedTrips.length == 1 ? 'publicado' : 'publicados'}',
-            '$planCount ${planCount == 1 ? 'plan' : 'planes'}',
+            '${planCount + _readyJobCount} ${planCount + _readyJobCount == 1 ? 'plan' : 'planes'}',
           ];
           summary = parts.join(' · ');
         }
@@ -994,8 +1102,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
                     unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
                     tabs: [
-                      Tab(height: 42, text: _isLoading || publishedTrips.isEmpty ? 'Publicados' : 'Publicados · ${publishedTrips.length}'),
-                      Tab(height: 42, text: _isLoading || planCount == 0 ? 'Planes' : 'Planes · $planCount'),
+                      Tab(height: 42, child: _tabLabel('Publicados', _isLoading ? 0 : publishedTrips.length, publishedNews)),
+                      Tab(height: 42, child: _tabLabel('Planes', _isLoading ? 0 : planCount + _readyJobCount, plansNews)),
                     ],
                   ),
                 ),
@@ -1057,7 +1165,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                 });
                               }
 
-                              if (draftTrips.isEmpty && unopenedSurprises.isEmpty && aiJobs.isEmpty) {
+                              if (draftTrips.isEmpty && mySurpriseDrafts.isEmpty && unopenedSurprises.isEmpty && aiJobs.isEmpty) {
                                 return _buildTripsList(
                                   [],
                                   'Tu libreta de caminos está vacía',
@@ -1077,6 +1185,16 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                   if (surpriseSection != null) ...[
                                     surpriseSection,
                                     const SizedBox(height: 24),
+                                  ],
+                                  if (mySurpriseDrafts.isNotEmpty) ...[
+                                    _buildSectionHeader(
+                                      'Sorpresas que preparas',
+                                      subtitle: 'Viajes que estás armando para regalar. Tus amigos los abrirán en la fecha que elegiste.',
+                                      leading: const Icon(Icons.card_giftcard_rounded, size: 18, color: OhtliColors.xoconostle),
+                                      trailing: _countBadge(mySurpriseDrafts.length, OhtliColors.xoconostle),
+                                    ),
+                                    _buildTripsGrid(mySurpriseDrafts, crossAxisCount, width, padding),
+                                    const SizedBox(height: 28),
                                   ],
                                   if (draftTrips.isNotEmpty) ...[
                                     _buildSectionHeader(
@@ -1200,137 +1318,147 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             trailing: _countBadge(completedJobs.length, OhtliColors.stormyTeal, filled: true),
           ),
 
-          // Tarjetas de Opciones Listas
+          // Tarjetas de opciones listas: una polaroid por ruta propuesta
           Column(
-            children: completedJobs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final req = data['request'] as Map<String, dynamic>? ?? {};
-              final originName = (data['origin_name'] ?? req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
-              final budget = (req['budget'] as num?)?.toDouble() ?? 500.0;
-              final res = data['result'] as Map<String, dynamic>? ?? {};
-              final options = (res['options'] as List<dynamic>?)
-                      ?.map((e) => Map<String, dynamic>.from(e as Map))
-                      .toList() ??
-                  [];
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 14),
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: OhtliColors.stormyTeal.withOpacity(0.35),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 14,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: LayoutBuilder(builder: (context, c) {
-                  final narrow = c.maxWidth < 520;
-                  final info = Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Rutas desde $originName',
-                        style: GoogleFonts.outfit(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.white : OhtliColors.onyx,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${options.length} ${options.length == 1 ? 'opción' : 'opciones'} · Presupuesto \$${budget.toStringAsFixed(0)} MXN',
-                        style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white70 : OhtliColors.subtleText),
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: options.take(3).map((opt) {
-                          final theme = (opt['theme'] ?? opt['editorial_headline'] ?? 'Ruta').toString();
-                          return Container(
-                            constraints: const BoxConstraints(maxWidth: 220),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: OhtliColors.stormyTeal.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              theme,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.stormyTeal),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  );
-                  final actions = Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          TripPlannerDialog.show(
-                            context,
-                            initialGeneratedOptions: options,
-                            originName: originName,
-                          );
-                        },
-                        icon: const Icon(Icons.explore_rounded, size: 16),
-                        label: Text('Ver rutas', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: OhtliColors.stormyTeal,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          elevation: 0,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: Icon(Icons.delete_outline_rounded, size: 20, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.45)),
-                        tooltip: 'Descartar rutas',
-                        onPressed: () => _discardJobWithUndo(doc, message: 'Rutas descartadas'),
-                      ),
-                    ],
-                  );
-                  final icon = Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(Icons.auto_awesome_rounded, color: OhtliColors.stormyTeal, size: 22),
-                  );
-                  if (narrow) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [icon, const SizedBox(width: 12), Expanded(child: info)]),
-                        const SizedBox(height: 12),
-                        Align(alignment: Alignment.centerRight, child: actions),
-                      ],
-                    );
-                  }
-                  return Row(children: [icon, const SizedBox(width: 14), Expanded(child: info), const SizedBox(width: 12), actions]);
-                }),
-              );
-            }).toList(),
+            children: completedJobs.map((doc) => _buildReadyJobCard(doc, isDark)).toList(),
           ),
           const SizedBox(height: 20),
         ],
       ],
+    );
+  }
+
+  Widget _buildReadyJobCard(QueryDocumentSnapshot doc, bool isDark) {
+    final data = doc.data() as Map<String, dynamic>;
+    final req = data['request'] as Map<String, dynamic>? ?? {};
+    final originName = (data['origin_name'] ?? req['origin_name'] ?? req['mood_text'] ?? 'Ciudad de México').toString();
+    final budget = (req['budget'] as num?)?.toDouble() ?? 500.0;
+    final res = data['result'] as Map<String, dynamic>? ?? {};
+    final options = (res['options'] as List<dynamic>?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+    final isNew = _newJobIds.contains(doc.id);
+
+    // Primera foto de cada ruta
+    final photos = <String>[];
+    for (var i = 0; i < options.length && photos.length < 3; i++) {
+      final route = options[i]['route'] as List<dynamic>? ?? const [];
+      String? url;
+      for (final stop in route) {
+        if (stop is! Map) continue;
+        final raw = (stop['photo_url'] ?? stop['main_photo_url'] ?? stop['image_url'] ?? stop['photo'] ?? '').toString().trim();
+        if (raw.isNotEmpty) {
+          url = raw;
+          break;
+        }
+      }
+      url ??= CdmxPhotos.forCategory((route.isNotEmpty && route.first is Map ? (route.first as Map)['category'] : '')?.toString(), i);
+      photos.add(url);
+    }
+
+    void open() {
+      TripActivity.instance.markJobSeen(doc.id);
+      TripPlannerDialog.show(context, initialGeneratedOptions: options, originName: originName);
+    }
+
+    return _HoverCard(
+      onTap: open,
+      highlight: isNew,
+      builder: (hover) => LayoutBuilder(builder: (context, c) {
+        final narrow = c.maxWidth < 560;
+        final desk = SizedBox(
+          width: narrow ? double.infinity : 168,
+          height: narrow ? 128 : 104,
+          child: PolaroidDesk(
+            borderRadius: BorderRadius.circular(22),
+            child: Stack(
+              children: [
+                Positioned.fill(child: PolaroidStack(photos: photos, spread: hover, scale: 0.74)),
+                if (isNew)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(color: OhtliColors.xoconostle, borderRadius: BorderRadius.circular(30)),
+                      child: Text('Nuevo', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+        final info = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome_rounded, size: 13, color: OhtliColors.accentText),
+                const SizedBox(width: 6),
+                Text('${options.length} ${options.length == 1 ? 'RUTA LISTA' : 'RUTAS LISTAS'}', style: OhtliUi.eyebrow(OhtliColors.accentText)),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text('Rutas desde $originName',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.w800, color: OhtliColors.onyx, height: 1.15)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                OhtliMetaPill(icon: Icons.payments_outlined, label: '\$${budget.toStringAsFixed(0)} MXN'),
+                ...options.take(3).map((opt) {
+                  final theme = (opt['theme'] ?? opt['editorial_headline'] ?? 'Ruta').toString();
+                  return ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 230),
+                    child: OhtliMetaPill(icon: Icons.alt_route_rounded, label: theme),
+                  );
+                }),
+              ],
+            ),
+          ],
+        );
+        final actions = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ElevatedButton.icon(
+              onPressed: open,
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: const Text('Elegir ruta'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: OhtliColors.stormyTeal,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                shape: const StadiumBorder(),
+                textStyle: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(width: 6),
+            IconButton(
+              icon: Icon(Icons.delete_outline_rounded, size: 20, color: OhtliColors.onyx.withValues(alpha: 0.45)),
+              tooltip: 'Descartar rutas',
+              onPressed: () => _discardJobWithUndo(doc, message: 'Rutas descartadas'),
+            ),
+          ],
+        );
+        if (narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [desk, Padding(padding: const EdgeInsets.fromLTRB(10, 14, 6, 4), child: info), Align(alignment: Alignment.centerRight, child: actions)],
+          );
+        }
+        return Row(
+          children: [
+            desk,
+            const SizedBox(width: 22),
+            Expanded(child: info),
+            const SizedBox(width: 12),
+            actions,
+            const SizedBox(width: 8),
+          ],
+        );
+      }),
     );
   }
 
@@ -1591,14 +1719,14 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     }
 
     // Calculate the width of a single card
-    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
+    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 18) / crossAxisCount;
     
     // Calculate aspect ratio dynamically to prevent vertical text overflows:
     // - If it's a mobile 1-column layout, we want a compact horizontal card of fixed height (125px).
     // - Otherwise, standard vertical layout where height = (cardWidth * 9 / 16) + 168px (to perfectly fit paddings, titles, descriptions, and dual dates without overflow!).
-    final double cardHeight = crossAxisCount == 1 
-        ? 125.0 
-        : (cardWidth * 9 / 16) + 150.0;
+    final double cardHeight = crossAxisCount == 1
+        ? 112.0
+        : (cardWidth * 0.6) + 112.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -1606,8 +1734,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       padding: EdgeInsets.fromLTRB(padding, 20, padding, 100),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 24,
-        crossAxisSpacing: 24,
+        mainAxisSpacing: 18,
+        crossAxisSpacing: 18,
         childAspectRatio: computedAspectRatio,
       ),
       itemCount: trips.length,
@@ -1639,23 +1767,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           disable3D: trip.isSurprise,
           addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
           addedByPhotoURL: isCoAuthored ? (authorProfile?['photo']) : null,
-          onEdit: () {
-            if (trip.status == 'published') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TripViewerPage(trip: trip),
-                ),
-              );
-            } else {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TripEditorPage(trip: trip),
-                ),
-              );
-            }
-          },
+          hasNews: TripActivity.instance.tripsWithNews.contains(trip.id),
+          newsLabel: 'Comentario nuevo',
+          onEdit: () => _openTrip(trip),
           onFeDeErratas: () {
             Navigator.push(
               context,
@@ -1673,10 +1787,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   }
 
   Widget _buildTripsGrid(List<Trip> trips, int crossAxisCount, double availableWidth, double padding) {
-    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
-    final double cardHeight = crossAxisCount == 1 
-        ? 125.0 
-        : (cardWidth * 9 / 16) + 150.0;
+    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 18) / crossAxisCount;
+    final double cardHeight = crossAxisCount == 1
+        ? 112.0
+        : (cardWidth * 0.6) + 112.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -1685,8 +1799,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 24,
-        crossAxisSpacing: 24,
+        mainAxisSpacing: 18,
+        crossAxisSpacing: 18,
         childAspectRatio: computedAspectRatio,
       ),
       itemCount: trips.length,
@@ -1717,23 +1831,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           disable3D: false,
           addedByName: isCoAuthored ? (authorProfile?['name'] ?? 'Cargando...') : null,
           addedByPhotoURL: isCoAuthored ? (authorProfile?['photo']) : null,
-          onEdit: () {
-            if (trip.status == 'published') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TripViewerPage(trip: trip),
-                ),
-              );
-            } else {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TripEditorPage(trip: trip),
-                ),
-              );
-            }
-          },
+          hasNews: TripActivity.instance.tripsWithNews.contains(trip.id),
+          newsLabel: 'Comentario nuevo',
+          onEdit: () => _openTrip(trip),
           onFeDeErratas: () {
             Navigator.push(
               context,
@@ -1755,8 +1855,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionHeader(
-          'Regalos por abrir',
-          subtitle: 'Viajes que tus amigos prepararon para ti.',
+          'Sorpresas por abrir',
+          subtitle: 'Viajes que tus amigos prepararon para ti. Ábrelos cuando llegue el día.',
           leading: const Icon(Icons.card_giftcard_rounded, size: 18, color: OhtliColors.xoconostle),
           trailing: _countBadge(surpriseTrips.length, OhtliColors.xoconostle),
         ),
@@ -1766,10 +1866,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   }
 
   Widget _buildSurpriseTripsGrid(List<Trip> trips, int crossAxisCount, double availableWidth, double padding, bool isDark) {
-    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
-    final double cardHeight = crossAxisCount == 1 
-        ? 125.0 
-        : (cardWidth * 9 / 16) + 150.0;
+    final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 18) / crossAxisCount;
+    final double cardHeight = crossAxisCount == 1
+        ? 112.0
+        : (cardWidth * 0.6) + 112.0;
     
     final double computedAspectRatio = cardWidth / cardHeight;
 
@@ -1778,8 +1878,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 24,
-        crossAxisSpacing: 24,
+        mainAxisSpacing: 18,
+        crossAxisSpacing: 18,
         childAspectRatio: computedAspectRatio,
       ),
       itemCount: trips.length,
@@ -1816,91 +1916,80 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final authorProfile = _authorProfilesCache[trip.userId];
         final String authorName = authorProfile?['name'] ?? 'Un amigo';
 
-        final tripCard = TripCard(
-          trip: trip,
-          isHorizontal: crossAxisCount == 1,
-          disable3D: true, // It's wrapped
-          addedByName: authorName,
-          addedByPhotoURL: authorProfile?['photo'],
-          onEdit: () {
-            if (trip.status == 'published') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TripViewerPage(trip: trip),
-                ),
-              ).then((_) {
-                setState(() {});
-              });
-            } else {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TripEditorPage(trip: trip),
-                ),
-              ).then((_) {
-                setState(() {});
-              });
-            }
-          },
-          onFeDeErratas: null,
-          onDelete: () => _deleteTrip(trip),
-        );
-
-        Widget surpriseCard = GiftWrappedCard(
+        final Widget surpriseCard = SurprisePolaroidCard(
           trip: trip,
           isLocked: isLocked,
-          isOpened: isOpened,
           unlockDate: unlockDate,
-          addedByName: authorName,
-          onRevealComplete: () async {
+          fromName: authorName,
+          fromPhotoUrl: authorProfile?['photo'],
+          isHorizontal: crossAxisCount == 1,
+          onOpen: () async {
             final uid = _userId;
-            if (uid != null) {
+            if (uid != null && !isOpened) {
               try {
-                final updatedBy = List<String>.from(trip.surpriseOpenedBy)..add(uid);
                 await FirebaseFirestore.instance
                     .collection('users')
                     .doc(trip.userId)
                     .collection('trips')
                     .doc(trip.id)
-                    .update({
-                  'surpriseOpenedBy': updatedBy,
-                });
+                    .update({'surpriseOpenedBy': FieldValue.arrayUnion([uid])});
               } catch (e) {
                 print("Error updating opened surprise state: $e");
               }
             }
-
-            if (mounted) {
-              if (trip.status == 'published') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TripViewerPage(trip: trip),
-                  ),
-                ).then((_) {
-                  setState(() {});
-                });
-              } else {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TripEditorPage(trip: trip),
-                  ),
-                ).then((_) {
-                  setState(() {});
-                });
-              }
-            }
+            if (mounted) _openTrip(trip);
           },
-          child: tripCard,
         );
 
         if (crossAxisCount == 1) {
-          return SizedBox(height: 125.0, child: surpriseCard);
+          return SizedBox(height: 112.0, child: surpriseCard);
         }
         return surpriseCard;
       },
+    );
+  }
+}
+
+/// Tarjeta blanca con elevación al pasar el cursor (y aviso de novedad).
+class _HoverCard extends StatefulWidget {
+  final Widget Function(bool hover) builder;
+  final VoidCallback onTap;
+  final bool highlight;
+  const _HoverCard({required this.builder, required this.onTap, this.highlight = false});
+
+  @override
+  State<_HoverCard> createState() => _HoverCardState();
+}
+
+class _HoverCardState extends State<_HoverCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(6),
+          transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            color: OhtliColors.cardBg,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: widget.highlight ? OhtliColors.xoconostle.withValues(alpha: 0.55) : (_hover ? OhtliColors.stormyTeal.withValues(alpha: 0.35) : OhtliColors.cardBorder),
+              width: widget.highlight ? 1.4 : 1,
+            ),
+            boxShadow: OhtliUi.softShadow(color: _hover ? OhtliColors.stormyTeal : null, raised: _hover),
+          ),
+          child: widget.builder(_hover),
+        ),
+      ),
     );
   }
 }

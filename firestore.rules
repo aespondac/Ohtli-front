@@ -104,11 +104,14 @@ service cloud.firestore {
     
     // Collection Group rules for 'trips' (required for collectionGroup queries)
     match /{path=**}/trips/{tripId} {
+      // Condiciones con .get(): Firestore puede comprobarlas a partir de los filtros
+      // de la consulta (arrayContains en coAuthorIds / surpriseTargetIds). Con las
+      // comprobaciones "'campo' in resource.data" las consultas de Mis viajes se rechazaban.
       allow read: if (request.auth != null && (
-        (resource.data != null && 'userId' in resource.data && request.auth.uid == resource.data.userId) || 
-        (resource.data != null && 'coAuthorIds' in resource.data && resource.data.coAuthorIds is list && request.auth.uid in resource.data.coAuthorIds) ||
-        (resource.data != null && 'surpriseTargetIds' in resource.data && resource.data.surpriseTargetIds is list && request.auth.uid in resource.data.surpriseTargetIds)
-      )) || (resource != null && resource.data != null && 'status' in resource.data && resource.data.status == 'published' && 'visibility' in resource.data && resource.data.visibility == 'public');
+        request.auth.uid == resource.data.get('userId', '') ||
+        request.auth.uid in resource.data.get('coAuthorIds', []) ||
+        request.auth.uid in resource.data.get('surpriseTargetIds', [])
+      )) || (resource.data.get('status', '') == 'published' && resource.data.get('visibility', '') == 'public');
       
       allow update: if tripUpdateAllowed(resource.data) && notReleaseNotesUnlessSuper();
     }

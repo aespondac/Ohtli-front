@@ -17,6 +17,8 @@ import '../../widgets/ohtli_ui.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/trip_planner_dialog.dart';
+import '../../widgets/trip_polaroid.dart';
+import '../../models/trip_model.dart';
 
 // Crónicas destacadas (fijadas por el equipo editorial)
 class PinnedStory {
@@ -524,8 +526,8 @@ class _ExplorePageState extends State<ExplorePage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildCommunityRow(bool isMobile, double gutter) {
-    final double cardWidth = isMobile ? 260 : 320;
-    final double cardHeight = isMobile ? 260 : 300;
+    final double cardWidth = isMobile ? 230 : 260;
+    final double cardHeight = isMobile ? 260 : 280;
 
     return FutureBuilder<List<_CommunityTrip>>(
       future: _communityFuture,
@@ -570,16 +572,13 @@ class _ExplorePageState extends State<ExplorePage> {
                       ? authorSnap.data!.data() as Map<String, dynamic>?
                       : null;
                   final authorName = (authorData?['displayName'] ?? 'Viajero Ohtli').toString();
-                  return _ExploreCard(
+                  return _CommunityPolaroid(
                     width: cardWidth,
                     height: cardHeight,
-                    imageUrl: trip.coverUrl,
-                    badgeIcon: Icons.auto_stories_outlined,
-                    badgeLabel: 'Crónica',
-                    badgeColor: OhtliColors.stormyTeal,
+                    coverUrl: trip.coverUrl,
                     title: trip.title,
-                    caption: 'por $authorName',
-                    captionIcon: Icons.person_outline,
+                    authorName: authorName,
+                    authorPhoto: authorData?['photoURL'] as String?,
                     onTap: () => _openTrip(trip.tripId, trip.authorId),
                   );
                 },
@@ -639,7 +638,7 @@ class _ExplorePageState extends State<ExplorePage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildPinnedStoriesCarousel(bool isMobile, bool isDark) {
-    final double height = isMobile ? 260.0 : 380.0;
+    final double height = isMobile ? 420.0 : 340.0;
 
     return SizedBox(
       height: height,
@@ -698,7 +697,6 @@ class _ExplorePageState extends State<ExplorePage> {
         final authorData = authorDoc.exists ? (authorDoc.data() as Map<String, dynamic>?) : null;
 
         final String title = tripData?['title'] ?? 'Sin Título';
-        final String cover = tripData?['coverUrl'] ?? '';
         final String desc = tripData?['description'] ?? 'Sin descripción.';
         final bool isReleaseNotes = tripData?['kind'] == 'release_notes';
         final String? version = tripData?['version']?.toString();
@@ -710,238 +708,153 @@ class _ExplorePageState extends State<ExplorePage> {
         final String? authorPhoto = authorData?['photoURL'];
         final String activeTitleId = authorData?['activeTitleId'] ?? 'viajero';
 
+        final trip = Trip.fromMap({...?tripData, 'userId': pinned.authorId}, pinned.tripId);
+        final accent = isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.xoconostle;
+
+        void open() {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => TripViewerPage(tripId: pinned.tripId, authorId: pinned.authorId)),
+          );
+        }
+
+        final avatar = Container(
+          width: 34,
+          height: 34,
+          decoration: const BoxDecoration(shape: BoxShape.circle, color: OhtliColors.stormyTeal),
+          child: ClipOval(
+            child: authorPhoto != null && authorPhoto.isNotEmpty
+                ? Image(
+                    image: _getImageProvider(authorPhoto),
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => Center(
+                      child: Text(authorName.substring(0, 1).toUpperCase(),
+                          style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                : Center(
+                    child: Text(authorName.substring(0, 1).toUpperCase(),
+                        style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+          ),
+        );
+
         bool isHovered = false;
         return StatefulBuilder(
           builder: (context, setState) {
+            final text = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(30)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(isReleaseNotes ? Icons.new_releases_rounded : Icons.auto_stories_rounded, color: accent, size: 13),
+                      const SizedBox(width: 6),
+                      Text(badgeText, style: GoogleFonts.inter(color: accent, fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                    ],
+                  ),
+                ),
+                SizedBox(height: isMobile ? 12 : 18),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                    color: OhtliColors.onyx,
+                    fontSize: isMobile ? 24 : 34,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                    height: 1.05,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(desc, maxLines: isMobile ? 2 : 3, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: isMobile ? 14 : 15.5)),
+                SizedBox(height: isMobile ? 14 : 22),
+                Row(
+                  children: [
+                    avatar,
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(authorName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.outfit(color: OhtliColors.onyx, fontSize: 14, fontWeight: FontWeight.w700)),
+                          StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance.collection('titles').doc(activeTitleId).snapshots(),
+                            builder: (context, titleSnapshot) {
+                              String titleName = 'Viajero';
+                              if (titleSnapshot.hasData && titleSnapshot.data!.exists) {
+                                final titleData = titleSnapshot.data!.data() as Map<String, dynamic>?;
+                                titleName = titleData?['name'] ?? 'Viajero';
+                              }
+                              return Text(titleName, style: OhtliUi.body(size: 12));
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!isMobile) ...[
+                      const SizedBox(width: 16),
+                      OhtliPrimaryButton(
+                        label: isReleaseNotes ? 'Ver novedades' : 'Leer historia',
+                        icon: Icons.arrow_forward_rounded,
+                        highlight: !isReleaseNotes,
+                        onPressed: open,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            );
+
+            final desk = ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: AnimatedScale(
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeOutCubic,
+                scale: isHovered ? 1.04 : 1.0,
+                child: SizedBox.expand(child: OhtliPhoto(TripPhotos.initial(trip).photos.first)),
+              ),
+            );
+
             return MouseRegion(
               onEnter: (_) => setState(() => isHovered = true),
               onExit: (_) => setState(() => isHovered = false),
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => TripViewerPage(
-                        tripId: pinned.tripId,
-                        authorId: pinned.authorId,
-                      ),
-                    ),
-                  );
-                },
+                onTap: open,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOutCubic,
-                  margin: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 16.0 : 40.0,
-                    vertical: isMobile ? 12.0 : 16.0,
-                  ),
+                  margin: EdgeInsets.symmetric(horizontal: isMobile ? 16.0 : 40.0, vertical: isMobile ? 12.0 : 16.0),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: isHovered 
-                            ? OhtliColors.stormyTeal.withOpacity(0.15)
-                            : Colors.black.withOpacity(0.08),
-                        blurRadius: isHovered ? 16 : 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    color: OhtliColors.cardBg,
+                    borderRadius: BorderRadius.circular(32),
+                    border: Border.all(color: isHovered ? accent.withValues(alpha: 0.35) : OhtliColors.cardBorder),
+                    boxShadow: OhtliUi.softShadow(color: isHovered ? accent : null, raised: isHovered),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Stack(
-                      children: [
-                        // Cover Image Background with Zoom Effect on Hover
-                        Positioned.fill(
-                          child: AnimatedScale(
-                            scale: isHovered ? 1.05 : 1.0,
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.easeOutCubic,
-                            child: cover.isNotEmpty
-                                ? Image(
-                                    image: _getImageProvider(cover),
-                                    fit: BoxFit.cover,
-                                  )
-                                : Container(color: OhtliColors.cantera),
-                          ),
+                  child: isMobile
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: desk),
+                            Padding(padding: const EdgeInsets.fromLTRB(10, 16, 10, 8), child: text),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(flex: 5, child: Padding(padding: const EdgeInsets.fromLTRB(30, 20, 24, 20), child: text)),
+                            Expanded(flex: 6, child: desk),
+                          ],
                         ),
-                        // Premium Dark Gradient Overlay
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.black.withOpacity(0.8),
-                                  Colors.black.withOpacity(0.1),
-                                  Colors.black.withOpacity(0.85),
-                                ],
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                stops: const [0.0, 0.45, 1.0],
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Badge: "CRÓNICA DESTACADA"
-                        Positioned(
-                          top: isMobile ? 16 : 24,
-                          left: isMobile ? 16 : 24,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: (isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.xoconostle).withValues(alpha: 0.92),
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(isReleaseNotes ? Icons.new_releases_rounded : Icons.stars_rounded, color: Colors.white, size: 12),
-                                const SizedBox(width: 4),
-                                Text(
-                                  badgeText,
-                                  style: GoogleFonts.inter(
-                                    color: Colors.white,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        
-                        // Content overlay
-                        Positioned(
-                          bottom: isMobile ? 16 : 32,
-                          left: isMobile ? 16 : 32,
-                          right: isMobile ? 16 : 32,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title,
-                                style: GoogleFonts.outfit(
-                                  color: Colors.white,
-                                  fontSize: isMobile ? 24 : 36,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.6,
-                                  height: 1.1,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                desc,
-                                style: GoogleFonts.inter(
-                                  color: Colors.white.withValues(alpha: 0.85),
-                                  fontSize: isMobile ? 13 : 14.5,
-                                  height: 1.5,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 14),
-                              // Author Profile Row
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: const BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: OhtliColors.stormyTeal,
-                                    ),
-                                    child: ClipOval(
-                                      child: authorPhoto != null && authorPhoto.isNotEmpty
-                                          ? Image(
-                                              image: _getImageProvider(authorPhoto),
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (c, e, s) => Center(
-                                                child: Text(
-                                                  authorName.substring(0, 1).toUpperCase(),
-                                                  style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                                ),
-                                              ),
-                                            )
-                                          : Center(
-                                              child: Text(
-                                                authorName.substring(0, 1).toUpperCase(),
-                                                style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          authorName,
-                                          style: GoogleFonts.outfit(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        StreamBuilder<DocumentSnapshot>(
-                                          stream: FirebaseFirestore.instance
-                                              .collection('titles')
-                                              .doc(activeTitleId)
-                                              .snapshots(),
-                                          builder: (context, titleSnapshot) {
-                                            String titleName = 'Viajero';
-                                            if (titleSnapshot.hasData && titleSnapshot.data!.exists) {
-                                              final titleData = titleSnapshot.data!.data() as Map<String, dynamic>?;
-                                              titleName = titleData?['name'] ?? 'Viajero';
-                                            }
-                                            return Text(
-                                              titleName,
-                                              style: GoogleFonts.inter(
-                                                color: Colors.white.withOpacity(0.6),
-                                                fontSize: 10,
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  // Llamada a la acción tipo píldora
-                                  Container(
-                                    padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: isMobile ? 8 : 10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(30),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          isReleaseNotes ? 'Ver novedades' : 'Leer historia',
-                                          style: GoogleFonts.outfit(
-                                            color: const Color(0xFF1A120B),
-                                            fontSize: isMobile ? 12.5 : 14,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        const Icon(Icons.arrow_forward_rounded, color: Color(0xFF1A120B), size: 15),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
             );
@@ -990,41 +903,164 @@ class _QuickActionCard extends StatefulWidget {
 }
 
 class _QuickActionCardState extends State<_QuickActionCard> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final a = widget.action;
-    return OhtliSurface(
-      onTap: a.onTap,
-      accent: a.color,
-      radius: 22,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          OhtliServiceIcon(icon: a.icon, color: a.color, size: 42, soft: true),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  a.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  a.subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: OhtliUi.body(size: 12),
-                ),
-              ],
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: a.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          height: 96,
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [a.color.withValues(alpha: _hover ? 0.20 : 0.13), OhtliColors.cardBg],
             ),
+            border: Border.all(color: _hover ? a.color.withValues(alpha: 0.45) : a.color.withValues(alpha: 0.16)),
+            boxShadow: OhtliUi.softShadow(color: _hover ? a.color : null, raised: _hover),
           ),
-          Icon(Icons.arrow_forward_rounded, size: 16, color: OhtliColors.subtleText),
-        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  OhtliServiceIcon(icon: a.icon, color: a.color, size: 34),
+                  const Spacer(),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 240),
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(color: _hover ? a.color : Colors.white.withValues(alpha: 0.8), shape: BoxShape.circle),
+                    child: Icon(Icons.arrow_outward_rounded, size: 16, color: _hover ? Colors.white : a.color),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(a.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -0.2)),
+                  Text(a.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12.5)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Crónica de la comunidad como polaroid sobre la mesa.
+class _CommunityPolaroid extends StatefulWidget {
+  final double width;
+  final double height;
+  final String coverUrl;
+  final String title;
+  final String authorName;
+  final String? authorPhoto;
+  final VoidCallback onTap;
+
+  const _CommunityPolaroid({
+    required this.width,
+    required this.height,
+    required this.coverUrl,
+    required this.title,
+    required this.authorName,
+    this.authorPhoto,
+    required this.onTap,
+  });
+
+  @override
+  State<_CommunityPolaroid> createState() => _CommunityPolaroidState();
+}
+
+class _CommunityPolaroidState extends State<_CommunityPolaroid> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = widget.authorPhoto;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          width: widget.width,
+          height: widget.height,
+          padding: const EdgeInsets.all(6),
+          transform: Matrix4.translationValues(0, _hover ? -4 : 0, 0),
+          decoration: BoxDecoration(
+            color: OhtliColors.cardBg,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: _hover ? OhtliColors.stormyTeal.withValues(alpha: 0.35) : OhtliColors.cardBorder),
+            boxShadow: OhtliUi.softShadow(color: _hover ? OhtliColors.stormyTeal : null, raised: _hover),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: AnimatedScale(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOutCubic,
+                    scale: _hover ? 1.05 : 1.0,
+                    child: SizedBox.expand(child: OhtliPhoto(widget.coverUrl)),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -0.2)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 10,
+                          backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.4),
+                          backgroundImage: photo != null && photo.isNotEmpty && !photo.startsWith('data:') ? NetworkImage(photo) : null,
+                          child: photo != null && photo.isNotEmpty && !photo.startsWith('data:')
+                              ? null
+                              : Text(widget.authorName.isNotEmpty ? widget.authorName[0].toUpperCase() : '?',
+                                  style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white)),
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text('por ${widget.authorName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12.5)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
