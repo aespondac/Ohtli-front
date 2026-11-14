@@ -20,7 +20,6 @@ import '../../theme/cdmx_photos.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/poi_card.dart';
-import '../../widgets/ohtli_theme_toggle.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import '../trips/trip_editor_page.dart';
@@ -67,16 +66,53 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   /// Aumenta cada vez que llega una versión nueva del catálogo (p. ej. el refresco en segundo plano).
   static final ValueNotifier<int> catalogVersion = ValueNotifier(0);
 
+  /// Lugares en todo el catálogo del motor (la app descarga solo una selección).
+  static int _catalogTotal = 0;
+
+  /// Lugares que no vienen en la selección del catálogo (guardados, vistos o encontrados en
+  /// la búsqueda), descargados aparte por su id.
+  static final Map<String, Poi> _extraPois = {};
+  static final Set<String> _requestedIds = {};
+
   static List<Poi> _parseCatalog(dynamic decoded) {
     if (decoded is! Map || decoded['pois'] is! List) {
       throw Exception('Respuesta inesperada del catálogo');
     }
-    final list = (decoded['pois'] as List)
-        .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
-        .where((p) => p.isValidCulturalPlace)
-        .toList();
+    final list = _parsePois(decoded['pois'] as List);
     if (list.isEmpty) throw Exception('Catálogo vacío');
+    final total = decoded['catalog_total'];
+    _catalogTotal = total is num && total > list.length ? total.toInt() : list.length;
     return list;
+  }
+
+  static List<Poi> _parsePois(List raw) => raw
+      .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
+      .where((p) => p.isValidCulturalPlace)
+      .toList();
+
+  /// Descarga del motor los lugares de [ids] que no están en la selección del catálogo.
+  static Future<bool> _fetchMissingPois(Iterable<String> ids) async {
+    final known = {for (final p in _globalPoisCache) p.poiId};
+    final missing = ids
+        .where((id) => id.isNotEmpty && !known.contains(id) && !_extraPois.containsKey(id))
+        .where(_requestedIds.add)
+        .take(200)
+        .toList();
+    if (missing.isEmpty) return false;
+    try {
+      final uri = Uri.parse('$_apiUrl/v1/pois').replace(queryParameters: {'ids': missing.join(',')});
+      final response = await http.get(uri).timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      for (final poi in _parsePois((decoded as Map)['pois'] as List)) {
+        _extraPois[poi.poiId] = poi;
+      }
+      return true;
+    } catch (e) {
+      _requestedIds.removeAll(missing); // reintentar más tarde
+      debugPrint('No se pudieron cargar lugares fuera del catálogo: $e');
+      return false;
+    }
   }
 
   static void _storeCatalog(List<Poi> list, String rawJson) {
@@ -159,8 +195,14 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   /// "Mis lugares": se guardan en la cuenta (ver SavedPlaces), del más reciente al más antiguo
   List<String> get _savedPoiIds => SavedPlaces.ids.value;
   List<String> _viewedPoiIds = [];
-  /// Afinidad real (poi_id → %) calculada por el motor; vacía si no hay perfil de gustos
-  Map<String, int> _affinity = const {};
+  /// Recomendaciones del motor según el perfil de gustos (más afín primero); vacía sin perfil
+  List<Poi> _recommended = const [];
+
+  /// Resultados de buscar en todo el catálogo del motor (no solo en la selección descargada)
+  String _remoteQuery = '';
+  List<Poi> _remoteResults = const [];
+  bool _isSearchingRemote = false;
+  Timer? _searchDebounce;
 
   bool _isLoadingPois = true;
   String? _poisError;
@@ -270,8 +312,13 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         setState(() {
           _searchQuery = q;
         });
+        _searchDebounce?.cancel();
+        if (q.length >= 2) {
+          _searchDebounce = Timer(const Duration(milliseconds: 600), () => _searchRemote(q));
+        }
       }
     });
+    _loadMissingPlaces();
   }
 
   void _loadCachedPoisFromLocalStorage() {
@@ -310,6 +357,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     SavedPlaces.ids.removeListener(_onSavedChanged);
     _shimmerController?.dispose();
     _slowLoadTimer?.cancel();
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _paraTiScrollController.dispose();
@@ -389,6 +437,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
 
   void _onSavedChanged() {
     if (mounted) setState(() {});
+    _loadMissingPlaces();
   }
 
   bool get _isGuest => FirebaseAuth.instance.currentUser == null;
@@ -442,12 +491,47 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   }
 
   Future<void> _loadAffinity() async {
-    final scores = await PlaceAffinity.load();
-    if (mounted) setState(() => _affinity = scores);
+    final pois = await PlaceAffinity.load();
+    if (mounted) setState(() => _recommended = pois);
   }
 
-  /// Porcentaje real de afinidad, o null si no se calculó para este lugar.
-  int? _calculateAffinity(Poi poi) => _affinity[poi.poiId];
+  /// Guardados y vistos que no vienen en la selección del catálogo
+  Future<void> _loadMissingPlaces() async {
+    if (await _fetchMissingPois([..._savedPoiIds, ..._viewedPoiIds]) && mounted) {
+      setState(() {});
+    }
+  }
+
+  Poi? _poiById(String id, Map<String, Poi> catalog) => catalog[id] ?? _extraPois[id];
+
+  /// Busca en todo el catálogo del motor; los resultados se suman a los de la selección local.
+  Future<void> _searchRemote(String query) async {
+    final q = query.trim();
+    if (q.length < 2 || q.toLowerCase() == _remoteQuery) return;
+    setState(() => _isSearchingRemote = true);
+    try {
+      final uri = Uri.parse('$_apiUrl/v1/pois').replace(queryParameters: {'q': q, 'limit': '80'});
+      final response = await http.get(uri).timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      final pois = _parsePois((decoded as Map)['pois'] as List);
+      if (!mounted || _searchController.text.trim().toLowerCase() != q.toLowerCase()) return;
+      setState(() {
+        _remoteQuery = q.toLowerCase();
+        _remoteResults = pois;
+      });
+    } catch (e) {
+      debugPrint('Búsqueda en el catálogo completo falló: $e');
+    } finally {
+      if (mounted) setState(() => _isSearchingRemote = false);
+    }
+  }
+
+  void _submitSearch() {
+    _searchDebounce?.cancel();
+    _searchFocusNode.unfocus();
+    _searchRemote(_searchController.text);
+  }
 
   void _onPoiTapped(Poi poi) {
     _recordPlaceViewed(poi.poiId);
@@ -624,39 +708,31 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
             return true;
           }).toList()
         : <Poi>[];
-
-    // 1. "Para ti": Exactly 5 cards with highest affinity, double width (2x)
-    // Con perfil de gustos: los más afines según el motor. Sin perfil: el orden del catálogo.
-    final paraTiPois = List<Poi>.from(allPois);
-    if (_affinity.isNotEmpty) {
-      final scored = paraTiPois.where((p) => _affinity.containsKey(p.poiId)).toList()
-        ..sort((a, b) => _affinity[b.poiId]!.compareTo(_affinity[a.poiId]!));
-      if (scored.isNotEmpty) {
-        paraTiPois
-          ..removeWhere((p) => _affinity.containsKey(p.poiId))
-          ..insertAll(0, scored);
-      }
+    if (_searchQuery.isNotEmpty && _remoteQuery == _searchQuery) {
+      final shown = {for (final p in searchResults) p.poiId};
+      searchResults.addAll(_remoteResults.where((poi) =>
+          !shown.contains(poi.poiId) &&
+          (_selectedPriceFilter == null || _matchesPrice(poi, _selectedPriceFilter!)) &&
+          (_selectedCategoryFilter == null || _matchesCategory(poi, _selectedCategoryFilter!))));
     }
-    final paraTiCards = paraTiPois.take(5).toList();
+
+    // 1. "Para ti": 5 tarjetas dobles. Con perfil de gustos, las recomendaciones del motor
+    // (la afinidad solo ordena, no se muestra); sin perfil, una selección del catálogo.
+    final catalogById = {for (final p in allPois) p.poiId: p};
+    final paraTiCards = (_recommended.isNotEmpty ? _recommended : allPois).take(5).toList();
 
     // 2. "Descubre nuevos lugares": Todos los lugares indexados en la CDMX para scroll horizontal continuo
     final descubrePois = List<Poi>.from(allPois);
 
     // 3. "Mis lugares": Lugares que el usuario guardó / marcó como favoritos
-    final misLugaresPois = allPois.where((p) => _savedPoiIds.contains(p.poiId)).toList();
-    misLugaresPois.sort((a, b) {
-      final indexA = _savedPoiIds.indexOf(a.poiId);
-      final indexB = _savedPoiIds.indexOf(b.poiId);
-      return indexA.compareTo(indexB);
-    });
+    final misLugaresPois = [
+      for (final id in _savedPoiIds) ?_poiById(id, catalogById),
+    ];
 
     // 4. "Revisita tus lugares": Historial de lugares que ha consultado
-    final revisitaPois = allPois.where((p) => _viewedPoiIds.contains(p.poiId)).toList();
-    revisitaPois.sort((a, b) {
-      final indexA = _viewedPoiIds.indexOf(a.poiId);
-      final indexB = _viewedPoiIds.indexOf(b.poiId);
-      return indexA.compareTo(indexB);
-    });
+    final revisitaPois = [
+      for (final id in _viewedPoiIds) ?_poiById(id, catalogById),
+    ];
 
     // Medidas de tarjetas
     final isGuest = _isGuest;
@@ -665,7 +741,10 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     const standardHeight = 372.0;
     final doubleWidth = isMobile ? math.min(520.0, screenSize.width - 48) : 560.0;
     final immersiveHeight = isMobile ? 470.0 : 520.0;
-    final categoriesCount = allPois.map((p) => p.category).toSet().length;
+    // Categorías de los filtros que tienen al menos un lugar
+    final categoriesCount = _categoryFilters
+        .where((c) => c['id'] != 'all' && allPois.any((p) => _matchesCategory(p, c['id']!)))
+        .length;
 
     Widget shelf({
       required ScrollController controller,
@@ -710,7 +789,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
               key: const ValueKey('places_top_bar'),
               child: _buildHero(
                 isMobile: isMobile,
-                placesCount: allPois.length,
+                placesCount: math.max(_catalogTotal, allPois.length),
+                savedCount: misLugaresPois.length,
                 categoriesCount: categoriesCount,
                 coverUrl: CdmxPhotos.covers.first,
               ),
@@ -800,7 +880,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   title: isGuest ? 'Imperdibles de la ciudad' : 'Para ti',
                   subtitle: isGuest
                       ? 'Lugares destacados para empezar a explorar'
-                      : (_affinity.isNotEmpty
+                      : (_recommended.isNotEmpty
                           ? 'Elegidos según tus gustos y tu forma de viajar'
                           : 'Una selección de imperdibles para empezar'),
                   icon: isGuest ? Icons.star_rounded : Icons.auto_awesome_rounded,
@@ -821,8 +901,6 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                     width: doubleWidth,
                     height: immersiveHeight,
                     variant: PoiCardVariant.immersive,
-                    // Sin cuenta no hay perfil de gustos, así que no se muestra afinidad
-                    affinity: isGuest ? null : _calculateAffinity(poi),
                     isSaved: _savedPoiIds.contains(poi.poiId),
                     onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
                     onCreateRoute: () => _createRouteFromPlace(poi),
@@ -949,6 +1027,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   Widget _buildHero({
     required bool isMobile,
     required int placesCount,
+    required int savedCount,
     required int categoriesCount,
     required String coverUrl,
   }) {
@@ -1020,8 +1099,6 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                           colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
                         ),
                       const Spacer(),
-                      const OhtliThemeToggle(onDark: true),
-                      const SizedBox(width: 8),
                       if (isGuest && widget.onLoginClick != null && !isMobile)
                         TextButton(
                           onPressed: widget.onLoginClick,
@@ -1083,9 +1160,9 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                     spacing: 18,
                     runSpacing: 8,
                     children: [
-                      _heroStat(Icons.place_rounded, '$placesCount', 'lugares'),
+                      _heroStat(Icons.place_rounded, _formatCount(placesCount), 'lugares'),
                       _heroStat(Icons.category_rounded, '$categoriesCount', 'categorías'),
-                      if (!isGuest) _heroStat(Icons.favorite_rounded, '${_savedPoiIds.length}', 'guardados'),
+                      if (!isGuest) _heroStat(Icons.favorite_rounded, '$savedCount', 'guardados'),
                     ],
                   ),
                 ],
@@ -1132,6 +1209,16 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     );
   }
 
+  static String _formatCount(int n) {
+    final digits = n.toString();
+    final out = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      out.write(digits[i]);
+    }
+    return out.toString();
+  }
+
   Widget _heroStat(IconData icon, String value, String label) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1166,6 +1253,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
               key: const ValueKey('places_search_field'),
               controller: _searchController,
               focusNode: _searchFocusNode,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _submitSearch(),
               style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 15, fontWeight: FontWeight.w500),
               cursorColor: OhtliColors.stormyTeal,
               decoration: InputDecoration(
@@ -1188,7 +1277,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
             ),
           if (!isMobile)
             ElevatedButton(
-              onPressed: () => _searchFocusNode.requestFocus(),
+              onPressed: _isSearchingRemote ? null : _submitSearch,
               style: ElevatedButton.styleFrom(
                 backgroundColor: OhtliColors.stormyTeal,
                 foregroundColor: Colors.white,
@@ -1197,7 +1286,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                 shape: const StadiumBorder(),
                 textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
               ),
-              child: const Text('Buscar'),
+              child: Text(_isSearchingRemote ? 'Buscando…' : 'Buscar'),
             ),
         ],
       ),
