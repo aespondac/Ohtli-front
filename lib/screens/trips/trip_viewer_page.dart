@@ -1784,8 +1784,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final Widget mainScrollableContent = LayoutBuilder(
       builder: (context, box) {
         // Mensajes al margen de cada bloque cuando hay espacio a la derecha.
-        _marginLayout = _socialVisible && box.maxWidth >= 1140;
-        final double readingWidth = _marginLayout ? 1060 : 820;
+        _marginLayout = _socialVisible && box.maxWidth >= 1060;
+        final double readingWidth = _marginLayout ? 1040 : 820;
         return SingleChildScrollView(
           controller: _scrollController,
           child: Column(
@@ -2760,7 +2760,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
     final Widget content = Center(
       child: Container(
-        constraints: BoxConstraints(maxWidth: _marginLayout ? 1060 : 820),
+        constraints: BoxConstraints(maxWidth: _marginLayout ? 1040 : 820),
         padding: EdgeInsets.fromLTRB(24, onImage ? 0 : 64, 24, onImage ? 34 : 36),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3638,10 +3638,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
         clipBehavior: Clip.none,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 30, top: 14),
+            // Las fotos ocupan x≈15–135: la tarjeta empieza en 76 para que queden medio fuera.
+            padding: const EdgeInsets.only(left: 76, top: 14),
             child: Container(
               constraints: const BoxConstraints(minHeight: 196),
-              padding: const EdgeInsets.fromLTRB(148, 22, 22, 22),
+              padding: const EdgeInsets.fromLTRB(84, 22, 22, 22),
               decoration: card,
               child: infoWidget,
             ),
