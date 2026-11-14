@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -509,5 +510,294 @@ Future<BlockDraft?> askBlock(BuildContext context, {required BlockKind kind, req
           return BlockDraft(after, kind, text.text.trim(), imageDataUrl: image);
       }
     },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Etapas del viaje y herramientas de planear y cerrar
+// ---------------------------------------------------------------------------
+
+/// Antes: planear. Durante: el modo viaje. Después: cerrar y contarlo.
+enum TripPhase { antes, durante, despues }
+
+typedef ScheduleRow = ({String id, String name, String? arrival, String? departure});
+typedef AmountRow = ({String id, String name, double value, bool isTransfer});
+
+String? _hhmmOf(TimeOfDay? t) => t == null ? null : '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+TimeOfDay? _parseHhmm(String? s) {
+  final m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(s ?? '');
+  if (m == null) return null;
+  return TimeOfDay(hour: int.parse(m.group(1)!).clamp(0, 23), minute: int.parse(m.group(2)!).clamp(0, 59));
+}
+
+/// Horarios del plan: llegada y salida de cada parada.
+Future<Map<String, (String?, String?)>?> askSchedule(BuildContext context, {required List<ScheduleRow> stops, required bool isDark}) {
+  final values = {for (final s in stops) s.id: (s.arrival, s.departure)};
+  Widget timeButton(BuildContext ctx, StateSetter setState, String id, bool arrival) {
+    final current = arrival ? values[id]!.$1 : values[id]!.$2;
+    return OutlinedButton(
+      onPressed: () async {
+        final picked = await showTimePicker(
+          context: ctx,
+          initialTime: _parseHhmm(current) ?? const TimeOfDay(hour: 10, minute: 0),
+          helpText: arrival ? 'Hora de llegada' : 'Hora de salida',
+        );
+        if (picked == null) return;
+        setState(() {
+          final v = values[id]!;
+          values[id] = arrival ? (_hhmmOf(picked), v.$2) : (v.$1, _hhmmOf(picked));
+        });
+      },
+      style: OutlinedButton.styleFrom(
+        foregroundColor: current == null ? _sub(isDark) : _fg(isDark),
+        side: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        minimumSize: const Size(70, 38),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      child: Text(current ?? '--:--', style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w600, fontFeatures: const [FontFeature.tabularFigures()])),
+    );
+  }
+
+  return _toolDialog<Map<String, (String?, String?)>>(
+    context,
+    isDark: isDark,
+    icon: Icons.schedule_rounded,
+    title: 'Horarios',
+    subtitle: 'A qué hora llegan y se van de cada parada.',
+    action: 'Guardar horarios',
+    body: (ctx, setState) => Column(
+      children: [
+        Row(
+          children: [
+            const Expanded(child: SizedBox()),
+            SizedBox(width: 70, child: Text('Llegada', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 11.5, color: _sub(isDark)))),
+            const SizedBox(width: 8),
+            SizedBox(width: 70, child: Text('Salida', textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 11.5, color: _sub(isDark)))),
+          ],
+        ),
+        const SizedBox(height: 6),
+        for (final s in stops)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(s.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _fg(isDark))),
+                ),
+                timeButton(ctx, setState, s.id, true),
+                const SizedBox(width: 8),
+                timeButton(ctx, setState, s.id, false),
+              ],
+            ),
+          ),
+      ],
+    ),
+    onSubmit: () => values,
+  );
+}
+
+/// Montos por renglón (presupuesto estimado o gasto real) con total en vivo.
+Future<Map<String, double>?> askAmounts(
+  BuildContext context, {
+  required String title,
+  required String subtitle,
+  required IconData icon,
+  required String action,
+  required List<AmountRow> rows,
+  required bool isDark,
+}) {
+  final ctrls = {for (final r in rows) r.id: TextEditingController(text: r.value > 0 ? r.value.toStringAsFixed(0) : '')};
+  double total() => ctrls.values.fold(0.0, (a, c) => a + (double.tryParse(c.text.trim()) ?? 0));
+  return _toolDialog<Map<String, double>>(
+    context,
+    isDark: isDark,
+    icon: icon,
+    title: title,
+    subtitle: subtitle,
+    action: action,
+    body: (ctx, setState) => Column(
+      children: [
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Icon(r.isTransfer ? Icons.route_rounded : Icons.place_rounded, size: 16, color: OhtliColors.stormyTeal),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(r.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 13.5, fontWeight: r.isTransfer ? FontWeight.w400 : FontWeight.w600, color: _fg(isDark))),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 112,
+                  child: TextField(
+                    controller: ctrls[r.id],
+                    onChanged: (_) => setState(() {}),
+                    textAlign: TextAlign.right,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                    style: GoogleFonts.inter(fontSize: 14, color: _fg(isDark), fontFeatures: const [FontFeature.tabularFigures()]),
+                    decoration: _field('0', isDark, prefix: '\$ '),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const Divider(height: 22),
+        Row(
+          children: [
+            Text('Total', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _fg(isDark))),
+            const Spacer(),
+            Text('\$ ${total().toStringAsFixed(0)} MXN',
+                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: OhtliColors.stormyTeal)),
+          ],
+        ),
+      ],
+    ),
+    onSubmit: () => {for (final e in ctrls.entries) e.key: double.tryParse(e.value.text.trim()) ?? 0},
+  );
+}
+
+/// Elige una opción de una lista (invitar, guardar el itinerario…).
+Future<T?> askChoice<T>(
+  BuildContext context, {
+  required String title,
+  required String subtitle,
+  required IconData icon,
+  required List<({IconData icon, String title, String subtitle, T value})> options,
+  required bool isDark,
+}) {
+  return showDialog<T>(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+      insetPadding: const EdgeInsets.all(16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: OhtliColors.stormyTeal),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(title, style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: _fg(isDark)))),
+                  IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close_rounded)),
+                ],
+              ),
+              Text(subtitle, style: GoogleFonts.inter(fontSize: 12.5, color: _sub(isDark))),
+              const SizedBox(height: 12),
+              for (final o in options)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F6F5),
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => Navigator.of(ctx).pop(o.value),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            Icon(o.icon, color: OhtliColors.stormyTeal),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(o.title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _fg(isDark))),
+                                  Text(o.subtitle, style: GoogleFonts.inter(fontSize: 12, color: _sub(isDark))),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: _sub(isDark)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class ChronicleOptions {
+  final bool removeUnvisited;
+  final bool removeEstimated;
+  final bool makePublic;
+  const ChronicleOptions(this.removeUnvisited, this.removeEstimated, this.makePublic);
+}
+
+/// Convertir en crónica: limpiar el plan de lo que no pasó y publicarlo.
+Future<ChronicleOptions?> askChronicle(
+  BuildContext context, {
+  required List<String> unvisited,
+  required int estimatedTransfers,
+  required bool alreadyPublic,
+  required bool isDark,
+}) {
+  bool removeUnvisited = unvisited.isNotEmpty;
+  bool removeEstimated = false;
+  bool makePublic = true;
+  Widget option(StateSetter setState, bool value, ValueChanged<bool> onChanged, String title, String subtitle, {bool enabled = true}) =>
+      CheckboxListTile(
+        value: value,
+        onChanged: enabled ? (v) => setState(() => onChanged(v ?? false)) : null,
+        activeColor: OhtliColors.stormyTeal,
+        contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
+        title: Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _fg(isDark))),
+        subtitle: Text(subtitle, style: GoogleFonts.inter(fontSize: 12, color: _sub(isDark))),
+      );
+  return _toolDialog<ChronicleOptions>(
+    context,
+    isDark: isDark,
+    icon: Icons.auto_stories_rounded,
+    title: 'Convertir en crónica',
+    subtitle: 'El plan se vuelve la historia de lo que vivieron.',
+    action: 'Convertir',
+    body: (ctx, setState) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        option(
+          setState,
+          removeUnvisited,
+          (v) => removeUnvisited = v,
+          'Quitar las paradas que no visitaron',
+          unvisited.isEmpty ? 'Visitaron todas.' : unvisited.join(', '),
+          enabled: unvisited.isNotEmpty,
+        ),
+        option(
+          setState,
+          removeEstimated,
+          (v) => removeEstimated = v,
+          'Quitar traslados estimados',
+          estimatedTransfers == 0 ? 'Todos los traslados son reales.' : '$estimatedTransfers sin confirmar con el modo real.',
+          enabled: estimatedTransfers > 0,
+        ),
+        option(
+          setState,
+          makePublic,
+          (v) => makePublic = v,
+          alreadyPublic ? 'Sigue pública' : 'Publicarla para todos',
+          'Aparece en Explorar entre las crónicas de la comunidad.',
+        ),
+      ],
+    ),
+    onSubmit: () => ChronicleOptions(removeUnvisited, removeEstimated, makePublic),
   );
 }

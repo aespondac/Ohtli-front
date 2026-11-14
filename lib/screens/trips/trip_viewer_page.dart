@@ -530,17 +530,182 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
+  /// Modo viaje: cambia según el momento. Rumbo a una parada: "Llegué", cómo llegar, traslado,
+  /// desvío. En una parada: "Ya me voy", calificarla, foto, gasto, texto, imagen, tabla y nota.
   Widget _buildTripModePanel(bool isDark, {bool embedded = false}) {
     final places = _sections.whereType<PlaceSection>().toList();
-    final next = _nextStop;
-    final done = places.where((p) => _visited.contains(p.id)).length;
-    final Color fg = isDark ? Colors.white : OhtliColors.onyx;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final bool edit = _canEditContent;
+    PlaceSection? here;
+    for (final p in places.reversed) {
+      if (p.arrivedAt != null && p.leftAt == null) {
+        here = p;
+        break;
+      }
+    }
+    PlaceSection? next;
+    for (final p in places) {
+      if (p.arrivedAt == null && !_visited.contains(p.id) && !identical(p, here)) {
+        next = p;
+        break;
+      }
+    }
+    final done = places.where((p) => p.arrivedAt != null || _visited.contains(p.id)).length;
+    final PlaceSection? focus = here ?? next;
+
+    Widget chip(IconData icon, String label, Future<void> Function() onTap) => ActionChip(
+          avatar: Icon(icon, size: 16, color: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45) : OhtliColors.stormyTeal),
+          label: Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
+          onPressed: () => onTap(),
+          backgroundColor: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF3F6F5),
+          side: BorderSide.none,
+          visualDensity: VisualDensity.compact,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        );
+
+    final String headline = here != null
+        ? 'Estás en'
+        : next != null
+            ? (next.unplanned ? 'Desvío' : 'Siguiente parada')
+            : '¡Recorrido completo!';
+
+    final List<Widget> body = [];
+    if (focus != null) {
+      body.add(InkWell(
+        onTap: () => _scrollToBlock(focus.id),
+        child: Text(
+          focus.title.isEmpty ? 'Parada sin nombre' : focus.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: fg),
+        ),
+      ));
+      body.add(Text(
+        here != null
+            ? 'Llegaron a las ${here.arrivedAt}${here.departureTime != null ? ' · el plan era salir a las ${here.departureTime}' : ''}'
+            : (next!.arrivalTime != null ? 'En el plan: ${next.arrivalTime}' : 'Sin hora en el plan'),
+        style: GoogleFonts.inter(fontSize: 12, color: sub),
+      ));
+      body.add(const SizedBox(height: 10));
+    }
+
+    if (here != null) {
+      final h = here;
+      // Calificar aquí mismo.
+      if (edit)
+        body.add(Row(
+          children: [
+            Text('¿Qué tal?', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: fg)),
+            const SizedBox(width: 6),
+            for (int i = 1; i <= 5; i++)
+              InkResponse(
+                radius: 18,
+                onTap: () => _rateStop(h, i),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(i <= h.rating ? Icons.star_rounded : Icons.star_outline_rounded, size: 24, color: i <= h.rating ? Colors.amber : sub),
+                ),
+              ),
+          ],
+        ));
+      body.add(const SizedBox(height: 10));
+      body.add(Wrap(spacing: 8, runSpacing: 8, children: [
+        if (edit)
+          FilledButton.icon(
+            onPressed: () => _markLeave(h),
+            style: FilledButton.styleFrom(
+              backgroundColor: OhtliColors.stormyTeal,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: Text('Ya me voy', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+          ),
+        if (next != null)
+          OutlinedButton.icon(
+            onPressed: () => _openDirectionsTo(next!),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.5) : OhtliColors.stormyTeal,
+              side: const BorderSide(color: OhtliColors.stormyTeal),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.directions_rounded, size: 18),
+            label: Text('Ruta a la siguiente', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+          ),
+      ]));
+      if (edit) {
+        body.add(const SizedBox(height: 10));
+        body.add(Wrap(spacing: 6, runSpacing: 6, children: [
+          chip(Icons.photo_camera_rounded, 'Foto', _addPhoto),
+          chip(Icons.payments_rounded, 'Gasto', () async {
+            final v = await askRealCost(context, placeName: h.title, current: h.realCost, estimated: h.cost, isDark: _dark);
+            if (v != null) await _changeContent((l) => _updatePlace(l, h.id, (x) => x.copyWith(realCost: v)), done: 'Gasto guardado');
+          }),
+          chip(Icons.notes_rounded, 'Texto', () => _addContentBlock(BlockKind.text)),
+          chip(Icons.image_rounded, 'Imagen', () => _addContentBlock(BlockKind.image)),
+          chip(Icons.table_chart_rounded, 'Tabla', () => _addContentBlock(BlockKind.table)),
+          chip(Icons.sticky_note_2_rounded, 'Nota', () => _addContentBlock(BlockKind.note)),
+        ]));
+      }
+    } else if (next != null) {
+      final n = next;
+      body.add(Wrap(spacing: 8, runSpacing: 8, children: [
+        FilledButton.icon(
+          onPressed: () {
+            if (edit) {
+              _markArrival(n);
+            } else {
+              _toggleVisited(n.id);
+            }
+          },
+          style: FilledButton.styleFrom(
+            backgroundColor: OhtliColors.stormyTeal,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          icon: const Icon(Icons.flag_rounded, size: 18),
+          label: Text(edit ? 'Llegué' : 'Ya la visité', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => _openDirectionsTo(n),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.5) : OhtliColors.stormyTeal,
+            side: const BorderSide(color: OhtliColors.stormyTeal),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          icon: const Icon(Icons.directions_rounded, size: 18),
+          label: Text('Cómo llegar', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+        ),
+      ]));
+      if (edit) {
+        body.add(const SizedBox(height: 10));
+        body.add(Wrap(spacing: 6, runSpacing: 6, children: [
+          chip(Icons.route_rounded, 'Cómo van', _addTransfer),
+          chip(Icons.alt_route_rounded, 'Desvío', _addDetour),
+          chip(Icons.photo_camera_rounded, 'Foto', _addPhoto),
+          chip(Icons.sticky_note_2_rounded, 'Nota', () => _addContentBlock(BlockKind.note)),
+        ]));
+      }
+    } else {
+      body.add(Text('Visitaron todas las paradas. Mañana podrán completar precios, agregar portadas y convertirlo en crónica.',
+          style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg)));
+      if (edit) {
+        body.add(const SizedBox(height: 10));
+        body.add(Wrap(spacing: 6, runSpacing: 6, children: [
+          chip(Icons.photo_camera_rounded, 'Foto', _addPhoto),
+          chip(Icons.notes_rounded, 'Texto', () => _addContentBlock(BlockKind.text)),
+          chip(Icons.star_rounded, 'Calificar', () async => _showReviewDialog(isDark)),
+        ]));
+      }
+    }
+
     return Material(
       elevation: embedded ? 0 : 12,
       color: embedded ? Colors.transparent : (isDark ? const Color(0xFF1E1E22) : Colors.white),
       borderRadius: BorderRadius.circular(20),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+        padding: EdgeInsets.fromLTRB(embedded ? 0 : 16, embedded ? 0 : 12, embedded ? 0 : 10, embedded ? 0 : 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -548,12 +713,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    next == null ? '¡Recorrido completo!' : 'Siguiente parada · ${places.indexOf(next) + 1} de ${places.length}',
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.stormyTeal),
-                  ),
+                  child: Text(headline, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: here != null ? OhtliColors.cempasuchil : OhtliColors.stormyTeal)),
                 ),
-                Text('$done/${places.length}', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white60 : OhtliColors.subtleText)),
+                Text('$done/${places.length}', style: GoogleFonts.inter(fontSize: 12, color: sub)),
                 IconButton(
                   tooltip: 'Salir del modo viaje',
                   visualDensity: VisualDensity.compact,
@@ -572,56 +734,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               ),
             ),
             const SizedBox(height: 10),
-            if (next == null)
-              Padding(
-                padding: const EdgeInsets.only(right: 8, bottom: 4),
-                child: Text('Visitaste todas las paradas. Puedes desmarcar alguna desde su bloque.',
-                    style: GoogleFonts.inter(fontSize: 13, color: fg)),
-              )
-            else ...[
-              InkWell(
-                onTap: () => _scrollToBlock(next.id),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Text(
-                    '${next.title}${next.arrivalTime != null ? ' · ${next.arrivalTime}' : ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: fg),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => _openDirectionsTo(next),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: OhtliColors.stormyTeal,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.directions_walk_rounded, size: 18),
-                    label: Text('Cómo llegar', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      _toggleVisited(next.id);
-                      final after = _nextStop;
-                      if (after != null) _scrollToBlock(after.id);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: OhtliColors.stormyTeal,
-                      side: const BorderSide(color: OhtliColors.stormyTeal),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.check_rounded, size: 18),
-                    label: Text('Ya la visité', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            ],
+            ...body,
           ],
         ),
       ),
@@ -679,6 +792,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   // ---------------------------------------------------------------------------
   void _loadSample() {
     final stage = _sampleStage;
+    if (_trip == null && stage == SampleStage.durante) _tripMode = true;
     setState(() {
       _trip = TripSample.trip(stage);
       _sections = TripSample.sections(stage);
@@ -693,7 +807,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
   void _setSampleStage(SampleStage stage) {
     if (stage == _sampleStage) return;
     _sampleStage = stage;
-    if (_tripMode && stage != SampleStage.durante) _tripMode = false;
+    // El modo viaje solo existe durante el viaje.
+    _tripMode = stage == SampleStage.durante;
     _loadSample();
   }
 
@@ -1108,14 +1223,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     return t.userId == uid || t.coAuthorIds.contains(uid);
   }
 
-  /// Desde el día del viaje (o si no tiene fecha) ya se registran cosas del camino.
-  bool get _tripStarted {
-    final d = _trip?.travelDate;
-    if (d == null) return true;
-    final now = DateTime.now();
-    return !DateTime(d.year, d.month, d.day).isAfter(DateTime(now.year, now.month, now.day));
-  }
-
   bool get _tripIsToday {
     final d = _trip?.travelDate;
     final now = DateTime.now();
@@ -1281,15 +1388,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
   }
 
-  Future<void> _addRealCost() async {
-    final p = await _chooseStop('¿En qué parada?');
-    if (p == null || !mounted) return;
-    final v = await askRealCost(context, placeName: p.title, current: p.realCost, estimated: p.cost, isDark: _dark);
-    if (v == null) return;
-    final ok = await _changeContent((l) => _updatePlace(l, p.id, (x) => x.copyWith(realCost: v)), done: 'Gasto real guardado');
-    if (ok) _scrollSoon(p.id);
-  }
-
   Future<void> _addDetour() async {
     final d = await askDetour(context, options: _blockOptions, initialAfter: _defaultAfterId, isDark: _dark);
     if (d == null) return;
@@ -1360,10 +1458,137 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
   }
 
-  /// Tarjeta del panel: "Llegué / Ya me voy" en la parada en curso y la rejilla de herramientas.
-  Widget _buildTravelerToolsCard(bool isDark, {VoidCallback? onDone}) {
-    final bool started = _tripStarted;
-    final PlaceSection? current = started ? _currentStop : null;
+  // ---------------------------------------------------------------------------
+  // Etapas del viaje
+  // ---------------------------------------------------------------------------
+  TripPhase get _phase {
+    if (_isSample) {
+      return switch (_sampleStage) {
+        SampleStage.antes => TripPhase.antes,
+        SampleStage.durante => TripPhase.durante,
+        SampleStage.despues => TripPhase.despues,
+      };
+    }
+    final d = _trip?.travelDate;
+    if (d == null) return TripPhase.antes;
+    final now = DateTime.now();
+    final day = DateTime(d.year, d.month, d.day);
+    final today = DateTime(now.year, now.month, now.day);
+    if (day.isAfter(today)) return TripPhase.antes;
+    return day == today ? TripPhase.durante : TripPhase.despues;
+  }
+
+  bool get _isOwner => _isSample ? _sampleAsMember : (_trip != null && FirebaseAuth.instance.currentUser?.uid == _trip!.userId);
+
+  List<PlaceSection> get _plannedStops => _sections.whereType<PlaceSection>().where((p) => !p.unplanned).toList();
+
+  /// Rejilla de herramientas (4 por fila).
+  Widget _toolGrid(bool isDark, List<(IconData, String, VoidCallback)> tools) {
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    return LayoutBuilder(builder: (context, box) {
+      final double w = ((box.maxWidth - 3 * 8) / 4).floorToDouble();
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final t in tools)
+            Material(
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F6F5),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: t.$3,
+                child: SizedBox(
+                  width: w,
+                  height: 64,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(t.$1, size: 21, color: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45) : OhtliColors.stormyTeal),
+                      const SizedBox(height: 5),
+                      Text(t.$2,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: fg)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+
+  /// Antes: horarios, presupuesto, invitar y guardar el itinerario.
+  Widget _buildPlanCard(bool isDark, bool canEdit, {VoidCallback? onDone}) {
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    void run(Future<void> Function() f) {
+      onDone?.call();
+      f();
+    }
+
+    final stops = _plannedStops;
+    final double budget = stops.fold<double>(0, (a, p) => a + p.cost) +
+        _sections.whereType<TransferSection>().fold<double>(0, (a, t) => a + t.cost);
+    final starts = stops.map((p) => _minutesOf(p.arrivalTime)).whereType<int>().toList();
+    final ends = stops.map((p) => _minutesOf(p.departureTime) ?? _minutesOf(p.arrivalTime)).whereType<int>().toList();
+    String hm(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+    final d = _trip?.travelDate;
+    int? daysLeft;
+    if (d != null) {
+      final now = DateTime.now();
+      daysLeft = DateTime(d.year, d.month, d.day).difference(DateTime(now.year, now.month, now.day)).inDays;
+    }
+
+    return _panelCard(isDark: isDark, icon: Icons.edit_calendar_rounded, title: 'PLANEAR EL VIAJE', children: [
+      Text(
+        daysLeft == null
+            ? 'Aún no tiene fecha. Ajusten horarios y presupuesto, e inviten a quien falte.'
+            : (daysLeft == 1 ? 'Es mañana. ' : 'Faltan $daysLeft días. ') + 'Ajusten horarios y presupuesto, e inviten a quien falte.',
+        style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: sub),
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(child: _planFact(isDark, Icons.schedule_rounded, starts.isEmpty ? 'Sin horario' : '${hm(starts.reduce(math.min))}–${hm(ends.reduce(math.max))}')),
+          const SizedBox(width: 8),
+          Expanded(child: _planFact(isDark, Icons.account_balance_wallet_rounded, budget > 0 ? '\$${budget.toStringAsFixed(0)} MXN' : 'Sin presupuesto')),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _toolGrid(isDark, [
+        if (_canEditContent) (Icons.schedule_rounded, 'Horarios', () => run(_editSchedule)),
+        if (_canEditContent) (Icons.account_balance_wallet_rounded, 'Presupuesto', () => run(_editBudget)),
+        (Icons.person_add_alt_1_rounded, 'Invitar', () => run(() => _inviteTravelers(canEdit))),
+        (Icons.download_for_offline_rounded, 'Guardar', () => run(_saveItinerary)),
+      ]),
+    ]);
+  }
+
+  Widget _planFact(bool isDark, IconData icon, String text) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.16 : 0.07),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.5) : OhtliColors.stormyTeal),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF1F2A2A))),
+            ),
+          ],
+        ),
+      );
+
+  /// Después: calificar, completar precios, modificar, portadas, fotos y convertir en crónica.
+  Widget _buildAfterCard(bool isDark, bool canEdit, {VoidCallback? onDone}) {
     final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
     final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
     void run(Future<void> Function() f) {
@@ -1371,101 +1596,252 @@ class _TripViewerPageState extends State<TripViewerPage> {
       f();
     }
 
-    final foto = (Icons.photo_camera_rounded, 'Foto', () => run(_addPhoto));
-    final portada = (Icons.wallpaper_rounded, 'Portada', () => run(_setCover));
-    final precio = (Icons.payments_rounded, 'Precio real', () => run(_addRealCost));
-    final desvio = (Icons.alt_route_rounded, 'Desvío', () => run(_addDetour));
-    final traslado = (Icons.route_rounded, 'Traslado', () => run(_addTransfer));
-    final texto = (Icons.notes_rounded, 'Texto', () => run(() => _addContentBlock(BlockKind.text)));
-    final imagen = (Icons.image_rounded, 'Imagen', () => run(() => _addContentBlock(BlockKind.image)));
-    final tabla = (Icons.table_chart_rounded, 'Tabla', () => run(() => _addContentBlock(BlockKind.table)));
-    final nota = (Icons.sticky_note_2_rounded, 'Nota', () => run(() => _addContentBlock(BlockKind.note)));
-    // Todo está disponible siempre; antes del viaje van primero las de planear.
-    final List<(IconData, String, VoidCallback)> ordered = started
-        ? [foto, portada, precio, desvio, traslado, texto, imagen, tabla, nota]
-        : [portada, texto, imagen, tabla, nota, traslado, foto, precio, desvio];
+    final t = _trip!;
+    final places = _sections.whereType<PlaceSection>().toList();
+    final rated = places.where((p) => p.rating > 0).toList();
+    final avg = rated.isEmpty ? 0.0 : rated.fold<int>(0, (a, p) => a + p.rating) / rated.length;
+    final double spent = places.fold<double>(0, (a, p) => a + (p.realCost ?? 0));
+    final bool isChronicle = t.status == 'published' && t.visibility == 'public';
 
-    return _panelCard(isDark: isDark, icon: Icons.backpack_rounded, title: 'HERRAMIENTAS DEL VIAJERO', children: [
-      if (current != null) ...[
-        Text(current.arrivedAt == null ? 'Siguiente parada' : 'Están en', style: GoogleFonts.inter(fontSize: 11.5, color: sub)),
-        const SizedBox(height: 2),
-        Text(current.title.isEmpty ? 'Parada sin nombre' : current.title,
-            maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
-        if (current.arrivedAt != null)
-          Text('Llegaron a las ${current.arrivedAt}', style: GoogleFonts.inter(fontSize: 12, color: sub)),
-        const SizedBox(height: 10),
+    return _panelCard(isDark: isDark, icon: Icons.auto_stories_rounded, title: 'DESPUÉS DEL VIAJE', children: [
+      if (rated.isNotEmpty) ...[
         Row(
           children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: current.arrivedAt == null ? () => run(() => _markArrival(current)) : null,
-                style: FilledButton.styleFrom(
-                  backgroundColor: OhtliColors.stormyTeal,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 11),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.flag_rounded, size: 17),
-                label: Text('Llegué', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: current.arrivedAt != null && current.leftAt == null ? () => run(() => _markLeave(current)) : null,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.5) : OhtliColors.stormyTeal,
-                  side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: current.arrivedAt != null ? 1 : 0.3)),
-                  padding: const EdgeInsets.symmetric(vertical: 11),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.logout_rounded, size: 17),
-                label: Text('Ya me voy', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-              ),
-            ),
+            ...List.generate(5, (i) => Icon(i < avg.round() ? Icons.star_rounded : Icons.star_outline_rounded, size: 19, color: Colors.amber)),
+            const SizedBox(width: 6),
+            Text(avg.toStringAsFixed(1), style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: fg)),
+            const Spacer(),
+            if (spent > 0) Text('Gastaron \$${spent.toStringAsFixed(0)}', style: GoogleFonts.inter(fontSize: 12, color: sub)),
           ],
         ),
-        const SizedBox(height: 14),
-      ] else if (!started) ...[
-        Text('Preparen el viaje: agreguen notas, tablas o fotos. Llegué y Ya me voy aparecen el día del viaje.',
-            style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: sub)),
-        const SizedBox(height: 12),
-      ],
-      LayoutBuilder(builder: (context, box) {
-        final double w = ((box.maxWidth - 3 * 8) / 4).floorToDouble();
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final t in ordered)
-              Material(
-                color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F6F5),
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: t.$3,
-                  child: SizedBox(
-                    width: w,
-                    height: 64,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(t.$1, size: 21, color: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45) : OhtliColors.stormyTeal),
-                        const SizedBox(height: 5),
-                        Text(t.$2,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: fg)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      }),
+        const SizedBox(height: 4),
+        Text('${rated.length} de ${places.length} paradas calificadas.', style: GoogleFonts.inter(fontSize: 12, color: sub)),
+      ] else
+        Text('Ya pasó ${_formatSpanishDate(t.travelDate)}. Califiquen, completen lo que faltó y cuéntenlo como crónica.',
+            style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: fg)),
+      const SizedBox(height: 12),
+      _toolGrid(isDark, [
+        if (canEdit) (Icons.star_rounded, 'Calificar', () => run(() async => _showReviewDialog(isDark))),
+        if (_canEditContent) (Icons.receipt_long_rounded, 'Precios', () => run(_completePrices)),
+        (canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, canEdit ? 'Modificar' : 'Erratas', () => run(() async => _openEditorOrErrata(canEdit))),
+        if (_canEditContent) (Icons.wallpaper_rounded, 'Portadas', () => run(_setCover)),
+        if (_canEditContent) (Icons.photo_camera_rounded, 'Fotos', () => run(_addPhoto)),
+        if (_isOwner) (Icons.auto_stories_rounded, isChronicle ? 'Crónica ✓' : 'Crónica', () => run(_convertToChronicle)),
+      ]),
     ]);
+  }
+
+  // ---------- acciones de planear
+  Future<void> _editSchedule() async {
+    final stops = _plannedStops;
+    if (stops.isEmpty) return;
+    final r = await askSchedule(context,
+        stops: [for (final p in stops) (id: p.id, name: p.title.isEmpty ? 'Parada' : p.title, arrival: p.arrivalTime, departure: p.departureTime)],
+        isDark: _dark);
+    if (r == null) return;
+    await _changeContent(
+      (l) => [
+        for (final s in l)
+          if (s is PlaceSection && r.containsKey(s.id))
+            s.copyWith(
+              arrivalTime: r[s.id]!.$1,
+              departureTime: r[s.id]!.$2,
+              clearArrivalTime: r[s.id]!.$1 == null,
+              clearDepartureTime: r[s.id]!.$2 == null,
+            )
+          else
+            s,
+      ],
+      done: 'Horarios guardados',
+    );
+  }
+
+  Future<void> _editBudget() async {
+    final rows = <AmountRow>[
+      for (final s in _sections)
+        if (s is PlaceSection && !s.unplanned)
+          (id: s.id, name: s.title.isEmpty ? 'Parada' : s.title, value: s.cost, isTransfer: false)
+        else if (s is TransferSection)
+          (id: s.id, name: describeTransfer(s), value: s.cost, isTransfer: true),
+    ];
+    if (rows.isEmpty) return;
+    final r = await askAmounts(context,
+        title: 'Presupuesto',
+        subtitle: 'Cuánto calculan gastar en cada parada y traslado.',
+        icon: Icons.account_balance_wallet_rounded,
+        action: 'Guardar presupuesto',
+        rows: rows,
+        isDark: _dark);
+    if (r == null) return;
+    await _changeContent(
+      (l) => [
+        for (final s in l)
+          if (s is PlaceSection && r.containsKey(s.id))
+            s.copyWith(cost: r[s.id])
+          else if (s is TransferSection && r.containsKey(s.id))
+            s.copyWith(cost: r[s.id])
+          else
+            s,
+      ],
+      done: 'Presupuesto guardado',
+    );
+  }
+
+  Future<void> _inviteTravelers(bool canEdit) async {
+    final choice = await askChoice<String>(context,
+        title: 'Invitar viajeros',
+        subtitle: 'Quien se una puede escribir, reaccionar y usar las herramientas del viaje.',
+        icon: Icons.person_add_alt_1_rounded,
+        isDark: _dark,
+        options: [
+          (icon: Icons.ios_share_rounded, title: 'Compartir el enlace', subtitle: 'Por WhatsApp, correo o con código QR.', value: 'link'),
+          if (canEdit) (icon: Icons.group_add_rounded, title: 'Agregar coautores', subtitle: 'Desde el editor, entre tus amigos de Ohtli.', value: 'coautores'),
+        ]);
+    if (!mounted || choice == null) return;
+    if (choice == 'link') {
+      _showShareDialog(_dark);
+    } else {
+      _openEditorOrErrata(canEdit);
+    }
+  }
+
+  Future<void> _saveItinerary() async {
+    final choice = await askChoice<String>(context,
+        title: 'Guardar el itinerario',
+        subtitle: 'Para tenerlo a la mano el día del viaje.',
+        icon: Icons.download_for_offline_rounded,
+        isDark: _dark,
+        options: [
+          (icon: Icons.picture_as_pdf_rounded, title: 'Descargar PDF', subtitle: 'Con mapa, horarios y un código QR al viaje.', value: 'pdf'),
+          (icon: Icons.event_rounded, title: 'Agregar al calendario', subtitle: 'Cada parada como evento (archivo .ics).', value: 'ics'),
+        ]);
+    if (!mounted || choice == null) return;
+    if (choice == 'pdf') {
+      _exportPdf();
+    } else {
+      _downloadCalendar();
+    }
+  }
+
+  void _downloadCalendar() {
+    final t = _trip;
+    if (t == null) return;
+    final day = t.travelDate ?? DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    String stamp(DateTime x) => '${x.year}${two(x.month)}${two(x.day)}T${two(x.hour)}${two(x.minute)}00';
+    String esc(String v) => v.replaceAll('\\', '\\\\').replaceAll(';', '\;').replaceAll(',', '\\,').replaceAll('\n', '\\n');
+    final b = StringBuffer('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ohtli//Viaje//ES\r\nCALSCALE:GREGORIAN\r\n');
+    int count = 0;
+    for (final p in _plannedStops) {
+      final startMin = _minutesOf(p.arrivalTime);
+      if (startMin == null) continue;
+      final start = DateTime(day.year, day.month, day.day, startMin ~/ 60, startMin % 60);
+      final endMin = _minutesOf(p.departureTime);
+      final end = endMin != null && endMin > startMin
+          ? DateTime(day.year, day.month, day.day, endMin ~/ 60, endMin % 60)
+          : start.add(const Duration(hours: 1));
+      final c = _coordsOf(p);
+      b
+        ..write('BEGIN:VEVENT\r\n')
+        ..write('UID:${t.id}-${p.id}@ohtli.quest\r\n')
+        ..write('DTSTAMP:${stamp(DateTime.now())}\r\n')
+        ..write('DTSTART:${stamp(start)}\r\n')
+        ..write('DTEND:${stamp(end)}\r\n')
+        ..write('SUMMARY:${esc(p.title)}\r\n')
+        ..write('DESCRIPTION:${esc('${t.title} · Ohtli')}\r\n');
+      if (c != null) b.write('LOCATION:${c.$1}\\,${c.$2}\r\nGEO:${c.$1};${c.$2}\r\n');
+      b.write('END:VEVENT\r\n');
+      count++;
+    }
+    b.write('END:VCALENDAR\r\n');
+    if (count == 0) {
+      _notice('Agrega horarios a las paradas para poder pasarlas al calendario.');
+      return;
+    }
+    final blob = html.Blob([b.toString()], 'text/calendar');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.AnchorElement(href: url)
+      ..download = '${t.title.isEmpty ? 'viaje' : t.title}.ics'
+      ..click();
+    html.Url.revokeObjectUrl(url);
+  }
+
+  // ---------- acciones de después
+  Future<void> _completePrices() async {
+    final places = _sections.whereType<PlaceSection>().toList();
+    if (places.isEmpty) return;
+    final r = await askAmounts(context,
+        title: 'Completar precios',
+        subtitle: 'Lo que realmente gastaron en cada parada.',
+        icon: Icons.receipt_long_rounded,
+        action: 'Guardar precios',
+        rows: [for (final p in places) (id: p.id, name: p.title.isEmpty ? 'Parada' : p.title, value: p.realCost ?? p.cost, isTransfer: false)],
+        isDark: _dark);
+    if (r == null) return;
+    await _changeContent(
+      (l) => [
+        for (final s in l)
+          if (s is PlaceSection && r.containsKey(s.id))
+            (r[s.id]! > 0 ? s.copyWith(realCost: r[s.id]) : s.copyWith(clearRealCost: true))
+          else
+            s,
+      ],
+      done: 'Precios guardados',
+    );
+  }
+
+  Future<void> _convertToChronicle() async {
+    final t = _trip;
+    if (t == null) return;
+    final unvisited = _sections.whereType<PlaceSection>().where((p) => !p.unplanned && p.arrivedAt == null && !_visited.contains(p.id)).toList();
+    final estimated = _sections.whereType<TransferSection>().where((x) => x.isEstimated).length;
+    final o = await askChronicle(context,
+        unvisited: [for (final p in unvisited) p.title],
+        estimatedTransfers: estimated,
+        alreadyPublic: t.visibility == 'public' && t.status == 'published',
+        isDark: _dark);
+    if (o == null) return;
+    final removeIds = {if (o.removeUnvisited) ...unvisited.map((p) => p.id)};
+    final ok = await _changeContent((l) {
+      final kept = <TripSection>[];
+      for (final s in l) {
+        if (removeIds.contains(s.id)) continue;
+        if (o.removeEstimated && s is TransferSection && s.isEstimated) continue;
+        // Al quitar una parada quedan dos traslados seguidos: se conserva el primero.
+        if (s is TransferSection && kept.isNotEmpty && kept.last is TransferSection) continue;
+        kept.add(s);
+      }
+      while (kept.isNotEmpty && kept.first is TransferSection) {
+        kept.removeAt(0);
+      }
+      while (kept.isNotEmpty && kept.last is TransferSection) {
+        kept.removeLast();
+      }
+      return kept;
+    });
+    if (!ok || !o.makePublic) {
+      if (ok) _notice('Listo: el viaje quedó como crónica.');
+      return;
+    }
+    try {
+      if (!_isSample) {
+        await FirebaseFirestore.instance.collection('users').doc(t.userId).collection('trips').doc(t.id).update({
+          'status': 'published',
+          'visibility': 'public',
+          'updatedAt': Timestamp.now(),
+        });
+      }
+      if (!mounted) return;
+      setState(() => _trip = Trip.fromMap({...t.toMap(), 'status': 'published', 'visibility': 'public'}, t.id));
+      _notice(_isSample ? 'Así se vería como crónica pública. En la muestra no se guarda.' : 'Listo: ya es una crónica pública y aparece en Explorar.');
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'Se limpió el plan, pero no se pudo publicar.'));
+    }
+  }
+
+  /// Calificar la parada en curso desde el modo viaje.
+  Future<void> _rateStop(PlaceSection p, int stars) async {
+    await _changeContent((l) => _updatePlace(l, p.id, (x) => x.copyWith(rating: stars)), done: '${p.title}: $stars ${stars == 1 ? 'estrella' : 'estrellas'}');
   }
 
   Widget _placeBadge(IconData icon, String text, bool isDark, {bool amber = false}) {
@@ -1570,17 +1946,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
       Text('Solo los miembros escriben y reaccionan; quien lea el viaje ve los mensajes.', style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: sub)),
     ]));
 
-    // Herramientas del viajero (dueño y coautores)
-    if (_canEditContent) cards.add(_buildTravelerToolsCard(isDark, onDone: onDone));
-
-    // Modo viaje
-    if (places.isNotEmpty) {
+    // Una tarjeta por etapa: antes se planea, durante va el modo viaje y después se cierra.
+    final phase = _phase;
+    if (phase == TripPhase.antes) cards.add(_buildPlanCard(isDark, canEdit, onDone: onDone));
+    if (phase == TripPhase.durante && places.isNotEmpty) {
       cards.add(_panelCard(isDark: isDark, icon: Icons.near_me_rounded, title: 'MODO VIAJE', children: [
         if (_tripMode && onDone == null)
           _buildTripModePanel(isDark, embedded: true)
         else ...[
-          Text(_tripMode ? 'El modo viaje está activo.' : 'Marca las paradas que visitas y abre la ruta a la siguiente.',
-              style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg)),
+          Text(
+            _tripMode
+                ? 'El modo viaje está activo.'
+                : 'Hoy es el viaje. En el modo viaje el panel te muestra lo que toca en cada momento: llegar, calificar, guardar fotos y gastos, desviarse.',
+            style: GoogleFonts.inter(fontSize: 13, height: 1.45, color: fg),
+          ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -1601,58 +1980,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         ],
       ]));
     }
-
-    // Calificar
-    if (places.isNotEmpty && t.travelDate != null) {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final day = DateTime(t.travelDate!.year, t.travelDate!.month, t.travelDate!.day);
-      // Desde el día del viaje ya se puede calificar (cada parada al visitarla).
-      final bool past = !day.isAfter(today);
-      final bool isToday = day == today;
-      final rated = places.where((p) => p.rating > 0).toList();
-      final avg = rated.isEmpty ? 0.0 : rated.fold<int>(0, (a, p) => a + p.rating) / rated.length;
-      cards.add(_panelCard(isDark: isDark, icon: Icons.star_rounded, title: 'CALIFICAR EL VIAJE', children: [
-        if (t.reviewedAt != null && rated.isNotEmpty) ...[
-          Row(
-            children: [
-              ...List.generate(5, (i) => Icon(i < avg.round() ? Icons.star_rounded : Icons.star_outline_rounded, size: 20, color: Colors.amber)),
-              const SizedBox(width: 6),
-              Text(avg.toStringAsFixed(1), style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: fg)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text('${rated.length} de ${places.length} paradas calificadas.', style: GoogleFonts.inter(fontSize: 12, color: sub)),
-        ] else
-          Text(
-            isToday
-                ? 'Hoy es el viaje: califica cada parada cuando la visites.'
-                : past
-                    ? 'Ya pasó ${_formatSpanishDate(t.travelDate)}. ¿Qué tal estuvo cada parada?'
-                    : 'Podrás calificar las paradas a partir ${_formatSpanishDate(t.travelDate).replaceFirst('el ', 'del ')}.',
-            style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg),
-          ),
-        if (past && canEdit) ...[
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                onDone?.call();
-                _showReviewDialog(isDark);
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: isDark ? const Color(0xFFE8A3C4) : OhtliColors.xoconostle,
-                side: BorderSide(color: isDark ? const Color(0xFFE8A3C4) : OhtliColors.xoconostle),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: const Icon(Icons.rate_review_rounded, size: 18),
-              label: Text(t.reviewedAt != null ? 'Editar calificación' : 'Calificar paradas', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-            ),
-          ),
-        ],
-      ]));
-    }
+    if (phase == TripPhase.despues) cards.add(_buildAfterCard(isDark, canEdit, onDone: onDone));
 
     // Actividad reciente
     final recent = _notes.reversed.take(5).toList();
@@ -3685,25 +4013,56 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
     final bool highlighted = _highlightedId == section.id;
     if (section is PlaceSection && _tripMode) {
-      final visited = _visited.contains(section.id);
+      final visited = _visited.contains(section.id) || section.arrivedAt != null;
+      final Widget action;
+      if (_canEditContent) {
+        // Para quien edita, la parada avanza: Llegué aquí → Ya me voy → Visitada.
+        final bool arrived = section.arrivedAt != null;
+        final bool left = section.leftAt != null;
+        action = !arrived
+            ? ActionChip(
+                avatar: const Icon(Icons.flag_rounded, size: 16, color: OhtliColors.stormyTeal),
+                label: Text('Llegué aquí', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal)),
+                onPressed: () => _markArrival(section),
+                side: const BorderSide(color: OhtliColors.stormyTeal),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              )
+            : !left
+                ? ActionChip(
+                    avatar: const Icon(Icons.logout_rounded, size: 16, color: Colors.white),
+                    backgroundColor: OhtliColors.stormyTeal,
+                    label: Text('Aquí desde las ${section.arrivedAt} · Ya me voy',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                    onPressed: () => _markLeave(section),
+                    side: BorderSide.none,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  )
+                : Chip(
+                    avatar: const Icon(Icons.check_circle_rounded, size: 16, color: OhtliColors.stormyTeal),
+                    label: Text('Visitada · ${section.arrivedAt}–${section.leftAt}',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.stormyTeal)),
+                    side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.3)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  );
+      } else {
+        action = FilterChip(
+          selected: visited,
+          onSelected: (_) => _toggleVisited(section.id),
+          showCheckmark: true,
+          checkmarkColor: Colors.white,
+          selectedColor: OhtliColors.stormyTeal,
+          label: Text(visited ? 'Visitada' : 'Marcar como visitada',
+              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: visited ? Colors.white : OhtliColors.stormyTeal)),
+          side: const BorderSide(color: OhtliColors.stormyTeal),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        );
+      }
+      final bool dim = section.leftAt != null || (!_canEditContent && visited);
       blockContent = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: FilterChip(
-              selected: visited,
-              onSelected: (_) => _toggleVisited(section.id),
-              showCheckmark: true,
-              checkmarkColor: Colors.white,
-              selectedColor: OhtliColors.stormyTeal,
-              label: Text(visited ? 'Visitada' : 'Marcar como visitada',
-                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: visited ? Colors.white : OhtliColors.stormyTeal)),
-              side: const BorderSide(color: OhtliColors.stormyTeal),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-          Opacity(opacity: visited ? 0.6 : 1, child: blockContent),
+          Padding(padding: const EdgeInsets.only(bottom: 10), child: SizedBox(height: 42, child: Align(alignment: Alignment.centerLeft, child: action))),
+          Opacity(opacity: dim ? 0.6 : 1, child: blockContent),
         ],
       );
     }
@@ -4613,258 +4972,275 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
+  /// Nota, consejo o aviso: tarjeta tintada con franja de color, ícono y etiqueta.
   Widget _buildAlertBlockViewer(AlertData alert, bool isDark) {
-    Color alertColor = OhtliColors.stormyTeal;
-    IconData alertIcon = Icons.info_outline_rounded;
-    String alertName = "Nota / Info";
-    
-    if (alert.type == AlertType.warning) {
-      alertColor = OhtliColors.xoconostle;
-      alertIcon = Icons.warning_amber_rounded;
-      alertName = "Advertencia";
-    } else if (alert.type == AlertType.tip) {
-      alertColor = OhtliColors.cempasuchil;
-      alertIcon = Icons.lightbulb_outline_rounded;
-      alertName = "Consejo / Tip";
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C32) : alertColor.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isDark ? alertColor.withValues(alpha: 0.3) : alertColor.withValues(alpha: 0.15),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final (Color color, IconData icon, String name) = switch (alert.type) {
+      AlertType.warning => (OhtliColors.xoconostle, Icons.warning_amber_rounded, 'AVISO'),
+      AlertType.tip => (OhtliColors.cempasuchil, Icons.lightbulb_rounded, 'CONSEJO'),
+      _ => (OhtliColors.stormyTeal, Icons.sticky_note_2_rounded, 'NOTA'),
+    };
+    final Color accent = isDark ? Color.lerp(color, Colors.white, 0.25)! : color;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        color: color.withValues(alpha: isDark ? 0.14 : 0.08),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: alertColor.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(alertIcon, color: alertColor, size: 16),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                alertName,
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: alertColor,
+              Container(width: 5, color: color),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 18, 16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(color: color.withValues(alpha: isDark ? 0.25 : 0.16), borderRadius: BorderRadius.circular(11)),
+                        child: Icon(icon, size: 19, color: accent),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: accent)),
+                            if (alert.content.isNotEmpty) ...[
+                              const SizedBox(height: 5),
+                              OhtliMarkdownText(
+                                text: alert.content,
+                                style: GoogleFonts.inter(
+                                  fontSize: 15,
+                                  height: 1.6,
+                                  color: isDark ? Colors.white.withValues(alpha: 0.88) : const Color(0xFF1F2A2A),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
-          if (alert.content.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            OhtliMarkdownText(
-              text: alert.content,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: isDark ? Colors.white70 : OhtliColors.onyx,
-                height: 1.45,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 
+  static String _money(double v) {
+    final whole = v.round().abs().toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < whole.length; i++) {
+      if (i > 0 && (whole.length - i) % 3 == 0) buf.write(',');
+      buf.write(whole[i]);
+    }
+    return '${v < 0 ? '-' : ''}\$${buf.toString()}';
+  }
+
+  /// Tabla en tarjeta: encabezado tintado, renglones alternados, números alineados a la
+  /// derecha con cifras tabulares y el total destacado. Ocupa todo el ancho si cabe.
   Widget _buildTableBlockViewer(TableData table, bool isDark) {
-    final int numCols = table.columns.length;
-    final bool showTotalRow = table.columns.any((col) => col.type == 'money' && col.isTotalEnabled);
-    final Color headerBg = isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.12);
-    final Color cellBorder = isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.25);
+    final cols = table.columns;
+    if (cols.isEmpty) return const SizedBox.shrink();
+    final bool showTotal = cols.any((c) => c.type == 'money' && c.isTotalEnabled);
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color line = isDark ? Colors.white10 : OhtliColors.cardBorder;
+    const tabular = [FontFeature.tabularFigures()];
+    bool numeric(TableColumn c) => c.type == 'money' || c.type == 'number';
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    Widget pad(Widget child, {bool right = false}) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          child: Align(alignment: right ? Alignment.centerRight : Alignment.centerLeft, child: child),
+        );
+
+    final rows = <TableRow>[
+      TableRow(
+        decoration: BoxDecoration(color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.18 : 0.08)),
         children: [
-          // Table Headers
-          Row(
-            children: List.generate(numCols, (colIdx) {
-              final col = table.columns[colIdx];
-              return Container(
-                width: 150,
-                margin: const EdgeInsets.only(right: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: headerBg,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: cellBorder),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      col.type == 'money'
-                          ? Icons.payments_rounded
-                          : col.type == 'number'
-                              ? Icons.tag_rounded
-                              : Icons.text_fields_rounded,
-                      size: 11,
-                      color: OhtliColors.stormyTeal.withValues(alpha: 0.7),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: OhtliMarkdownText(
-                        text: col.name,
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11.5,
-                          color: isDark ? Colors.white : OhtliColors.onyx,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 4),
-          // Rows
-          ...List.generate(table.rows.length, (rowIdx) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                children: List.generate(numCols, (colIdx) {
-                  final col = table.columns[colIdx];
-                  final bool isMoney = col.type == 'money';
-                  final bool isNumber = col.type == 'number';
-                  final val = table.rows[rowIdx][colIdx];
-
-                  return Container(
-                    width: 150,
-                    margin: const EdgeInsets.only(right: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: cellBorder),
-                    ),
-                    child: Align(
-                      alignment: (isMoney || isNumber) ? Alignment.centerRight : Alignment.centerLeft,
-                      child: isMoney && val.isNotEmpty
-                          ? RichText(
-                              textAlign: TextAlign.right,
-                              text: TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: '\$ ',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.35),
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: val,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11.5,
-                                      color: isDark ? Colors.white : OhtliColors.onyx,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: ' ${col.currency}',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 9.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark ? Colors.white30 : OhtliColors.onyx.withValues(alpha: 0.4),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : OhtliMarkdownText(
-                              text: val,
-                              style: GoogleFonts.inter(
-                                fontSize: 11.5,
-                                color: isDark ? Colors.white70 : OhtliColors.onyx,
-                              ),
-                              textAlign: (isMoney || isNumber) ? TextAlign.right : TextAlign.left,
-                            ),
-                    ),
-                  );
-                }),
+          for (final c in cols)
+            pad(
+              Text(
+                c.type == 'money' ? '${c.name.toUpperCase()} · ${c.currency}' : c.name.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.7, color: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.55) : OhtliColors.stormyTeal),
               ),
-            );
-          }),
-          // Totals Row
-          if (showTotalRow) ...[
-            const SizedBox(height: 2),
-            Row(
-              children: List.generate(numCols, (colIdx) {
-                final col = table.columns[colIdx];
-                final bool isMoneyTotal = col.type == 'money' && col.isTotalEnabled;
-
-                return Container(
-                  width: 150,
-                  margin: const EdgeInsets.only(right: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isMoneyTotal
-                        ? (isDark ? const Color(0xFF2C2C32) : OhtliColors.stormyTeal.withValues(alpha: 0.04))
-                        : Colors.transparent,
-                    border: isMoneyTotal
-                        ? Border(
-                            top: BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
-                            bottom: BorderSide(color: OhtliColors.stormyTeal, width: 1.2),
-                          )
-                        : null,
-                  ),
-                  child: isMoneyTotal
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Total:',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: OhtliColors.stormyTeal,
-                              ),
-                            ),
-                            Text(
-                              '\$ ${_calculateTableTotal(table, colIdx).toStringAsFixed(2)} ${col.currency}',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : OhtliColors.onyx,
-                              ),
-                            ),
-                          ],
-                        )
-                      : const SizedBox.shrink(),
-                );
-              }),
+              right: numeric(c),
             ),
-          ],
         ],
+      ),
+      for (int r = 0; r < table.rows.length; r++)
+        TableRow(
+          decoration: BoxDecoration(
+            color: r.isOdd ? (isDark ? Colors.white.withValues(alpha: 0.03) : const Color(0xFFF7F9F8)) : Colors.transparent,
+            border: Border(top: BorderSide(color: line)),
+          ),
+          children: [
+            for (int c = 0; c < cols.length; c++)
+              () {
+                final raw = c < table.rows[r].length ? table.rows[r][c] : '';
+                final col = cols[c];
+                final num = double.tryParse(raw.replaceAll(RegExp(r'[^\d.-]'), ''));
+                if (col.type == 'money' && num != null && raw.trim().isNotEmpty) {
+                  return pad(Text(_money(num), style: GoogleFonts.inter(fontSize: 14, color: fg, fontFeatures: tabular)), right: true);
+                }
+                return pad(
+                  OhtliMarkdownText(
+                    text: raw,
+                    textAlign: numeric(col) ? TextAlign.right : TextAlign.left,
+                    style: GoogleFonts.inter(fontSize: 14, height: 1.35, color: c == 0 ? fg : fg.withValues(alpha: 0.85), fontFeatures: tabular),
+                  ),
+                  right: numeric(col),
+                );
+              }(),
+          ],
+        ),
+      if (showTotal)
+        TableRow(
+          decoration: BoxDecoration(
+            color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.12 : 0.05),
+            border: const Border(top: BorderSide(color: OhtliColors.stormyTeal, width: 1.5)),
+          ),
+          children: [
+            for (int c = 0; c < cols.length; c++)
+              if (cols[c].type == 'money' && cols[c].isTotalEnabled)
+                pad(
+                  Text(_money(_calculateTableTotal(table, c)),
+                      style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: isDark ? Colors.white : OhtliColors.stormyTeal, fontFeatures: tabular)),
+                  right: true,
+                )
+              else
+                pad(c == 0 ? Text('Total', style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w800, color: fg)) : const SizedBox.shrink()),
+          ],
+        ),
+    ];
+
+    final double minWidth = cols.length * 130.0;
+    Widget tableFor(double width) => SizedBox(
+          width: width,
+          child: Table(
+            columnWidths: {for (int c = 0; c < cols.length; c++) c: FlexColumnWidth(numeric(cols[c]) ? 1 : 1.8)},
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: rows,
+          ),
+        );
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: line),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 14, offset: const Offset(0, 4))],
+      ),
+      child: LayoutBuilder(
+        builder: (context, box) => box.maxWidth >= minWidth
+            ? tableFor(box.maxWidth)
+            : Scrollbar(
+                child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: tableFor(minWidth)),
+              ),
       ),
     );
   }
 
+
+  /// Texto con tipografía de lectura: párrafos amplios, títulos (# o una línea en **negritas**)
+  /// y listas con viñetas o números. El primer bloque del viaje va como entrada, más grande.
   Widget _buildTextBlockViewer(TextSection textSec, bool isDark) {
-    if (textSec.markdownText.isEmpty) return const SizedBox.shrink();
-    return OhtliMarkdownText(
-      text: textSec.markdownText,
-      style: GoogleFonts.inter(
-        fontSize: 13.5,
-        color: isDark ? Colors.white70 : OhtliColors.onyx,
-        height: 1.5,
-      ),
-    );
+    final md = textSec.markdownText.trim();
+    if (md.isEmpty) return const SizedBox.shrink();
+    final bool lead = _sections.isNotEmpty && identical(_sections.first, textSec);
+    final Color body = isDark ? Colors.white.withValues(alpha: 0.84) : const Color(0xFF1F2A2A).withValues(alpha: 0.88);
+    final Color heading = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final TextStyle para = GoogleFonts.inter(fontSize: lead ? 17.5 : 15.5, height: 1.7, color: body);
+    final headingRe = RegExp(r'^(#{1,3})\s+(.+)$');
+    final boldRe = RegExp(r'^\*\*([^*]+)\*\*$');
+    final bulletRe = RegExp(r'^[-*•]\s+(.+)$');
+    final numberRe = RegExp(r'^(\d+)[.)]\s+(.+)$');
+    bool special(String t) => headingRe.hasMatch(t) || boldRe.hasMatch(t) || bulletRe.hasMatch(t) || numberRe.hasMatch(t);
+
+    Widget item(Widget marker, String text) => Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 30, child: marker),
+              Expanded(child: OhtliMarkdownText(text: text, style: para.copyWith(height: 1.6))),
+            ],
+          ),
+        );
+
+    final children = <Widget>[];
+    final lines = md.split('\n');
+    int i = 0;
+    while (i < lines.length) {
+      final t = lines[i].trim();
+      if (t.isEmpty) {
+        i++;
+        continue;
+      }
+      final h = headingRe.firstMatch(t);
+      final bold = boldRe.firstMatch(t);
+      final bullet = bulletRe.firstMatch(t);
+      final number = numberRe.firstMatch(t);
+      if (h != null || bold != null) {
+        final big = h != null && h.group(1)!.length == 1;
+        children.add(Padding(
+          padding: EdgeInsets.only(top: children.isEmpty ? 0 : 18, bottom: 2),
+          child: Text(h?.group(2) ?? bold!.group(1)!,
+              style: GoogleFonts.outfit(fontSize: big ? 26 : 21, fontWeight: FontWeight.bold, height: 1.2, color: heading)),
+        ));
+      } else if (bullet != null) {
+        children.add(item(
+          Padding(
+            padding: EdgeInsets.only(top: lead ? 11 : 10, left: 6),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Container(width: 7, height: 7, decoration: const BoxDecoration(color: OhtliColors.cempasuchil, shape: BoxShape.circle)),
+            ),
+          ),
+          bullet.group(1)!,
+        ));
+      } else if (number != null) {
+        children.add(item(
+          Align(
+            alignment: Alignment.topLeft,
+            child: Container(
+              margin: const EdgeInsets.only(top: 2),
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.3 : 0.12), shape: BoxShape.circle),
+              child: Text(number.group(1)!,
+                  style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: isDark ? Colors.white : OhtliColors.stormyTeal)),
+            ),
+          ),
+          number.group(2)!,
+        ));
+      } else {
+        // Párrafo: líneas seguidas hasta una línea vacía o un elemento especial.
+        final buf = <String>[t];
+        i++;
+        while (i < lines.length) {
+          final n = lines[i].trim();
+          if (n.isEmpty || special(n)) break;
+          buf.add(n);
+          i++;
+        }
+        children.add(Padding(
+          padding: EdgeInsets.only(top: children.isEmpty ? 0 : 12),
+          child: OhtliMarkdownText(text: buf.join('\n'), style: para),
+        ));
+        continue;
+      }
+      i++;
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
 
   Widget _buildTextImageBlockViewer(TextImageSection section, bool isDark, bool isDesktop) {
