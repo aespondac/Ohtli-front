@@ -394,6 +394,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         automaticallyImplyLeading: widget.showBackButton,
         leading: widget.showBackButton
             ? IconButton(
+                tooltip: 'Volver',
                 icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor),
                 onPressed: () => Navigator.pop(context),
               )

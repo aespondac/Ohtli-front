@@ -778,7 +778,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
     final double width = MediaQuery.of(context).size.width;
-    final bool isDesktop = width >= 800;
+    final bool isDesktop = !ohtliIsMobileWidth(width);
 
     if (_isLoadingProfile) {
       return const Scaffold(

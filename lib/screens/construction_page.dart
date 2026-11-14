@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/colors.dart';
+import '../utils/friendly_errors.dart';
 
 class ConstructionPage extends StatefulWidget {
   final VoidCallback? onLoginClick;
@@ -78,7 +79,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final isMobile = screenSize.width < 600;
+    final isMobile = ohtliIsMobileWidth(screenSize.width);
 
     return Scaffold(
       body: FadeTransition(

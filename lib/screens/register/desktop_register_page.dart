@@ -360,6 +360,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                               hintText: 'Contraseña',
                               obscureText: _obscurePassword,
                               suffixIcon: IconButton(
+                                tooltip: _obscurePassword ? 'Mostrar contraseña' : 'Ocultar contraseña',
                                 icon: Icon(
                                   _obscurePassword
                                       ? Icons.visibility
@@ -405,6 +406,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                               hintText: 'Confirma Contrseña',
                               obscureText: _obscureConfirmPassword,
                               suffixIcon: IconButton(
+                                tooltip: _obscureConfirmPassword ? 'Mostrar contraseña' : 'Ocultar contraseña',
                                 icon: Icon(
                                   _obscureConfirmPassword
                                       ? Icons.visibility

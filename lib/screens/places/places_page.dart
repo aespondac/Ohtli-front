@@ -23,6 +23,7 @@ import '../../widgets/poi_card.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import '../trips/trip_editor_page.dart';
+import '../../utils/friendly_errors.dart';
 
 class PlacesPage extends StatefulWidget {
   final VoidCallback? onBack;
@@ -666,7 +667,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final isMobile = screenSize.width < 768;
+    final isMobile = ohtliIsMobileWidth(screenSize.width); // mismo corte que el menú de la app
 
     if (_isLoadingPois && _allPois.isEmpty) {
       return _buildSkeletonView(isMobile, screenSize);

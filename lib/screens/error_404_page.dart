@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/colors.dart';
+import '../utils/friendly_errors.dart';
 
 class Error404Page extends StatefulWidget {
   final VoidCallback onExploreHome;
@@ -21,7 +22,7 @@ class _Error404PageState extends State<Error404Page> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final isMobile = screenSize.width < 600;
+    final isMobile = ohtliIsMobileWidth(screenSize.width);
     final bool isDark = OhtliSettings.instance.isDarkMode;
 
     return Scaffold(

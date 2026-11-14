@@ -2136,6 +2136,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         size: 20,
                       ),
                       suffixIcon: IconButton(
+                        tooltip: _obscureCurrent ? 'Mostrar contraseña' : 'Ocultar contraseña',
                         icon: Icon(
                           _obscureCurrent
                               ? Icons.visibility_rounded
@@ -2184,6 +2185,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       size: 20,
                     ),
                     suffixIcon: IconButton(
+                      tooltip: _obscureNew ? 'Mostrar contraseña' : 'Ocultar contraseña',
                       icon: Icon(
                         _obscureNew
                             ? Icons.visibility_rounded
@@ -2225,6 +2227,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       size: 20,
                     ),
                     suffixIcon: IconButton(
+                      tooltip: _obscureConfirm ? 'Mostrar contraseña' : 'Ocultar contraseña',
                       icon: Icon(
                         _obscureConfirm
                             ? Icons.visibility_rounded
@@ -2644,6 +2647,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
+                                  tooltip: 'Editar dirección',
                                   icon: const Icon(
                                     Icons.edit_rounded,
                                     color: OhtliColors.stormyTeal,
@@ -2664,6 +2668,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                   },
                                 ),
                                 IconButton(
+                                  tooltip: 'Eliminar dirección',
                                   icon: const Icon(
                                     Icons.delete_outline_rounded,
                                     color: OhtliColors.xoconostle,

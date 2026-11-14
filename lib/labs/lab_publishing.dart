@@ -279,7 +279,7 @@ class _PostEditorState extends State<_PostEditor> {
     return LabCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back)),
+          IconButton(tooltip: 'Volver', onPressed: widget.onClose, icon: const Icon(Icons.arrow_back)),
           Expanded(child: LabSectionTitle(widget.postId == null ? 'Nuevo artículo' : 'Editar artículo')),
         ]),
         _f(_title, 'Título'),

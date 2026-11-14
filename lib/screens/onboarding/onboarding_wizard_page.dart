@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import '../../theme/colors.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
+import '../../utils/friendly_errors.dart';
 
 class OnboardingWizardPage extends StatefulWidget {
   final VoidCallback onCompleted;
@@ -407,7 +408,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 640;
+    final isMobile = ohtliIsMobileWidth(MediaQuery.of(context).size.width);
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       body: Stack(

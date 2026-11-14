@@ -355,6 +355,7 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
                               hintText: 'Contraseña',
                               obscureText: _obscurePassword,
                               suffixIcon: IconButton(
+                                tooltip: _obscurePassword ? 'Mostrar contraseña' : 'Ocultar contraseña',
                                 icon: Icon(
                                   _obscurePassword
                                       ? Icons.visibility

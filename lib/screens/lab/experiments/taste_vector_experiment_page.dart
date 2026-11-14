@@ -879,6 +879,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         scrolledUnderElevation: 1,
         shadowColor: OhtliColors.cardBorder,
         leading: IconButton(
+          tooltip: 'Volver',
           icon: Icon(Icons.arrow_back, color: OhtliColors.onyx),
           onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
         ),

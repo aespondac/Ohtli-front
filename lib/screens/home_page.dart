@@ -342,6 +342,7 @@ class _HomePageState extends State<HomePage> {
                     alignment: Alignment.center,
                     children: [
                       IconButton(
+                        tooltip: 'Notificaciones',
                         icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
                         onPressed: () {
                           _selectTab(6);
@@ -380,6 +381,7 @@ class _HomePageState extends State<HomePage> {
               )
             else
               IconButton(
+                tooltip: 'Notificaciones',
                 icon: const Icon(Icons.notifications_none, color: OhtliColors.stormyTeal, size: 20),
                 onPressed: () {
                   _selectTab(6);

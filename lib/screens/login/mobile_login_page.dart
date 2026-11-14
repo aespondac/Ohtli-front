@@ -209,6 +209,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
             top: 24,
             left: 16,
             child: IconButton(
+              tooltip: 'Volver',
               icon: Icon(
                 Icons.arrow_back_rounded,
                 color: OhtliColors.onyx,
@@ -290,6 +291,7 @@ class _MobileLoginPageState extends State<MobileLoginPage> {
                           hintText: 'Contraseña',
                           obscureText: _obscurePassword,
                           suffixIcon: IconButton(
+                            tooltip: _obscurePassword ? 'Mostrar contraseña' : 'Ocultar contraseña',
                             icon: Icon(
                               _obscurePassword
                                   ? Icons.visibility
