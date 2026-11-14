@@ -103,6 +103,8 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
   }
 
   void _toggleSave() {
+    // Guardar lugares es solo para cuentas registradas
+    if (FirebaseAuth.instance.currentUser == null) return;
     setState(() => _isSaved = !_isSaved);
     if (kIsWeb) {
       try {
@@ -908,6 +910,8 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
 
   // Acciones siempre visibles
   Widget _buildActionBar(bool isMobile) {
+    // Sin cuenta no existe la opción de guardar (la parte pública es solo de consulta)
+    final canSave = FirebaseAuth.instance.currentUser != null;
     final primary = ElevatedButton.icon(
       onPressed: _isCreatingTrip ? null : _createRouteFromThisPlace,
       icon: _isCreatingTrip
@@ -955,7 +959,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       ),
       child: Row(
         children: [
-          if (isMobile)
+          if (canSave && isMobile)
             // En móvil, guardar es solo un ícono para que el botón principal quepa en una línea
             Tooltip(
               message: _isSaved ? 'Quitar de Mis lugares' : 'Guardar en Mis lugares',
@@ -977,9 +981,9 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                 ),
               ),
             )
-          else
+          else if (canSave)
             secondary,
-          const SizedBox(width: 10),
+          if (canSave) const SizedBox(width: 10),
           Expanded(child: primary),
         ],
       ),

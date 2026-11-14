@@ -12,6 +12,18 @@ class ConstructionPage extends StatefulWidget {
 
   @override
   State<ConstructionPage> createState() => _ConstructionPageState();
+
+  /// Dominio anterior (othli): se muestra la pantalla de redirección en lugar de la landing.
+  static bool get isOldDomain {
+    try {
+      final host = Uri.base.host.toLowerCase();
+      final hasOldParam = Uri.base.queryParameters['old'] == 'true';
+      final isFirebaseDomain = host.contains('web.app') || host.contains('firebaseapp.com');
+      return (host.contains('othli') && !host.contains('ohtli') && !isFirebaseDomain) || hasOldParam;
+    } catch (e) {
+      return false;
+    }
+  }
 }
 
 class _ConstructionPageState extends State<ConstructionPage> with SingleTickerProviderStateMixin {
