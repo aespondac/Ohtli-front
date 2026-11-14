@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/ohtli_sso.dart';
 import '../theme/colors.dart';
 import 'lab_access.dart';
+import 'lab_aggregates.dart';
 import 'lab_article.dart';
 import 'lab_repository.dart';
 import 'lab_studies.dart';
@@ -323,32 +324,57 @@ class _SusFlowState extends State<_SusFlow> {
   String? _visitor, _age, _device;
   final _comment = TextEditingController();
   bool _sending = false, _sent = false;
+  bool _alreadySent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Si ya respondió (p. ej. volvió a "Comenzar" o recargó), no se le pide de nuevo.
+    LabRepository.instance.myResponses('sus').then((r) {
+      if (mounted && r.isNotEmpty) setState(() => _alreadySent = true);
+    }).catchError((_) {});
+  }
 
   bool get _complete => !_sus.contains(null) && !_sat.contains(null) && !_tasks.contains(null) && _visitor != null;
 
   Future<void> _send() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
     setState(() => _sending = true);
-    await LabRepository.instance.addResponse('sus', {
-      'sus': _sus,
-      'satisfaction': _sat,
-      'tasks': _tasks,
-      'profile': {'visitor_type': _visitor, 'age_range': _age, 'device': _device},
-      'comment': _comment.text.trim().substring(0, math.min(1000, _comment.text.trim().length)),
-    });
-    setState(() {
-      _sending = false;
-      _sent = true;
-    });
+    try {
+      await LabRepository.instance.addResponse('sus', susResponseId(uid), {
+        'sus': _sus,
+        'satisfaction': _sat,
+        'tasks': _tasks,
+        'profile': {'visitor_type': _visitor, 'age_range': _age, 'device': _device},
+        'comment': _comment.text.trim().substring(0, math.min(1000, _comment.text.trim().length)),
+      });
+      if (mounted) setState(() => _sent = true);
+    } catch (e) {
+      if (!mounted) return;
+      // Las reglas rechazan un segundo envío (ID determinista) o un estudio ya cerrado.
+      final mine = await LabRepository.instance.myResponses('sus').catchError((_) => <Map<String, dynamic>>[]);
+      if (!mounted) return;
+      if (mine.isNotEmpty) {
+        setState(() => _alreadySent = true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No pudimos guardar tus respuestas. Puede que el estudio se haya cerrado; inténtalo de nuevo en un momento.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_sent) {
+    if (_sent || _alreadySent) {
       return LabCard(
         child: Column(children: [
           const Icon(Icons.favorite_rounded, color: OhtliColors.cempasuchil, size: 40),
           const SizedBox(height: 8),
-          Text('¡Gracias! Tus respuestas quedaron registradas.', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+          Text(_sent ? '¡Gracias! Tus respuestas quedaron registradas.' : 'Ya respondiste este cuestionario. ¡Gracias por participar!', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
           const SizedBox(height: 12),
           TextButton(onPressed: widget.onDone, child: const Text('Volver')),
         ]),
@@ -449,7 +475,10 @@ class _RelevanceFlow extends StatefulWidget {
 class _RelevanceFlowState extends State<_RelevanceFlow> {
   String? _runId;
   List<Map<String, dynamic>> _rows = [];
+  // Alternativas ya vistas o calificadas, como "<index de la fila>/<alternativa>". Incluye las de
+  // visitas anteriores (de sus respuestas guardadas) para no volver a juzgar lo mismo al recargar.
   final Set<String> _seen = {};
+  int _previouslyGraded = 0;
   Map<String, dynamic>? _row;
   int _opt = 0;
   List<int?> _grades = [];
@@ -472,6 +501,12 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
       _rows = (await LabRepository.instance.rows(_runId!))
           .where((r) => r['status'] == 'completed' && ((r['options'] as List?) ?? []).isNotEmpty)
           .toList();
+      try {
+        for (final r in await LabRepository.instance.myResponses('relevancia', runId: _runId)) {
+          _seen.add('${r['rowIndex']}/${r['optionIndex']}');
+        }
+        _previouslyGraded = _seen.length;
+      } catch (_) {}
       _next();
     } catch (e) {
       _error = '$e';
@@ -484,7 +519,7 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
     for (var i = 0; i < _rows.length; i++) {
       final opts = (_rows[i]['options'] as List);
       for (var j = 0; j < opts.length; j++) {
-        if (((opts[j] as Map)['route'] as List? ?? []).isNotEmpty && !_seen.contains('$i/$j')) pool.add([i, j]);
+        if (((opts[j] as Map)['route'] as List? ?? []).isNotEmpty && !_seen.contains('${_rows[i]['index']}/$j')) pool.add([i, j]);
       }
     }
     if (pool.isEmpty) {
@@ -494,29 +529,44 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
     final pick = pool[_rng.nextInt(pool.length)];
     _row = _rows[pick[0]];
     _opt = pick[1];
-    _seen.add('${pick[0]}/${pick[1]}');
+    _seen.add('${_row!['index']}/${pick[1]}');
     _grades = List.filled(((_row!['options'] as List)[_opt]['route'] as List).length, null);
   }
 
   Future<void> _send() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
     setState(() => _sending = true);
     final sc = Map<String, dynamic>.from(_row!['scenario'] as Map);
     final opt = Map<String, dynamic>.from((_row!['options'] as List)[_opt] as Map);
-    await LabRepository.instance.addResponse('relevancia', {
-      'runId': _runId,
-      'rowIndex': _row!['index'],
-      'scenarioId': sc['id'],
-      'optionIndex': _opt,
-      'theme': opt['theme_key'] ?? opt['theme'],
-      'mood': sc['mood'],
-      'poiIds': (opt['route'] as List).map((s) => (s as Map)['poi_id']).toList(),
-      'grades': _grades,
-    });
-    setState(() {
-      _sending = false;
-      _count++;
-      _next();
-    });
+    final rowIndex = (_row!['index'] as num).toInt();
+    try {
+      await LabRepository.instance.addResponse('relevancia', relevanceResponseId(uid, _runId!, rowIndex, _opt), {
+        'runId': _runId,
+        'rowIndex': rowIndex,
+        'scenarioId': sc['id'],
+        'optionIndex': _opt,
+        'theme': opt['theme_key'] ?? opt['theme'],
+        'mood': sc['mood'],
+        'poiIds': (opt['route'] as List).map((s) => (s as Map)['poi_id']).toList(),
+        'grades': _grades,
+      });
+      if (mounted) setState(() => _count++);
+    } catch (e) {
+      // Ya calificada antes (ID determinista) o estudio cerrado: se avisa y se sigue con otra.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se guardó esta calificación (ya la habías enviado o el estudio se cerró). Seguimos con otra.'),
+        ));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          _next();
+        });
+      }
+    }
   }
 
   @override
@@ -526,7 +576,12 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
     if (_row == null) {
       return LabCard(
         child: Column(children: [
-          Text('¡Listo! Calificaste $_count itinerarios. Gracias.', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+          Text(
+              _count > 0
+                  ? '¡Listo! Calificaste $_count itinerarios. Gracias.'
+                  : _previouslyGraded > 0
+                      ? 'Ya calificaste todos los itinerarios de este estudio. ¡Gracias!'
+                      : 'Por ahora no hay itinerarios para calificar.', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
           TextButton(onPressed: widget.onDone, child: const Text('Volver')),
         ]),
       );

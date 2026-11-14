@@ -276,8 +276,13 @@ service cloud.firestore {
 
     // Labs Waitlist Collection
     match /labs_waitlist/{userId} {
-      // Users can read and create their own waitlist document
-      allow read, create: if request.auth != null && request.auth.uid == userId;
+      // Cada quien lee y crea su solicitud; se crea siempre "pending" (antes se podía crear ya
+      // "approved" por REST). Solo el superusuario la aprueba o rechaza.
+      allow read: if isSuperUser() || (request.auth != null && request.auth.uid == userId);
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.get('status', 'pending') == 'pending'
+        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'agreedToTerms', 'status', 'updatedAt', 'createdAt']);
+      allow update, delete: if isSuperUser();
     }
 
     // Yollotl Engine Jobs (Async ETL & Agents)
@@ -397,12 +402,16 @@ service cloud.firestore {
     match /lab_invites/{email} {
       allow read: if isSuperUser() || (request.auth != null && request.auth.token.email.lower() == email);
       allow write: if isSuperUser();
+      // Quien la acepta la borra: si se quedaba, roleOf() la volvía a aceptar y "Quitar del
+      // laboratorio" o "Dejar de ser tester" no surtían efecto.
+      allow delete: if request.auth != null && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == email;
     }
     match /lab_runs/{runId} {
       allow read: if resource.data.visibility == 'public'
         || (resource.data.visibility == 'testers' && isLabTester())
         || isLabMember()
-        || (request.auth != null && resource.data.evalSource == true);
+        || (isLabTester() && resource.data.evalSource == true);
       allow create: if isLabMember() && publicOnlyBySuper();
       allow update: if isLabMember() && publicOnlyBySuper();
       allow delete: if isSuperUser();
@@ -410,7 +419,7 @@ service cloud.firestore {
         allow read: if isLabMember()
           || get(/databases/$(database)/documents/lab_runs/$(runId)).data.visibility == 'public'
           || (isLabTester() && get(/databases/$(database)/documents/lab_runs/$(runId)).data.visibility == 'testers')
-          || (request.auth != null && get(/databases/$(database)/documents/lab_runs/$(runId)).data.evalSource == true);
+          || (isLabTester() && get(/databases/$(database)/documents/lab_runs/$(runId)).data.evalSource == true);
         allow write: if isLabMember();
       }
     }
@@ -432,6 +441,34 @@ service cloud.firestore {
       allow write: if isLabMember();
     }
     // Respuestas de testers: anónimas (solo el uid para evitar duplicados), visibles solo para el laboratorio.
+    // Una por persona: el ID es determinista (sus_<uid>, rel_<uid>_<corrida>_<fila>_<alternativa>) y solo se
+    // permite crear, así que reenviar no duplica. Los valores se validan (escalas 1–5): antes un valor
+    // fuera de rango rompía el panel y sesgaba los agregados publicados.
+    function likert5(l, minSize, maxSize) {
+      return l is list && l.size() >= minSize && l.size() <= maxSize && l.hasOnly([1, 2, 3, 4, 5]);
+    }
+    function optionalShortString(m, key) {
+      return m.get(key, null) == null || (m.get(key, null) is string && m.get(key, '').size() <= 60);
+    }
+    function validSusResponse(responseId, d) {
+      return responseId == 'sus_' + request.auth.uid
+        && likert5(d.get('sus', null), 10, 10)
+        && likert5(d.get('satisfaction', null), 1, 10)
+        && d.get('tasks', null) is list && d.tasks.size() >= 1 && d.tasks.size() <= 10
+        && d.tasks.hasOnly(['completada', 'con dificultad', 'no completada'])
+        && d.get('profile', null) is map
+        && d.profile.keys().hasOnly(['visitor_type', 'age_range', 'device'])
+        && d.profile.get('visitor_type', null) is string
+        && optionalShortString(d.profile, 'visitor_type')
+        && optionalShortString(d.profile, 'age_range')
+        && optionalShortString(d.profile, 'device');
+    }
+    function validRelevanceResponse(responseId, d) {
+      return d.get('runId', null) is string && d.get('rowIndex', null) is int && d.get('optionIndex', null) is int
+        && responseId == 'rel_' + request.auth.uid + '_' + d.runId + '_' + string(d.rowIndex) + '_' + string(d.optionIndex)
+        && d.runId == get(/databases/$(database)/documents/lab_studies/relevancia).data.get('sourceRunId', '')
+        && likert5(d.get('grades', null), 1, 12);
+    }
     match /lab_responses/{responseId} {
       allow create: if isLabTester()
         && request.resource.data.uid == request.auth.uid
@@ -440,10 +477,13 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/lab_studies/$(request.resource.data.studyId)).data.active == true
         && request.resource.data.keys().hasOnly(['studyId', 'uid', 'consent', 'createdAt', 'sus', 'satisfaction', 'tasks',
              'profile', 'comment', 'runId', 'rowIndex', 'scenarioId', 'optionIndex', 'theme', 'mood', 'poiIds', 'grades'])
-        && (!('sus' in request.resource.data) || request.resource.data.sus.size() == 10)
-        && (!('grades' in request.resource.data) || request.resource.data.grades.size() <= 12)
-        && (!('comment' in request.resource.data) || request.resource.data.comment.size() <= 1000);
-      allow read, update, delete: if isLabMember();
+        && (!('comment' in request.resource.data)
+            || (request.resource.data.comment is string && request.resource.data.comment.size() <= 1000))
+        && ((request.resource.data.studyId == 'sus' && validSusResponse(responseId, request.resource.data))
+            || (request.resource.data.studyId == 'relevancia' && validRelevanceResponse(responseId, request.resource.data)));
+      // Cada tester puede ver las suyas (para no repetir lo que ya respondió); el laboratorio, todas.
+      allow read: if isLabMember() || (request.auth != null && resource.data.uid == request.auth.uid);
+      allow update, delete: if isLabMember();
     }
   }
 }

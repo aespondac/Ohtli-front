@@ -108,15 +108,26 @@ class LabRepository {
   Future<void> setStudy(String studyId, Map<String, dynamic> data) =>
       studies.doc(studyId).set({...data, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
 
-  Future<void> addResponse(String studyId, Map<String, dynamic> data) {
+  /// Guarda una respuesta con ID determinista ([susResponseId] / [relevanceResponseId]): las
+  /// reglas solo permiten crearla, así que reenviar no la duplica (falla con permission-denied).
+  Future<void> addResponse(String studyId, String id, Map<String, dynamic> data) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return responses.add({
+    return responses.doc(id).set({
       ...data,
       'studyId': studyId,
       'uid': uid,
       'consent': true,
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  /// Respuestas propias de un estudio (las reglas dejan leer a cada tester solo las suyas).
+  Future<List<Map<String, dynamic>>> myResponses(String studyId, {String? runId}) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return const [];
+    Query<Map<String, dynamic>> q = responses.where('uid', isEqualTo: uid).where('studyId', isEqualTo: studyId);
+    if (runId != null) q = q.where('runId', isEqualTo: runId);
+    return (await q.get()).docs.map((d) => d.data()).toList();
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> watchResponses(String studyId) =>

@@ -849,12 +849,15 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
   void _openFullWizard() {
     Navigator.of(context).push(
       MaterialPageRoute(
+        // En Labs el asistente no guarda: si no, reescribía el perfil de gustos real (y con él las
+        // recomendaciones de la persona), contra lo que dicen la landing y los términos de Labs.
         builder: (context) => OnboardingWizardPage(
+          sandbox: true,
           onCompleted: () {
             Navigator.of(context).pop();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text("¡Wizard de 5 pasos completado exitosamente!"),
+                content: Text("Asistente completado en modo de prueba: tu perfil real no cambió."),
                 backgroundColor: OhtliColors.stormyTeal,
               ),
             );

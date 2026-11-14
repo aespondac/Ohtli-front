@@ -725,7 +725,8 @@ class _TesterStudy extends StatelessWidget {
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: repo.watchResponses(study.id),
             builder: (context, rs) {
-              final docs = rs.data?.docs.map((d) => d.data()).toList() ?? [];
+              final raw = rs.data?.docs.map((d) => d.data()).toList() ?? [];
+              final docs = cleanResponses(study.kind, raw);
               final agg = study.kind == LabStudyKind.sus ? aggregateSus(docs) : aggregateRelevance(docs);
               return LabCard(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -736,7 +737,7 @@ class _TesterStudy extends StatelessWidget {
                   const SizedBox(height: 12),
                   Wrap(spacing: 10, runSpacing: 10, children: [
                     OutlinedButton.icon(
-                      onPressed: docs.isEmpty ? null : () => downloadText('${study.id}_respuestas.json', toJsonPretty(docs), mime: 'application/json'),
+                      onPressed: docs.isEmpty ? null : () => downloadText('${study.id}_respuestas.json', toJsonPretty(anonymizeResponses(docs)), mime: 'application/json'),
                       icon: const Icon(Icons.download_rounded),
                       label: const Text('Respuestas (JSON, anónimas)'),
                     ),

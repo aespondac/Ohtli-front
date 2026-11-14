@@ -216,7 +216,8 @@ class _PostEditorState extends State<_PostEditor> {
       final study = studyById(sid);
       if (study == null) continue;
       final docs = (await LabRepository.instance.responses.where('studyId', isEqualTo: sid).get()).docs.map((d) => d.data()).toList();
-      out.add(buildAggregateSnapshot(study, sid == 'sus' ? aggregateSus(docs) : aggregateRelevance(docs)));
+      final clean = cleanResponses(study.kind, docs);
+      out.add(buildAggregateSnapshot(study, sid == 'sus' ? aggregateSus(clean) : aggregateRelevance(clean)));
     }
     return out;
   }
@@ -432,7 +433,7 @@ class _LabMembersPanelState extends State<LabMembersPanel> {
                           trailing: IconButton(
                             tooltip: 'Quitar del laboratorio',
                             icon: const Icon(Icons.remove_circle_outline),
-                            onPressed: () => LabAccess.memberDoc(d.id).delete(),
+                            onPressed: () => LabAccess.removeMember(d.id, d.data()['email'] as String?),
                           ),
                         ))
                     .toList(),

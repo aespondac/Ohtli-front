@@ -13,9 +13,14 @@ import '../construction_page.dart'; // RouteBackgroundPainter
 class OnboardingWizardPage extends StatefulWidget {
   final VoidCallback onCompleted;
 
+  /// Modo de prueba (Ohtli Labs): recorre los 5 pasos sin llamar al motor ni guardar nada, así
+  /// el perfil de gustos real de la persona no cambia.
+  final bool sandbox;
+
   const OnboardingWizardPage({
     super.key,
     required this.onCompleted,
+    this.sandbox = false,
   });
 
   static List<double> _buildDeterministic768dFallback(String recipeText) {
@@ -309,6 +314,15 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   }
 
   Future<void> _finishOnboarding() async {
+    if (widget.sandbox) {
+      setState(() {
+        _isSynthesizing = true;
+        _synthesisMessage = "Modo de prueba: tu perfil real no se modificó.";
+      });
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (mounted) widget.onCompleted();
+      return;
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 

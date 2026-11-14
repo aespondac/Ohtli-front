@@ -8,6 +8,71 @@ import 'lab_runner.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
 
+// ───────────── Respuestas de testers: validación, una por persona y anonimato ─────────────
+
+/// ID de la respuesta SUS: una por persona (las reglas solo permiten crearla, no reescribirla).
+String susResponseId(String uid) => 'sus_$uid';
+
+/// ID de un juicio de relevancia: uno por persona y alternativa de la corrida fuente.
+String relevanceResponseId(String uid, String runId, int rowIndex, int optionIndex) => 'rel_${uid}_${runId}_${rowIndex}_$optionIndex';
+
+/// Calificaciones 1–5. Devuelve null si falta o si algún valor no es una calificación válida
+/// (respuestas anteriores a la validación en las reglas), para descartarla en vez de romper el panel.
+List<int>? likertList(dynamic v, {int? length}) {
+  if (v is! List || v.isEmpty) return null;
+  if (length != null && v.length != length) return null;
+  final out = <int>[];
+  for (final e in v) {
+    if (e is! num || e != e.roundToDouble() || e < 1 || e > 5) return null;
+    out.add(e.toInt());
+  }
+  return out;
+}
+
+int _millis(dynamic ts) {
+  try {
+    return ((ts as dynamic).toDate() as DateTime).millisecondsSinceEpoch;
+  } catch (_) {
+    return ts is DateTime ? ts.millisecondsSinceEpoch : 0;
+  }
+}
+
+/// Respuestas válidas y sin duplicados. Antes del ID determinista se podía reenviar el SUS o
+/// recalificar una alternativa tras recargar: se conserva la más reciente por persona (SUS) o por
+/// persona y alternativa (relevancia).
+List<Map<String, dynamic>> cleanResponses(LabStudyKind kind, List<Map<String, dynamic>> docs) {
+  final sorted = [...docs]..sort((a, b) => _millis(a['createdAt']).compareTo(_millis(b['createdAt'])));
+  final latest = <String, Map<String, dynamic>>{};
+  var anon = 0;
+  for (final d in sorted) {
+    if (kind == LabStudyKind.sus) {
+      if (likertList(d['sus'], length: 10) == null) continue;
+    } else {
+      if (likertList(d['grades']) == null) continue;
+    }
+    final uid = d['uid'] ?? 'anon${anon++}';
+    final key = kind == LabStudyKind.sus ? '$uid' : '$uid|${d['runId']}|${d['rowIndex']}|${d['optionIndex']}';
+    latest[key] = d; // la más reciente gana
+  }
+  return latest.values.toList();
+}
+
+/// Para exportar: el uid se reemplaza por un participante P001, P002… (en orden de primera
+/// respuesta), así el archivo no permite reidentificar a nadie y conserva quién respondió qué.
+List<Map<String, dynamic>> anonymizeResponses(List<Map<String, dynamic>> docs) {
+  final sorted = [...docs]..sort((a, b) => _millis(a['createdAt']).compareTo(_millis(b['createdAt'])));
+  final ids = <String, String>{};
+  for (final d in sorted) {
+    final uid = '${d['uid']}';
+    ids.putIfAbsent(uid, () => 'P${(ids.length + 1).toString().padLeft(3, '0')}');
+  }
+  return docs.map((d) {
+    final m = Map<String, dynamic>.from(d)..remove('uid');
+    m['participante'] = ids['${d['uid']}'];
+    return m;
+  }).toList();
+}
+
 double? _mean(List<double> v) => v.isEmpty ? null : v.reduce((a, b) => a + b) / v.length;
 
 double? _sd(List<double> v) {
@@ -23,11 +88,11 @@ Map<String, dynamic> aggregateSus(List<Map<String, dynamic>> docs) {
   final tasks = List.generate(kSusTasks.length, (_) => <String, int>{});
   final profiles = <String, int>{};
   for (final d in docs) {
-    final sus = (d['sus'] as List?)?.map((e) => (e as num).toInt()).toList();
-    if (sus != null && sus.length == 10) scores.add(susScore(sus));
-    final s = (d['satisfaction'] as List?) ?? [];
+    final sus = likertList(d['sus'], length: 10);
+    if (sus != null) scores.add(susScore(sus));
+    final s = likertList(d['satisfaction']) ?? const <int>[];
     for (var i = 0; i < math.min(s.length, sat.length); i++) {
-      if (s[i] is num) sat[i].add((s[i] as num).toDouble());
+      sat[i].add(s[i].toDouble());
     }
     final t = (d['tasks'] as List?) ?? [];
     for (var i = 0; i < math.min(t.length, tasks.length); i++) {
@@ -59,7 +124,7 @@ Map<String, dynamic> aggregateRelevance(List<Map<String, dynamic>> docs) {
   final byTheme = <String, List<double>>{};
   final judges = <String>{};
   for (final d in docs) {
-    final g = (d['grades'] as List?)?.map((e) => (e as num).toInt()).toList() ?? [];
+    final g = likertList(d['grades']) ?? const <int>[];
     if (g.isEmpty) continue;
     if (d['uid'] != null) judges.add('${d['uid']}');
     grades.addAll(g.map((x) => x.toDouble()));
@@ -89,7 +154,7 @@ String responsesCsv(LabStudyKind kind, List<Map<String, dynamic>> docs) {
        'tipo_visitante', 'edad', 'dispositivo', 'comentario'],
       docs.asMap().entries.map((e) {
         final d = e.value;
-        final sus = (d['sus'] as List?)?.map((x) => (x as num).toInt()).toList() ?? [];
+        final sus = likertList(d['sus'], length: 10) ?? const <int>[];
         final p = (d['profile'] as Map?) ?? {};
         return [
           e.key + 1, ...List.generate(10, (i) => i < sus.length ? sus[i] : null), sus.length == 10 ? susScore(sus) : null,
@@ -104,7 +169,7 @@ String responsesCsv(LabStudyKind kind, List<Map<String, dynamic>> docs) {
     ['respuesta', 'corrida', 'escenario', 'alternativa', 'tema', 'intencion', 'calificaciones', 'p@5', 'ndcg@5'],
     docs.asMap().entries.map((e) {
       final d = e.value;
-      final g = (d['grades'] as List?)?.map((x) => (x as num).toInt()).toList() ?? [];
+      final g = likertList(d['grades']) ?? const <int>[];
       final k = math.min(5, g.length);
       return [
         e.key + 1, d['runId'], d['scenarioId'], d['optionIndex'], d['theme'], d['mood'], g.join(' '),

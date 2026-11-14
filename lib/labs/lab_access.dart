@@ -78,13 +78,20 @@ class LabAccess {
           if (invited.index > role.index) {
             await memberDoc(user.uid).set({
               'role': invited.name,
-              'email': email,
-              'displayName': user.displayName ?? '',
+              // El correo y el nombre solo para el equipo (aparecen en la lista de miembros); a los
+              // testers no se les guardan, como promete el consentimiento.
+              if (invited.isMember) 'email': email,
+              if (invited.isMember) 'displayName': user.displayName ?? '',
               'via': 'invite',
               'joinedAt': FieldValue.serverTimestamp(),
             });
             role = invited;
           }
+          // La invitación ya se usó: si se quedara, al quitar a la persona (o si deja de ser tester)
+          // roleOf la volvería a aceptar en su siguiente visita.
+          try {
+            await inviteDoc(email).delete();
+          } catch (_) {}
         }
       }
       return role;
@@ -102,6 +109,14 @@ class LabAccess {
       });
 
   static Future<void> leave(User user) => memberDoc(user.uid).delete();
+
+  /// Quitar del laboratorio: borra el rol y la invitación de su correo (si no, roleOf la volvía
+  /// a aceptar y la persona recuperaba el acceso).
+  static Future<void> removeMember(String uid, String? email) async {
+    await memberDoc(uid).delete();
+    final e = (email ?? '').trim();
+    if (e.isNotEmpty) await inviteDoc(e).delete();
+  }
 
   static Stream<QuerySnapshot<Map<String, dynamic>>> watchMembers() =>
       _db.collection('lab_members').where('role', whereIn: ['researcher', 'admin']).snapshots();
