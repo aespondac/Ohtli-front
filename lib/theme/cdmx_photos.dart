@@ -35,7 +35,7 @@ class CdmxPhotos {
     ],
     'museum': [
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b2/Museo_Soumaya%2C_Ciudad_de_M%C3%A9xico%2C_M%C3%A9xico%2C_2015-07-18%2C_DD_12.JPG/1280px-Museo_Soumaya%2C_Ciudad_de_M%C3%A9xico%2C_M%C3%A9xico%2C_2015-07-18%2C_DD_12.JPG', // Museo Soumaya, Ciudad de México, México, 2015-07-18, DD 12
-      'https://upload.wikimedia.org/wikipedia/commons/c/ca/Frida_Kahlo_Museum_Coyoacan.jpg', // Frida Kahlo Museum Coyoacan
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/Frida_Kahlo_Museum_Coyoacan.jpg/1280px-Frida_Kahlo_Museum_Coyoacan.jpg', // Frida Kahlo Museum Coyoacan
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c4/Museo_Soumaya_en_Plaza_Carso%2C_CDMX_%28detalles%29.jpg/1280px-Museo_Soumaya_en_Plaza_Carso%2C_CDMX_%28detalles%29.jpg', // Museo Soumaya en Plaza Carso, CDMX (detalles)
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/Museo_Frida_Kahlo_%28exterior%29.jpg/1280px-Museo_Frida_Kahlo_%28exterior%29.jpg', // Museo Frida Kahlo (exterior)
     ],
@@ -51,16 +51,16 @@ class CdmxPhotos {
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Bar_La_Opera_Centro_Historico_Mexico.JPG/1280px-Bar_La_Opera_Centro_Historico_Mexico.JPG', // Bar La Opera Centro Historico Mexico
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1e/Cantina_El_Nivel.jpg/1280px-Cantina_El_Nivel.jpg', // Cantina El Nivel
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2d/Cantina_El_Nivel_2.jpg/1280px-Cantina_El_Nivel_2.jpg', // Cantina El Nivel 2
-      'https://upload.wikimedia.org/wikipedia/commons/f/fa/Cantina_La_Guadalupana.jpg', // Cantina La Guadalupana
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fa/Cantina_La_Guadalupana.jpg/1280px-Cantina_La_Guadalupana.jpg', // Cantina La Guadalupana
     ],
     'market': [
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/Interior_del_Mercado_de_San_Juan_08.jpg/1280px-Interior_del_Mercado_de_San_Juan_08.jpg', // Interior del Mercado de San Juan 08
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Girasoles_en_el_mercado_de_Jamaica.jpg/1280px-Girasoles_en_el_mercado_de_Jamaica.jpg', // Girasoles en el mercado de Jamaica
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f6/Interior_del_Mercado_de_San_Juan_03.jpg/1280px-Interior_del_Mercado_de_San_Juan_03.jpg', // Interior del Mercado de San Juan 03
-      'https://upload.wikimedia.org/wikipedia/commons/d/d4/Mercado_de_Jamaica_%286311589578%29.jpg', // Mercado de Jamaica (6311589578)
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d4/Mercado_de_Jamaica_%286311589578%29.jpg/1280px-Mercado_de_Jamaica_%286311589578%29.jpg', // Mercado de Jamaica (6311589578)
     ],
     'artwork': [
-      'https://upload.wikimedia.org/wikipedia/commons/6/6c/Diego_Rivera_Mural_Palacio_Nacional_Mexico.jpg', // Diego Rivera Mural Palacio Nacional Mexico
+      'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/Diego_Rivera_Mural_Palacio_Nacional_Mexico.jpg/1280px-Diego_Rivera_Mural_Palacio_Nacional_Mexico.jpg', // Diego Rivera Mural Palacio Nacional Mexico
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6d/Jos%C3%A9_Clemente_Orozco_murals_-_San_Ildefonso_College_-_Mexico_2024.jpg/1280px-Jos%C3%A9_Clemente_Orozco_murals_-_San_Ildefonso_College_-_Mexico_2024.jpg', // José Clemente Orozco murals - San Ildefonso College - Mexico 2024
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/Jos%C3%A9_Clemente_Orozco_murals_-_Yellow_wall_courtyard_patio_-_San_Ildefonso_College_-_Mexico_2024.jpg/1280px-Jos%C3%A9_Clemente_Orozco_murals_-_Yellow_wall_courtyard_patio_-_San_Ildefonso_College_-_Mexico_2024.jpg', // José Clemente Orozco murals - Yellow wall courtyard patio - San Ildefonso College - Mexico 2024
       'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/58/Tableros_murales_de_Diego_Rivera_en_el_Palacio_Nacional_11.jpg/1280px-Tableros_murales_de_Diego_Rivera_en_el_Palacio_Nacional_11.jpg', // Tableros murales de Diego Rivera en el Palacio Nacional 11
