@@ -17,6 +17,32 @@ class PlaceLocator {
   PlaceLocator._();
 
   static final Map<String, (double, double)?> _cache = {};
+  static final Map<String, Future<Map<String, dynamic>?>> _poiDocs = {};
+
+  /// Documento del lugar en el catálogo (o de la sugerencia), leído una sola vez.
+  static Future<Map<String, dynamic>?> _poiDoc(PlaceSection p) {
+    final id = p.poiId;
+    if (id == null || id.isEmpty) return Future.value(null);
+    final col = p.isSuggestion ? 'poi_suggestions' : 'pois';
+    return _poiDocs.putIfAbsent('$col/$id', () async {
+      try {
+        return (await FirebaseFirestore.instance.collection(col).doc(id).get()).data();
+      } catch (_) {
+        return null; // sin permiso (sugerencia ajena) o sin conexión
+      }
+    });
+  }
+
+  /// Foto del lugar en la base de imágenes de Ohtli, si está vinculado a ella.
+  static Future<String?> catalogPhoto(PlaceSection p) async {
+    final d = await _poiDoc(p);
+    if (d == null) return null;
+    String photo = (d['photo_url'] ?? d['image_url'] ?? d['photo'] ?? '').toString();
+    if (photo.isEmpty && d['photos'] is List && (d['photos'] as List).isNotEmpty) {
+      photo = (d['photos'] as List).first.toString();
+    }
+    return photo.startsWith('http') ? photo : null;
+  }
 
   static (double, double)? _fromLocation(dynamic loc) {
     if (loc is GeoPoint) return (loc.latitude, loc.longitude);
@@ -35,11 +61,7 @@ class PlaceLocator {
 
     (double, double)? found;
     if (p.poiId != null && p.poiId!.isNotEmpty) {
-      try {
-        final col = p.isSuggestion ? 'poi_suggestions' : 'pois';
-        final doc = await FirebaseFirestore.instance.collection(col).doc(p.poiId).get();
-        found = _fromLocation(doc.data()?['location']);
-      } catch (_) {}
+      found = _fromLocation((await _poiDoc(p))?['location']);
     }
     if (found == null && p.title.trim().isNotEmpty) {
       found = await _searchByName('${p.title.trim()}, Ciudad de México');

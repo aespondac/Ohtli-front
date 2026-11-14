@@ -107,6 +107,7 @@ class TripSample {
       String? from,
       String? to,
       bool unplanned = false,
+      String? cover,
     }) =>
         PlaceSection(
           id: id,
@@ -124,6 +125,7 @@ class TripSample {
           arrivedAt: arrived(id),
           leftAt: left(id),
           realCost: done.contains(id) ? realCost : null,
+          coverUrl: cover,
         );
 
     return [
@@ -145,7 +147,8 @@ class TripSample {
           description: 'Barra de especialidad en Insurgentes y Guanajuato. **El flat white** y el pan dulce del día valen la parada.',
           rating: 5,
           main: _photo('cafe', 1),
-          more: [_photo('cafe', 2), _photo('cafe', 0)],
+          more: [_photo('cafe', 2)],
+          cover: _photo('cafe', 0),
           cost: 140,
           realCost: 165,
           lat: 19.4189,
@@ -158,7 +161,7 @@ class TripSample {
           description: 'Vuelta completa al parque, perros paseando y la fuente del Foro Lindbergh.',
           rating: 4,
           main: _photo('park', 1),
-          more: [_photo('park', 2)],
+          cover: _photo('park', 2),
           lat: 19.4116,
           lng: -99.1693,
           from: '10:00',
@@ -180,6 +183,7 @@ class TripSample {
           rating: 5,
           main: CdmxPhotos.covers[1],
           more: [CdmxPhotos.covers[0]],
+          cover: CdmxPhotos.byCategory['theatre']![1],
           cost: 90,
           realCost: 90,
           lat: 19.4352,
@@ -200,6 +204,7 @@ class TripSample {
           rating: 5,
           main: _photo('restaurant', 4),
           more: [_photo('restaurant', 6), _photo('restaurant', 0)],
+          cover: _photo('restaurant', 8),
           cost: 180,
           realCost: 236,
           lat: 19.4307,
@@ -216,6 +221,7 @@ class TripSample {
           description: 'La Casa Azul. Compren boleto en línea: se agota con días de anticipación.',
           rating: 4,
           main: _photo('museum', 3),
+          cover: _photo('museum', 1),
           cost: 320,
           realCost: 320,
           lat: 19.3551,

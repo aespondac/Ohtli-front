@@ -258,6 +258,9 @@ class PlaceSection extends TripSection {
   /// Lo que realmente se gastó en la parada (el costo estimado sigue en [cost]).
   final double? realCost;
 
+  /// Portada elegida por los viajeros. Si no hay, se usa la del catálogo o una de referencia.
+  final String? coverUrl;
+
   bool get isLinkedToCatalog => poiId != null && poiSource == kPlaceSourceCatalog;
   bool get isSuggestion => poiId != null && poiSource == kPlaceSourceSuggestion;
   bool get isGeneric => !isLinkedToCatalog && !isSuggestion;
@@ -281,6 +284,7 @@ class PlaceSection extends TripSection {
     this.arrivedAt,
     this.leftAt,
     this.realCost,
+    this.coverUrl,
   }) : super(type: 'place');
 
   /// Copia la parada conservando todos los campos que no se pasen
@@ -310,6 +314,8 @@ class PlaceSection extends TripSection {
     bool clearArrivedAt = false,
     bool clearLeftAt = false,
     bool clearRealCost = false,
+    String? coverUrl,
+    bool clearCoverUrl = false,
   }) {
     return PlaceSection(
       id: id,
@@ -330,6 +336,7 @@ class PlaceSection extends TripSection {
       arrivedAt: clearArrivedAt ? null : (arrivedAt ?? this.arrivedAt),
       leftAt: clearLeftAt ? null : (leftAt ?? this.leftAt),
       realCost: clearRealCost ? null : (realCost ?? this.realCost),
+      coverUrl: clearCoverUrl ? null : (coverUrl ?? this.coverUrl),
     );
   }
 
@@ -361,6 +368,7 @@ class PlaceSection extends TripSection {
       arrivedAt: data['arrivedAt']?.toString(),
       leftAt: data['leftAt']?.toString(),
       realCost: (data['realCost'] as num?)?.toDouble(),
+      coverUrl: (data['coverUrl'] as String?)?.trim().isEmpty == true ? null : data['coverUrl'] as String?,
     );
   }
 
@@ -387,6 +395,7 @@ class PlaceSection extends TripSection {
       if (arrivedAt != null) 'arrivedAt': arrivedAt,
       if (leftAt != null) 'leftAt': leftAt,
       if (realCost != null) 'realCost': realCost,
+      if (coverUrl != null) 'coverUrl': coverUrl,
     };
   }
 }

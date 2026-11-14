@@ -99,7 +99,7 @@ class CdmxPhotos {
     MapEntry('artwork', ['mural', 'artwork', 'arte', 'art']),
     MapEntry('bar', ['cantina', 'bar', 'pub', 'pulque', 'mezcal']),
     MapEntry('cafe', ['cafe', 'coffee', 'bakery', 'pastry', 'panaderia', 'libreria']),
-    MapEntry('restaurant', ['restaur', 'food', 'comida', 'gastronom', 'taco', 'fonda']),
+    MapEntry('restaurant', ['restaur', 'food', 'comida', 'gastronom', 'taco', 'taquer', 'fonda', 'torta', 'antojito']),
     MapEntry('park', ['parque', 'park', 'bosque', 'jardin', 'garden', 'lago', 'vivero']),
     MapEntry('theatre', ['teatro', 'theat', 'cine', 'cinema', 'auditorio']),
     MapEntry('church', ['iglesia', 'templo', 'catedral', 'cathedral', 'church', 'parroquia']),

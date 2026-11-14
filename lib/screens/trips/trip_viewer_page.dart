@@ -35,6 +35,7 @@ import '../../services/trip_social_service.dart';
 import '../../widgets/trip_social/block_social.dart';
 import '../../widgets/trip_mini_map.dart';
 import '../../widgets/reveal_on_scroll.dart';
+import '../../theme/cdmx_photos.dart';
 import '../../services/place_locator.dart';
 import 'trip_sample.dart';
 import 'trip_traveler_tools.dart';
@@ -113,6 +114,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   // Ubicaciones encontradas para paradas que no la traen guardada (solo para dibujarlas).
   final Map<String, (double, double)> _resolvedCoords = {};
+
+  // Portadas tomadas de la base de imágenes de Ohtli (paradas vinculadas al catálogo).
+  final Map<String, String> _catalogCovers = {};
   bool _locating = false;
 
   // Panel lateral flotante: ancho del panel abierto y del riel plegado, y el espacio que reserva.
@@ -934,7 +938,74 @@ class _TripViewerPageState extends State<TripViewerPage> {
   (double, double)? _coordsOf(PlaceSection p) =>
       (p.lat != null && p.lng != null) ? (p.lat!, p.lng!) : _resolvedCoords[p.id];
 
+  Future<void> _resolveCatalogCovers() async {
+    for (final p in _sections.whereType<PlaceSection>()) {
+      if ((p.coverUrl ?? '').isNotEmpty || p.poiId == null || _catalogCovers.containsKey(p.id)) continue;
+      final url = await PlaceLocator.catalogPhoto(p);
+      if (!mounted) return;
+      if (url != null) setState(() => _catalogCovers[p.id] = url);
+    }
+  }
+
+  /// Portada de la parada: la que eligieron los viajeros, la del catálogo o, si no hay,
+  /// una foto de referencia de la CDMX según el tipo de lugar. [generic] marca esta última.
+  ({String url, bool generic}) _coverFor(PlaceSection p) {
+    if ((p.coverUrl ?? '').isNotEmpty) return (url: p.coverUrl!, generic: false);
+    final cat = _catalogCovers[p.id];
+    if (cat != null) return (url: cat, generic: false);
+    final seed = p.id.codeUnits.fold<int>(0, (a, c) => a + c);
+    return (url: CdmxPhotos.forCategory(p.title, seed), generic: true);
+  }
+
+  Widget _placeCover(PlaceSection p, bool isDark, double height) {
+    final cover = _coverFor(p);
+    final seed = p.id.codeUnits.fold<int>(0, (a, c) => a + c);
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image(
+            image: _getImageProvider(cover.url),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Image.network(
+              CdmxPhotos.cover(seed),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => ColoredBox(color: isDark ? const Color(0xFF26343A) : OhtliColors.cantera),
+            ),
+          ),
+          // Se funde suave con la tarjeta.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0.55, 1],
+                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.22)],
+              ),
+            ),
+          ),
+          if (cover.generic)
+            Positioned(
+              left: 10,
+              top: 10,
+              child: Tooltip(
+                message: 'Imagen de la CDMX: este lugar aún no tiene portada propia.',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(8)),
+                  child: Text('Foto de referencia', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white)),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _resolveMissingCoords() async {
+    _resolveCatalogCovers();
     final missing = _sections.whereType<PlaceSection>().where((p) => _coordsOf(p) == null).toList();
     if (missing.isEmpty) return;
     setState(() => _locating = true);
@@ -1194,6 +1265,22 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
   }
 
+  Future<void> _setCover() async {
+    final p = await _chooseStop('¿A qué parada le cambias la portada?');
+    if (p == null || !mounted) return;
+    final dataUrl = await pickAndCropPhoto(context, aspectRatio: 16 / 9);
+    if (dataUrl == null || !mounted) return;
+    try {
+      if (!_isSample) _notice('Subiendo portada…');
+      final url = await _uploadPhoto(dataUrl);
+      if (url == null) return;
+      final ok = await _changeContent((l) => _updatePlace(l, p.id, (x) => x.copyWith(coverUrl: url)), done: 'Portada de ${p.title} actualizada');
+      if (ok) _scrollSoon(p.id);
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'No se pudo subir la portada.'));
+    }
+  }
+
   Future<void> _addRealCost() async {
     final p = await _chooseStop('¿En qué parada?');
     if (p == null || !mounted) return;
@@ -1284,18 +1371,19 @@ class _TripViewerPageState extends State<TripViewerPage> {
       f();
     }
 
-    final tools = <(IconData, String, VoidCallback)>[
-      (Icons.photo_camera_rounded, 'Foto', () => run(_addPhoto)),
-      (Icons.payments_rounded, 'Precio real', () => run(_addRealCost)),
-      (Icons.alt_route_rounded, 'Desvío', () => run(_addDetour)),
-      (Icons.route_rounded, 'Traslado', () => run(_addTransfer)),
-      (Icons.notes_rounded, 'Texto', () => run(() => _addContentBlock(BlockKind.text))),
-      (Icons.image_rounded, 'Imagen', () => run(() => _addContentBlock(BlockKind.image))),
-      (Icons.table_chart_rounded, 'Tabla', () => run(() => _addContentBlock(BlockKind.table))),
-      (Icons.sticky_note_2_rounded, 'Nota', () => run(() => _addContentBlock(BlockKind.note))),
-    ];
+    final foto = (Icons.photo_camera_rounded, 'Foto', () => run(_addPhoto));
+    final portada = (Icons.wallpaper_rounded, 'Portada', () => run(_setCover));
+    final precio = (Icons.payments_rounded, 'Precio real', () => run(_addRealCost));
+    final desvio = (Icons.alt_route_rounded, 'Desvío', () => run(_addDetour));
+    final traslado = (Icons.route_rounded, 'Traslado', () => run(_addTransfer));
+    final texto = (Icons.notes_rounded, 'Texto', () => run(() => _addContentBlock(BlockKind.text)));
+    final imagen = (Icons.image_rounded, 'Imagen', () => run(() => _addContentBlock(BlockKind.image)));
+    final tabla = (Icons.table_chart_rounded, 'Tabla', () => run(() => _addContentBlock(BlockKind.table)));
+    final nota = (Icons.sticky_note_2_rounded, 'Nota', () => run(() => _addContentBlock(BlockKind.note)));
     // Todo está disponible siempre; antes del viaje van primero las de planear.
-    final ordered = started ? tools : [...tools.sublist(3), ...tools.sublist(0, 3)];
+    final List<(IconData, String, VoidCallback)> ordered = started
+        ? [foto, portada, precio, desvio, traslado, texto, imagen, tabla, nota]
+        : [portada, texto, imagen, tabla, nota, traslado, foto, precio, desvio];
 
     return _panelCard(isDark: isDark, icon: Icons.backpack_rounded, title: 'HERRAMIENTAS DEL VIAJERO', children: [
       if (current != null) ...[
@@ -3698,8 +3786,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
     double padTop = 30, pillTop = 0;
     if (section is PlaceSection) {
       final hasPhotos = section.mainPhotoUrl.isNotEmpty || section.secondaryPhotoUrls.any((u) => u.isNotEmpty);
-      final cardTop = !hasPhotos ? 0.0 : (isDesktop ? 14.0 : 86.0);
-      padTop = hasPhotos ? 0 : 12;
+      final bool inset = hasPhotos && isDesktop; // la tarjeta empieza 14 px abajo por las fotos
+      final cardTop = inset ? 14.0 : 0.0;
+      padTop = inset ? 0 : 12;
       pillTop = cardTop + padTop - 12 + (_tripMode ? 52 : 0);
     }
     // Con mensajes al margen, las burbujas montan 42 px sobre el borde: la pastilla se corre para no taparlas.
@@ -4460,11 +4549,23 @@ class _TripViewerPageState extends State<TripViewerPage> {
       ],
     );
 
+    // Portada arriba; la pila de fotos reales (160×195) queda montada entre la portada y el cuerpo
+    // y, en escritorio, medio fuera del borde izquierdo, como fotos pegadas.
+    final double coverH = isDesktop ? 132 : 150;
     if (drawOrderSlots.isEmpty) {
-      return Container(padding: const EdgeInsets.all(22), decoration: card, child: infoWidget);
+      return Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: card,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _placeCover(place, isDark, coverH),
+            Padding(padding: const EdgeInsets.all(22), child: infoWidget),
+          ],
+        ),
+      );
     }
 
-    // La pila de fotos (160×195) queda medio fuera de la tarjeta, como fotos pegadas sobre el borde.
     if (isDesktop) {
       return Stack(
         clipBehavior: Clip.none,
@@ -4473,29 +4574,41 @@ class _TripViewerPageState extends State<TripViewerPage> {
             // Las fotos ocupan x≈15–135: la tarjeta empieza en 76 para que queden medio fuera.
             padding: const EdgeInsets.only(left: 76, top: 14),
             child: Container(
-              constraints: const BoxConstraints(minHeight: 196),
-              padding: const EdgeInsets.fromLTRB(84, 22, 22, 22),
+              clipBehavior: Clip.antiAlias,
               decoration: card,
-              child: infoWidget,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _placeCover(place, isDark, coverH),
+                  Container(
+                    constraints: const BoxConstraints(minHeight: 150),
+                    padding: const EdgeInsets.fromLTRB(84, 18, 22, 22),
+                    child: infoWidget,
+                  ),
+                ],
+              ),
             ),
           ),
-          Positioned(left: 0, top: 0, child: photoStackWidget),
+          Positioned(left: 0, top: 14 + coverH - 62, child: photoStackWidget),
         ],
       );
     }
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 86),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 124, 20, 20),
-            decoration: card,
-            child: infoWidget,
+        Container(
+          width: double.infinity,
+          clipBehavior: Clip.antiAlias,
+          decoration: card,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _placeCover(place, isDark, coverH),
+              Padding(padding: const EdgeInsets.fromLTRB(20, 195 - 80 + 14, 20, 20), child: infoWidget),
+            ],
           ),
         ),
-        Positioned(left: 0, right: 0, top: 0, child: Center(child: photoStackWidget)),
+        Positioned(left: 0, right: 0, top: coverH - 80, child: Center(child: photoStackWidget)),
       ],
     );
   }

@@ -12,6 +12,11 @@ void main() {
     expect(sections.whereType<TextImageSection>(), isNotEmpty);
     final places = sections.whereType<PlaceSection>().toList();
     expect(places.where((p) => p.secondaryPhotoUrls.length >= 2), isNotEmpty, reason: 'parada con varias fotos');
+    expect(places.where((p) => p.coverUrl != null), isNotEmpty, reason: 'portada elegida por el grupo');
+    expect(places.where((p) => p.coverUrl == null), isNotEmpty, reason: 'portada de referencia');
+    for (final p in places.where((p) => p.coverUrl != null)) {
+      expect([p.mainPhotoUrl, ...p.secondaryPhotoUrls], isNot(contains(p.coverUrl)), reason: 'la portada no repite una foto');
+    }
     expect(places.where((p) => p.mainPhotoUrl.isEmpty), isNotEmpty, reason: 'parada sin fotos');
     expect(places.every((p) => p.lat != null && p.lng != null), isTrue, reason: 'todas se dibujan en el mapa');
     // Desvío, horas reales, gasto real, tabla y nota.
@@ -80,8 +85,10 @@ void main() {
       arrivedAt: '11:01',
       leftAt: '11:15',
       realCost: 70,
+      coverUrl: 'https://ejemplo/portada.jpg',
     );
     final back = PlaceSection.fromMap(p.toMap());
+    expect(back.coverUrl, 'https://ejemplo/portada.jpg');
     expect(back.unplanned, isTrue);
     expect(back.arrivedAt, '11:01');
     expect(back.leftAt, '11:15');
