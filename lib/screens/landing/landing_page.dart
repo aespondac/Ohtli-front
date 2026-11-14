@@ -126,17 +126,13 @@ class _LandingPageState extends State<LandingPage> {
     if (kIsWeb) html.window.open(url, '_blank');
   }
 
-  double _hPad(double width) => width < 700 ? 20 : (width < 1100 ? 40 : 64);
+  // Ocupa todo el ancho de la ventana; el margen lateral crece con la pantalla
+  double _hPad(double width) => width < 700 ? 20 : (width < 1100 ? 40 : (width * 0.045).clamp(56.0, 120.0));
 
   Widget _constrained(Widget child, double width) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1240),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: _hPad(width)),
-          child: child,
-        ),
-      ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: _hPad(width)),
+      child: child,
     );
   }
 
@@ -155,8 +151,6 @@ class _LandingPageState extends State<LandingPage> {
             children: [
               _constrained(_buildNav(isMobile), width),
               _constrained(_buildHero(isMobile), width),
-              const SizedBox(height: 28),
-              _constrained(_buildStats(isMobile), width),
               SizedBox(key: _placesKey, height: isMobile ? 56 : 88),
               _buildPlacesSection(isMobile, width),
               SizedBox(key: _howKey, height: isMobile ? 56 : 88),
@@ -252,36 +246,6 @@ class _LandingPageState extends State<LandingPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: OhtliColors.stormyTeal.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-              color: OhtliColors.stormyTeal.withValues(alpha: 0.2),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.auto_awesome_rounded,
-                size: 14,
-                color: OhtliColors.stormyTeal,
-              ),
-              const SizedBox(width: 7),
-              Text(
-                'Rutas culturales con IA · CDMX',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: OhtliColors.stormyTeal,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 22),
         Text.rich(
           TextSpan(
             children: [
@@ -354,27 +318,6 @@ class _LandingPageState extends State<LandingPage> {
                 textStyle: GoogleFonts.outfit(
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.lock_open_rounded,
-              size: 15,
-              color: OhtliColors.subtleText,
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                'Explora lugares y crónicas públicas sin necesidad de cuenta.',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: OhtliColors.subtleText,
                 ),
               ),
             ),
@@ -546,119 +489,6 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  // ───────────────────────── Cifras ─────────────────────────
-
-  Widget _buildStats(bool isMobile) {
-    return FutureBuilder<List<Poi>>(
-      future: _catalogFuture,
-      builder: (context, snap) {
-        final pois = snap.data ?? const <Poi>[];
-        final items = [
-          (
-            Icons.place_rounded,
-            pois.isEmpty ? '—' : '${pois.length}',
-            'lugares curados',
-            OhtliColors.stormyTeal,
-          ),
-          (
-            Icons.category_rounded,
-            pois.isEmpty
-                ? '—'
-                : '${pois.map((p) => p.category).toSet().length}',
-            'categorías',
-            OhtliColors.xoconostle,
-          ),
-          (
-            Icons.route_rounded,
-            'IA',
-            'rutas optimizadas',
-            OhtliColors.cempasuchil,
-          ),
-          (
-            Icons.groups_rounded,
-            'Crónicas',
-            'de la comunidad',
-            const Color(0xFF3949AB),
-          ),
-        ];
-        return Container(
-          width: double.infinity,
-          padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 18 : 32,
-            vertical: isMobile ? 18 : 26,
-          ),
-          decoration: BoxDecoration(
-            color: OhtliColors.cardBg,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: OhtliColors.cardBorder),
-          ),
-          child: LayoutBuilder(
-            builder: (context, c) {
-              // En móvil, cuadrícula de 2×2; en escritorio, una sola fila
-              final itemW = isMobile ? (c.maxWidth - 14) / 2 : 220.0;
-              return Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                runSpacing: 18,
-                spacing: 14,
-                children: items
-                    .map(
-                      (it) => SizedBox(
-                        width: itemW,
-                        child: Row(
-                          children: [
-                            Container(
-                              width: isMobile ? 36 : 42,
-                              height: isMobile ? 36 : 42,
-                              decoration: BoxDecoration(
-                                color: it.$4.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Icon(
-                                it.$1,
-                                size: isMobile ? 18 : 21,
-                                color: it.$4,
-                              ),
-                            ),
-                            SizedBox(width: isMobile ? 10 : 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    it.$2,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.outfit(
-                                      fontSize: isMobile ? 18 : 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: OhtliColors.onyx,
-                                    ),
-                                  ),
-                                  Text(
-                                    it.$3,
-                                    maxLines: 2,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: OhtliColors.subtleText,
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                    .toList(),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
   // ───────────────────────── Encabezado de sección ─────────────────────────
 
   Widget _sectionHeader({
@@ -732,7 +562,7 @@ class _LandingPageState extends State<LandingPage> {
 
   Widget _buildPlacesSection(bool isMobile, double width) {
     final hPad = _hPad(width);
-    final sidePad = width > 1240 ? (width - 1240) / 2 + hPad : hPad;
+    final sidePad = hPad;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

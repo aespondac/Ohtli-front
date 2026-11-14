@@ -78,6 +78,22 @@ jobs:
             --dart-define=measurementId="${{ env.MEASUREMENTID }}" \
             --dart-define=recaptchaSiteKey="${{ env.RECAPTCHASITEKEY }}"
 
+      # 6.1 Copia estática del catálogo de Lugares: se sirve desde el CDN de Hosting para que
+      # Lugares cargue al instante aunque la API esté en arranque en frío. Si falla, la app usa la API.
+      - name: Snapshot estático del catálogo de Lugares
+        continue-on-error: true
+        run: |
+          for intento in 1 2 3; do
+            if curl -sf --max-time 150 --compressed https://api.ohtli.quest/v1/pois -o /tmp/pois_catalog.json \
+              && node -e "const d=JSON.parse(require('fs').readFileSync('/tmp/pois_catalog.json','utf8')); if(!Array.isArray(d.pois)||d.pois.length<100) process.exit(1); console.log('POIs:', d.pois.length)"; then
+              cp /tmp/pois_catalog.json build/web/pois_catalog.json
+              echo "Catálogo estático listo"
+              break
+            fi
+            echo "Intento $intento fallido; reintentando en 20 s"
+            sleep 20
+          done
+
       # 7. Deploy to Firebase Hosting Live Channel
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

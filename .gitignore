@@ -54,3 +54,6 @@ run_local.sh
 node_modules/
 ._*
 .firebase/
+
+# Copia estática del catálogo (la genera el despliegue)
+web/pois_catalog.json

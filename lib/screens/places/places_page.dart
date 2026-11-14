@@ -62,33 +62,75 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   static Future<List<Poi>>? _inflightCatalog;
   static const String _apiUrl = String.fromEnvironment('yollotlApiUrl', defaultValue: 'https://api.ohtli.quest');
 
+  /// Aumenta cada vez que llega una versión nueva del catálogo (p. ej. el refresco en segundo plano).
+  static final ValueNotifier<int> catalogVersion = ValueNotifier(0);
+
+  static List<Poi> _parseCatalog(dynamic decoded) {
+    if (decoded is! Map || decoded['pois'] is! List) {
+      throw Exception('Respuesta inesperada del catálogo');
+    }
+    final list = (decoded['pois'] as List)
+        .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
+        .where((p) => p.isValidCulturalPlace)
+        .toList();
+    if (list.isEmpty) throw Exception('Catálogo vacío');
+    return list;
+  }
+
+  static void _storeCatalog(List<Poi> list, String rawJson) {
+    _globalPoisCache = list;
+    catalogVersion.value++;
+    if (kIsWeb) {
+      try {
+        // Se guarda la respuesta completa; la lectura acepta tanto el objeto como la lista sola
+        html.window.localStorage['ohtli_cached_pois_v2'] = rawJson;
+      } catch (_) {}
+    }
+  }
+
+  /// Copia estática del catálogo publicada junto con la app (Firebase Hosting, CDN y compresión).
+  /// Carga en ~1 s y no depende de que el servidor esté despierto.
+  static Future<List<Poi>> _fetchStaticCatalog() async {
+    if (!kIsWeb) throw Exception('Solo web');
+    final uri = Uri.parse('${Uri.base.origin}/pois_catalog.json');
+    final response = await http.get(uri).timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+    // Si el archivo no existe, Hosting devuelve index.html: jsonDecode falla y se usa la API
+    final body = utf8.decode(response.bodyBytes);
+    final list = _parseCatalog(jsonDecode(body));
+    _storeCatalog(list, body);
+    return list;
+  }
+
+  /// Catálogo vivo desde la API. El tiempo de espera cubre el arranque en frío (~1 min).
+  static Future<List<Poi>> _fetchApiCatalog({bool forceRefresh = false}) async {
+    final uri = Uri.parse('$_apiUrl/v1/pois${forceRefresh ? "?refresh=true" : ""}');
+    final response = await http.get(uri).timeout(const Duration(seconds: 90));
+    if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+    final body = utf8.decode(response.bodyBytes);
+    final list = _parseCatalog(jsonDecode(body));
+    _storeCatalog(list, body);
+    return list;
+  }
+
   // Una sola descarga compartida del catálogo (precarga + pantalla), sin duplicar peticiones.
-  // El tiempo de espera cubre el arranque en frío del servidor (puede tardar ~1 min).
+  // Primero la copia estática (rápida); luego la API actualiza en segundo plano.
   static Future<List<Poi>> _loadCatalog({bool forceRefresh = false}) {
     if (!forceRefresh && _inflightCatalog != null) return _inflightCatalog!;
     final future = () async {
-      final uri = Uri.parse('$_apiUrl/v1/pois${forceRefresh ? "?refresh=true" : ""}');
-      final response = await http.get(uri).timeout(const Duration(seconds: 90));
-      if (response.statusCode != 200) {
-        throw Exception('HTTP ${response.statusCode}');
-      }
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is! Map || decoded['pois'] is! List) {
-        throw Exception('Respuesta inesperada del catálogo');
-      }
-      final rawList = decoded['pois'] as List;
-      final list = rawList
-          .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
-          .where((p) => p.isValidCulturalPlace)
-          .toList();
-      if (list.isEmpty) throw Exception('Catálogo vacío');
-      _globalPoisCache = list;
-      if (kIsWeb) {
+      if (!forceRefresh) {
         try {
-          html.window.localStorage['ohtli_cached_pois_v2'] = jsonEncode(rawList);
-        } catch (_) {}
+          final list = await _fetchStaticCatalog();
+          unawaited(_fetchApiCatalog().catchError((e) {
+            debugPrint('Refresco del catálogo desde la API falló: $e');
+            return list;
+          }));
+          return list;
+        } catch (e) {
+          debugPrint('Sin copia estática del catálogo ($e); se usa la API.');
+        }
       }
-      return list;
+      return _fetchApiCatalog(forceRefresh: forceRefresh);
     }();
     _inflightCatalog = future;
     // Si falla, permite reintentar más tarde
@@ -210,6 +252,10 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       _loadCachedPoisFromLocalStorage();
     }
 
+    // Cuando llega una versión más nueva del catálogo (refresco en segundo plano), se muestra
+    _shownCatalogVersion = catalogVersion.value;
+    catalogVersion.addListener(_onCatalogUpdated);
+
     // 3. Stale-While-Revalidate: refresco silencioso en segundo plano
     _fetchPois();
 
@@ -229,17 +275,11 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         final cached = html.window.localStorage['ohtli_cached_pois_v2'];
         if (cached != null && cached.isNotEmpty) {
           final decoded = jsonDecode(cached);
-          if (decoded is List) {
-            final list = decoded
-                .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
-                .where((p) => p.isValidCulturalPlace)
-                .toList();
-            if (list.isNotEmpty) {
-              _allPois = list;
-              _globalPoisCache = list;
-              _isLoadingPois = false;
-            }
-          }
+          // Formato actual: respuesta completa {pois: [...]}; formato anterior: la lista sola
+          final list = _parseCatalog(decoded is List ? {'pois': decoded} : decoded);
+          _allPois = list;
+          _globalPoisCache = list;
+          _isLoadingPois = false;
         }
       } catch (e) {
         debugPrint('Error loading cached POIs from localStorage: $e');
@@ -247,8 +287,21 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     }
   }
 
+  int _shownCatalogVersion = 0;
+
+  void _onCatalogUpdated() {
+    if (!mounted || _globalPoisCache.isEmpty || catalogVersion.value == _shownCatalogVersion) return;
+    _shownCatalogVersion = catalogVersion.value;
+    setState(() {
+      _allPois = List<Poi>.from(_globalPoisCache);
+      _isLoadingPois = false;
+      _poisError = null;
+    });
+  }
+
   @override
   void dispose() {
+    catalogVersion.removeListener(_onCatalogUpdated);
     _shimmerController?.dispose();
     _slowLoadTimer?.cancel();
     _searchController.dispose();
