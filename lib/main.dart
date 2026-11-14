@@ -25,6 +25,10 @@ import 'screens/trips/trip_viewer_page.dart';
 import 'screens/error_404_page.dart';
 import 'screens/lab/lab_landing_page.dart';
 import 'screens/lab/labs_dashboard_page.dart';
+import 'labs/lab_console_page.dart';
+import 'labs/lab_eval_page.dart';
+import 'labs/labs_results_page.dart';
+import 'config/admin.dart' show isSuperUser;
 import 'screens/api/api_landing_page.dart';
 import 'screens/legal/terms_and_conditions_page.dart';
 import 'screens/legal/labs_terms_and_conditions_page.dart';
@@ -212,6 +216,10 @@ enum OhtliScreen {
   labsApis, // Experimento de APIs
   labsRecolector, // Experimento de Caza Lugares (Recolector)
   labsTasteVector, // Experimento de Vector de Gustos e Identidad Cultural
+  labConsole, // lab.ohtli.quest: consola de pruebas del TT (superusuario)
+  labEval, // lab.ohtli.quest/eval: entrada pública para testers
+  labsResults, // labs.ohtli.quest: reporte y tablero de resultados públicos
+  labsNews, // labs.ohtli.quest/news: novedades publicadas
   places, // Vista del catálogo de lugares indexados por el Agente Recolector
   onboarding, // Flujo de Onboarding para recolectar gustos del turista
 }
@@ -234,6 +242,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   int _homeInitialIndex = 0;
   bool _isAuthInitialized = false;
   bool _intentLabs = false;
+  bool _intentEval = false;
 
   bool _isOnline = true;
   bool _showBanner = false;
@@ -298,7 +307,21 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen = OhtliScreen.labsTasteVector;
       } else if (isPlaces) {
         _currentScreen = OhtliScreen.places;
-      } else if (hostname.contains('lab.ohtli.quest') || hostname.contains('labs.ohtli.quest') || params.containsKey('testLab')) {
+      } else if (hostname == 'labs.ohtli.quest' || params.containsKey('testLabs')) {
+        // Sitio público de resultados (paper + tablero); /news y /eval también se sirven aquí
+        final isNews = path.contains('/news') || fragment.contains('/news');
+        final isEval = path.contains('/eval') || fragment.contains('/eval');
+        _currentScreen = isAppTyc
+            ? OhtliScreen.labsTermsAndConditions
+            : isEval
+                ? OhtliScreen.labEval
+                : isNews
+                    ? OhtliScreen.labsNews
+                    : OhtliScreen.labsResults;
+      } else if ((hostname.contains('lab.ohtli.quest') || params.containsKey('testLab') || params.containsKey('testEval')) &&
+          (path.contains('/eval') || fragment.contains('/eval') || params.containsKey('testEval'))) {
+        _currentScreen = OhtliScreen.labEval;
+      } else if (hostname.contains('lab.ohtli.quest') || params.containsKey('testLab')) {
         if (isAppTyc) {
           _currentScreen = OhtliScreen.labsTermsAndConditions;
         } else {
@@ -355,7 +378,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       if (user != null) {
         await _handlePostAuthRedirect(user);
       } else {
-        if (_currentScreen == OhtliScreen.labsDashboard) {
+        if (_currentScreen == OhtliScreen.labsDashboard || _currentScreen == OhtliScreen.labConsole) {
           _navigateTo(OhtliScreen.labLanding);
         } else if (_currentScreen == OhtliScreen.home ||
             _currentScreen == OhtliScreen.accountManagement) {
@@ -382,12 +405,17 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       }));
     }
 
+    if (_intentEval) {
+      _intentEval = false;
+      _navigateTo(OhtliScreen.labEval);
+      return;
+    }
     if (_currentScreen == OhtliScreen.labLanding) {
-      _navigateTo(OhtliScreen.labsDashboard);
+      _navigateTo(isSuperUser(user) ? OhtliScreen.labConsole : OhtliScreen.labsDashboard);
       return;
     } else if (_intentLabs) {
       _intentLabs = false;
-      _navigateTo(OhtliScreen.labsDashboard);
+      _navigateTo(isSuperUser(user) ? OhtliScreen.labConsole : OhtliScreen.labsDashboard);
       return;
     }
 
@@ -405,6 +433,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _currentScreen == OhtliScreen.labsApis ||
         _currentScreen == OhtliScreen.labsRecolector ||
         _currentScreen == OhtliScreen.labsTasteVector ||
+        _currentScreen == OhtliScreen.labConsole ||
+        _currentScreen == OhtliScreen.labEval ||
+        _currentScreen == OhtliScreen.labsResults ||
+        _currentScreen == OhtliScreen.labsNews ||
         _currentScreen == OhtliScreen.onboarding) {
       return;
     }
@@ -572,6 +604,27 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         onTryApis: () => _navigateTo(OhtliScreen.labsApis),
         onTryRecolector: () => _navigateTo(OhtliScreen.labsRecolector),
         onTryTasteVector: () => _navigateTo(OhtliScreen.labsTasteVector),
+      );
+    } else if (_currentScreen == OhtliScreen.labConsole) {
+      activeView = LabConsolePage(
+        onOpenTechnical: () => _navigateTo(OhtliScreen.labsDashboard),
+        onLogout: () async {
+          await FirebaseAuth.instance.signOut();
+          _navigateTo(OhtliScreen.labLanding);
+        },
+      );
+    } else if (_currentScreen == OhtliScreen.labEval) {
+      activeView = LabEvalPage(
+        onLogin: () {
+          setState(() => _intentEval = true);
+          _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+        },
+        onOpenTerms: () => _navigateTo(OhtliScreen.labsTermsAndConditions),
+      );
+    } else if (_currentScreen == OhtliScreen.labsResults || _currentScreen == OhtliScreen.labsNews) {
+      activeView = LabsResultsPage(
+        newsMode: _currentScreen == OhtliScreen.labsNews,
+        onOpenEval: () => _navigateTo(OhtliScreen.labEval),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(

@@ -353,5 +353,44 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+
+    // --- Ohtli Labs (lab.ohtli.quest / labs.ohtli.quest) ---
+    // Corridas de pruebas del TT: solo el superusuario las crea; el público ve las publicadas y
+    // los testers autenticados leen la corrida asignada como fuente del juicio de relevancia.
+    match /lab_runs/{runId} {
+      allow read: if isSuperUser() || resource.data.published == true
+        || (request.auth != null && resource.data.evalSource == true);
+      allow write: if isSuperUser();
+      match /rows/{rowId} {
+        allow read: if isSuperUser()
+          || get(/databases/$(database)/documents/lab_runs/$(runId)).data.published == true
+          || (request.auth != null && get(/databases/$(database)/documents/lab_runs/$(runId)).data.evalSource == true);
+        allow write: if isSuperUser();
+      }
+    }
+    // Estado de cada estudio (activo para testers, corrida fuente): lectura pública.
+    match /lab_studies/{studyId} {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+    // Reporte público y agregados publicados.
+    match /lab_site/{docId} {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+    // Respuestas de testers: anónimas (solo el uid para evitar duplicados), sin lectura pública.
+    match /lab_responses/{responseId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.consent == true
+        && request.resource.data.studyId in ['sus', 'relevancia']
+        && get(/databases/$(database)/documents/lab_studies/$(request.resource.data.studyId)).data.active == true
+        && request.resource.data.keys().hasOnly(['studyId', 'uid', 'consent', 'createdAt', 'sus', 'satisfaction', 'tasks',
+             'profile', 'comment', 'runId', 'rowIndex', 'scenarioId', 'optionIndex', 'theme', 'mood', 'poiIds', 'grades'])
+        && (!('sus' in request.resource.data) || request.resource.data.sus.size() == 10)
+        && (!('grades' in request.resource.data) || request.resource.data.grades.size() <= 12)
+        && (!('comment' in request.resource.data) || request.resource.data.comment.size() <= 1000);
+      allow read, update, delete: if isSuperUser();
+    }
   }
 }
