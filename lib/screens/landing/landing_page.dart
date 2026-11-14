@@ -11,6 +11,7 @@ import '../../theme/cdmx_photos.dart';
 import '../../models/poi_model.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/poi_detail_dialog.dart';
+import '../../widgets/ohtli_theme_toggle.dart';
 import '../places/places_page.dart';
 
 /// Crónica pública resumida para la portada.
@@ -191,6 +192,8 @@ class _LandingPageState extends State<LandingPage> {
             _navLink('Crónicas', () => _scrollTo(_storiesKey)),
           ],
           const Spacer(),
+          const OhtliThemeToggle(),
+          SizedBox(width: isMobile ? 4 : 10),
           TextButton(
             onPressed: widget.onLoginClick,
             style: TextButton.styleFrom(
@@ -252,7 +255,7 @@ class _LandingPageState extends State<LandingPage> {
               const TextSpan(text: 'Tu camino por la\nCiudad de México, '),
               TextSpan(
                 text: 'a tu medida.',
-                style: TextStyle(color: OhtliColors.stormyTeal),
+                style: TextStyle(color: OhtliColors.accentText),
               ),
             ],
           ),
@@ -511,7 +514,7 @@ class _LandingPageState extends State<LandingPage> {
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.6,
-                  color: OhtliColors.stormyTeal,
+                  color: OhtliColors.accentText,
                 ),
               ),
               const SizedBox(height: 10),
@@ -1076,7 +1079,7 @@ class _LandingPageState extends State<LandingPage> {
           _footerLink('Términos y condiciones', widget.onOpenTerms!),
         _footerLink(
           'Ohtli Labs',
-          () => _openExternal('https://lab.ohtli.quest'),
+          () => _openExternal('https://labs.ohtli.quest'),
         ),
         _footerLink('API', () => _openExternal('https://api.ohtli.quest')),
       ],

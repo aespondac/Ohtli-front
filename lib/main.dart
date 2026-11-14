@@ -41,6 +41,8 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Sigue en vivo el modo claro/oscuro del sistema cuando el tema está en "Sistema"
+  OhtliSettings.instance.attachToSystem();
 
   const configApiKey = String.fromEnvironment('apiKey');
   const configAuthDomain = String.fromEnvironment('authDomain');
@@ -172,6 +174,9 @@ class OhtliApp extends StatelessWidget {
             return MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(settings.textScaleFactor),
+                // Brillo efectivo (tema elegido o el del sistema): al cambiarlo se redibujan
+                // las pantallas, que leen sus colores de OhtliColors
+                platformBrightness: settings.isDarkMode ? Brightness.dark : Brightness.light,
               ),
               child: child!,
             );
@@ -571,6 +576,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       activeView = ApiLandingPage(
         onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
+        onRegisterRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register),
       );
     } else if (_currentScreen == OhtliScreen.termsAndConditions) {
       activeView = TermsAndConditionsPage(

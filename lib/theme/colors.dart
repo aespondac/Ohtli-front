@@ -6,10 +6,37 @@ import 'dart:ui';
 enum OhtliThemeMode { light, dark, system }
 enum OhtliFontSize { small, medium, large, extraLarge }
 
-class OhtliSettings extends ChangeNotifier {
+class OhtliSettings extends ChangeNotifier with WidgetsBindingObserver {
   static final OhtliSettings instance = OhtliSettings._();
   OhtliSettings._() {
     _loadSettings();
+  }
+
+  /// Registra el observador para seguir en vivo el modo claro/oscuro del sistema.
+  /// Se llama una vez desde main() tras inicializar el binding.
+  void attachToSystem() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    // En modo "Sistema" todos los colores dependen del brillo del sistema: se redibuja la app
+    if (_themeMode == OhtliThemeMode.system) notifyListeners();
+  }
+
+  /// Alterna Sistema → Claro → Oscuro → Sistema.
+  void cycleThemeMode() {
+    switch (_themeMode) {
+      case OhtliThemeMode.system:
+        themeMode = OhtliThemeMode.light;
+        break;
+      case OhtliThemeMode.light:
+        themeMode = OhtliThemeMode.dark;
+        break;
+      case OhtliThemeMode.dark:
+        themeMode = OhtliThemeMode.system;
+        break;
+    }
   }
 
   OhtliThemeMode _themeMode = OhtliThemeMode.system;
@@ -129,6 +156,11 @@ class OhtliColors {
     return OhtliSettings.instance.isDarkMode
         ? const Color(0xFF151518) // Dark inner card background
         : const Color(0xFFF7F5F1); // Light inner card background
+  }
+
+  /// Turquesa para textos de acento: más claro en modo oscuro para mantener el contraste.
+  static Color get accentText {
+    return OhtliSettings.instance.isDarkMode ? const Color(0xFF6FB6BF) : stormyTeal;
   }
 
   static Color get subtleText {

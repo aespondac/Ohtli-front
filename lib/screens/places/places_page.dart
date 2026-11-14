@@ -19,6 +19,7 @@ import '../../theme/cdmx_photos.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/poi_card.dart';
+import '../../widgets/ohtli_theme_toggle.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import '../trips/trip_editor_page.dart';
@@ -1062,6 +1063,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                           colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
                         ),
                       const Spacer(),
+                      const OhtliThemeToggle(onDark: true),
+                      const SizedBox(width: 8),
                       if (isGuest && widget.onLoginClick != null && !isMobile)
                         TextButton(
                           onPressed: widget.onLoginClick,

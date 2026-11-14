@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
+import '../../widgets/ohtli_theme_toggle.dart';
+import '../../widgets/ohtli_service_icon.dart';
 import 'widgets/particles_background.dart';
 
 class LabLandingPage extends StatefulWidget {
@@ -176,7 +178,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                 ),
                 const SizedBox(width: 8),
                 _buildNavTextButton(
-                  title: 'Ohtli.quest (Prod) ↗',
+                  title: 'Ohtli.quest ↗',
                   onTap: _openProductionSite,
                   isExternal: true,
                 ),
@@ -220,6 +222,8 @@ class _LabLandingPageState extends State<LabLandingPage> {
                   ),
                 ),
               ],
+              const OhtliThemeToggle(),
+              const SizedBox(width: 10),
               ElevatedButton.icon(
                 onPressed: widget.onLoginRedirect,
                 icon: const Icon(Icons.login_rounded, size: 16),
@@ -301,7 +305,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                 const Icon(Icons.hub_rounded, size: 16, color: OhtliColors.stormyTeal),
                 const SizedBox(width: 8),
                 Text(
-                  'ENTORNO DE PRUEBAS PREVIO A OHTLI.QUEST',
+                  'LABORATORIO DE INNOVACIÓN DE OHTLI',
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -316,7 +320,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
 
           // Título Principal
           Text(
-            'El banco de pruebas para\nel futuro de Ohtli.quest',
+            'Donde la innovación se prueba\nantes de llegar a ti',
             textAlign: TextAlign.center,
             style: GoogleFonts.outfit(
               fontSize: isMobile ? 42 : 72,
@@ -332,7 +336,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
             child: Text(
-              'Ohtli Labs es el banco de experimentación y calibración técnica. Aquí evaluamos modelos de recomendación cultural, motores de ruteo y agentes geospaciales en un sandbox aislado antes de incorporarlos a la experiencia principal de Ohtli.quest.',
+              'Ohtli Labs es nuestro laboratorio de innovación. Aquí nacen los nuevos modelos de recomendación cultural, de rutas y de agentes de IA, y se ponen a prueba en un entorno aislado y protegido. Solo lo que demuestra ser útil, estable y seguro llega a Ohtli.quest.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: isMobile ? 16 : 19,
@@ -401,25 +405,25 @@ class _LabLandingPageState extends State<LabLandingPage> {
       child: isMobile
           ? Column(
               children: [
-                _buildKpiItem('5 Experimentos', 'En validación activa', Icons.tune_rounded),
+                _buildKpiItem('5 experimentos', 'En evaluación activa', Icons.science_rounded),
                 const Divider(height: 24),
-                _buildKpiItem('Yollotl Engine', 'v2.4 en Staging', Icons.memory_rounded),
+                _buildKpiItem('IA aplicada', 'Modelos culturales propios', Icons.psychology_rounded),
                 const Divider(height: 24),
-                _buildKpiItem('Sandbox Aislado', 'Cero impacto a prod', Icons.security_rounded),
+                _buildKpiItem('Entorno aislado', 'Separado de producción', Icons.verified_user_rounded),
                 const Divider(height: 24),
-                _buildKpiItem('Destino Ohtli.quest', 'Integración continua', Icons.rocket_launch_rounded),
+                _buildKpiItem('Validación continua', 'Antes de cada lanzamiento', Icons.rocket_launch_rounded),
               ],
             )
           : Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildKpiItem('5 Experimentos', 'En validación activa', Icons.tune_rounded),
+                _buildKpiItem('5 experimentos', 'En evaluación activa', Icons.science_rounded),
                 _buildVerticalDivider(),
-                _buildKpiItem('Yollotl Engine', 'v2.4 en Staging', Icons.memory_rounded),
+                _buildKpiItem('IA aplicada', 'Modelos culturales propios', Icons.psychology_rounded),
                 _buildVerticalDivider(),
-                _buildKpiItem('Sandbox Aislado', 'Cero impacto a prod', Icons.security_rounded),
+                _buildKpiItem('Entorno aislado', 'Separado de producción', Icons.verified_user_rounded),
                 _buildVerticalDivider(),
-                _buildKpiItem('Destino Ohtli.quest', 'Integración continua', Icons.rocket_launch_rounded),
+                _buildKpiItem('Validación continua', 'Antes de cada lanzamiento', Icons.rocket_launch_rounded),
               ],
             ),
     );
@@ -488,7 +492,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              'CICLO DE GRADUACIÓN DE CARACTERÍSTICAS',
+              'DE LA IDEA A PRODUCCIÓN',
               style: GoogleFonts.inter(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
@@ -499,7 +503,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            'De la hipótesis en Labs a producción en Ohtli.quest',
+            'Innovación con controles en cada etapa',
             textAlign: TextAlign.center,
             style: GoogleFonts.outfit(
               fontSize: isMobile ? 28 : 40,
@@ -512,7 +516,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
             child: Text(
-              'Cada función pasa por un pipeline estricto de 4 fases para garantizar que no degrade la experiencia ni la velocidad de los usuarios de Ohtli.',
+              'Cada función recorre cuatro fases con revisiones de calidad, rendimiento y seguridad antes de llegar a las personas que usan Ohtli.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 15,
@@ -531,35 +535,35 @@ class _LabLandingPageState extends State<LabLandingPage> {
             children: [
               _buildPipelineCard(
                 step: '01',
-                title: 'Prototipo & Modelado',
-                badge: 'Yollotl Core',
-                description: 'Diseño de prompts de agentes, fórmulas vectoriales y esquemas de extracción en microservicios.',
-                icon: Icons.code_rounded,
+                title: 'Investigación y prototipo',
+                badge: 'Idea',
+                description: 'Partimos de una hipótesis clara y diseñamos nuevos modelos de recomendación y agentes de IA para resolverla.',
+                icon: Icons.lightbulb_rounded,
                 color: const Color(0xFF6C5CE7),
               ),
               _buildPipelineCard(
                 step: '02',
-                title: 'Banco de Pruebas (Labs)',
-                badge: 'lab.ohtli.quest',
-                description: 'Pruebas de estrés por la comunidad, simulación de respuestas de red y calibración de latencia.',
+                title: 'Banco de pruebas',
+                badge: 'labs.ohtli.quest',
+                description: 'La comunidad lo prueba en un entorno aislado mientras medimos calidad, velocidad y estabilidad.',
                 icon: Icons.science_rounded,
                 color: OhtliColors.stormyTeal,
                 isCurrent: true,
               ),
               _buildPipelineCard(
                 step: '03',
-                title: 'Candidato a Release',
-                badge: 'Staging QA',
-                description: 'Auditoría de cuotas de APIs, persistencia Firestore y compatibilidad móvil antes de aprobación.',
-                icon: Icons.verified_rounded,
+                title: 'Revisión de seguridad',
+                badge: 'Control de calidad',
+                description: 'Revisamos permisos, uso de datos, costos y compatibilidad antes de aprobar cualquier lanzamiento.',
+                icon: Icons.verified_user_rounded,
                 color: OhtliColors.xoconostle,
               ),
               _buildPipelineCard(
                 step: '04',
-                title: 'Producción Ohtli.quest',
+                title: 'Lanzamiento',
                 badge: 'ohtli.quest',
-                description: 'Integración en el generador de itinerarios y feed accesible para todos los viajeros finales.',
-                icon: Icons.public_rounded,
+                description: 'Lo que supera todas las pruebas se integra a la experiencia de viaje para todas las personas.',
+                icon: Icons.rocket_launch_rounded,
                 color: const Color(0xFF10B981),
               ),
             ],
@@ -628,8 +632,8 @@ class _LabLandingPageState extends State<LabLandingPage> {
             ],
           ),
           const SizedBox(height: 16),
-          Icon(icon, size: 28, color: color),
-          const SizedBox(height: 12),
+          OhtliServiceIcon(icon: icon, color: color, size: 48),
+          const SizedBox(height: 16),
           Text(
             title,
             style: GoogleFonts.outfit(
@@ -698,7 +702,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Experimentos en evaluación activa',
+                      'Lo que estamos construyendo',
                       style: GoogleFonts.outfit(
                         fontSize: isMobile ? 26 : 36,
                         fontWeight: FontWeight.w800,
@@ -708,7 +712,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Prueba cada herramienta, detecta inconsistencias y evalúa los resultados antes de su lanzamiento a producción.',
+                      'Prueba cada herramienta, comparte lo que encuentres y ayúdanos a decidir qué llega a Ohtli.quest.',
                       style: GoogleFonts.inter(
                         fontSize: 15,
                         color: OhtliColors.subtleText,
@@ -729,58 +733,58 @@ class _LabLandingPageState extends State<LabLandingPage> {
             children: [
               _buildExperimentCard(
                 category: 'GEOINTELIGENCIA',
-                status: 'CANDIDATO A PROD v1.0',
+                status: 'CASI LISTO',
                 statusColor: const Color(0xFF10B981),
-                targetModule: 'Ohtli.quest / Explorador de POIs',
-                title: 'Caza Lugares (Motor Recolector)',
-                description: 'Dada una coordenada geográfica y radio, consulta y consolida lugares desde múltiples fuentes y permite replicar registros validados a producción.',
+                targetModule: 'Ohtli.quest / Lugares',
+                title: 'Descubridor de lugares',
+                description: 'Encuentra y consolida lugares de varias fuentes para una zona de la ciudad y los valida antes de publicarlos.',
                 icon: Icons.travel_explore_rounded,
                 color: OhtliColors.stormyTeal,
-                metrics: 'Soporte CDMX · Replicación Firestore',
+                metrics: 'Cobertura CDMX · Validación previa',
               ),
               _buildExperimentCard(
                 category: 'MODELOS SEMÁNTICOS',
-                status: 'BETA v0.9',
+                status: 'BETA',
                 statusColor: OhtliColors.xoconostle,
-                targetModule: 'Ohtli.quest / Onboarding & Matching',
-                title: 'Vector de Gustos & Vibe (768d)',
-                description: 'Construye la receta semántica de identidad cultural del viajero y genera el embedding vectorial con cálculo de similitud coseno contra lugares reales.',
+                targetModule: 'Ohtli.quest / Recomendaciones',
+                title: 'Perfil cultural con IA',
+                description: 'Traduce los gustos de cada viajero en una huella cultural y la compara con los lugares para encontrar los más afines.',
                 icon: Icons.fingerprint_rounded,
                 color: OhtliColors.xoconostle,
-                metrics: '768 dimensiones · Similitud coseno',
+                metrics: 'Afinidad semántica · Privado por diseño',
               ),
               _buildExperimentCard(
                 category: 'MOVILIDAD URBANA',
-                status: 'BETA v0.8',
+                status: 'BETA',
                 statusColor: const Color(0xFFE2711D),
-                targetModule: 'Ohtli.quest / Planificador de Rutas',
-                title: 'Ruteo OSRM & Ye',
-                description: 'Motor de ruteo y optimización espacial sobre OpenStreetMap, independiente de cuotas externas, con perfiles de auto, bicicleta y caminata.',
-                icon: Icons.directions_car_rounded,
+                targetModule: 'Ohtli.quest / Planificador',
+                title: 'Motor de rutas',
+                description: 'Calcula recorridos a pie, en bici y en auto sobre la red de la ciudad, con infraestructura propia.',
+                icon: Icons.route_rounded,
                 color: const Color(0xFFE2711D),
-                metrics: 'Perfiles Car/Bike/Foot · GeoJSON',
+                metrics: 'A pie · Bici · Auto',
               ),
               _buildExperimentCard(
                 category: 'AGENTES AUTÓNOMOS',
-                status: 'ALPHA v0.4',
+                status: 'ALFA',
                 statusColor: const Color(0xFF6C5CE7),
                 targetModule: 'Ohtli.quest / Asistente Virtual',
-                title: 'Consola de Agentes I/O',
-                description: 'Pruebas directas de diálogo con agentes de recolección y comparación. Inspección de entradas y salidas estructuradas sin filtros UI.',
+                title: 'Consola de agentes',
+                description: 'Conversa con los agentes de IA de Ohtli y revisa paso a paso cómo razonan y responden.',
                 icon: Icons.smart_toy_rounded,
                 color: const Color(0xFF6C5CE7),
-                metrics: 'Inspección cruda · Diagnóstico I/O',
+                metrics: 'Transparencia · Diagnóstico',
               ),
               _buildExperimentCard(
-                category: 'ARQUITECTURA DISTRIBUIDA',
-                status: 'ACTIVO EN STAGING',
+                category: 'NUEVOS SERVICIOS',
+                status: 'EN PRUEBAS',
                 statusColor: const Color(0xFF00CEC9),
-                targetModule: 'api.ohtli.quest / Gateway',
-                title: 'APIs Satélite & Microservicios',
-                description: 'Endpoints experimentales de exploración OEP, análisis de Vibe y evaluación de estado de ánimo integrados al gateway de Google Cloud Run.',
-                icon: Icons.api_rounded,
+                targetModule: 'api.ohtli.quest',
+                title: 'Servicios experimentales',
+                description: 'Nuevos análisis de ambiente y estado de ánimo que se evalúan antes de sumarse a la API de Ohtli.',
+                icon: Icons.auto_awesome_rounded,
                 color: const Color(0xFF00CEC9),
-                metrics: 'Cloud Run · Endpoints OEP/Vibe',
+                metrics: 'Ambiente · Estado de ánimo',
               ),
             ],
           ),
@@ -834,21 +838,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.cardBg,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.15),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(icon, size: 28, color: color),
-                ),
+                OhtliServiceIcon(icon: icon, color: color, size: 52),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -984,58 +974,77 @@ class _LabLandingPageState extends State<LabLandingPage> {
   }
 
   Widget _buildSandboxAssuranceSection(bool isMobile) {
+    final pillars = [
+      (Icons.shield_rounded, 'Entorno aislado', 'Los experimentos usan datos de prueba separados de producción y no tocan cuentas, viajes ni información personal de Ohtli.quest.', OhtliColors.stormyTeal),
+      (Icons.lock_person_rounded, 'Acceso autenticado', 'Para entrar a Labs se inicia sesión y se aceptan los términos del laboratorio; cada prueba queda asociada a una cuenta.', OhtliColors.xoconostle),
+      (Icons.fact_check_rounded, 'Pruebas automáticas', 'Cada cambio pasa por pruebas automáticas antes de publicarse; si alguna falla, no se despliega.', const Color(0xFF3949AB)),
+      (Icons.privacy_tip_rounded, 'Privacidad por diseño', 'Los perfiles de gustos son privados y solo su dueño puede consultarlos o modificarlos.', OhtliColors.cempasuchil),
+    ];
     return Container(
       width: double.infinity,
       color: OhtliColors.cardBg,
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 24 : 48,
-        vertical: 40,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 24 : 48, vertical: isMobile ? 48 : 72),
       child: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 900),
-          padding: const EdgeInsets.all(32),
-          decoration: BoxDecoration(
-            color: OhtliColors.innerCardBg,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: OhtliColors.cardBorder),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1100),
+          child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: OhtliColors.stormyTeal.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(Icons.shield_outlined, size: 32, color: OhtliColors.stormyTeal),
+              Text(
+                'SEGURIDAD DESDE EL DISEÑO',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.6, color: OhtliColors.accentText),
               ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Aislamiento de Entorno & Seguridad Garantizada',
-                      style: GoogleFonts.outfit(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: OhtliColors.onyx,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Las sesiones y llamadas ejecutadas en Ohtli Labs operan en colecciones de staging y no interfieren con cuentas de viajeros ni itinerarios en ohtli.quest. Una vez validada la estabilidad, el equipo de ingeniería sincroniza los modelos mediante canalizaciones seguras de CI/CD.',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: OhtliColors.subtleText,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 12),
+              Text(
+                'Experimentar sin poner en riesgo a nadie',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(
+                  fontSize: isMobile ? 28 : 38,
+                  fontWeight: FontWeight.w800,
+                  color: OhtliColors.onyx,
+                  letterSpacing: -0.8,
+                  height: 1.1,
                 ),
               ),
+              const SizedBox(height: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 620),
+                child: Text(
+                  'La innovación en Ohtli avanza rápido porque está protegida: cada experimento vive en un espacio controlado hasta que demuestra ser seguro.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText, height: 1.55),
+                ),
+              ),
+              const SizedBox(height: 36),
+              LayoutBuilder(builder: (context, c) {
+                final cols = isMobile ? 1 : (c.maxWidth < 900 ? 2 : 4);
+                const gap = 18.0;
+                final w = (c.maxWidth - gap * (cols - 1)) / cols;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: pillars
+                      .map((p) => Container(
+                            width: w,
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: OhtliColors.innerCardBg,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: OhtliColors.cardBorder),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                OhtliServiceIcon(icon: p.$1, color: p.$4, size: 50),
+                                const SizedBox(height: 18),
+                                Text(p.$2, style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                                const SizedBox(height: 6),
+                                Text(p.$3, style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.5)),
+                              ],
+                            ),
+                          ))
+                      .toList(),
+                );
+              }),
             ],
           ),
         ),
@@ -1101,7 +1110,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '© 2026 Ohtli Labs. Banco de Pruebas Pre-Producción.',
+                '© ${DateTime.now().year} Ohtli Labs · Laboratorio de innovación',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: const Color(0xFFF0EEE9).withValues(alpha: 0.5),
