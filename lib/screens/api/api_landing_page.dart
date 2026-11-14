@@ -31,11 +31,15 @@ class ApiLandingPage extends StatefulWidget {
   final VoidCallback? onRegisterRedirect;
   final void Function(LegalDocId doc)? onOpenLegal;
 
+  /// Nombre de la cuenta de Ohtli con sesión (SSO); null si no hay sesión.
+  final String? accountLabel;
+
   const ApiLandingPage({
     super.key,
     required this.onLoginRedirect,
     this.onRegisterRedirect,
     this.onOpenLegal,
+    this.accountLabel,
   });
 
   @override
@@ -191,7 +195,27 @@ class _ApiLandingPageState extends State<ApiLandingPage> {
           const Spacer(),
           const OhtliThemeToggle(),
           SizedBox(width: isMobile ? 4 : 10),
-          if (!isMobile)
+          if (!isMobile && widget.accountLabel != null)
+            Tooltip(
+              message: 'Sesión iniciada con tu cuenta de Ohtli',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.account_circle_outlined, size: 18, color: OhtliColors.onyx.withValues(alpha: 0.75)),
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 180),
+                    child: Text(
+                      widget.accountLabel!,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14, color: OhtliColors.onyx),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            )
+          else if (!isMobile)
             TextButton(
               onPressed: widget.onLoginRedirect,
               style: TextButton.styleFrom(

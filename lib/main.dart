@@ -426,11 +426,13 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       // SSO en el subdominio (lab.ohtli.quest): sin sesión propia, canjea el código que
       // trajo de ohtli.quest o va por él. Mientras tanto se mantiene la pantalla de carga.
       // /eval también queda protegida por el SSO: sin sesión trae la de ohtli.quest
-      if (user == null && !_ssoChecked && (_isLabAppHost || _currentScreen == OhtliScreen.labEval) && OhtliSso.isSubdomain) {
+      // En cualquier subdominio se canjea el código que vuelve de ohtli.quest; la
+      // redirección automática es solo para lab (api y labs son páginas públicas).
+      if (user == null && !_ssoChecked && OhtliSso.isSubdomain) {
         _ssoChecked = true;
         if (OhtliSso.hasPendingCode) {
           if (await OhtliSso.redeemPendingCode()) return; // llegará otro evento con la sesión
-        } else if (OhtliSso.maybeAutoRedirect()) {
+        } else if ((_isLabAppHost || _currentScreen == OhtliScreen.labEval) && OhtliSso.maybeAutoRedirect()) {
           return; // la página está yendo a ohtli.quest
         }
       }
@@ -751,10 +753,21 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         onOpenEval: () => _navigateTo(OhtliScreen.labEval),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
-      activeView = ApiLandingPage(
-        onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
-        onRegisterRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register),
-        onOpenLegal: _openLegal,
+      // En api.ohtli.quest "Iniciar sesión" usa la cuenta de Ohtli (SSO) y vuelve aquí.
+      activeView = StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.userChanges(),
+        initialData: FirebaseAuth.instance.currentUser,
+        builder: (context, snapshot) {
+          final user = snapshot.data;
+          return ApiLandingPage(
+            onLoginRedirect: OhtliSso.isSubdomain
+                ? OhtliSso.continueWithOhtli
+                : () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
+            onRegisterRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register),
+            onOpenLegal: _openLegal,
+            accountLabel: user == null ? null : ((user.displayName ?? '').isNotEmpty ? user.displayName : user.email),
+          );
+        },
       );
     } else if (_currentScreen == OhtliScreen.termsAndConditions) {
       activeView = LegalCenterPage(
@@ -868,8 +881,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     }
 
     // En lab.ohtli.quest, en el inicio de sesión: entrar con la sesión de ohtli.quest.
-    if (_isLabAppHost &&
-        OhtliSso.isSubdomain &&
+    if (OhtliSso.isSubdomain &&
         FirebaseAuth.instance.currentUser == null &&
         (_currentScreen == OhtliScreen.login ||
             _currentScreen == OhtliScreen.mobileLogin ||
