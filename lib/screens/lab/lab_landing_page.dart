@@ -223,7 +223,15 @@ class _LabLandingPageState extends State<LabLandingPage> {
                 ),
               ],
               const OhtliThemeToggle(),
-              const SizedBox(width: 10),
+              const SizedBox(width: 6),
+              // Reporte y tablero de resultados de las pruebas (labs.ohtli.quest/resultados)
+              TextButton.icon(
+                onPressed: () => html.window.location.href = '/resultados',
+                icon: const Icon(Icons.insights_rounded, size: 16),
+                label: Text(isMobile ? 'Resultados' : 'Resultados y paper',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 6),
               ElevatedButton.icon(
                 onPressed: widget.onLoginRedirect,
                 icon: const Icon(Icons.login_rounded, size: 16),
