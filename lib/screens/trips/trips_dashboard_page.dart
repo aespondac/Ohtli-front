@@ -5,12 +5,13 @@ import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
+import '../../widgets/ohtli_ui.dart';
+import '../../widgets/ohtli_service_icon.dart';
 import '../../theme/colors.dart';
 import '../../utils/friendly_errors.dart';
 import '../../models/trip_model.dart';
@@ -20,7 +21,6 @@ import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/gift_wrapped_card.dart';
 import '../../services/itinerary_blackboard_service.dart';
 import '../../widgets/trip_planner_dialog.dart';
-import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 import 'trip_editor_page.dart';
 import 'trip_viewer_page.dart';
 
@@ -727,9 +727,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   }
 
   Widget _buildSectionHeader(String title, {String? subtitle, Widget? leading, Widget? trailing}) {
-    final isDark = OhtliSettings.instance.isDarkMode;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -739,7 +738,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
               Flexible(
                 child: Text(
                   title,
-                  style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx),
+                  style: OhtliUi.title(size: 22),
                 ),
               ),
               if (trailing != null) ...[const SizedBox(width: 8), trailing],
@@ -747,7 +746,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           ),
           if (subtitle != null) ...[
             const SizedBox(height: 3),
-            Text(subtitle, style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white60 : OhtliColors.subtleText)),
+            Text(subtitle, style: OhtliUi.body(size: 13.5)),
           ],
         ],
       ),
@@ -759,7 +758,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: filled ? color : color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(30),
       ),
       child: Text(
         '$n',
@@ -795,7 +794,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           ),
         );
         return Container(
-          decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(24)),
+          decoration: BoxDecoration(color: card, borderRadius: BorderRadius.circular(28)),
           clipBehavior: Clip.antiAlias,
           child: crossAxisCount == 1
               ? Row(children: [Container(width: 130, color: base), Expanded(child: details)])
@@ -860,7 +859,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       builder: (context, constraints) {
         final double width = constraints.maxWidth;
         final int crossAxisCount = width > 1200 ? 4 : (width > 800 ? 3 : (width > 550 ? 2 : 1));
-        final double padding = width > 800 ? 32.0 : 16.0;
+        final double padding = width > 800 ? 40.0 : 16.0;
         final bool isDark = OhtliSettings.instance.isDarkMode;
 
         // Combine all owned, co-authored, and opened surprise trips, avoiding duplicates by trip ID
@@ -923,63 +922,48 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
               automaticallyImplyLeading: false,
               centerTitle: false,
               titleSpacing: 0,
-              toolbarHeight: 80,
+              toolbarHeight: isMobileHeader ? 104 : 128,
               title: Padding(
                 padding: EdgeInsets.symmetric(horizontal: padding),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Mis viajes',
-                          style: GoogleFonts.outfit(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: OhtliColors.onyx,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.map_rounded, size: 14, color: OhtliColors.accentText),
+                              const SizedBox(width: 6),
+                              Text('TU LIBRETA DE CAMINOS', style: OhtliUi.eyebrow(OhtliColors.accentText)),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          summary,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: OhtliColors.onyx.withValues(alpha: 0.55),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text('Mis viajes', style: OhtliUi.title(size: isMobileHeader ? 28 : 38)),
+                          const SizedBox(height: 4),
+                          Text(summary, style: OhtliUi.body(size: isMobileHeader ? 13.5 : 15)),
+                        ],
+                      ),
                     ),
-                    
+
                     // Dos formas claras de empezar (escritorio / tablet)
                     if (!isMobileHeader)
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          OutlinedButton.icon(
+                          OhtliSecondaryButton(
+                            label: 'Crear plan',
+                            icon: Icons.add_rounded,
                             onPressed: () => _showCreateTripDialog(context),
-                            icon: const Icon(Icons.add_rounded, size: 18),
-                            label: Text('Crear plan', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: isDark ? Colors.white : OhtliColors.stormyTeal,
-                              side: BorderSide(color: isDark ? Colors.white38 : OhtliColors.stormyTeal.withValues(alpha: 0.5)),
-                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
                           ),
                           const SizedBox(width: 10),
-                          ElevatedButton.icon(
+                          OhtliPrimaryButton(
+                            label: 'Planear con IA',
+                            icon: Icons.auto_awesome_rounded,
                             onPressed: _openAiPlanner,
-                            icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                            label: Text('Planear con IA', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: OhtliColors.stormyTeal,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
                           ),
                         ],
                       ),
@@ -987,28 +971,31 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 ),
               ),
               bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(48),
+                preferredSize: const Size.fromHeight(60),
                 child: Container(
                   alignment: Alignment.centerLeft,
                   padding: EdgeInsets.symmetric(horizontal: padding),
                   child: TabBar(
                     isScrollable: true,
                     tabAlignment: TabAlignment.start,
-                    indicatorColor: OhtliColors.stormyTeal,
-                    indicatorWeight: 3,
-                    labelColor: OhtliColors.stormyTeal,
-                    unselectedLabelColor: OhtliColors.onyx.withValues(alpha: 0.5),
-                    labelStyle: GoogleFonts.inter(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                    dividerColor: Colors.transparent,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    indicator: BoxDecoration(
+                      color: OhtliColors.stormyTeal,
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [BoxShadow(color: OhtliColors.stormyTeal.withValues(alpha: 0.3), blurRadius: 14, offset: const Offset(0, 5))],
                     ),
-                    unselectedLabelStyle: GoogleFonts.inter(
-                      fontWeight: FontWeight.w500,
-                      fontSize: 14,
-                    ),
+                    splashBorderRadius: BorderRadius.circular(30),
+                    overlayColor: WidgetStateProperty.all(Colors.transparent),
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.only(bottom: 12),
+                    labelColor: Colors.white,
+                    unselectedLabelColor: OhtliColors.onyx.withValues(alpha: 0.65),
+                    labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+                    unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
                     tabs: [
-                      Tab(text: _isLoading || publishedTrips.isEmpty ? 'Publicados' : 'Publicados · ${publishedTrips.length}'),
-                      Tab(text: _isLoading || planCount == 0 ? 'Planes' : 'Planes · $planCount'),
+                      Tab(height: 42, text: _isLoading || publishedTrips.isEmpty ? 'Publicados' : 'Publicados · ${publishedTrips.length}'),
+                      Tab(height: 42, text: _isLoading || planCount == 0 ? 'Planes' : 'Planes · $planCount'),
                     ],
                   ),
                 ),
@@ -1016,13 +1003,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             ),
             body: Stack(
               children: [
-                // Map dotted line background
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.3)),
-                  ),
-                ),
-
                 _isLoading
                     ? _buildSkeletonGrid(crossAxisCount, width, padding)
                     : TabBarView(
@@ -1122,9 +1102,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     onPressed: _showNewTripSheet,
                     backgroundColor: OhtliColors.stormyTeal,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    shape: const StadiumBorder(),
                     icon: const Icon(Icons.add_rounded),
                     label: Text('Nuevo viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                   )
@@ -1576,108 +1554,42 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       return Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: OhtliColors.stormyTeal.withValues(alpha: 0.06),
-                  border: Border.all(
-                    color: OhtliColors.stormyTeal.withValues(alpha: 0.15),
-                    width: 1.5,
-                  ),
-                ),
-                child: Center(
-                  child: SvgPicture.asset(
-                    'assets/icon_isologo.svg',
-                    width: 40,
-                    height: 40,
-                    colorFilter: const ColorFilter.mode(
-                      OhtliColors.stormyTeal,
-                      BlendMode.srcIn,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OhtliServiceIcon(icon: showGoToPlans ? Icons.edit_note_rounded : Icons.map_rounded, color: OhtliColors.stormyTeal, size: 72),
+                const SizedBox(height: 22),
+                Text(emptyTitle, textAlign: TextAlign.center, style: OhtliUi.title(size: 24)),
+                const SizedBox(height: 8),
+                Text(emptySub, textAlign: TextAlign.center, style: OhtliUi.body(size: 14)),
+                const SizedBox(height: 26),
+                if (showGoToPlans)
+                  Builder(
+                    builder: (tabContext) => OhtliPrimaryButton(
+                      label: 'Ver mis planes',
+                      icon: Icons.edit_note_rounded,
+                      onPressed: () => DefaultTabController.of(tabContext).animateTo(1),
                     ),
+                  )
+                else
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      OhtliPrimaryButton(label: 'Planear con IA', icon: Icons.auto_awesome_rounded, onPressed: _openAiPlanner),
+                      OhtliSecondaryButton(label: 'Crear plan', icon: Icons.add_rounded, onPressed: () => _showCreateTripDialog(context)),
+                    ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                emptyTitle,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: OhtliColors.onyx,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                constraints: const BoxConstraints(maxWidth: 320),
-                child: Text(
-                  emptySub,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    height: 1.5,
-                    color: OhtliColors.onyx.withValues(alpha: 0.5),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (showGoToPlans)
-                Builder(
-                  builder: (tabContext) => ElevatedButton.icon(
-                    onPressed: () => DefaultTabController.of(tabContext).animateTo(1),
-                    icon: const Icon(Icons.edit_note_rounded, size: 18),
-                    label: Text('Ver mis planes', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: OhtliColors.stormyTeal,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                )
-              else
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _openAiPlanner,
-                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                      label: Text('Planear con IA', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => _showCreateTripDialog(context),
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: Text('Crear plan', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: OhtliSettings.instance.isDarkMode ? Colors.white : OhtliColors.stormyTeal,
-                        side: BorderSide(color: OhtliSettings.instance.isDarkMode ? Colors.white38 : OhtliColors.stormyTeal.withValues(alpha: 0.5)),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                    ),
-                  ],
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       );
     }
-    
+
     // Calculate the width of a single card
     final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 24) / crossAxisCount;
     

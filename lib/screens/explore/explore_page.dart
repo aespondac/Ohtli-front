@@ -12,6 +12,11 @@ import '../places/places_page.dart';
 import '../trips/trip_viewer_page.dart';
 import '../../config/editorial.dart';
 import '../../services/explore_config_service.dart';
+import '../../services/saved_places.dart';
+import '../../widgets/ohtli_ui.dart';
+import '../../widgets/ohtli_service_icon.dart';
+import '../../widgets/poi_card.dart';
+import '../../widgets/trip_planner_dialog.dart';
 
 // Crónicas destacadas (fijadas por el equipo editorial)
 class PinnedStory {
@@ -251,7 +256,7 @@ class _ExplorePageState extends State<ExplorePage> {
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
     final bool isMobile = MediaQuery.of(context).size.width < 800;
-    final double gutter = isMobile ? 16.0 : 24.0;
+    final double gutter = isMobile ? 16.0 : 40.0;
 
     return Stack(
       children: [
@@ -280,20 +285,24 @@ class _ExplorePageState extends State<ExplorePage> {
                         _buildGreeting(isMobile, gutter),
                         if (_featured.isNotEmpty) _buildPinnedStoriesCarousel(isMobile, isDark),
                         if (_featured.length > 1) _buildPinnedDots(),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         _buildQuickActions(isMobile, gutter),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 40),
                         _buildSectionHeader(
                           gutter: gutter,
+                          eyebrow: 'Selección del día',
+                          icon: Icons.auto_awesome_rounded,
                           title: 'Lugares para descubrir',
                           subtitle: 'Una selección del día curada por nuestro Agente Recolector',
                           actionLabel: 'Ver todos',
                           onAction: () => widget.onOpenTab(5),
                         ),
                         _buildPlacesRow(isMobile, gutter),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 40),
                         _buildSectionHeader(
                           gutter: gutter,
+                          eyebrow: 'Comunidad',
+                          icon: Icons.auto_stories_rounded,
                           title: 'Crónicas de la comunidad',
                           subtitle: 'Rutas reales que otros viajeros compartieron',
                         ),
@@ -318,27 +327,27 @@ class _ExplorePageState extends State<ExplorePage> {
         : (hour < 19 ? 'Buenas tardes' : 'Buenas noches');
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(gutter, isMobile ? 16 : 28, gutter, 4),
+      padding: EdgeInsets.fromLTRB(gutter, isMobile ? 20 : 36, gutter, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.explore_rounded, size: 14, color: OhtliColors.accentText),
+              const SizedBox(width: 6),
+              Text('EXPLORAR · CIUDAD DE MÉXICO', style: OhtliUi.eyebrow(OhtliColors.accentText)),
+            ],
+          ),
+          const SizedBox(height: 8),
           Text(
             firstName.isNotEmpty ? '$salute, $firstName' : salute,
-            style: GoogleFonts.outfit(
-              fontSize: isMobile ? 24 : 30,
-              fontWeight: FontWeight.w600,
-              color: OhtliColors.onyx,
-              height: 1.15,
-            ),
+            style: OhtliUi.title(size: isMobile ? 28 : 38),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             '¿Qué camino de la Ciudad de México quieres recorrer hoy?',
-            style: GoogleFonts.inter(
-              fontSize: isMobile ? 13 : 14,
-              fontWeight: FontWeight.w300,
-              color: OhtliColors.subtleText,
-            ),
+            style: OhtliUi.body(size: isMobile ? 14 : 15.5),
           ),
         ],
       ),
@@ -356,7 +365,7 @@ class _ExplorePageState extends State<ExplorePage> {
           width: active ? 18 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: active ? OhtliColors.stormyTeal : OhtliColors.cantera,
+            color: active ? OhtliColors.stormyTeal : OhtliColors.onyx.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -417,59 +426,35 @@ class _ExplorePageState extends State<ExplorePage> {
 
   Widget _buildSectionHeader({
     required double gutter,
+    required String eyebrow,
     required String title,
+    IconData? icon,
     String? subtitle,
     String? actionLabel,
     VoidCallback? onAction,
   }) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.outfit(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
-                  ),
+      padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 16),
+      child: OhtliSectionHeader(
+        eyebrow: eyebrow,
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
+        trailing: actionLabel != null && onAction != null
+            ? TextButton.icon(
+                onPressed: onAction,
+                iconAlignment: IconAlignment.end,
+                icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                label: Text(actionLabel),
+                style: TextButton.styleFrom(
+                  foregroundColor: OhtliColors.accentText,
+                  backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                  shape: const StadiumBorder(),
+                  textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w300,
-                      color: OhtliColors.subtleText,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (actionLabel != null && onAction != null)
-            TextButton(
-              onPressed: onAction,
-              style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    actionLabel,
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.arrow_forward_rounded, size: 14),
-                ],
-              ),
-            ),
-        ],
+              )
+            : null,
       ),
     );
   }
@@ -479,8 +464,8 @@ class _ExplorePageState extends State<ExplorePage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildPlacesRow(bool isMobile, double gutter) {
-    final double cardWidth = isMobile ? 200 : 240;
-    final double cardHeight = isMobile ? 250 : 280;
+    final double cardWidth = isMobile ? 240 : 268;
+    final double cardHeight = isMobile ? 330 : 344;
 
     return FutureBuilder<List<Poi>>(
       future: _placesFuture,
@@ -503,28 +488,31 @@ class _ExplorePageState extends State<ExplorePage> {
         }
 
         final places = snapshot.data!;
-        return SizedBox(
-          height: cardHeight + 8,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 4),
-            itemCount: places.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 14),
-            itemBuilder: (context, index) {
-              final poi = places[index];
-              return _ExploreCard(
-                width: cardWidth,
-                height: cardHeight,
-                imageUrl: poi.imageUrl,
-                badgeIcon: poi.categoryIcon,
-                badgeLabel: poi.categoryDisplay,
-                badgeColor: poi.categoryColor,
-                title: poi.name,
-                caption: poi.coloniaAlcaldiaDisplay,
-                captionIcon: Icons.location_on_outlined,
-                onTap: () => PoiDetailDialog.show(context, poi),
-              );
-            },
+        final signedIn = FirebaseAuth.instance.currentUser != null;
+        return ValueListenableBuilder<List<String>>(
+          valueListenable: SavedPlaces.ids,
+          builder: (context, savedIds, _) => SizedBox(
+            height: cardHeight + 16,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 6),
+              itemCount: places.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 16),
+              itemBuilder: (context, index) {
+                final poi = places[index];
+                return PoiCard(
+                  poi: poi,
+                  width: cardWidth,
+                  height: cardHeight,
+                  variant: PoiCardVariant.standard,
+                  isSaved: savedIds.contains(poi.poiId),
+                  onToggleSave: signedIn ? () => SavedPlaces.toggle(poi.poiId) : null,
+                  onTap: () => PoiDetailDialog.show(context, poi),
+                  // Sin cuenta, Explorar no se muestra; con cuenta abre el planificador desde aquí
+                  onCreateRoute: signedIn ? () => TripPlannerDialog.show(context, initialOriginPoi: poi) : null,
+                );
+              },
+            ),
           ),
         );
       },
@@ -536,8 +524,8 @@ class _ExplorePageState extends State<ExplorePage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildCommunityRow(bool isMobile, double gutter) {
-    final double cardWidth = isMobile ? 240 : 300;
-    final double cardHeight = isMobile ? 230 : 260;
+    final double cardWidth = isMobile ? 260 : 320;
+    final double cardHeight = isMobile ? 260 : 300;
 
     return FutureBuilder<List<_CommunityTrip>>(
       future: _communityFuture,
@@ -567,12 +555,12 @@ class _ExplorePageState extends State<ExplorePage> {
         }
 
         return SizedBox(
-          height: cardHeight + 8,
+          height: cardHeight + 16,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 4),
+            padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 6),
             itemCount: trips.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               final trip = trips[index];
               return FutureBuilder<DocumentSnapshot>(
@@ -616,8 +604,8 @@ class _ExplorePageState extends State<ExplorePage> {
           width: width,
           height: height,
           decoration: BoxDecoration(
-            color: OhtliColors.cardBg.withOpacity(0.6),
-            borderRadius: BorderRadius.circular(20),
+            color: OhtliColors.cardBg.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(28),
           ),
         ),
       ),
@@ -633,37 +621,15 @@ class _ExplorePageState extends State<ExplorePage> {
   }) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: gutter),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        decoration: BoxDecoration(
-          color: OhtliColors.cardBg.withOpacity(0.85),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: OhtliColors.cardBorder),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: OhtliColors.stormyTeal, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
-              ),
-            ),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: onAction,
-                style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
-                child: Text(
-                  actionLabel,
-                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ],
-        ),
+      child: OhtliEmptyState(
+        icon: icon,
+        title: message,
+        message: actionLabel == 'Reintentar'
+            ? 'Revisa tu conexión e inténtalo de nuevo.'
+            : (actionLabel != null ? 'Publica un viaje desde Mis viajes y aparecerá aquí para toda la comunidad.' : 'Vuelve más tarde: esto se actualiza todos los días.'),
+        action: actionLabel != null && onAction != null
+            ? OhtliSecondaryButton(label: actionLabel, icon: Icons.arrow_forward_rounded, onPressed: onAction)
+            : null,
       ),
     );
   }
@@ -708,12 +674,12 @@ class _ExplorePageState extends State<ExplorePage> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
             margin: EdgeInsets.symmetric(
-              horizontal: isMobile ? 16.0 : 24.0,
+              horizontal: isMobile ? 16.0 : 40.0,
               vertical: isMobile ? 12.0 : 16.0,
             ),
             decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              color: OhtliColors.cardBg,
+              borderRadius: BorderRadius.circular(28),
             ),
             child: const Center(
               child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
@@ -767,11 +733,11 @@ class _ExplorePageState extends State<ExplorePage> {
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOutCubic,
                   margin: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 16.0 : 24.0,
+                    horizontal: isMobile ? 16.0 : 40.0,
                     vertical: isMobile ? 12.0 : 16.0,
                   ),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
                         color: isHovered 
@@ -783,7 +749,7 @@ class _ExplorePageState extends State<ExplorePage> {
                     ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(28),
                     child: Stack(
                       children: [
                         // Cover Image Background with Zoom Effect on Hover
@@ -822,10 +788,11 @@ class _ExplorePageState extends State<ExplorePage> {
                           top: isMobile ? 16 : 24,
                           left: isMobile ? 16 : 24,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                             decoration: BoxDecoration(
-                              color: isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
-                              borderRadius: BorderRadius.circular(8),
+                              color: (isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.xoconostle).withValues(alpha: 0.92),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 0.8),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -836,9 +803,9 @@ class _ExplorePageState extends State<ExplorePage> {
                                   badgeText,
                                   style: GoogleFonts.inter(
                                     color: Colors.white,
-                                    fontSize: 9,
+                                    fontSize: 10.5,
                                     fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.0,
+                                    letterSpacing: 1.2,
                                   ),
                                 ),
                               ],
@@ -858,9 +825,10 @@ class _ExplorePageState extends State<ExplorePage> {
                                 title,
                                 style: GoogleFonts.outfit(
                                   color: Colors.white,
-                                  fontSize: isMobile ? 18 : 22,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.2,
+                                  fontSize: isMobile ? 24 : 36,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.6,
+                                  height: 1.1,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
@@ -869,9 +837,9 @@ class _ExplorePageState extends State<ExplorePage> {
                               Text(
                                 desc,
                                 style: GoogleFonts.inter(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 12,
-                                  height: 1.4,
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  fontSize: isMobile ? 13 : 14.5,
+                                  height: 1.5,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
@@ -943,20 +911,28 @@ class _ExplorePageState extends State<ExplorePage> {
                                       ],
                                     ),
                                   ),
-                                  // Read Action Indicator
-                                  Row(
-                                    children: [
-                                      Text(
-                                        isReleaseNotes ? 'Ver novedades' : 'Leer historia',
-                                        style: GoogleFonts.inter(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
+                                  // Llamada a la acción tipo píldora
+                                  Container(
+                                    padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: isMobile ? 8 : 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          isReleaseNotes ? 'Ver novedades' : 'Leer historia',
+                                          style: GoogleFonts.outfit(
+                                            color: const Color(0xFF1A120B),
+                                            fontSize: isMobile ? 12.5 : 14,
+                                            fontWeight: FontWeight.w800,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 12),
-                                    ],
+                                        const SizedBox(width: 6),
+                                        const Icon(Icons.arrow_forward_rounded, color: Color(0xFF1A120B), size: 15),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1014,72 +990,41 @@ class _QuickActionCard extends StatefulWidget {
 }
 
 class _QuickActionCardState extends State<_QuickActionCard> {
-  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final a = widget.action;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: a.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: OhtliColors.cardBg.withOpacity(0.92),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: _hovered ? a.color.withOpacity(0.5) : OhtliColors.cardBorder,
+    return OhtliSurface(
+      onTap: a.onTap,
+      accent: a.color,
+      radius: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          OhtliServiceIcon(icon: a.icon, color: a.color, size: 42, soft: true),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  a.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  a.subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: OhtliUi.body(size: 12),
+                ),
+              ],
             ),
-            boxShadow: [
-              BoxShadow(
-                color: (_hovered ? a.color : Colors.black).withOpacity(_hovered ? 0.14 : 0.05),
-                blurRadius: _hovered ? 16 : 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: a.color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(a.icon, color: a.color, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      a.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: OhtliColors.onyx,
-                      ),
-                    ),
-                    Text(
-                      a.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+          Icon(Icons.arrow_forward_rounded, size: 16, color: OhtliColors.subtleText),
+        ],
       ),
     );
   }
@@ -1154,7 +1099,7 @@ class _ExploreCardState extends State<_ExploreCard> {
           height: widget.height,
           transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
                 color: _hovered
@@ -1166,7 +1111,7 @@ class _ExploreCardState extends State<_ExploreCard> {
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(28),
             child: Stack(
               children: [
                 Positioned.fill(
@@ -1200,16 +1145,17 @@ class _ExploreCardState extends State<_ExploreCard> {
                   ),
                 ),
                 Positioned(
-                  top: 12,
-                  left: 12,
-                  right: 12,
+                  top: 14,
+                  left: 14,
+                  right: 14,
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
                       decoration: BoxDecoration(
-                        color: widget.badgeColor.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.black.withValues(alpha: 0.38),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -1235,9 +1181,9 @@ class _ExploreCardState extends State<_ExploreCard> {
                   ),
                 ),
                 Positioned(
-                  left: 14,
-                  right: 14,
-                  bottom: 14,
+                  left: 18,
+                  right: 18,
+                  bottom: 18,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1247,9 +1193,10 @@ class _ExploreCardState extends State<_ExploreCard> {
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.outfit(
                           color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          height: 1.2,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                          height: 1.15,
                         ),
                       ),
                       if (widget.caption.isNotEmpty) ...[
