@@ -12,19 +12,19 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/colors.dart';
+import '../screens/notifications_page.dart';
+import 'ohtli_accessibility_panel.dart';
 import 'trip_planner_dialog.dart';
 
-/// Verde de marca para texto e iconos: en modo oscuro se aclara para mantener
-/// buen contraste sobre el fondo del menú (el stormyTeal original casi no se lee).
-Color get _accent => OhtliSettings.instance.isDarkMode ? const Color(0xFF7FC4CC) : OhtliColors.stormyTeal;
+Color get _accent => ohtliAccent;
 
 /// Menú lateral de escritorio.
 ///
 /// Dinámica:
 /// - Por defecto está contraído (solo iconos) y no estorba al contenido.
-/// - Si dejas el puntero encima ~2 s se despliega *sobre* el contenido (sin
+/// - Si dejas el puntero encima ~1.5 s se despliega *sobre* el contenido (sin
 ///   empujarlo) y se vuelve a contraer en cuanto el puntero sale o eliges una opción.
-/// - Se puede fijar abierto con el botón de la cabecera o con ⌘B / Ctrl+B.
+/// - Doble clic en una zona vacía del menú lo fija abierto o lo contrae (también ⌘B / Ctrl+B).
 /// - Atajos: ⌥1…⌥6 / Alt+1…Alt+6 para cada sección, ⌥N / Alt+N para planear un
 ///   viaje, Esc para cerrar el menú desplegado y ? para ver todos los atajos.
 class OhtliSidebar extends StatefulWidget {
@@ -73,9 +73,6 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     Icon(Icons.notifications),
     Icon(Icons.keyboard_arrow_left_rounded),
     Icon(Icons.keyboard_arrow_right_rounded),
-    Icon(Icons.keyboard_double_arrow_left_rounded),
-    Icon(Icons.keyboard_double_arrow_right_rounded),
-    Icon(Icons.push_pin_outlined),
     Icon(Icons.keyboard_outlined),
     Icon(Icons.logout_rounded),
     Icon(Icons.explore_outlined),
@@ -92,7 +89,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
   static const double _panelWidth = 212;
   // Por debajo de este ancho de ventana el menú nunca se queda fijo abierto.
   static const double _narrowBreakpoint = 1100;
-  static const Duration _dwell = Duration(seconds: 2);
+  static const Duration _dwell = Duration(milliseconds: 1500);
   static const Duration _leaveGrace = Duration(milliseconds: 280);
   static const String _pinnedKey = 'ohtli_sidebar_pinned';
 
@@ -125,6 +122,15 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
   Timer? _dwellTimer;
   bool _peekOpen = false;
   bool _accessibilityOpen = false;
+  bool _notificationsOpen = false;
+  String? _focusedKey;
+  // Para medir la altura de cada opción y deslizar el indicador de sección activa.
+  final Map<bool, GlobalKey> _navListKeys = {false: GlobalKey(), true: GlobalKey()};
+  final Map<bool, double> _slotHeight = {};
+  final FocusNode _ctaFocus = FocusNode(debugLabel: 'sidebar-cta');
+  // La preferencia "fijado" también se guarda en la cuenta (users/{uid}/private/ui).
+  static String? _remotePinLoadedFor;
+  bool _railHovered = false;
   // Tras elegir una opción el puntero sigue encima: no volver a desplegar hasta que salga.
   bool _suppressDwellUntilExit = false;
   bool _isNarrow = false;
@@ -153,6 +159,45 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       }
       _hasLoadedState = true;
     }
+    _loadRemotePinned();
+  }
+
+  DocumentReference<Map<String, dynamic>> _uiPrefsRef(String uid) =>
+      FirebaseFirestore.instance.collection('users').doc(uid).collection('private').doc('ui');
+
+  /// Trae de la cuenta si el menú está fijado (una vez por sesión y usuario), para
+  /// que la preferencia se mantenga entre dispositivos y navegadores.
+  Future<void> _loadRemotePinned() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _remotePinLoadedFor == user.uid) return;
+    _remotePinLoadedFor = user.uid;
+    try {
+      final snap = await _uiPrefsRef(user.uid).get();
+      final value = snap.data()?['sidebar_pinned'];
+      if (value is bool && value != _isPinned && mounted) {
+        setState(() => _isPinned = value);
+        _savePinnedLocal();
+      }
+    } catch (e) {
+      print("Error reading sidebar pinned state from account: $e");
+    }
+  }
+
+  void _savePinnedLocal() {
+    if (!kIsWeb) return;
+    try {
+      html.window.localStorage[_pinnedKey] = _isPinned.toString();
+    } catch (e) {
+      print("Error saving sidebar pinned state: $e");
+    }
+  }
+
+  void _savePinnedRemote() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    _uiPrefsRef(user.uid)
+        .set({'sidebar_pinned': _isPinned, 'updated_at': FieldValue.serverTimestamp()}, SetOptions(merge: true))
+        .catchError((e) => print("Error saving sidebar pinned state to account: $e"));
   }
 
   @override
@@ -162,6 +207,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     _dwellTimer?.cancel();
     _peekCtrl.dispose();
     _dwellCtrl.dispose();
+    _ctaFocus.dispose();
     super.dispose();
   }
 
@@ -192,17 +238,13 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     _cancelDwell();
     _closePeek(immediate: true);
     setState(() => _isPinned = !_isPinned);
-    if (kIsWeb) {
-      try {
-        html.window.localStorage[_pinnedKey] = _isPinned.toString();
-      } catch (e) {
-        print("Error saving sidebar pinned state: $e");
-      }
-    }
+    _savePinnedLocal();
+    _savePinnedRemote();
   }
 
   void _onRailEnter(PointerEnterEvent _) {
     _collapseTimer?.cancel();
+    if (!_railHovered) setState(() => _railHovered = true);
     if (_effectivePinned || _peekOpen || _suppressDwellUntilExit) return;
     _dwellCtrl.forward(from: 0);
     _dwellTimer?.cancel();
@@ -210,6 +252,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
   }
 
   void _onRailExit(PointerExitEvent _) {
+    if (_railHovered) setState(() => _railHovered = false);
     _cancelDwell();
     _suppressDwellUntilExit = false;
     if (_peekOpen) _scheduleCollapse();
@@ -308,9 +351,13 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     if (hk.isAltPressed && !hk.isMetaPressed && !hk.isControlPressed && !hk.isShiftPressed) {
       for (final item in _items) {
         if (item.key == key) {
-          _select(item.index);
+          _activate(item);
           return true;
         }
+      }
+      if (key == PhysicalKeyboardKey.keyM) {
+        _focusMenu();
+        return true;
       }
       if (key == PhysicalKeyboardKey.keyN) {
         _openPlanner();
@@ -333,15 +380,180 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     return false;
   }
 
+  /// Opción del menú: Notificaciones abre su panel lateral, el resto navega.
+  void _activate(_NavItem item) {
+    if (item.index == 6) {
+      _openNotifications();
+    } else if (item.index == -1) {
+      _openAccessibility();
+    } else {
+      _select(item.index);
+    }
+  }
+
+  /// Lleva el foco del teclado al menú (al botón "Planea un viaje").
+  void _focusMenu() {
+    _closePeek(immediate: true);
+    _ctaFocus.requestFocus();
+  }
+
+  double _panelLeft() {
+    final box = context.findRenderObject() as RenderBox?;
+    return box != null && box.hasSize ? box.localToGlobal(Offset.zero).dx + box.size.width : _railWidth;
+  }
+
+  /// Notificaciones en un panel junto al menú, sin salir de la pantalla actual.
+  Future<void> _openNotifications() async {
+    if (_notificationsOpen) return;
+    _suppressDwellUntilExit = true;
+    _cancelDwell();
+    _closePeek(immediate: true);
+    final double left = _panelLeft();
+    setState(() => _notificationsOpen = true);
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar notificaciones',
+      barrierColor: Colors.black.withOpacity(0.12),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (ctx, _, _) {
+        final mq = MediaQuery.of(ctx);
+        final double width = (mq.size.width - left - 24).clamp(320.0, 440.0);
+        return Stack(
+          children: [
+            Positioned(
+              left: left,
+              top: 0,
+              bottom: 0,
+              width: width,
+              child: Material(
+                color: OhtliColors.cloudDancer,
+                elevation: 16,
+                shadowColor: Colors.black.withOpacity(0.3),
+                child: Stack(
+                  children: [
+                    // La página se acomoda como en una pantalla angosta.
+                    MediaQuery(
+                      data: mq.copyWith(size: Size(width, mq.size.height)),
+                      child: const NotificationsPage(),
+                    ),
+                    Positioned(
+                      top: 20,
+                      right: 8,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Abrir en pantalla completa',
+                            icon: Icon(Icons.open_in_full_rounded, size: 18, color: OhtliColors.onyx.withOpacity(0.6)),
+                            onPressed: () {
+                              Navigator.of(ctx).pop();
+                              _select(6);
+                            },
+                          ),
+                          IconButton(
+                            tooltip: 'Cerrar  ·  Esc',
+                            icon: Icon(Icons.close_rounded, size: 20, color: OhtliColors.onyx.withOpacity(0.7)),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(-0.04, 0), end: Offset.zero).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
+    if (mounted) setState(() => _notificationsOpen = false);
+  }
+
+  /// Menú de la cuenta (avatar): Mi cuenta, Accesibilidad, Atajos y Cerrar sesión.
+  Future<void> _openAccountMenu(BuildContext anchorContext) async {
+    final anchor = anchorContext.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (anchor == null || overlay == null) return;
+    final Offset topLeft = anchor.localToGlobal(Offset.zero, ancestor: overlay);
+    // Se abre justo encima del botón: alto estimado de las 4 opciones + separador.
+    final double menuHeight = MediaQuery.textScalerOf(context).scale(42) * 4 + 8 + 16;
+    final double top = (topLeft.dy - menuHeight - 6).clamp(8.0, overlay.size.height - menuHeight);
+    final RelativeRect position = RelativeRect.fromLTRB(
+      topLeft.dx,
+      top,
+      overlay.size.width - topLeft.dx - anchor.size.width,
+      overlay.size.height - top - menuHeight,
+    );
+    _suppressDwellUntilExit = true;
+    _cancelDwell();
+    _closePeek(immediate: true);
+
+    PopupMenuItem<String> entry(String value, IconData icon, String label, {String? keyHint, Color? color}) {
+      final c = color ?? OhtliColors.onyx.withOpacity(0.85);
+      return PopupMenuItem<String>(
+        value: value,
+        height: 42,
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: c),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(label, style: GoogleFonts.inter(fontSize: 13, color: c)),
+            ),
+            if (keyHint != null) ...[const SizedBox(width: 12), _KeyCap(keyHint, small: true)],
+          ],
+        ),
+      );
+    }
+
+    final choice = await showMenu<String>(
+      context: context,
+      position: position,
+      color: OhtliColors.cardBg,
+      elevation: 10,
+      constraints: const BoxConstraints(minWidth: 230),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
+      items: [
+        entry('account', Icons.person_outline, 'Mi cuenta'),
+        entry('a11y', Icons.accessibility_new_rounded, 'Accesibilidad', keyHint: '${_altKey}A'),
+        entry('shortcuts', Icons.keyboard_outlined, 'Atajos de teclado', keyHint: '?'),
+        const PopupMenuDivider(height: 8),
+        entry('logout', Icons.logout_rounded, 'Cerrar sesión', color: OhtliColors.xoconostle),
+      ],
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case 'account':
+        _goToAccount();
+      case 'a11y':
+        _openAccessibility();
+      case 'shortcuts':
+        _showShortcuts();
+      case 'logout':
+        widget.onLogout();
+    }
+  }
+
   /// Panel rápido de accesibilidad: tema y tamaño de letra, junto al menú.
   Future<void> _openAccessibility() async {
     if (_accessibilityOpen) return;
     _suppressDwellUntilExit = true;
     _cancelDwell();
     _closePeek(immediate: true);
-    final box = context.findRenderObject() as RenderBox?;
-    final double left =
-        (box != null && box.hasSize ? box.localToGlobal(Offset.zero).dx + box.size.width : _railWidth) + 10;
+    final double left = _panelLeft() + 10;
     setState(() => _accessibilityOpen = true);
     await showGeneralDialog<void>(
       context: context,
@@ -354,7 +566,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
           Positioned(
             left: left,
             bottom: 16,
-            child: _AccessibilityPanel(
+            child: OhtliAccessibilityPanel(
               onMoreOptions: () {
                 Navigator.of(ctx).pop();
                 _goToAccount();
@@ -380,10 +592,11 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
   void _showShortcuts() {
     _closePeek(immediate: true);
     final rows = <(String, String)>[
-      ('Fijar / contraer el menú', '${_modKey}B'),
+      ('Fijar / contraer el menú (o doble clic en él)', '${_modKey}B'),
       ('Planea un viaje', '${_altKey}N'),
       for (final item in _items) (item.label, '$_altKey${item.keyLabel}'),
       ('Accesibilidad: tema y tamaño de letra', '$_altKey${_accessibilityItem.keyLabel}'),
+      ('Ir al menú con el teclado (luego ↑ ↓ y Enter)', '${_altKey}M'),
       ('Cerrar el menú desplegado', 'Esc'),
       ('Ver esta ayuda', '?'),
     ];
@@ -424,7 +637,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
                 ),
               const SizedBox(height: 10),
               Text(
-                'Deja el puntero sobre el menú contraído 2 segundos para desplegarlo.',
+                'Deja el puntero sobre el menú contraído 1.5 s para desplegarlo, y haz doble clic en una zona vacía del menú para fijarlo o contraerlo.',
                 style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withOpacity(0.55)),
               ),
             ],
@@ -567,6 +780,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     final bool isActive = highlighted || (onTap == null && widget.currentIndex == item.index);
     final String hoverKey = 'item_${item.index}';
     final bool isHovered = _hoveredKey == hoverKey;
+    final bool isFocused = _focusedKey == hoverKey;
+    final VoidCallback tap = onTap ?? () => _activate(item);
     final String shortcut = '$_altKey${item.keyLabel}';
 
     final Color itemColor = isActive
@@ -585,6 +800,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
             ? OhtliColors.cloudDancer.withOpacity(0.8)
             : (isHovered ? Colors.white.withOpacity(0.3) : Colors.transparent),
         borderRadius: BorderRadius.circular(12),
+        // Anillo de foco visible al navegar con el teclado (borde fijo para no mover el contenido).
+        border: Border.all(color: isFocused ? _accent : Colors.transparent, width: 2),
       ),
       child: Row(
         mainAxisAlignment: expanded ? MainAxisAlignment.start : MainAxisAlignment.center,
@@ -616,7 +833,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       ),
     );
 
-    content = _tooltip(message: expanded ? 'Atajo: $shortcut' : '${item.label}  ·  $shortcut', child: content);
+    // Contraído: el tooltip da nombre + atajo. Expandido: la tecla ya se ve en la fila.
+    content = _tooltip(message: '${item.label}  ·  $shortcut', show: !expanded, child: content);
 
     return Semantics(
       button: true,
@@ -628,17 +846,105 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
           if (_hoveredKey == hoverKey) _hoveredKey = null;
         }),
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap ?? () => _select(item.index),
-          child: content,
+        child: _focusable(
+          focusKey: hoverKey,
+          onActivate: tap,
+          child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: tap, child: content),
         ),
       ),
     );
   }
 
-  Widget _buildPlanTripCtaButton({required bool expanded}) {
+  /// Hace enfocable un control del menú: Enter/Espacio lo activan y el foco se dibuja.
+  Widget _focusable({
+    required String focusKey,
+    required VoidCallback onActivate,
+    required Widget child,
+    FocusNode? focusNode,
+  }) {
+    return FocusableActionDetector(
+      focusNode: focusNode,
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            onActivate();
+            return null;
+          },
+        ),
+        ButtonActivateIntent: CallbackAction<ButtonActivateIntent>(
+          onInvoke: (_) {
+            onActivate();
+            return null;
+          },
+        ),
+      },
+      onShowFocusHighlight: (show) => setState(() {
+        if (show) {
+          _focusedKey = focusKey;
+        } else if (_focusedKey == focusKey) {
+          _focusedKey = null;
+        }
+      }),
+      child: child,
+    );
+  }
+
+  /// Opciones de navegación con el indicador deslizante de la sección activa.
+  Widget _buildNavList({required bool expanded, required bool isPeek}) {
+    final key = _navListKeys[isPeek]!;
+    final int slot = _items.indexWhere((it) => it.index == widget.currentIndex);
+    final double? h = _slotHeight[isPeek];
+    final bool reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) == true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final size = (key.currentContext?.findRenderObject() as RenderBox?)?.size;
+      if (size == null) return;
+      final double measured = size.height / _items.length;
+      final double previous = _slotHeight[isPeek] ?? -1;
+      if ((previous - measured).abs() > 0.5) setState(() => _slotHeight[isPeek] = measured);
+    });
+
+    return Stack(
+      children: [
+        Column(
+          key: key,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final item in _items)
+              item.index == 6
+                  ? _buildSidebarItem(
+                      item,
+                      expanded: expanded,
+                      onTap: _openNotifications,
+                      highlighted: _notificationsOpen || widget.currentIndex == 6,
+                    )
+                  : _buildSidebarItem(item, expanded: expanded),
+          ],
+        ),
+        if (slot >= 0 && h != null)
+          AnimatedPositioned(
+            duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            left: 2,
+            top: slot * h + h * 0.27,
+            height: h * 0.46,
+            width: 3,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: _accent, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPlanTripCtaButton({required bool expanded, required bool isPeek}) {
     final String shortcut = '${_altKey}N';
+    final bool isFocused = _focusedKey == 'cta';
+    final Border focusRing = Border.all(color: isFocused ? _accent : Colors.transparent, width: 2);
     Widget ctaContent;
 
     if (!expanded) {
@@ -649,6 +955,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
         decoration: BoxDecoration(
           color: OhtliColors.stormyTeal,
           borderRadius: BorderRadius.circular(14),
+          border: focusRing,
           boxShadow: [
             BoxShadow(color: OhtliColors.stormyTeal.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 3)),
           ],
@@ -663,6 +970,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
         decoration: BoxDecoration(
           color: OhtliColors.stormyTeal,
           borderRadius: BorderRadius.circular(16),
+          border: focusRing,
           boxShadow: [
             BoxShadow(color: OhtliColors.stormyTeal.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4)),
           ],
@@ -702,24 +1010,12 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
         message: expanded ? 'Atajo: $shortcut' : 'Planea un viaje  ·  $shortcut',
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
-          child: GestureDetector(onTap: _openPlanner, child: ctaContent),
-        ),
-      ),
-    );
-  }
-
-  Widget _headerButton({required IconData icon, required String tooltip, required VoidCallback onTap}) {
-    return _tooltip(
-      message: tooltip,
-      child: Semantics(
-        button: true,
-        label: tooltip,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(icon, size: 18, color: _accent),
+          child: _focusable(
+            focusKey: 'cta',
+            onActivate: _openPlanner,
+            // Solo el riel lleva el nodo de foco (el panel desplegado es una copia temporal).
+            focusNode: isPeek ? null : _ctaFocus,
+            child: GestureDetector(onTap: _openPlanner, child: ctaContent),
           ),
         ),
       ),
@@ -736,10 +1032,10 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     final colorBorder = OhtliSettings.instance.isDarkMode ? const Color(0xFF2C2C32) : const Color(0xFFD1CDC4);
     final String pinShortcut = '${_modKey}B';
 
-    return Column(
+    final Widget content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Cabecera: logo + botón fijar/contraer
+        // Cabecera: logo + pista de doble clic
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           child: Row(
@@ -780,48 +1076,37 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
                     ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                if (isPeek && !_isNarrow)
-                  _headerButton(
-                    icon: Icons.push_pin_outlined,
-                    tooltip: 'Fijar menú abierto  ·  $pinShortcut',
-                    onTap: _togglePin,
-                  )
-                else if (isPeek)
-                  _headerButton(
-                    icon: Icons.keyboard_double_arrow_left_rounded,
-                    tooltip: 'Contraer menú  ·  Esc',
-                    onTap: () {
-                      _suppressDwellUntilExit = true;
-                      _closePeek();
-                    },
-                  )
-                else
-                  _headerButton(
-                    icon: Icons.keyboard_double_arrow_left_rounded,
-                    tooltip: 'Contraer menú  ·  $pinShortcut',
-                    onTap: _togglePin,
+                const SizedBox(width: 6),
+                // Pista de doble clic: siempre en el despliegue temporal; fijo, solo al pasar el puntero.
+                AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  opacity: (isPeek || _railHovered) ? 1 : 0,
+                  child: _tooltip(
+                    message: 'También con $pinShortcut',
+                    child: Text(
+                      isPeek
+                          ? (_isNarrow ? 'Doble clic\npara cerrar' : 'Doble clic\npara fijar')
+                          : 'Doble clic\npara contraer',
+                      textAlign: TextAlign.right,
+                      style: GoogleFonts.inter(
+                        fontSize: 9.5,
+                        height: 1.2,
+                        fontWeight: FontWeight.w500,
+                        color: OhtliColors.onyx.withOpacity(0.5),
+                      ),
+                    ),
                   ),
+                ),
               ],
             ],
           ),
         ),
 
-        // Botón para expandir cuando está contraído (centrado bajo el isologo)
-        if (!expanded)
-          Center(
-            child: _headerButton(
-              icon: Icons.keyboard_double_arrow_right_rounded,
-              tooltip: _isNarrow ? 'Mostrar menú  ·  $pinShortcut' : 'Fijar menú abierto  ·  $pinShortcut',
-              onTap: _togglePin,
-            ),
-          ),
-
         const SizedBox(height: 16),
-        _buildPlanTripCtaButton(expanded: expanded),
+        _buildPlanTripCtaButton(expanded: expanded, isPeek: isPeek),
         const SizedBox(height: 8),
 
-        for (final item in _items) _buildSidebarItem(item, expanded: expanded),
+        _buildNavList(expanded: expanded, isPeek: isPeek),
 
         const Spacer(),
 
@@ -833,93 +1118,118 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
         ),
         const SizedBox(height: 6),
 
-        // Pie: avatar + nombre + atajos + cerrar sesión
+        // Pie: botón de cuenta (avatar + nombre) que abre el menú de la cuenta
         Divider(height: 1, color: colorBorder),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: expanded ? 12 : 0, vertical: 12),
-          child: Row(
-            mainAxisAlignment: expanded ? MainAxisAlignment.start : MainAxisAlignment.center,
-            children: [
-              _tooltip(
-                message: 'Mi cuenta',
-                child: _buildAvatarWidget(
-                  radius: 16,
-                  initials: initials,
-                  photoURL: _localPhotoURL,
-                  onTap: _goToAccount,
+          padding: EdgeInsets.symmetric(horizontal: expanded ? 8 : 0, vertical: 8),
+          child: Builder(
+            builder: (anchorContext) {
+              final bool hovered = _hoveredKey == 'account';
+              final bool focused = _focusedKey == 'account';
+              final Widget avatar = _buildAvatarWidget(radius: 16, initials: initials, photoURL: _localPhotoURL);
+              final Widget body = AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                padding: EdgeInsets.symmetric(horizontal: expanded ? 6 : 0, vertical: 4),
+                margin: EdgeInsets.symmetric(horizontal: expanded ? 0 : 10),
+                decoration: BoxDecoration(
+                  color: hovered ? Colors.white.withOpacity(0.3) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: focused ? _accent : Colors.transparent, width: 2),
                 ),
-              ),
-              if (expanded) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: _goToAccount,
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: Text(
-                        displayName.split(' ').first,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                          color: OhtliColors.onyx.withOpacity(0.8),
+                child: Row(
+                  mainAxisAlignment: expanded ? MainAxisAlignment.start : MainAxisAlignment.center,
+                  children: [
+                    avatar,
+                    if (expanded) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          displayName.split(' ').first,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: OhtliColors.onyx.withOpacity(0.85),
+                          ),
                         ),
                       ),
+                      Icon(Icons.unfold_more_rounded, size: 18, color: OhtliColors.onyx.withOpacity(0.5)),
+                    ],
+                  ],
+                ),
+              );
+              void open() => _openAccountMenu(anchorContext);
+              return Semantics(
+                button: true,
+                label: 'Tu cuenta: Mi cuenta, Accesibilidad, Atajos y Cerrar sesión',
+                child: _tooltip(
+                  message: 'Tu cuenta',
+                  show: !expanded,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    onEnter: (_) => setState(() => _hoveredKey = 'account'),
+                    onExit: (_) => setState(() {
+                      if (_hoveredKey == 'account') _hoveredKey = null;
+                    }),
+                    child: _focusable(
+                      focusKey: 'account',
+                      onActivate: open,
+                      child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: open, child: body),
                     ),
                   ),
                 ),
-                _footerIcon(
-                  key: 'shortcuts',
-                  icon: Icons.keyboard_outlined,
-                  tooltip: 'Atajos de teclado  ·  ?',
-                  onTap: _showShortcuts,
-                ),
-                _footerIcon(
-                  key: 'logout',
-                  icon: Icons.logout_rounded,
-                  tooltip: 'Cerrar sesión',
-                  onTap: () {
-                    _closePeek(immediate: true);
-                    widget.onLogout();
-                  },
-                ),
-              ],
-            ],
+              );
+            },
           ),
         ),
       ],
     );
+    return _withDoubleClick(content);
   }
 
-  Widget _footerIcon({
-    required String key,
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    final bool hovered = _hoveredKey == key;
-    return _tooltip(
-      message: tooltip,
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hoveredKey = key),
-        onExit: (_) => setState(() {
-          if (_hoveredKey == key) _hoveredKey = null;
-        }),
-        child: Semantics(
-          button: true,
-          label: tooltip,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(icon, size: 17, color: hovered ? OhtliColors.xoconostle : OhtliColors.onyx.withOpacity(0.5)),
-            ),
+  /// Capa de fondo: el doble clic en cualquier zona vacía del menú lo fija o lo
+  /// contrae. Los botones quedan encima y reciben sus clics sin retraso.
+  Widget _withDoubleClick(Widget content) {
+    // ↑ ↓ recorren las opciones, Enter/Espacio las activan y Esc suelta el foco.
+    content = Shortcuts(
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.arrowDown): NextFocusIntent(),
+        SingleActivator(LogicalKeyboardKey.arrowUp): PreviousFocusIntent(),
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.escape): DismissIntent(),
+      },
+      child: Actions(
+        actions: {
+          DismissIntent: CallbackAction<DismissIntent>(
+            onInvoke: (_) {
+              FocusManager.instance.primaryFocus?.unfocus();
+              return null;
+            },
           ),
-        ),
+        },
+        child: FocusTraversalGroup(child: content),
       ),
     );
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Semantics(
+            label: 'Menú lateral: doble clic para fijar o contraer',
+            child: GestureDetector(behavior: HitTestBehavior.opaque, onDoubleTap: _onMenuDoubleTap),
+          ),
+        ),
+        Positioned.fill(child: content),
+      ],
+    );
+  }
+
+  void _onMenuDoubleTap() {
+    // Al contraer con el puntero encima, no volver a desplegar hasta que salga.
+    if (_effectivePinned || _peekOpen) _suppressDwellUntilExit = true;
+    _togglePin();
   }
 
   Color get _sidebarColor => OhtliSettings.instance.isDarkMode ? const Color(0xFF1E1E22) : const Color(0xFFE4E1DA);
@@ -990,7 +1300,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
                   Positioned.fill(
                     child: ClipRect(child: _buildPanelContent(expanded: constraints.maxWidth >= 150, isPeek: false)),
                   ),
-                  // Indicador sutil del hover: se llena durante los 2 s antes de desplegar.
+                  // Indicador sutil del hover: se llena durante los 1.5 s antes de desplegar.
                   if (!pinned)
                     Positioned(
                       right: 0,
@@ -1045,187 +1355,6 @@ class _KeyCap extends StatelessWidget {
           fontSize: small ? 10 : 12,
           fontWeight: FontWeight.w500,
           color: OhtliColors.onyx.withOpacity(0.65),
-        ),
-      ),
-    );
-  }
-}
-
-/// Contenido del panel rápido de accesibilidad.
-class _AccessibilityPanel extends StatelessWidget {
-  final VoidCallback onMoreOptions;
-  const _AccessibilityPanel({required this.onMoreOptions});
-
-  static const _sizes = [
-    (OhtliFontSize.small, 'Pequeño', 13.0),
-    (OhtliFontSize.medium, 'Normal', 16.0),
-    (OhtliFontSize.large, 'Grande', 19.0),
-    (OhtliFontSize.extraLarge, 'Muy grande', 22.0),
-  ];
-
-  static const _themes = [
-    (OhtliThemeMode.system, 'Sistema', Icons.brightness_auto_rounded),
-    (OhtliThemeMode.light, 'Claro', Icons.light_mode_rounded),
-    (OhtliThemeMode.dark, 'Oscuro', Icons.dark_mode_rounded),
-  ];
-
-  static Color _fg(bool selected) => selected ? _accent : OhtliColors.onyx.withOpacity(0.7);
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = OhtliSettings.instance;
-    return ListenableBuilder(
-      listenable: settings,
-      builder: (context, _) {
-        final labelStyle = GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: OhtliColors.onyx.withOpacity(0.7),
-        );
-        final sizeIndex = _sizes.indexWhere((e) => e.$1 == settings.fontSize);
-        return Material(
-          color: OhtliColors.cardBg,
-          elevation: 12,
-          shadowColor: Colors.black.withOpacity(0.25),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: OhtliColors.cardBorder),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-            child: SizedBox(
-              width: 300,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.accessibility_new_rounded, color: _accent, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Accesibilidad',
-                        style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Text('Tema', style: labelStyle),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      for (final t in _themes) ...[
-                        Expanded(
-                          child: _OptionChip(
-                            selected: settings.themeMode == t.$1,
-                            semanticsLabel: 'Tema ${t.$2}',
-                            onTap: () => settings.themeMode = t.$1,
-                            child: Column(
-                              children: [
-                                Icon(t.$3, size: 18, color: _fg(settings.themeMode == t.$1)),
-                                const SizedBox(height: 4),
-                                Text(
-                                  t.$2,
-                                  style: GoogleFonts.inter(fontSize: 11, color: _fg(settings.themeMode == t.$1)),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (t != _themes.last) const SizedBox(width: 8),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Text('Tamaño de letra', style: labelStyle),
-                      const Spacer(),
-                      Text(
-                        sizeIndex >= 0 ? _sizes[sizeIndex].$2 : '',
-                        style: GoogleFonts.inter(fontSize: 12, color: _accent),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      for (final sz in _sizes) ...[
-                        Expanded(
-                          child: _OptionChip(
-                            selected: settings.fontSize == sz.$1,
-                            semanticsLabel: 'Letra ${sz.$2}',
-                            onTap: () => settings.fontSize = sz.$1,
-                            child: SizedBox(
-                              height: 30,
-                              child: Center(
-                                child: Text(
-                                  'A',
-                                  // Sin escalar: la muestra se ve igual sin importar el ajuste actual.
-                                  textScaler: TextScaler.noScaling,
-                                  style: GoogleFonts.inter(
-                                    fontSize: sz.$3,
-                                    fontWeight: FontWeight.w600,
-                                    color: _fg(settings.fontSize == sz.$1),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (sz != _sizes.last) const SizedBox(width: 8),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: onMoreOptions,
-                      child: Text(
-                        'Más preferencias en Mi cuenta',
-                        style: GoogleFonts.inter(fontSize: 12, color: _accent),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _OptionChip extends StatelessWidget {
-  final bool selected;
-  final String semanticsLabel;
-  final VoidCallback onTap;
-  final Widget child;
-  const _OptionChip({required this.selected, required this.semanticsLabel, required this.onTap, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: semanticsLabel,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? OhtliColors.stormyTeal.withOpacity(0.12) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? _accent : OhtliColors.onyx.withOpacity(0.15),
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          child: child,
         ),
       ),
     );

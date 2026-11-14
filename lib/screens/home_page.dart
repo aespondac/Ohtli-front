@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/colors.dart';
 import '../widgets/ohtli_sidebar.dart';
+import '../widgets/ohtli_accessibility_panel.dart';
 import 'construction_page.dart';
 import 'trips/trips_dashboard_page.dart';
 import 'explore/explore_page.dart';
@@ -286,6 +287,14 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           actions: [
+            IconButton(
+              tooltip: 'Accesibilidad',
+              icon: Icon(Icons.accessibility_new_rounded, color: ohtliAccent, size: 20),
+              onPressed: () => OhtliAccessibilityPanel.showSheet(
+                context,
+                onMoreOptions: widget.onNavigateToAccount,
+              ),
+            ),
             if (user != null)
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
