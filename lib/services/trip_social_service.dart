@@ -82,9 +82,12 @@ class TripNote {
 class TripSocialService {
   final String ownerId;
   final String tripId;
-  final FirebaseFirestore _db;
+  final FirebaseFirestore? _dbOverride;
 
-  TripSocialService(this.ownerId, this.tripId, {FirebaseFirestore? db}) : _db = db ?? FirebaseFirestore.instance;
+  /// Firestore se pide al usarlo (no al construir), así el viaje de muestra funciona sin Firebase.
+  TripSocialService(this.ownerId, this.tripId, {FirebaseFirestore? db}) : _dbOverride = db;
+
+  FirebaseFirestore get _db => _dbOverride ?? FirebaseFirestore.instance;
 
   DocumentReference<Map<String, dynamic>> get _trip => _db.collection('users').doc(ownerId).collection('trips').doc(tripId);
   CollectionReference<Map<String, dynamic>> get _notes => _trip.collection('notes');

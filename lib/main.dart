@@ -22,6 +22,7 @@ import 'screens/register/desktop_register_page.dart';
 import 'screens/register/mobile_register_page.dart';
 import 'screens/account/account_management_page.dart';
 import 'screens/trips/trip_viewer_page.dart';
+import 'screens/trips/trip_sample.dart';
 import 'screens/error_404_page.dart';
 import 'screens/lab/lab_landing_page.dart';
 import 'screens/lab/labs_dashboard_page.dart';
@@ -394,6 +395,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         _authMode = params['mode']!;
         _oobCode = params['oobCode']!;
         _currentScreen = OhtliScreen.authAction;
+      } else if (params.containsKey('muestra') || Uri.base.path == '/muestra' || Uri.base.path == '/muestra/' || Uri.base.fragment == '/muestra') {
+        // Viaje de muestra con todos los elementos (no lee ni escribe datos reales).
+        _publicTripId = kSampleTripId;
+        _publicAuthorId = kSampleOwnerId;
+        _currentScreen = OhtliScreen.publicViewer;
       } else if (params.containsKey('tripId') && params.containsKey('authorId')) {
         _publicTripId = params['tripId']!;
         _publicAuthorId = params['authorId']!;

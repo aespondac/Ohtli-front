@@ -32,6 +32,9 @@ import '../../services/poi_suggestion_service.dart';
 import '../../widgets/place_details_form.dart';
 import '../../services/trip_social_service.dart';
 import '../../widgets/trip_social/block_social.dart';
+import '../../widgets/trip_mini_map.dart';
+import '../../services/place_locator.dart';
+import 'trip_sample.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -97,6 +100,22 @@ class _TripViewerPageState extends State<TripViewerPage> {
   // Diseño de lectura: mensajes al margen (pantallas anchas) y panel lateral plegable.
   bool _marginLayout = false;
   bool _asideCollapsed = false;
+
+  // Viaje de muestra (/muestra): etapa y papel simulados, mensajes en memoria.
+  SampleStage _sampleStage = SampleStage.durante;
+  bool _sampleAsMember = true;
+  SampleTripSocialService? _sampleSocial;
+  bool get _isSample => widget.tripId == kSampleTripId || widget.trip?.id == kSampleTripId;
+
+  // Ubicaciones encontradas para paradas que no la traen guardada (solo para dibujarlas).
+  final Map<String, (double, double)> _resolvedCoords = {};
+  bool _locating = false;
+
+  // Panel lateral flotante: ancho del panel abierto y del riel plegado, y el espacio que reserva.
+  static const double _kAsideW = 340;
+  static const double _kRailW = 56;
+  static const double _kAsideGap = 14;
+  double _asideInset = 0;
 
   Future<void> _exportPdf({bool printOnly = false}) async {
     if (_trip == null || _sections.isEmpty) return;
@@ -399,8 +418,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   void _openDirectionsTo(PlaceSection p) {
-    final dest = (p.lat != null && p.lng != null)
-        ? '${p.lat},${p.lng}'
+    final c = _coordsOf(p);
+    final dest = c != null
+        ? '${c.$1},${c.$2}'
         : Uri.encodeComponent('${p.title}, Ciudad de México');
     final t = transferBefore(_sections, _sections.indexOf(p));
     final travelMode = t != null ? transferModeOf(t.mode).googleTravelMode : 'walking';
@@ -604,7 +624,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
   // Miembros del viaje: notas, reacciones y panel lateral
   // ---------------------------------------------------------------------------
   /// Dueño, coautor o destinatario de la sorpresa (los mismos que ya pueden abrir el viaje privado).
+  String? get _myUid => _isSample ? (_sampleAsMember ? kSampleMyUid : null) : FirebaseAuth.instance.currentUser?.uid;
+
   bool get _isMember {
+    if (_isSample) return _sampleAsMember;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final t = _trip;
     if (uid == null || t == null) return false;
@@ -624,7 +647,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
     _reactionsSub?.cancel();
     _social = null;
     if (!mounted || _isPreview || _trip == null || _trip!.isReleaseNotes || !(_isMember || _isPublicTrip)) return;
-    final social = TripSocialService(_trip!.userId, _trip!.id);
+    final TripSocialService social = _isSample
+        ? (_sampleSocial ??= SampleTripSocialService(TripSample.notes(_sampleStage), TripSample.reactions))
+        : TripSocialService(_trip!.userId, _trip!.id);
     _social = social;
     _notesSub = social.notesStream().listen(
       (n) {
@@ -641,6 +666,121 @@ class _TripViewerPageState extends State<TripViewerPage> {
     if (mounted) setState(() {});
   }
 
+  // ---------------------------------------------------------------------------
+  // Viaje de muestra
+  // ---------------------------------------------------------------------------
+  void _loadSample() {
+    final stage = _sampleStage;
+    setState(() {
+      _trip = TripSample.trip(stage);
+      _sections = TripSample.sections(stage);
+      _authorProfile = TripSample.author;
+      _coAuthorsProfiles = TripSample.coAuthors;
+      _visited = TripSample.visited(stage);
+      _isLoading = false;
+    });
+    _startSocial();
+  }
+
+  void _setSampleStage(SampleStage stage) {
+    if (stage == _sampleStage) return;
+    _sampleStage = stage;
+    if (_tripMode && stage != SampleStage.durante) _tripMode = false;
+    _loadSample();
+  }
+
+  void _setSampleRole(bool member) {
+    if (member == _sampleAsMember) return;
+    setState(() => _sampleAsMember = member);
+    _startSocial();
+  }
+
+  void _sampleNotice(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text, style: GoogleFonts.inter())));
+  }
+
+  /// Barra de la muestra: cambia la etapa del viaje y el papel de quien lo ve.
+  Widget _buildSampleBar(bool isDark, {required bool compact}) {
+    final Color bg = isDark ? const Color(0xFF1E1E22) : Colors.white;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    Widget seg<T>(List<(T, String)> options, T value, ValueChanged<T> onChanged) => Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF1F4F3),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final o in options)
+                GestureDetector(
+                  onTap: () => onChanged(o.$1),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: o.$1 == value ? OhtliColors.stormyTeal : Colors.transparent,
+                        borderRadius: BorderRadius.circular(17),
+                      ),
+                      child: Text(o.$2,
+                          style: GoogleFonts.inter(
+                              fontSize: compact ? 11.5 : 12,
+                              fontWeight: FontWeight.w700,
+                              color: o.$1 == value ? Colors.white : fg.withValues(alpha: 0.75))),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+    final stageSeg = seg<SampleStage>([for (final st in SampleStage.values) (st, st.label)], _sampleStage, _setSampleStage);
+    final roleSeg = seg<bool>(const [(true, 'Miembro'), (false, 'Visitante')], _sampleAsMember, _setSampleRole);
+    final badge = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.science_outlined, size: 16, color: OhtliColors.cempasuchil),
+        const SizedBox(width: 6),
+        Text('Viaje de muestra', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w800, color: fg)),
+      ],
+    );
+    return Material(
+      color: bg,
+      elevation: 6,
+      shadowColor: Colors.black.withValues(alpha: 0.25),
+      borderRadius: BorderRadius.circular(26),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 14, vertical: compact ? 5 : 7),
+        // En el teléfono cabe en una línea sin la etiqueta.
+        child: compact
+            ? Row(mainAxisSize: MainAxisSize.min, children: [stageSeg, const SizedBox(width: 5), roleSeg])
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [badge, const SizedBox(width: 14), stageSeg, const SizedBox(width: 8), roleSeg],
+              ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ubicaciones para el mapa
+  // ---------------------------------------------------------------------------
+  (double, double)? _coordsOf(PlaceSection p) =>
+      (p.lat != null && p.lng != null) ? (p.lat!, p.lng!) : _resolvedCoords[p.id];
+
+  Future<void> _resolveMissingCoords() async {
+    final missing = _sections.whereType<PlaceSection>().where((p) => _coordsOf(p) == null).toList();
+    if (missing.isEmpty) return;
+    setState(() => _locating = true);
+    for (final p in missing) {
+      final found = await PlaceLocator.locate(p);
+      if (!mounted) return;
+      if (found != null) setState(() => _resolvedCoords[p.id] = found);
+    }
+    if (mounted) setState(() => _locating = false);
+  }
+
   Map<String, String> get _memberNames {
     final names = <String, String>{};
     if (_trip != null) names[_trip!.userId] = (_authorProfile?['displayName'] ?? 'Autor').toString();
@@ -654,6 +794,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   String get _myDisplayName {
+    if (_isSample) return kSampleMyName;
     final u = FirebaseAuth.instance.currentUser;
     if (u == null) return 'Viajero';
     final fromProfile = _memberNames[u.uid];
@@ -674,7 +815,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   Future<void> _reactToBlock(String blockId, String? kind) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = _myUid;
     if (uid == null || _social == null) return;
     // Optimista: se ve al instante; el stream confirma.
     setState(() {
@@ -1182,6 +1323,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
       );
     }).toList();
 
+    if (_isSample) {
+      setState(() => _sections = updated);
+      _sampleNotice('En la muestra la calificación se ve, pero no se guarda.');
+      return;
+    }
     setState(() => _isSavingReview = true);
     try {
       await TripService().saveTripReview(_trip!.userId, _trip!.id, TripContent(sections: updated));
@@ -1225,6 +1371,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   Future<void> _loadTripData() async {
+    if (_isSample) {
+      _loadSample();
+      return;
+    }
     final currentUser = FirebaseAuth.instance.currentUser;
     if (widget.trip != null) {
       final t = widget.trip!;
@@ -1247,6 +1397,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         _loadAuthorProfile(),
       ]);
       _startSocial();
+      _resolveMissingCoords();
     } else if (widget.tripId != null && widget.authorId != null) {
       try {
         final fetchedTrip = await TripService().getTrip(widget.authorId!, widget.tripId!);
@@ -1270,6 +1421,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             _loadAuthorProfile(),
           ]);
           _startSocial();
+          _resolveMissingCoords();
         } else {
           setState(() {
             _errorCode = 404;
@@ -1754,8 +1906,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final User? currentUser = FirebaseAuth.instance.currentUser;
     final bool hasActiveSession = currentUser != null;
     final bool showTopNavbar = widget.isPublicLink;
-    final bool isOwner = currentUser != null && _trip != null && _trip!.userId == currentUser.uid;
-    final bool isCoAuthor = currentUser != null && _trip != null && _trip!.coAuthorIds.contains(currentUser.uid);
+    final bool isOwner = _isSample ? _sampleAsMember : (currentUser != null && _trip != null && _trip!.userId == currentUser.uid);
+    final bool isCoAuthor = !_isSample && currentUser != null && _trip != null && _trip!.coAuthorIds.contains(currentUser.uid);
     final bool showErrataButton = isOwner || isCoAuthor;
     final bool canEdit = isOwner || (isCoAuthor && _trip != null && _trip!.status == 'draft');
 
@@ -1779,12 +1931,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
         !_trip!.isReleaseNotes &&
         _sections.isNotEmpty &&
         screenW >= (sidebarShown ? 1280 : 1100);
+    // El panel flota sobre el contenido; el texto deja libre su ancho a la derecha.
+    final double asideInset = wideAside ? (_asideCollapsed ? _kRailW : _kAsideW) + _kAsideGap * 2 : 0;
+    _asideInset = asideInset;
     final int unreadish = _notes.length;
 
     final Widget mainScrollableContent = LayoutBuilder(
       builder: (context, box) {
         // Mensajes al margen de cada bloque cuando hay espacio a la derecha.
-        _marginLayout = _socialVisible && box.maxWidth >= 1060;
+        _marginLayout = _socialVisible && box.maxWidth - asideInset >= 1060;
         final double readingWidth = _marginLayout ? 1040 : 820;
         return SingleChildScrollView(
           controller: _scrollController,
@@ -1803,7 +1958,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ),
               _buildCoverHeader(isDark, isDesktop),
               const SizedBox(height: 40),
-              Center(
+              Container(
+                alignment: Alignment.topCenter,
+                padding: EdgeInsets.only(right: asideInset),
                 child: Container(
                   constraints: BoxConstraints(maxWidth: readingWidth),
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1978,7 +2135,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               if (_tripMode && !isLocked && (!wideAside || _asideCollapsed))
                 Positioned(
                   left: 16,
-                  right: 16,
+                  right: 16 + asideInset,
                   bottom: 16 + MediaQuery.of(context).padding.bottom,
                   child: Center(
                     child: ConstrainedBox(
@@ -2028,10 +2185,25 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     ),
                   ),
                 ),
+              // Barra de la muestra: abajo, salvo cuando el panel del modo viaje ocupa ese lugar.
+              if (_isSample && !isLocked)
+                Positioned(
+                  top: (_tripMode && (!wideAside || _asideCollapsed)) ? (isDesktop ? 14 : MediaQuery.of(context).padding.top + 58) : null,
+                  bottom: (_tripMode && (!wideAside || _asideCollapsed)) ? null : 16 + MediaQuery.of(context).padding.bottom + (isDesktop ? 0 : 56),
+                  left: 12,
+                  right: 12 + asideInset,
+                  child: Center(child: _buildSampleBar(isDark, compact: !isDesktop)),
+                ),
+              if (wideAside)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _buildTripAside(isDark, canEdit, showEditAction: showErrataButton && (!isSurpriseForMe || !isLocked)),
+                ),
             ],
           ),
         ),
-        if (wideAside) _buildTripAside(isDark, canEdit, showEditAction: showErrataButton && (!isSurpriseForMe || !isLocked)),
       ],
     );
 
@@ -2044,7 +2216,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
           : (showErrataButton && (!isSurpriseForMe || !isLocked))
           ? FloatingActionButton.extended(
               onPressed: () {
-                if (canEdit) {
+                if (_isSample) {
+                  _openEditorOrErrata(canEdit);
+                } else if (canEdit) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -2745,7 +2919,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
       ],
     );
 
-    final Widget content = Center(
+    final Widget content = Container(
+      alignment: Alignment.topCenter,
+      padding: EdgeInsets.only(right: _asideInset),
       child: Container(
         constraints: BoxConstraints(maxWidth: _marginLayout ? 1040 : 820),
         padding: EdgeInsets.fromLTRB(24, onImage ? 0 : 64, 24, onImage ? 34 : 36),
@@ -2935,9 +3111,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   Widget _wrapBlock(TripSection section, Widget content, bool isDark, bool isDesktop) {
     final bool social = _socialVisible;
-    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    final String? uid = _myUid;
     final reactions = social ? (_blockReactions[section.id] ?? const <String, String>{}) : const <String, String>{};
     final names = _memberNames;
+
+    // Con mensajes al margen, las burbujas montan 42 px sobre el borde derecho: el texto de los
+    // bloques sin tarjeta se detiene antes para que no quede debajo de ellas.
+    if (_marginLayout && section is! PlaceSection) {
+      content = Padding(padding: const EdgeInsets.only(right: 52), child: content);
+    }
 
     // 1) Bloque con la pastilla de reacciones montada en su borde superior derecho.
     Widget block = content;
@@ -2957,7 +3139,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
           Padding(padding: EdgeInsets.only(top: padTop), child: content),
           Positioned(
             top: pillTop,
-            right: 18,
+            // Con mensajes al margen, las burbujas montan 42 px sobre el borde: la pastilla se corre para no taparlas.
+            right: _marginLayout ? 58 : 18,
             child: ReactionSummary(byUser: reactions, myUid: uid, memberNames: names, isDark: isDark),
           ),
         ],
@@ -3035,7 +3218,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               blockId: section.id,
               authorId: uid!,
               authorName: _myDisplayName,
-              authorPhoto: FirebaseAuth.instance.currentUser?.photoURL,
+              authorPhoto: _isSample ? null : FirebaseAuth.instance.currentUser?.photoURL,
               text: text,
             ),
             onEdit: (note, text) => _social!.editNote(note.id, text),
@@ -3101,6 +3284,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   void _openEditorOrErrata(bool canEdit) {
+    if (_isSample) {
+      _sampleNotice('El viaje de muestra no se puede editar.');
+      return;
+    }
     if (canEdit) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => TripEditorPage(trip: _trip!))).then((_) => _loadTripData());
     } else {
@@ -3113,6 +3300,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final Color bg = isDark ? const Color(0xFF161618) : Colors.white;
     final Color fg = isDark ? Colors.white : OhtliColors.onyx;
     final bool member = _canInteract;
+    BoxDecoration floating(double radius) => BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: border),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12), blurRadius: 28, offset: const Offset(0, 10)),
+            BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05), blurRadius: 4, offset: const Offset(0, 1)),
+          ],
+        );
 
     if (_asideCollapsed) {
       Widget railButton(IconData icon, String tip, VoidCallback onTap, {bool accent = false}) => Tooltip(
@@ -3122,33 +3318,44 @@ class _TripViewerPageState extends State<TripViewerPage> {
               icon: Icon(icon, size: 21, color: accent ? OhtliColors.stormyTeal : (isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.7))),
             ),
           );
-      return Container(
-        width: 60,
-        decoration: BoxDecoration(color: bg, border: Border(left: BorderSide(color: border))),
-        child: SafeArea(
-          left: false,
-          child: Column(
-            children: [
-              const SizedBox(height: 14),
-              railButton(Icons.keyboard_double_arrow_left_rounded, 'Abrir panel', () => _setAsideCollapsed(false), accent: true),
-              const SizedBox(height: 8),
-              if (_sections.any((s) => s is PlaceSection)) railButton(Icons.map_rounded, 'Ruta completa', () => _showRouteModal(isDark)),
-              railButton(Icons.toc_rounded, 'Índice', () => _setAsideCollapsed(false)),
-              if (member) railButton(Icons.handyman_rounded, 'Herramientas del viaje', () => _setAsideCollapsed(false)),
-              if (showEditAction) railButton(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, canEdit ? 'Editar' : 'Fe de erratas', () => _openEditorOrErrata(canEdit)),
-            ],
+      // Riel plegado: una píldora flotante con los accesos.
+      return SafeArea(
+        left: false,
+        child: Align(
+          alignment: Alignment.topRight,
+          child: Container(
+            width: _kRailW,
+            margin: const EdgeInsets.all(_kAsideGap),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: floating(_kRailW / 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                railButton(Icons.keyboard_double_arrow_left_rounded, 'Abrir panel', () => _setAsideCollapsed(false), accent: true),
+                Container(width: 24, height: 1, margin: const EdgeInsets.symmetric(vertical: 4), color: border),
+                if (_sections.any((s) => s is PlaceSection)) railButton(Icons.map_rounded, 'Ruta completa', () => _showRouteModal(isDark)),
+                railButton(Icons.toc_rounded, 'Índice', () => _setAsideCollapsed(false)),
+                if (member) railButton(Icons.handyman_rounded, 'Herramientas del viaje', () => _setAsideCollapsed(false)),
+                if (showEditAction)
+                  railButton(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, canEdit ? 'Editar' : 'Fe de erratas',
+                      () => _openEditorOrErrata(canEdit)),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return Container(
-      width: 340,
-      decoration: BoxDecoration(color: bg, border: Border(left: BorderSide(color: border))),
-      child: SafeArea(
-        left: false,
+    // Panel abierto: tarjeta flotante a todo lo alto, con margen y esquinas redondeadas.
+    return SafeArea(
+      left: false,
+      child: Container(
+        width: _kAsideW,
+        margin: const EdgeInsets.all(_kAsideGap),
+        clipBehavior: Clip.antiAlias,
+        decoration: floating(26),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 96),
+          padding: const EdgeInsets.fromLTRB(18, 14, 14, 24),
           children: [
             Row(
               children: [
@@ -3208,7 +3415,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Widget _buildMiniMap(bool isDark) {
     final places = _sections.whereType<PlaceSection>().toList();
     final next = _nextStop;
-    final withCoords = places.where((p) => p.lat != null && p.lng != null).toList();
+    final withCoords = places.where((p) => _coordsOf(p) != null).toList();
+    final missing = places.length - withCoords.length;
     return Material(
       color: isDark ? const Color(0xFF1E1E22) : const Color(0xFFF1F4F3),
       borderRadius: BorderRadius.circular(16),
@@ -3220,21 +3428,38 @@ class _TripViewerPageState extends State<TripViewerPage> {
           child: Stack(
             children: [
               Positioned.fill(
-                child: withCoords.isEmpty
-                    ? Center(
-                        child: Text('${places.length} ${places.length == 1 ? 'parada' : 'paradas'}',
-                            style: GoogleFonts.inter(fontSize: 13, color: isDark ? Colors.white60 : OhtliColors.subtleText)),
-                      )
-                    : CustomPaint(
-                        painter: _MiniRoutePainter(
-                          points: [for (final p in withCoords) Offset(p.lng!, p.lat!)],
-                          numbers: [for (final p in withCoords) places.indexOf(p) + 1],
-                          visited: [for (final p in withCoords) _visited.contains(p.id)],
-                          nextIndex: next == null ? -1 : withCoords.indexOf(next),
-                          isDark: isDark,
-                        ),
+                child: TripMiniMap(
+                  isDark: isDark,
+                  stops: [
+                    for (final p in withCoords)
+                      MiniMapStop(
+                        lat: _coordsOf(p)!.$1,
+                        lng: _coordsOf(p)!.$2,
+                        number: places.indexOf(p) + 1,
+                        visited: _visited.contains(p.id),
+                        isNext: _tripMode && identical(p, next),
                       ),
+                  ],
+                ),
               ),
+              if (missing > 0)
+                Positioned(
+                  left: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _locating
+                          ? 'Buscando ubicación…'
+                          : (missing == places.length ? 'Sin ubicación en el mapa' : '$missing sin ubicación'),
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : OhtliColors.subtleText),
+                    ),
+                  ),
+                ),
               Positioned(
                 right: 8,
                 top: 8,
@@ -3374,8 +3599,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     .map((p) => {
                           'section_id': p.id,
                           'name': p.title,
-                          'lat': p.lat,
-                          'lng': p.lng,
+                          'lat': _coordsOf(p)?.$1,
+                          'lng': _coordsOf(p)?.$2,
                           'arrival_time': p.arrivalTime ?? '',
                           'departure_time': p.departureTime ?? '',
                           'price_mxn': p.cost,
@@ -4293,67 +4518,5 @@ class _DashedLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DashedLinePainter old) => old.color != color;
-}
-
-/// Mini mapa esquemático: paradas numeradas unidas por la ruta, sin cargar mosaicos.
-class _MiniRoutePainter extends CustomPainter {
-  final List<Offset> points; // (lng, lat)
-  final List<int> numbers;
-  final List<bool> visited;
-  final int nextIndex;
-  final bool isDark;
-
-  _MiniRoutePainter({required this.points, required this.numbers, required this.visited, required this.nextIndex, required this.isDark});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
-    double minX = points.first.dx, maxX = points.first.dx, minY = points.first.dy, maxY = points.first.dy;
-    for (final p in points) {
-      minX = math.min(minX, p.dx);
-      maxX = math.max(maxX, p.dx);
-      minY = math.min(minY, p.dy);
-      maxY = math.max(maxY, p.dy);
-    }
-    const pad = 26.0;
-    final w = size.width - pad * 2, h = size.height - pad * 2;
-    final spanX = math.max(maxX - minX, 1e-6), spanY = math.max(maxY - minY, 1e-6);
-    // Misma escala en ambos ejes (aprox. a la latitud de CDMX) para no deformar la ruta.
-    final kx = math.cos((minY + maxY) / 2 * math.pi / 180);
-    final scale = math.min(w / (spanX * kx), h / spanY);
-    final ox = pad + (w - spanX * kx * scale) / 2, oy = pad + (h - spanY * scale) / 2;
-    Offset map(Offset p) => points.length == 1
-        ? Offset(size.width / 2, size.height / 2)
-        : Offset(ox + (p.dx - minX) * kx * scale, oy + (maxY - p.dy) * scale);
-
-    final pts = points.map(map).toList();
-    final route = Paint()
-      ..color = const Color(0xFF2C666E).withValues(alpha: 0.75)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (final p in pts.skip(1)) {
-      path.lineTo(p.dx, p.dy);
-    }
-    canvas.drawPath(path, route);
-
-    for (int i = 0; i < pts.length; i++) {
-      final bool isNext = i == nextIndex;
-      final Color fill = visited[i] ? const Color(0xFF2C666E) : (isNext ? const Color(0xFFE2711D) : (isDark ? const Color(0xFF6C3953) : const Color(0xFF6C3953)));
-      canvas.drawCircle(pts[i], isNext ? 11 : 9, Paint()..color = isDark ? const Color(0xFF1E1E22) : Colors.white);
-      canvas.drawCircle(pts[i], isNext ? 9 : 7.5, Paint()..color = fill);
-      final tp = TextPainter(
-        text: TextSpan(text: '${numbers[i]}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, pts[i] - Offset(tp.width / 2, tp.height / 2));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _MiniRoutePainter old) =>
-      old.points != points || old.visited != visited || old.nextIndex != nextIndex || old.isDark != isDark;
 }
 
