@@ -73,13 +73,18 @@ class PlaceDetailsDraft {
   }
 }
 
-/// Campos del formulario. [showDescription] permite reutilizarlo cuando la descripción ya
-/// se pide en otra parte.
+/// Partes del formulario, para mostrarlas juntas (visor) o repartidas en pasos (asistente).
+enum PlaceDetailsSection { description, offers, vibes, idealFor, price, hours, yesNo, tip }
+
+/// Campos del formulario. [sections] limita qué partes se muestran (todas por defecto).
 class PlaceDetailsFields extends StatefulWidget {
   final PlaceDetailsDraft draft;
   final bool showDescription;
+  final Set<PlaceDetailsSection>? sections;
+  /// Sin títulos de sección (cuando el paso del asistente ya hace la pregunta).
+  final bool compact;
 
-  const PlaceDetailsFields({super.key, required this.draft, this.showDescription = true});
+  const PlaceDetailsFields({super.key, required this.draft, this.showDescription = true, this.sections, this.compact = false});
 
   @override
   State<PlaceDetailsFields> createState() => _PlaceDetailsFieldsState();
@@ -87,6 +92,8 @@ class PlaceDetailsFields extends StatefulWidget {
 
 class _PlaceDetailsFieldsState extends State<PlaceDetailsFields> {
   PlaceDetailsDraft get d => widget.draft;
+  bool _has(PlaceDetailsSection s) =>
+      (widget.sections == null || widget.sections!.contains(s)) && (s != PlaceDetailsSection.description || widget.showDescription);
 
   InputDecoration _decoration(String label, {String? hint}) => InputDecoration(
         labelText: label,
@@ -153,10 +160,11 @@ class _PlaceDetailsFieldsState extends State<PlaceDetailsFields> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = widget.compact;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.showDescription) ...[
+        if (_has(PlaceDetailsSection.description)) ...[
           const SizedBox(height: 4),
           TextFormField(
             initialValue: d.description,
@@ -165,52 +173,66 @@ class _PlaceDetailsFieldsState extends State<PlaceDetailsFields> {
             onChanged: (v) => d.description = v,
             decoration: _decoration('¿Qué lo hace especial?', hint: 'Historia, qué se ve o qué se come, por qué ir…'),
           ),
+          const SizedBox(height: 12),
         ],
-        const SizedBox(height: 12),
-        TextFormField(
-          initialValue: d.offers,
-          onChanged: (v) => d.offers = v,
-          decoration: _decoration('¿Qué ofrece?', hint: 'Ej. café de especialidad, postres, exposiciones (separa con comas)'),
-        ),
-        _label('¿Cómo es el ambiente?', help: 'Elige los que apliquen.'),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: kPlaceVibes.map((v) => _chip(v, d.vibes.contains(v), () => d.vibes.contains(v) ? d.vibes.remove(v) : d.vibes.add(v))).toList(),
-        ),
-        _label('¿Para quién es ideal?'),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: kPlaceIdealFor.entries
-              .map((e) => _chip(e.value, d.idealFor.contains(e.key),
-                  () => d.idealFor.contains(e.key) ? d.idealFor.remove(e.key) : d.idealFor.add(e.key)))
-              .toList(),
-        ),
-        _label('¿Cuánto se gasta por persona?'),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            ...kPlacePriceLevels.entries.map((e) => _chip(e.value, d.priceLevel == e.key, () => d.priceLevel = d.priceLevel == e.key ? null : e.key)),
-            _chip('No sé', d.priceLevel == null, () => d.priceLevel = null),
-          ],
-        ),
-        const SizedBox(height: 16),
-        TextFormField(
-          initialValue: d.openingHours,
-          onChanged: (v) => d.openingHours = v,
-          decoration: _decoration('Horario (si lo conoces)', hint: 'Ej. Lunes a domingo de 9:00 a 20:00'),
-        ),
-        _label('Si lo sabes…', help: 'Deja "No sé" en lo que no tengas claro.'),
-        ...kPlaceYesNo.entries.map((e) => _yesNo(e.key, e.value)),
-        const SizedBox(height: 10),
-        TextFormField(
-          initialValue: d.tip,
-          maxLines: 2,
-          onChanged: (v) => d.tip = v,
-          decoration: _decoration('Un consejo para quien vaya (opcional)', hint: 'Ej. Llega temprano, pide la especialidad de la casa…'),
-        ),
+        if (_has(PlaceDetailsSection.offers)) ...[
+          TextFormField(
+            initialValue: d.offers,
+            onChanged: (v) => d.offers = v,
+            decoration: _decoration('¿Qué ofrece?', hint: 'Ej. café de especialidad, postres, exposiciones (separa con comas)'),
+          ),
+        ],
+        if (_has(PlaceDetailsSection.vibes)) ...[
+          if (!compact) _label('¿Cómo es el ambiente?', help: 'Elige los que apliquen.'),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: kPlaceVibes.map((v) => _chip(v, d.vibes.contains(v), () => d.vibes.contains(v) ? d.vibes.remove(v) : d.vibes.add(v))).toList(),
+          ),
+        ],
+        if (_has(PlaceDetailsSection.idealFor)) ...[
+          _label('¿Para quién es ideal?'),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: kPlaceIdealFor.entries
+                .map((e) => _chip(e.value, d.idealFor.contains(e.key),
+                    () => d.idealFor.contains(e.key) ? d.idealFor.remove(e.key) : d.idealFor.add(e.key)))
+                .toList(),
+          ),
+        ],
+        if (_has(PlaceDetailsSection.price)) ...[
+          if (!compact) _label('¿Cuánto se gasta por persona?'),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ...kPlacePriceLevels.entries.map((e) => _chip(e.value, d.priceLevel == e.key, () => d.priceLevel = d.priceLevel == e.key ? null : e.key)),
+              _chip('No sé', d.priceLevel == null, () => d.priceLevel = null),
+            ],
+          ),
+        ],
+        if (_has(PlaceDetailsSection.hours)) ...[
+          const SizedBox(height: 16),
+          TextFormField(
+            initialValue: d.openingHours,
+            onChanged: (v) => d.openingHours = v,
+            decoration: _decoration('Horario (si lo conoces)', hint: 'Ej. Lunes a domingo de 9:00 a 20:00'),
+          ),
+        ],
+        if (_has(PlaceDetailsSection.yesNo)) ...[
+          if (!compact) _label('Si lo sabes…', help: 'Deja "No sé" en lo que no tengas claro.') else const SizedBox(height: 16),
+          ...kPlaceYesNo.entries.map((e) => _yesNo(e.key, e.value)),
+        ],
+        if (_has(PlaceDetailsSection.tip)) ...[
+          const SizedBox(height: 10),
+          TextFormField(
+            initialValue: d.tip,
+            maxLines: 2,
+            onChanged: (v) => d.tip = v,
+            decoration: _decoration('Un consejo para quien vaya (opcional)', hint: 'Ej. Llega temprano, pide la especialidad de la casa…'),
+          ),
+        ],
       ],
     );
   }

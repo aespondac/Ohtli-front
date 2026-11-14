@@ -3982,7 +3982,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     return ActionChip(
       avatar: Icon(icon, size: 15, color: tone),
       label: Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: tone)),
-      tooltip: 'Elige este lugar de la base de Ohtli o sugiere uno nuevo',
+      tooltip: 'Elige un lugar o sugiere uno nuevo',
       backgroundColor: tone.withValues(alpha: isDark ? 0.18 : 0.07),
       side: BorderSide(color: tone.withValues(alpha: 0.3)),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4557,7 +4557,7 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Elegir lugar de la base',
+                      'Elegir un lugar',
                       style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
                     ),
                   ),
@@ -4569,7 +4569,7 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                 ],
               ),
               Text(
-                'Vincula la parada con un lugar de Ohtli: toma su ubicación, foto y costo. Si no está, sugiérelo.',
+                'Busca el lugar para tomar su ubicación, foto y costo. Si no está, sugiérelo.',
                 style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.55)),
               ),
               const SizedBox(height: 14),
@@ -4618,7 +4618,7 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                           children: [
                             Icon(Icons.travel_explore_rounded, size: 40, color: OhtliColors.stormyTeal.withValues(alpha: 0.6)),
                             const SizedBox(height: 10),
-                            Text('"$_query" no está en la base de Ohtli.',
+                            Text('"$_query" todavía no está en Ohtli.',
                                 textAlign: TextAlign.center,
                                 style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
                             const SizedBox(height: 4),
@@ -4875,27 +4875,346 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       );
 
+  // ---------------------------------------------------------------------------
+  // Asistente por pasos: una pregunta a la vez para que no se sienta como un formulario
+  // ---------------------------------------------------------------------------
+  int _step = 0;
+  static const int _steps = 5;
+
+  static const Map<String, IconData> _categoryIcons = {
+    'museum': Icons.museum_outlined,
+    'gallery': Icons.palette_outlined,
+    'artwork': Icons.account_balance_outlined,
+    'theatre': Icons.theater_comedy_outlined,
+    'cinema': Icons.movie_outlined,
+    'arts_centre': Icons.groups_outlined,
+    'park': Icons.park_outlined,
+    'cafe': Icons.local_cafe_outlined,
+    'restaurant': Icons.restaurant_outlined,
+    'bar': Icons.local_bar_outlined,
+    'marketplace': Icons.storefront_outlined,
+    'place_of_worship': Icons.church_outlined,
+    'attraction': Icons.camera_alt_outlined,
+    'other': Icons.more_horiz_rounded,
+  };
+
+  String get _placeName => _name.text.trim().isEmpty ? 'este lugar' : _name.text.trim();
+
+  bool get _canContinue => switch (_step) {
+        0 => _name.text.trim().length >= 3,
+        1 => _lat != null && _lng != null,
+        _ => true,
+      };
+
+  void _go(int step) => setState(() {
+        _error = null;
+        _step = step.clamp(0, _steps - 1);
+        if (_step == 1 && _search.text.trim().isEmpty) _search.text = _name.text.trim();
+      });
+
+  ({String title, String subtitle}) get _stepCopy => switch (_step) {
+        0 => (title: '¿Qué lugar quieres sugerir?', subtitle: 'Empecemos por su nombre y qué tipo de lugar es.'),
+        1 => (title: '¿Dónde está $_placeName?', subtitle: 'Búscalo por su dirección para ubicarlo en el mapa.'),
+        2 => (title: '¿Cómo se siente estar ahí?', subtitle: 'Elige lo que mejor lo describa. Puedes omitir este paso.'),
+        3 => (title: 'Lo práctico', subtitle: 'Si lo sabes, ayuda a quien quiera ir. Si no, omítelo.'),
+        _ => (title: '¿Qué lo hace especial?', subtitle: 'Cuéntalo con tus palabras. Es lo último.'),
+      };
+
+  Widget _stepBody(bool isDark) {
+    final muted = OhtliColors.onyx.withValues(alpha: 0.6);
+    switch (_step) {
+      case 0:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _name,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              onChanged: (_) => setState(() {}),
+              style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+              decoration: InputDecoration(
+                hintText: 'Ej. Café La Habana',
+                hintStyle: GoogleFonts.outfit(fontSize: 20, color: OhtliColors.onyx.withValues(alpha: 0.3)),
+                border: UnderlineInputBorder(borderSide: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.4))),
+                focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: OhtliColors.stormyTeal, width: 2)),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text('Es un…', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+            const SizedBox(height: 10),
+            LayoutBuilder(builder: (context, c) {
+              final cols = c.maxWidth >= 460 ? 4 : 3;
+              const gap = 8.0;
+              final w = (c.maxWidth - gap * (cols - 1)) / cols;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: kSuggestionCategories.entries.map((e) {
+                  final selected = _category == e.key;
+                  return SizedBox(
+                    width: w,
+                    child: Material(
+                      color: selected
+                          ? OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.35 : 0.14)
+                          : (isDark ? const Color(0xFF26262B) : OhtliColors.cantera.withValues(alpha: 0.18)),
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => setState(() => _category = e.key),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: selected ? OhtliColors.stormyTeal : Colors.transparent, width: 1.5),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(_categoryIcons[e.key] ?? Icons.place_outlined,
+                                  size: 22, color: selected ? (isDark ? Colors.white : OhtliColors.stormyTeal) : muted),
+                              const SizedBox(height: 6),
+                              Text(e.value,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                      fontSize: 11.5, height: 1.2, fontWeight: selected ? FontWeight.w700 : FontWeight.w500, color: OhtliColors.onyx)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            }),
+          ],
+        );
+      case 1:
+        final hasLocation = _lat != null && _lng != null;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (hasLocation)
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.18 : 0.07),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.where_to_vote_rounded, color: OhtliColors.stormyTeal),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('¡Listo! Ya está en el mapa', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                          const SizedBox(height: 2),
+                          Text(_address, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12, color: muted)),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _lat = null;
+                        _lng = null;
+                        _address = '';
+                      }),
+                      child: const Text('Cambiar'),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              TextField(
+                controller: _search,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _runSearch(),
+                decoration: _decoration(
+                  'Dirección o nombre',
+                  hint: 'Calle, número y colonia',
+                  prefix: const Icon(Icons.search_rounded),
+                  suffix: _searching
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : IconButton(icon: const Icon(Icons.arrow_forward_rounded), onPressed: _runSearch),
+                ),
+              ),
+              const SizedBox(height: 6),
+              ..._results.map((r) => Material(
+                    color: Colors.transparent,
+                    child: ListTile(
+                      dense: true,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                      leading: const Icon(Icons.place_outlined, color: OhtliColors.stormyTeal),
+                      title: Text((r['display_name'] ?? '').toString(),
+                          maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx)),
+                      onTap: () => setState(() {
+                        _lat = double.tryParse('${r['lat']}');
+                        _lng = double.tryParse('${r['lon']}');
+                        _address = (r['display_name'] ?? '').toString();
+                        _results = [];
+                      }),
+                    ),
+                  )),
+              if (_searchError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(_searchError!,
+                      style: GoogleFonts.inter(fontSize: 12, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
+                ),
+              const SizedBox(height: 10),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('¿No aparece? Pega sus coordenadas', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: muted)),
+                  children: [
+                    TextField(
+                      controller: _coords,
+                      onSubmitted: _applyCoords,
+                      decoration: _decoration(
+                        'Coordenadas',
+                        hint: '19.4326, -99.1332 o un enlace de Google Maps',
+                        prefix: const Icon(Icons.my_location_rounded),
+                        suffix: IconButton(icon: const Icon(Icons.check_rounded), onPressed: () => _applyCoords(_coords.text)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      case 2:
+        return PlaceDetailsFields(
+          draft: _details,
+          compact: true,
+          sections: const {PlaceDetailsSection.vibes, PlaceDetailsSection.idealFor},
+        );
+      case 3:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('¿Cuánto se gasta por persona?', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+            const SizedBox(height: 8),
+            PlaceDetailsFields(
+              draft: _details,
+              compact: true,
+              sections: const {PlaceDetailsSection.price, PlaceDetailsSection.hours, PlaceDetailsSection.yesNo},
+            ),
+          ],
+        );
+      default:
+        final answered = _details.toMap().keys.where((k) => k != 'description').length;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PlaceDetailsFields(
+              draft: _details,
+              compact: true,
+              sections: const {PlaceDetailsSection.description, PlaceDetailsSection.offers, PlaceDetailsSection.tip},
+            ),
+            const SizedBox(height: 18),
+            // Resumen antes de enviar
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF26262B) : OhtliColors.cantera.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(color: OhtliColors.stormyTeal.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                    child: Icon(_categoryIcons[_category] ?? Icons.place_outlined, color: OhtliColors.stormyTeal),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_placeName, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                        Text(
+                          '${kSuggestionCategories[_category]} · ${answered == 0 ? 'sin detalles extra' : (answered == 1 ? '1 detalle' : '$answered detalles')}',
+                          style: GoogleFonts.inter(fontSize: 12, color: muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline_rounded, size: 16, color: muted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Lo usarás en tu viaje de inmediato. Para que otras personas lo encuentren y Ohtli lo pueda '
+                    'recomendar, un administrador lo revisará.',
+                    style: GoogleFonts.inter(fontSize: 11.5, height: 1.4, color: muted),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = OhtliSettings.instance.isDarkMode;
-    final hasLocation = _lat != null && _lng != null;
+    final isLast = _step == _steps - 1;
+    final optional = _step >= 2 && !isLast;
+    final copy = _stepCopy;
+    final muted = OhtliColors.onyx.withValues(alpha: 0.6);
     return Dialog(
       backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.all(16),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 540, maxHeight: 720),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      insetPadding: const EdgeInsets.all(12),
+      // Altura fija: el asistente no "brinca" de tamaño al pasar de un paso a otro
+      child: SizedBox(
+        width: 560,
+        height: (MediaQuery.of(context).size.height * 0.88).clamp(420.0, 640.0),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Progreso
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 8, 0),
+              padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
               child: Row(
                 children: [
+                  Text('Paso ${_step + 1} de $_steps',
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal)),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text('Sugerir un lugar nuevo',
-                        style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: OhtliColors.onyx)),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(end: (_step + 1) / _steps),
+                        duration: const Duration(milliseconds: 300),
+                        builder: (_, v, __) => LinearProgressIndicator(
+                          value: v,
+                          minHeight: 5,
+                          backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.12),
+                          valueColor: const AlwaysStoppedAnimation(OhtliColors.stormyTeal),
+                        ),
+                      ),
+                    ),
                   ),
                   IconButton(
                     tooltip: 'Cancelar',
@@ -4905,170 +5224,69 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
                 ],
               ),
             ),
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: OhtliColors.cempasuchil.withValues(alpha: isDark ? 0.16 : 0.08),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.info_outline_rounded, size: 18, color: OhtliColors.cempasuchil),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Lo usarás en tu viaje de inmediato. Para que otras personas lo encuentren y '
-                              'Ohtli lo pueda recomendar, un administrador debe revisarlo.',
-                              style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: OhtliColors.onyx.withValues(alpha: 0.8)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _name,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: _decoration('Nombre del lugar', hint: 'Ej. Café La Habana'),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: _category,
-                      isExpanded: true,
-                      decoration: _decoration('Tipo de lugar'),
-                      items: kSuggestionCategories.entries
-                          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value, style: GoogleFonts.inter(fontSize: 14))))
-                          .toList(),
-                      onChanged: (v) => setState(() => _category = v ?? _category),
-                    ),
-                    const SizedBox(height: 16),
-                    Text('¿Dónde está?', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-                    const SizedBox(height: 8),
-                    if (hasLocation)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.18 : 0.07),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.where_to_vote_rounded, size: 18, color: OhtliColors.stormyTeal),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(_address, maxLines: 2, overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx)),
-                            ),
-                            TextButton(
-                              onPressed: () => setState(() {
-                                _lat = null;
-                                _lng = null;
-                                _address = '';
-                              }),
-                              child: const Text('Cambiar'),
-                            ),
-                          ],
-                        ),
-                      )
-                    else ...[
-                      TextField(
-                        controller: _search,
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (_) => _runSearch(),
-                        decoration: _decoration(
-                          'Buscar dirección o nombre',
-                          hint: 'Calle, número y colonia',
-                          prefix: const Icon(Icons.search_rounded),
-                          suffix: _searching
-                              ? const Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                                )
-                              : IconButton(icon: const Icon(Icons.arrow_forward_rounded), onPressed: _runSearch),
-                        ),
-                      ),
-                      ..._results.map((r) => ListTile(
-                            dense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                            leading: const Icon(Icons.place_outlined, color: OhtliColors.stormyTeal),
-                            title: Text((r['display_name'] ?? '').toString(),
-                                maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5)),
-                            onTap: () => setState(() {
-                              _lat = double.tryParse('${r['lat']}');
-                              _lng = double.tryParse('${r['lon']}');
-                              _address = (r['display_name'] ?? '').toString();
-                              _results = [];
-                            }),
-                          )),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _coords,
-                        onSubmitted: _applyCoords,
-                        decoration: _decoration(
-                          'O pega sus coordenadas',
-                          hint: '19.4326, -99.1332 o un enlace de Google Maps',
-                          prefix: const Icon(Icons.my_location_rounded),
-                          suffix: IconButton(icon: const Icon(Icons.check_rounded), onPressed: () => _applyCoords(_coords.text)),
-                        ),
-                      ),
-                      if (_searchError != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(_searchError!,
-                              style: GoogleFonts.inter(fontSize: 12, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
-                        ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                layoutBuilder: (current, previous) => Stack(alignment: Alignment.topCenter, children: [...previous, if (current != null) current]),
+                transitionBuilder: (child, anim) => FadeTransition(
+                  opacity: anim,
+                  child: SlideTransition(
+                    position: Tween<Offset>(begin: const Offset(0.04, 0), end: Offset.zero).animate(anim),
+                    child: child,
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  key: ValueKey(_step),
+                  padding: const EdgeInsets.fromLTRB(22, 10, 22, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(copy.title, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w700, color: OhtliColors.onyx, height: 1.15)),
+                      const SizedBox(height: 4),
+                      Text(copy.subtitle, style: GoogleFonts.inter(fontSize: 13, color: muted)),
+                      const SizedBox(height: 18),
+                      _stepBody(isDark),
                     ],
-                    const SizedBox(height: 20),
-                    Text('Cuéntanos del lugar',
-                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-                    Text('Todo es opcional, pero mientras más detalles des, mejor lo recomendará Ohtli.',
-                        style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.onyx.withValues(alpha: 0.55))),
-                    const SizedBox(height: 8),
-                    PlaceDetailsFields(draft: _details),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Text(_error!,
-                            style: GoogleFonts.inter(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
+                child: Text(_error!,
+                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
+              ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+              padding: const EdgeInsets.fromLTRB(16, 10, 18, 16),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton(
-                    onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Cancelar'),
-                  ),
-                  const SizedBox(width: 8),
+                  if (_step > 0)
+                    TextButton.icon(
+                      onPressed: _saving ? null : () => _go(_step - 1),
+                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                      label: const Text('Atrás'),
+                    ),
+                  const Spacer(),
+                  if (optional)
+                    TextButton(
+                      onPressed: () => _go(_step + 1),
+                      child: Text('Omitir', style: GoogleFonts.inter(color: muted, fontWeight: FontWeight.w600)),
+                    ),
+                  const SizedBox(width: 6),
                   ElevatedButton.icon(
-                    onPressed: _saving ? null : _submit,
+                    onPressed: _saving || !_canContinue ? null : (isLast ? _submit : () => _go(_step + 1)),
                     icon: _saving
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.send_rounded, size: 18),
-                    label: Text(_saving ? 'Enviando…' : 'Usar y enviar a revisión', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                        : Icon(isLast ? Icons.check_rounded : Icons.arrow_forward_rounded, size: 18),
+                    label: Text(isLast ? (_saving ? 'Enviando…' : 'Usar este lugar') : 'Siguiente',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: OhtliColors.stormyTeal,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                     ),
                   ),
                 ],
