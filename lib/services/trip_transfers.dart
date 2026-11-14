@@ -26,6 +26,12 @@ const List<TransferMode> kTransferModes = [
   TransferMode('bike', 'Bici (Ecobici)', 'en bici', Icons.pedal_bike_rounded, 13, 0, 0, 'bicycling'),
   TransferMode('taxi', 'Taxi / app', 'en taxi', Icons.local_taxi_rounded, 20, 35, 9, 'driving'),
   TransferMode('car', 'Auto propio', 'en auto', Icons.directions_car_rounded, 20, 0, 0, 'driving'),
+  TransferMode('cablebus', 'Cablebús', 'en cablebús', Icons.cable_rounded, 18, 7, 0, 'transit'),
+  TransferMode('trolebus', 'Trolebús', 'en trolebús', Icons.tram_rounded, 15, 7, 0, 'transit'),
+  TransferMode('tren_ligero', 'Tren Ligero', 'en tren ligero', Icons.directions_railway_rounded, 25, 3, 0, 'transit'),
+  TransferMode('suburbano', 'Tren Suburbano', 'en suburbano', Icons.train_rounded, 50, 12, 0, 'transit'),
+  TransferMode('scooter', 'Scooter / patín', 'en scooter', Icons.electric_scooter_rounded, 14, 10, 3, 'bicycling'),
+  TransferMode('trajinera', 'Trajinera', 'en trajinera', Icons.rowing_rounded, 4, 0, 0, 'walking'),
   TransferMode('other', 'Otro', '', Icons.alt_route_rounded, 15, 0, 0, 'transit'),
 ];
 
@@ -36,6 +42,12 @@ TransferMode transferModeOf(String id) =>
 String normalizeTransferMode(String? raw) {
   final r = (raw ?? '').toLowerCase();
   if (r.contains('walk') || r.contains('foot') || r.contains('pie')) return 'walking';
+  if (r.contains('cable')) return 'cablebus';
+  if (r.contains('trole')) return 'trolebus';
+  if (r.contains('ligero')) return 'tren_ligero';
+  if (r.contains('suburb')) return 'suburbano';
+  if (r.contains('scoot') || r.contains('patin') || r.contains('patín')) return 'scooter';
+  if (r.contains('trajin')) return 'trajinera';
   if (r.contains('metrob')) return 'metrobus';
   if (r.contains('metro') || r.contains('subway') || r.contains('transit')) return 'metro';
   if (r.contains('bus') || r.contains('cami')) return 'bus';

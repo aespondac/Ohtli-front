@@ -44,6 +44,13 @@ class _RevealOnScrollState extends State<RevealOnScroll> with SingleTickerProvid
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cambió el tamaño de la ventana: lo que ahora quede a la vista debe aparecer.
+    if (!_started) WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  @override
   void didUpdateWidget(covariant RevealOnScroll old) {
     super.didUpdateWidget(old);
     if (old.scroll != widget.scroll) {
@@ -88,6 +95,7 @@ class _RevealOnScrollState extends State<RevealOnScroll> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
+    MediaQuery.sizeOf(context); // se vuelve a revisar si cambia el tamaño de la ventana
     return AnimatedBuilder(
       animation: _t,
       child: widget.child,

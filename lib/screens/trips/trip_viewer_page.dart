@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../theme/colors.dart';
@@ -36,6 +37,8 @@ import '../../widgets/trip_mini_map.dart';
 import '../../widgets/reveal_on_scroll.dart';
 import '../../services/place_locator.dart';
 import 'trip_sample.dart';
+import 'trip_traveler_tools.dart';
+import '../../config/admin.dart' show isSuperUser;
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -700,6 +703,146 @@ class _TripViewerPageState extends State<TripViewerPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text, style: GoogleFonts.inter())));
   }
 
+  /// Lleva la muestra (etapa "Durante", con fecha de hoy) a la cuenta de quien la ve,
+  /// reemplazando un viaje suyo o creando uno nuevo. Escribe con su propia sesión.
+  Future<void> _bringSampleToAccount() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final isDark = _dark;
+    List<Trip> mine = const [];
+    try {
+      mine = (await TripService().getTripsStream(user.uid).first).where((t) => !t.isReleaseNotes).toList();
+    } catch (_) {}
+    if (!mounted) return;
+    String target = '';
+    for (final t in mine) {
+      if (t.title.toLowerCase().contains('tacos')) {
+        target = t.id;
+        break;
+      }
+    }
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final String? chosen = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          final replacing = target.isNotEmpty;
+          final String replacedTitle = replacing ? mine.firstWhere((t) => t.id == target).title : '';
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            title: Text('Llevar la muestra a tu cuenta', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: fg)),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Se guarda como un viaje real con fecha de hoy, en la etapa «Durante», para probar todas las herramientas.',
+                      style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: sub)),
+                  const SizedBox(height: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 260),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          RadioListTile<String>(
+                            value: '',
+                            groupValue: target,
+                            onChanged: (v) => setState(() => target = v ?? ''),
+                            dense: true,
+                            activeColor: OhtliColors.stormyTeal,
+                            title: Text('Crear un viaje nuevo', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: fg)),
+                          ),
+                          for (final t in mine)
+                            RadioListTile<String>(
+                              value: t.id,
+                              groupValue: target,
+                              onChanged: (v) => setState(() => target = v ?? ''),
+                              dense: true,
+                              activeColor: OhtliColors.stormyTeal,
+                              title: Text('Reemplazar «${t.title}»', style: GoogleFonts.inter(color: fg)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (replacing) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
+                      child: Text(
+                        'Se borrará el contenido de «$replacedTitle» (paradas, textos y fotos del plan) y no se puede deshacer. '
+                        'Se conservan quiénes son coautores y su visibilidad; los mensajes anteriores dejarán de verse.',
+                        style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: isDark ? const Color(0xFFFF8A80) : Colors.red.shade700),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: replacing ? Colors.redAccent : OhtliColors.stormyTeal, foregroundColor: Colors.white),
+                onPressed: () => Navigator.pop(ctx, replacing ? target : '__nuevo__'),
+                child: Text(replacing ? 'Reemplazar' : 'Crear viaje'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (chosen == null || !mounted) return;
+
+    final sample = TripSample.trip(SampleStage.durante);
+    final sections = TripSample.sections(SampleStage.durante);
+    final trips = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('trips');
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    try {
+      String id;
+      if (chosen == '__nuevo__') {
+        id = trips.doc().id;
+        final trip = Trip(
+          id: id,
+          userId: user.uid,
+          title: sample.title,
+          description: sample.description,
+          coverUrl: sample.coverUrl,
+          status: 'published',
+          visibility: 'private',
+          createdAt: now,
+          updatedAt: now,
+          travelDate: today,
+        );
+        // Escritura directa (sin el aviso de "nueva publicación" a seguidores).
+        await trips.doc(id).set(trip.toMap());
+      } else {
+        id = chosen;
+        await trips.doc(id).update({
+          'title': sample.title,
+          'description': sample.description,
+          'coverUrl': sample.coverUrl,
+          'travelDate': Timestamp.fromDate(today),
+          'updatedAt': Timestamp.fromDate(now),
+          'reviewedAt': FieldValue.delete(),
+        });
+      }
+      await TripService().updateTripContent(user.uid, id, TripContent(sections: sections));
+      try {
+        html.window.localStorage.remove('ohtli_trip_visited_$id');
+      } catch (_) {}
+      if (!mounted) return;
+      _notice('Listo. Abriendo tu viaje…');
+      html.window.location.assign('${Uri.base.origin}/?tripId=$id&authorId=${user.uid}');
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'No se pudo guardar el viaje en tu cuenta.'));
+    }
+  }
+
   /// Barra de la muestra: cambia la etapa del viaje y el papel de quien lo ve.
   Widget _buildSampleBar(bool isDark, {required bool compact}) {
     final Color bg = isDark ? const Color(0xFF1E1E22) : Colors.white;
@@ -758,7 +901,28 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ? Row(mainAxisSize: MainAxisSize.min, children: [stageSeg, const SizedBox(width: 5), roleSeg])
             : Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [badge, const SizedBox(width: 14), stageSeg, const SizedBox(width: 8), roleSeg],
+                children: [
+                  badge,
+                  const SizedBox(width: 14),
+                  stageSeg,
+                  const SizedBox(width: 8),
+                  roleSeg,
+                  // Solo para la cuenta de pruebas de Ohtli: guardar la muestra como viaje real.
+                  if (isSuperUser()) ...[
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: _bringSampleToAccount,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: OhtliColors.xoconostle,
+                        foregroundColor: Colors.white,
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      icon: const Icon(Icons.download_rounded, size: 16),
+                      label: Text('Llevar a mi cuenta', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ],
               ),
       ),
     );
@@ -862,6 +1026,388 @@ class _TripViewerPageState extends State<TripViewerPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(blockId));
   }
 
+  // ---------------------------------------------------------------------------
+  // Herramientas del viajero (dueño y coautores; en la muestra, en memoria)
+  // ---------------------------------------------------------------------------
+  bool get _canEditContent {
+    if (_isSample) return _sampleAsMember;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final t = _trip;
+    if (uid == null || t == null || t.isReleaseNotes || _isPreview) return false;
+    return t.userId == uid || t.coAuthorIds.contains(uid);
+  }
+
+  /// Desde el día del viaje (o si no tiene fecha) ya se registran cosas del camino.
+  bool get _tripStarted {
+    final d = _trip?.travelDate;
+    if (d == null) return true;
+    final now = DateTime.now();
+    return !DateTime(d.year, d.month, d.day).isAfter(DateTime(now.year, now.month, now.day));
+  }
+
+  bool get _tripIsToday {
+    final d = _trip?.travelDate;
+    final now = DateTime.now();
+    return d != null && d.year == now.year && d.month == now.month && d.day == now.day;
+  }
+
+  static String _hhmm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  String _newSectionId(String tag) => 'sec_${DateTime.now().millisecondsSinceEpoch}_$tag';
+  bool get _dark => OhtliSettings.instance.isDarkMode;
+
+  /// Parada en curso: donde ya llegaron y aún no salen; si no, la siguiente por visitar.
+  PlaceSection? get _currentStop {
+    final places = _sections.whereType<PlaceSection>().toList();
+    for (final p in places.reversed) {
+      if (p.arrivedAt != null && p.leftAt == null) return p;
+    }
+    for (final p in places) {
+      if (p.arrivedAt == null && !_visited.contains(p.id)) return p;
+    }
+    return null;
+  }
+
+  List<BlockOption> get _blockOptions => [
+        for (final s in _sections)
+          if (s is! UnknownSection) (id: s.id, label: _blockLabel(s), isPlace: s is PlaceSection),
+      ];
+
+  String get _defaultAfterId => _currentStop?.id ?? (_sections.isNotEmpty ? _sections.last.id : '');
+
+  void _notice(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text, style: GoogleFonts.inter())));
+  }
+
+  /// Aplica un cambio al contenido: lee la versión guardada (por si otro viajero cambió algo),
+  /// lo aplica y la guarda. En la muestra solo cambia en memoria.
+  Future<bool> _changeContent(List<TripSection> Function(List<TripSection> sections) change, {String? done}) async {
+    final t = _trip;
+    if (t == null) return false;
+    if (_isSample) {
+      setState(() => _sections = change(List.of(_sections)));
+      if (done != null) _notice('$done. En la muestra no se guarda.');
+      return true;
+    }
+    try {
+      final saved = await TripService().getTripContent(t.userId, t.id);
+      final next = change(List.of(saved?.sections ?? _sections));
+      await TripService().updateTripContent(t.userId, t.id, TripContent(sections: next));
+      if (!mounted) return true;
+      setState(() => _sections = next);
+      if (done != null) _notice(done);
+      return true;
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'No se pudo guardar. Revisa tu conexión.'));
+      return false;
+    }
+  }
+
+  List<TripSection> _updatePlace(List<TripSection> list, String id, PlaceSection Function(PlaceSection p) f) =>
+      [for (final s in list) (s is PlaceSection && s.id == id) ? f(s) : s];
+
+  List<TripSection> _insertAfter(List<TripSection> list, String afterId, TripSection section) {
+    final i = list.indexWhere((s) => s.id == afterId);
+    return List.of(list)..insert(i < 0 ? list.length : i + 1, section);
+  }
+
+  void _scrollSoon(String id) => WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(id));
+
+  Future<void> _markArrival(PlaceSection p) async {
+    final now = _hhmm(DateTime.now());
+    setState(() => _visited.add(p.id));
+    _saveVisited();
+    await _changeContent((l) => _updatePlace(l, p.id, (x) => x.copyWith(arrivedAt: now)), done: 'Llegada a ${p.title} a las $now');
+  }
+
+  Future<void> _markLeave(PlaceSection p) async {
+    final now = _hhmm(DateTime.now());
+    await _changeContent((l) => _updatePlace(l, p.id, (x) => x.copyWith(leftAt: now)), done: 'Salida de ${p.title} a las $now');
+  }
+
+  /// ¿En qué parada? La parada en curso va primero.
+  Future<PlaceSection?> _chooseStop(String title) {
+    final places = _sections.whereType<PlaceSection>().toList();
+    final current = _currentStop;
+    if (current != null) {
+      places
+        ..remove(current)
+        ..insert(0, current);
+    }
+    final isDark = _dark;
+    return showDialog<PlaceSection>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF1F2A2A))),
+        children: [
+          for (final p in places)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(p),
+              child: Row(
+                children: [
+                  Icon(p.unplanned ? Icons.alt_route_rounded : Icons.place_rounded, size: 18, color: OhtliColors.stormyTeal),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(p.title.isEmpty ? 'Parada sin nombre' : p.title,
+                        style: GoogleFonts.inter(fontSize: 14, color: isDark ? Colors.white : const Color(0xFF1F2A2A))),
+                  ),
+                  if (identical(p, current)) Text('ahora', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Sube una foto a la carpeta de quien la toma (las reglas solo le permiten escribir en la suya).
+  Future<String?> _uploadPhoto(String dataUrl) async {
+    if (_isSample) return dataUrl;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final t = _trip;
+    if (uid == null || t == null) return null;
+    final bytes = base64Decode(dataUrl.split(',').last);
+    final ref = FirebaseStorage.instance.ref('users/$uid/trips/${t.id}/viajeros/${DateTime.now().millisecondsSinceEpoch}.jpg');
+    await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+    return ref.getDownloadURL();
+  }
+
+  Future<void> _addPhoto() async {
+    final p = await _chooseStop('¿De qué parada es la foto?');
+    if (p == null || !mounted) return;
+    final dataUrl = await pickAndCropPhoto(context);
+    if (dataUrl == null || !mounted) return;
+    try {
+      if (!_isSample) _notice('Subiendo foto…');
+      final url = await _uploadPhoto(dataUrl);
+      if (url == null) return;
+      final ok = await _changeContent(
+        (l) => _updatePlace(
+            l, p.id, (x) => x.mainPhotoUrl.isEmpty ? x.copyWith(mainPhotoUrl: url) : x.copyWith(secondaryPhotoUrls: [url, ...x.secondaryPhotoUrls])),
+        done: 'Foto agregada a ${p.title}',
+      );
+      if (ok) _scrollSoon(p.id);
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'No se pudo subir la foto.'));
+    }
+  }
+
+  Future<void> _addRealCost() async {
+    final p = await _chooseStop('¿En qué parada?');
+    if (p == null || !mounted) return;
+    final v = await askRealCost(context, placeName: p.title, current: p.realCost, estimated: p.cost, isDark: _dark);
+    if (v == null) return;
+    final ok = await _changeContent((l) => _updatePlace(l, p.id, (x) => x.copyWith(realCost: v)), done: 'Gasto real guardado');
+    if (ok) _scrollSoon(p.id);
+  }
+
+  Future<void> _addDetour() async {
+    final d = await askDetour(context, options: _blockOptions, initialAfter: _defaultAfterId, isDark: _dark);
+    if (d == null) return;
+    final section = PlaceSection(
+      id: _newSectionId('desvio'),
+      title: d.name,
+      description: d.note,
+      rating: 0,
+      mainPhotoUrl: '',
+      secondaryPhotoUrls: const [],
+      unplanned: true,
+      arrivedAt: _tripIsToday ? _hhmm(DateTime.now()) : null,
+    );
+    final ok = await _changeContent((l) => _insertAfter(l, d.afterId, section), done: 'Desvío agregado');
+    if (ok) {
+      _resolveMissingCoords();
+      _scrollSoon(section.id);
+    }
+  }
+
+  Future<void> _addTransfer() async {
+    // Por omisión, la última parada de la que salieron (el traslado parte de ahí).
+    String from = _defaultAfterId;
+    for (final p in _sections.whereType<PlaceSection>()) {
+      if (p.leftAt != null) from = p.id;
+    }
+    final d = await askTransfer(context, options: _blockOptions, initialAfter: from, isDark: _dark);
+    if (d == null) return;
+    String id = _newSectionId('traslado');
+    final ok = await _changeContent((l) {
+      final i = l.indexWhere((s) => s.id == d.afterId);
+      final next = (i >= 0 && i + 1 < l.length) ? l[i + 1] : null;
+      // Si ya había un traslado (p. ej. estimado), se reemplaza por el real.
+      if (next is TransferSection) id = next.id;
+      final t = TransferSection(
+        id: id,
+        mode: d.mode,
+        durationMins: d.minutes,
+        distanceKm: next is TransferSection ? next.distanceKm : null,
+        cost: d.cost,
+        notes: d.note,
+        isEstimated: false,
+      );
+      if (next is TransferSection) return List.of(l)..[i + 1] = t;
+      return _insertAfter(l, d.afterId, t);
+    }, done: 'Traslado guardado');
+    if (ok) _scrollSoon(id);
+  }
+
+  Future<void> _addContentBlock(BlockKind kind) async {
+    final d = await askBlock(context, kind: kind, options: _blockOptions, initialAfter: _defaultAfterId, isDark: _dark);
+    if (d == null) return;
+    try {
+      final TripSection section;
+      if (kind == BlockKind.image) {
+        if (!_isSample) _notice('Subiendo imagen…');
+        final url = await _uploadPhoto(d.imageDataUrl!);
+        if (url == null) return;
+        section = TextImageSection(id: _newSectionId('imagen'), markdownText: d.markdown, imageUrl: url, layout: 'right');
+      } else {
+        section = TextSection(id: _newSectionId(kind.name), markdownText: d.markdown);
+      }
+      final label = switch (kind) { BlockKind.text => 'Texto', BlockKind.note => 'Nota', BlockKind.table => 'Tabla', BlockKind.image => 'Imagen' };
+      final ok = await _changeContent((l) => _insertAfter(l, d.afterId, section), done: '$label agregada');
+      if (ok) _scrollSoon(section.id);
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'No se pudo guardar.'));
+    }
+  }
+
+  /// Tarjeta del panel: "Llegué / Ya me voy" en la parada en curso y la rejilla de herramientas.
+  Widget _buildTravelerToolsCard(bool isDark, {VoidCallback? onDone}) {
+    final bool started = _tripStarted;
+    final PlaceSection? current = started ? _currentStop : null;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    void run(Future<void> Function() f) {
+      onDone?.call();
+      f();
+    }
+
+    final tools = <(IconData, String, VoidCallback)>[
+      (Icons.photo_camera_rounded, 'Foto', () => run(_addPhoto)),
+      (Icons.payments_rounded, 'Precio real', () => run(_addRealCost)),
+      (Icons.alt_route_rounded, 'Desvío', () => run(_addDetour)),
+      (Icons.route_rounded, 'Traslado', () => run(_addTransfer)),
+      (Icons.notes_rounded, 'Texto', () => run(() => _addContentBlock(BlockKind.text))),
+      (Icons.image_rounded, 'Imagen', () => run(() => _addContentBlock(BlockKind.image))),
+      (Icons.table_chart_rounded, 'Tabla', () => run(() => _addContentBlock(BlockKind.table))),
+      (Icons.sticky_note_2_rounded, 'Nota', () => run(() => _addContentBlock(BlockKind.note))),
+    ];
+    // Todo está disponible siempre; antes del viaje van primero las de planear.
+    final ordered = started ? tools : [...tools.sublist(3), ...tools.sublist(0, 3)];
+
+    return _panelCard(isDark: isDark, icon: Icons.backpack_rounded, title: 'HERRAMIENTAS DEL VIAJERO', children: [
+      if (current != null) ...[
+        Text(current.arrivedAt == null ? 'Siguiente parada' : 'Están en', style: GoogleFonts.inter(fontSize: 11.5, color: sub)),
+        const SizedBox(height: 2),
+        Text(current.title.isEmpty ? 'Parada sin nombre' : current.title,
+            maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
+        if (current.arrivedAt != null)
+          Text('Llegaron a las ${current.arrivedAt}', style: GoogleFonts.inter(fontSize: 12, color: sub)),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: current.arrivedAt == null ? () => run(() => _markArrival(current)) : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.flag_rounded, size: 17),
+                label: Text('Llegué', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: current.arrivedAt != null && current.leftAt == null ? () => run(() => _markLeave(current)) : null,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.5) : OhtliColors.stormyTeal,
+                  side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: current.arrivedAt != null ? 1 : 0.3)),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.logout_rounded, size: 17),
+                label: Text('Ya me voy', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+      ] else if (!started) ...[
+        Text('Preparen el viaje: agreguen notas, tablas o fotos. Llegué y Ya me voy aparecen el día del viaje.',
+            style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: sub)),
+        const SizedBox(height: 12),
+      ],
+      LayoutBuilder(builder: (context, box) {
+        final double w = ((box.maxWidth - 3 * 8) / 4).floorToDouble();
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final t in ordered)
+              Material(
+                color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F6F5),
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: t.$3,
+                  child: SizedBox(
+                    width: w,
+                    height: 64,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(t.$1, size: 21, color: isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45) : OhtliColors.stormyTeal),
+                        const SizedBox(height: 5),
+                        Text(t.$2,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: fg)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      }),
+    ]);
+  }
+
+  Widget _placeBadge(IconData icon, String text, bool isDark, {bool amber = false}) {
+    final Color fg = amber
+        ? (isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309))
+        : (isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.5)! : OhtliColors.stormyTeal);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: amber
+            ? (isDark ? const Color(0xFF332711) : const Color(0xFFFFFBEB))
+            : OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.18 : 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: amber
+              ? (isDark ? const Color(0xFFFBBF24).withValues(alpha: 0.25) : const Color(0xFFFDE68A))
+              : OhtliColors.stormyTeal.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: amber ? Colors.amber : fg),
+          const SizedBox(width: 6),
+          Text(text, style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: fg)),
+        ],
+      ),
+    );
+  }
+
   Widget _panelCard({required bool isDark, required IconData icon, required String title, required List<Widget> children}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -935,6 +1481,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
       const SizedBox(height: 10),
       Text('Solo los miembros escriben y reaccionan; quien lea el viaje ve los mensajes.', style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: sub)),
     ]));
+
+    // Herramientas del viajero (dueño y coautores)
+    if (_canEditContent) cards.add(_buildTravelerToolsCard(isDark, onDone: onDone));
 
     // Modo viaje
     if (places.isNotEmpty) {
@@ -2801,7 +3350,12 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
     final places = _sections.whereType<PlaceSection>().toList();
     if (places.isEmpty) return facts;
-    facts.add((Icons.place_rounded, '${places.length} ${places.length == 1 ? 'parada' : 'paradas'}'));
+    final int planned = places.where((p) => !p.unplanned).length;
+    final int detours = places.length - planned;
+    facts.add((
+      Icons.place_rounded,
+      '$planned ${planned == 1 ? 'parada' : 'paradas'}${detours > 0 ? ' · $detours ${detours == 1 ? 'desvío' : 'desvíos'}' : ''}'
+    ));
 
     final starts = places.map((p) => _minutesOf(p.arrivalTime)).whereType<int>().toList();
     final ends = places.map((p) => _minutesOf(p.departureTime) ?? _minutesOf(p.arrivalTime)).whereType<int>().toList();
@@ -3175,9 +3729,34 @@ class _TripViewerPageState extends State<TripViewerPage> {
       );
     }
 
-    // 2) En la línea de tiempo, cada parada lleva su punto, hora y número.
-    if (_useTimeline && section is PlaceSection) {
-      final places = _sections.whereType<PlaceSection>().toList();
+    // 2) En la línea de tiempo, cada parada lleva su punto, hora y número. Un desvío no lleva
+    //    título ni número: la línea punteada se abre en una rama y vuelve a la principal.
+    if (_useTimeline && section is PlaceSection && section.unplanned) {
+      const double shift = 30;
+      final double toSpine = _spineIndent - _spineX;
+      block = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Padding(padding: const EdgeInsets.only(left: shift, top: 6, bottom: 6), child: block),
+          Positioned(
+            left: -toSpine,
+            top: -26,
+            bottom: -26,
+            width: toSpine + shift,
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _DetourBranchPainter(
+                  color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.32),
+                  dot: OhtliColors.cempasuchil,
+                  ring: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (_useTimeline && section is PlaceSection) {
+      final places = _sections.whereType<PlaceSection>().where((p) => !p.unplanned).toList();
       final n = places.indexOf(section) + 1;
       final visited = _visited.contains(section.id);
       final time = section.arrivalTime != null && section.arrivalTime!.trim().isNotEmpty ? '${section.arrivalTime!.trim()} · ' : '';
@@ -3465,7 +4044,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       MiniMapStop(
                         lat: _coordsOf(p)!.$1,
                         lng: _coordsOf(p)!.$2,
-                        number: places.indexOf(p) + 1,
+                        number: p.unplanned ? 0 : places.where((x) => !x.unplanned).toList().indexOf(p) + 1,
+                        unplanned: p.unplanned,
                         visited: _visited.contains(p.id),
                         isNext: _tripMode && identical(p, next),
                       ),
@@ -3522,7 +4102,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     for (final s in _sections) {
       if (s is TransferSection || s is UnknownSection) continue;
       final bool isPlace = s is PlaceSection;
-      if (isPlace) n++;
+      final bool detour = s is PlaceSection && s.unplanned;
+      if (isPlace && !detour) n++;
       final visited = _visited.contains(s.id);
       final highlighted = _highlightedId == s.id;
       items.add(InkWell(
@@ -3539,8 +4120,12 @@ class _TripViewerPageState extends State<TripViewerPage> {
               if (isPlace) ...[
                 CircleAvatar(
                   radius: 11,
-                  backgroundColor: visited ? OhtliColors.stormyTeal : (isDark ? const Color(0xFF2C2C30) : OhtliColors.cantera.withValues(alpha: 0.6)),
-                  child: visited
+                  backgroundColor: detour
+                      ? OhtliColors.cempasuchil.withValues(alpha: 0.18)
+                      : (visited ? OhtliColors.stormyTeal : (isDark ? const Color(0xFF2C2C30) : OhtliColors.cantera.withValues(alpha: 0.6))),
+                  child: detour
+                      ? const Icon(Icons.alt_route_rounded, size: 13, color: OhtliColors.cempasuchil)
+                      : visited
                       ? const Icon(Icons.check_rounded, size: 13, color: Colors.white)
                       : Text('$n',
                           style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx)),
@@ -3829,34 +4414,24 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ),
           ),
         ],
-        // Cost Badge
-        if (place.cost > 0.0) ...[
+        // Costo estimado, gasto real y horas reales de llegada y salida.
+        if (place.cost > 0.0 || place.realCost != null || place.arrivedAt != null) ...[
           const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF332711) : const Color(0xFFFFFBEB),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isDark ? const Color(0xFFFBBF24).withValues(alpha: 0.25) : const Color(0xFFFDE68A),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.payments_outlined, size: 14, color: Colors.amber),
-                const SizedBox(width: 6),
-                Text(
-                  "Costo estimado: \$ ${place.cost.toStringAsFixed(2)} ${place.currency}",
-                  style: GoogleFonts.inter(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309),
-                  ),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              if (place.cost > 0.0)
+                _placeBadge(Icons.payments_outlined, 'Costo estimado: \$ ${place.cost.toStringAsFixed(2)} ${place.currency}', isDark, amber: true),
+              if (place.realCost != null)
+                _placeBadge(Icons.receipt_long_rounded, 'Gasto real: \$ ${place.realCost!.toStringAsFixed(2)} ${place.currency}', isDark),
+              if (place.arrivedAt != null)
+                _placeBadge(
+                  Icons.schedule_rounded,
+                  place.leftAt != null ? 'Estuvieron de ${place.arrivedAt} a ${place.leftAt}' : 'Llegaron a las ${place.arrivedAt}',
+                  isDark,
                 ),
-              ],
-            ),
+            ],
           ),
         ],
         // Lugar nuevo propuesto por un viajero: quien lo conozca puede completar su información
@@ -4550,3 +5125,44 @@ class _DashedLinePainter extends CustomPainter {
   bool shouldRepaint(covariant _DashedLinePainter old) => old.color != color;
 }
 
+
+/// Rama punteada de un desvío: sale de la línea principal, corre junto al bloque y vuelve.
+class _DetourBranchPainter extends CustomPainter {
+  final Color color;
+  final Color dot;
+  final Color ring;
+  const _DetourBranchPainter({required this.color, required this.dot, required this.ring});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const double x0 = 0; // la línea principal
+    final double x1 = size.width - 14; // la rama
+    final double h = size.height;
+    const double bend = 40;
+    final path = Path()
+      ..moveTo(x0, 0)
+      ..cubicTo(x0, bend * 0.55, x1, bend * 0.45, x1, bend)
+      ..lineTo(x1, h - bend)
+      ..cubicTo(x1, h - bend * 0.45, x0, h - bend * 0.55, x0, h);
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    const dash = 5.0, gap = 6.0;
+    for (final metric in path.computeMetrics()) {
+      double d = 0;
+      while (d < metric.length) {
+        canvas.drawPath(metric.extractPath(d, math.min(d + dash, metric.length)), paint);
+        d += dash + gap;
+      }
+    }
+    // Punto del desvío sobre la rama, a la altura del inicio del bloque.
+    final c = Offset(x1, bend + 22);
+    canvas.drawCircle(c, 8, Paint()..color = ring);
+    canvas.drawCircle(c, 5.5, Paint()..color = dot);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DetourBranchPainter old) => old.color != color || old.dot != dot || old.ring != ring;
+}

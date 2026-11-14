@@ -13,7 +13,17 @@ class MiniMapStop {
   final bool visited;
   final bool isNext;
 
-  const MiniMapStop({required this.lat, required this.lng, required this.number, this.visited = false, this.isNext = false});
+  /// Desvío (lugar no previsto): punto pequeño sin número.
+  final bool unplanned;
+
+  const MiniMapStop({
+    required this.lat,
+    required this.lng,
+    required this.number,
+    this.visited = false,
+    this.isNext = false,
+    this.unplanned = false,
+  });
 }
 
 /// Mapa estático con teselas de OpenStreetMap, la ruta punteada y las paradas numeradas.
@@ -199,6 +209,11 @@ class _RoutePainter extends CustomPainter {
     for (int i = 0; i < points.length; i++) {
       final s = stops[i];
       final p = points[i];
+      if (s.unplanned) {
+        canvas.drawCircle(p, 6.5, Paint()..color = Colors.white);
+        canvas.drawCircle(p, 4.5, Paint()..color = OhtliColors.cempasuchil);
+        continue;
+      }
       final Color fill = s.isNext ? OhtliColors.cempasuchil : (s.visited ? teal : Colors.white);
       canvas.drawCircle(p + const Offset(0, 1.5), 12.5, Paint()..color = Colors.black.withValues(alpha: 0.18));
       canvas.drawCircle(p, 12, Paint()..color = fill);

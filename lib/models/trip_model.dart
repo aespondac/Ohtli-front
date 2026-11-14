@@ -248,6 +248,16 @@ class PlaceSection extends TripSection {
   final String? poiId;
   final String? poiSource;
 
+  /// Lugar no previsto que los viajeros agregaron durante el viaje (un "desvío").
+  final bool unplanned;
+
+  /// Hora real de llegada y salida ("HH:mm"), registradas con "Llegué" / "Ya me voy".
+  final String? arrivedAt;
+  final String? leftAt;
+
+  /// Lo que realmente se gastó en la parada (el costo estimado sigue en [cost]).
+  final double? realCost;
+
   bool get isLinkedToCatalog => poiId != null && poiSource == kPlaceSourceCatalog;
   bool get isSuggestion => poiId != null && poiSource == kPlaceSourceSuggestion;
   bool get isGeneric => !isLinkedToCatalog && !isSuggestion;
@@ -267,6 +277,10 @@ class PlaceSection extends TripSection {
     this.departureTime,
     this.poiId,
     this.poiSource,
+    this.unplanned = false,
+    this.arrivedAt,
+    this.leftAt,
+    this.realCost,
   }) : super(type: 'place');
 
   /// Copia la parada conservando todos los campos que no se pasen
@@ -289,6 +303,13 @@ class PlaceSection extends TripSection {
     String? poiId,
     String? poiSource,
     bool clearPoi = false,
+    bool? unplanned,
+    String? arrivedAt,
+    String? leftAt,
+    double? realCost,
+    bool clearArrivedAt = false,
+    bool clearLeftAt = false,
+    bool clearRealCost = false,
   }) {
     return PlaceSection(
       id: id,
@@ -305,6 +326,10 @@ class PlaceSection extends TripSection {
       departureTime: clearDepartureTime ? null : (departureTime ?? this.departureTime),
       poiId: clearPoi ? null : (poiId ?? this.poiId),
       poiSource: clearPoi ? null : (poiSource ?? this.poiSource),
+      unplanned: unplanned ?? this.unplanned,
+      arrivedAt: clearArrivedAt ? null : (arrivedAt ?? this.arrivedAt),
+      leftAt: clearLeftAt ? null : (leftAt ?? this.leftAt),
+      realCost: clearRealCost ? null : (realCost ?? this.realCost),
     );
   }
 
@@ -332,6 +357,10 @@ class PlaceSection extends TripSection {
       poiId: (data['poiId'] ?? data['poi_id'])?.toString(),
       poiSource: data['poiSource']?.toString() ??
           ((data['poiId'] ?? data['poi_id']) != null ? kPlaceSourceCatalog : null),
+      unplanned: data['unplanned'] == true,
+      arrivedAt: data['arrivedAt']?.toString(),
+      leftAt: data['leftAt']?.toString(),
+      realCost: (data['realCost'] as num?)?.toDouble(),
     );
   }
 
@@ -354,6 +383,10 @@ class PlaceSection extends TripSection {
       'departureTime': departureTime,
       if (poiId != null) 'poiId': poiId,
       if (poiId != null) 'poiSource': poiSource ?? kPlaceSourceCatalog,
+      if (unplanned) 'unplanned': true,
+      if (arrivedAt != null) 'arrivedAt': arrivedAt,
+      if (leftAt != null) 'leftAt': leftAt,
+      if (realCost != null) 'realCost': realCost,
     };
   }
 }
