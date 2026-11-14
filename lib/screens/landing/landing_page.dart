@@ -365,10 +365,12 @@ class _LandingPageState extends State<LandingPage> {
         fit: StackFit.expand,
         children: [
           Container(color: OhtliColors.stormyTeal.withValues(alpha: 0.2)),
-          Image.network(
-            url,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          LayoutBuilder(
+            builder: (context, c) => Image.network(
+              CdmxPhotos.sized(url, c.maxWidth, MediaQuery.devicePixelRatioOf(context)),
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
           ),
         ],
       ),
@@ -971,10 +973,12 @@ class _LandingPageState extends State<LandingPage> {
         children: [
           const SizedBox(width: double.infinity),
           Positioned.fill(
-            child: Image.network(
-              CdmxPhotos.covers[3],
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            child: LayoutBuilder(
+              builder: (context, c) => Image.network(
+                CdmxPhotos.sized(CdmxPhotos.covers[3], c.maxWidth, MediaQuery.devicePixelRatioOf(context)),
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
             ),
           ),
           Positioned.fill(
@@ -1189,7 +1193,8 @@ class _StoryCardState extends State<_StoryCard> {
                   duration: const Duration(milliseconds: 600),
                   curve: Curves.easeOutCubic,
                   child: Image.network(
-                    cover,
+                    // Tarjeta de 300 px de alto: no hace falta la foto a 1280 px
+                    CdmxPhotos.sized(cover, 480, MediaQuery.devicePixelRatioOf(context)),
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => const SizedBox.shrink(),
                   ),

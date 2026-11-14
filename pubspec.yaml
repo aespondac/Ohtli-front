@@ -78,6 +78,9 @@ flutter:
   assets:
     - assets/
     - assets/ribbons/
+    # Inter y Outfit recortadas a caracteres latinos (woff2): google_fonts las toma de aquí
+    # en lugar de descargar los TTF completos (~320 KB cada uno) de fonts.gstatic.com.
+    - assets/google_fonts/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

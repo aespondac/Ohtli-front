@@ -132,4 +132,21 @@ class CdmxPhotos {
 
   /// Portada panorámica de la CDMX para viajes y rutas sin foto.
   static String cover([int seed = 0]) => covers[seed.abs() % covers.length];
+
+  static final RegExp _thumbWidth = RegExp(r'/(\d+)px-');
+  // Anchos que Wikimedia sirve como miniatura estándar (otros, como 640, responden 400)
+  static const List<int> _thumbSteps = [250, 330, 500, 960, 1280];
+
+  /// Misma foto de Wikimedia en el tamaño en que se muestra: [logicalWidth] puntos a la
+  /// densidad de la pantalla ([pixelRatio]). Antes todas se pedían a 1280 px, también en
+  /// tarjetas de 270 px. Otras URLs se devuelven igual.
+  static String sized(String url, double logicalWidth, double pixelRatio) {
+    final m = _thumbWidth.firstMatch(url);
+    if (m == null || !url.contains('wikimedia.org') || !logicalWidth.isFinite) return url;
+    final current = int.parse(m.group(1)!);
+    final needed = logicalWidth * pixelRatio.clamp(1.0, 2.0);
+    final step = _thumbSteps.firstWhere((w) => w >= needed, orElse: () => _thumbSteps.last);
+    if (step >= current) return url;
+    return url.replaceFirst(_thumbWidth, '/${step}px-');
+  }
 }

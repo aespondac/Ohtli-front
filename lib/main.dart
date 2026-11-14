@@ -25,14 +25,15 @@ import 'screens/account/account_management_page.dart';
 import 'screens/trips/trip_viewer_page.dart';
 import 'screens/trips/trip_sample.dart';
 import 'screens/error_404_page.dart';
-import 'screens/lab/lab_landing_page.dart';
-import 'labs/labs_app_page.dart';
+import 'screens/lab/lab_landing_page.dart' deferred as lab_landing;
+import 'labs/labs_app_page.dart' deferred as labs_app;
 import 'labs/lab_experiments.dart';
-import 'labs/lab_eval_page.dart';
-import 'labs/labs_results_page.dart';
+import 'labs/lab_eval_page.dart' deferred as lab_eval;
+import 'labs/labs_results_page.dart' deferred as labs_results;
 import 'labs/lab_access.dart';
 import 'config/admin.dart' show isSuperUser;
-import 'screens/api/api_landing_page.dart';
+import 'screens/api/api_landing_page.dart' deferred as api_landing;
+import 'widgets/deferred_view.dart';
 import 'screens/legal/legal_center_page.dart';
 import 'screens/legal/legal_content.dart';
 import 'screens/onboarding/onboarding_wizard_page.dart';
@@ -121,9 +122,13 @@ void main() async {
   } catch (e) {
     print("Firebase initialization error: $e");
   }
-  // Precarga el catálogo de Lugares (y despierta la API si estaba inactiva)
-  PlacesPage.prefetch();
   runApp(const OhtliApp());
+  // Precarga el catálogo de Lugares (y despierta la API si estaba inactiva) cuando la primera
+  // pantalla ya se dibujó: no compite con la descarga inicial. Lugares y Explorar lo piden
+  // antes si lo necesitan.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => Future.delayed(const Duration(seconds: 2), PlacesPage.prefetch),
+  );
 }
 
 class OhtliApp extends StatelessWidget {
@@ -886,7 +891,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         onExploreHome: () => _navigateTo(OhtliScreen.home),
       );
     } else if (_currentScreen == OhtliScreen.labLanding) {
-      activeView = LabLandingPage(
+      activeView = DeferredView(
+        load: lab_landing.loadLibrary,
+        builder: (_) => lab_landing.LabLandingPage(
         onLoginRedirect: () {
           // En producción, "Ingresar a Labs" abre el laboratorio individual en lab.ohtli.quest
           final host = kIsWeb ? (html.window.location.hostname ?? '') : '';
@@ -914,6 +921,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
             _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
           }
         },
+      ),
       );
     } else if (_currentScreen == OhtliScreen.labApp ||
         (_currentScreen == OhtliScreen.labEval && FirebaseAuth.instance.currentUser != null)) {
@@ -922,28 +930,37 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       final user = FirebaseAuth.instance.currentUser;
       activeView = user == null
           ? const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal))
-          : LabsAppPage(
-              key: ValueKey('labs-${user.uid}'),
-              initialSection: _currentScreen == OhtliScreen.labEval ? 'participa' : _labSection,
-              onSignOut: _signOutOfLabs,
-              onOpenTerms: _openLabsTerms,
+          : DeferredView(
+              load: labs_app.loadLibrary,
+              builder: (_) => labs_app.LabsAppPage(
+                key: ValueKey('labs-${user.uid}'),
+                initialSection: _currentScreen == OhtliScreen.labEval ? 'participa' : _labSection,
+                onSignOut: _signOutOfLabs,
+                onOpenTerms: _openLabsTerms,
+              ),
             );
     } else if (_currentScreen == OhtliScreen.labEval) {
-      activeView = LabEvalPage(
-        onLogin: () {
-          // En labs/lab.ohtli.quest la sesión llega por el SSO con la cuenta de Ohtli
-          if (OhtliSso.isSubdomain) {
-            OhtliSso.continueWithOhtli();
-            return;
-          }
-          setState(() => _intentEval = true);
-          _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
-        },
+      activeView = DeferredView(
+        load: lab_eval.loadLibrary,
+        builder: (_) => lab_eval.LabEvalPage(
+          onLogin: () {
+            // En labs/lab.ohtli.quest la sesión llega por el SSO con la cuenta de Ohtli
+            if (OhtliSso.isSubdomain) {
+              OhtliSso.continueWithOhtli();
+              return;
+            }
+            setState(() => _intentEval = true);
+            _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+          },
+        ),
       );
     } else if (_currentScreen == OhtliScreen.labsResults || _currentScreen == OhtliScreen.labsNews) {
-      activeView = LabsResultsPage(
-        slug: _newsSlug,
-        onOpenEval: () => _navigateTo(OhtliScreen.labEval),
+      activeView = DeferredView(
+        load: labs_results.loadLibrary,
+        builder: (_) => labs_results.LabsResultsPage(
+          slug: _newsSlug,
+          onOpenEval: () => _navigateTo(OhtliScreen.labEval),
+        ),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {
       // En api.ohtli.quest "Iniciar sesión" usa la cuenta de Ohtli (SSO) y vuelve aquí.
@@ -952,13 +969,16 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         initialData: FirebaseAuth.instance.currentUser,
         builder: (context, snapshot) {
           final user = snapshot.data;
-          return ApiLandingPage(
+          return DeferredView(
+            load: api_landing.loadLibrary,
+            builder: (_) => api_landing.ApiLandingPage(
             onLoginRedirect: OhtliSso.isSubdomain
                 ? OhtliSso.continueWithOhtli
                 : () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
             onRegisterRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register),
             onOpenLegal: _openLegal,
             accountLabel: user == null ? null : ((user.displayName ?? '').isNotEmpty ? user.displayName : user.email),
+          ),
           );
         },
       );

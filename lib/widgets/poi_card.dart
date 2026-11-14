@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/colors.dart';
+import '../theme/cdmx_photos.dart';
 import '../models/poi_model.dart';
 import 'poi_detail_dialog.dart';
 
@@ -136,7 +137,7 @@ class _PoiCardState extends State<PoiCard> {
           duration: const Duration(milliseconds: 700),
           curve: Curves.easeOutCubic,
           child: Image.network(
-            poi.imageUrl,
+            CdmxPhotos.sized(poi.imageUrl, widget.width ?? 640, MediaQuery.devicePixelRatioOf(context)),
             fit: BoxFit.cover,
             gaplessPlayback: true,
             frameBuilder: (context, child, frame, wasSync) {

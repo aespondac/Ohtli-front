@@ -502,7 +502,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       child: SizedBox(
         width: 44,
         height: 44,
-        child: Image.network(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback),
+        // Miniatura de 44 px: la foto más pequeña de Wikimedia (antes 1280 px)
+        child: Image.network(CdmxPhotos.sized(url, 44, 2), fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback),
       ),
     );
   }
