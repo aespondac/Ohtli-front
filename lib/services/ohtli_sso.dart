@@ -17,7 +17,9 @@ class OhtliSso {
   OhtliSso._();
 
   static const String mainHost = 'ohtli.quest';
-  static const String mainOrigin = 'https://ohtli.quest';
+  // El dominio principal se sirve en www (ohtli.quest redirige ahí con 301).
+  static const String mainOrigin = 'https://www.ohtli.quest';
+  static const Set<String> _mainHosts = {'ohtli.quest', 'www.ohtli.quest'};
   static const String _fragmentKey = 'ohtli_sso';
   static const String _attemptKey = 'ohtli_sso_attempt';
   static const String _pausedKey = 'ohtli_sso_paused';
@@ -29,10 +31,10 @@ class OhtliSso {
   static String get _host => kIsWeb ? (html.window.location.hostname ?? '').toLowerCase() : '';
 
   /// Estamos en un subdominio que participa del SSO (p. ej. lab.ohtli.quest).
-  static bool get isSubdomain => _host.endsWith('.$mainHost');
+  static bool get isSubdomain => _host.endsWith('.$mainHost') && !_mainHosts.contains(_host);
 
   /// Estamos en el dominio principal, que es quien emite los códigos.
-  static bool get isMainHost => _host == mainHost;
+  static bool get isMainHost => _mainHosts.contains(_host);
 
   /// Hay un código recibido de ohtli.quest pendiente de canjear.
   static bool get hasPendingCode => _pendingCode != null;
@@ -163,7 +165,7 @@ class OhtliSso {
     final uri = Uri.tryParse(raw);
     if (uri == null || uri.scheme != 'https' || uri.hasPort || uri.userInfo.isNotEmpty) return null;
     final host = uri.host.toLowerCase();
-    if (!host.endsWith('.$mainHost')) return null;
+    if (!host.endsWith('.$mainHost') || _mainHosts.contains(host)) return null;
     return uri.removeFragment();
   }
 

@@ -4,7 +4,7 @@
  * Firebase Auth guarda la sesión por origen, así que cada subdominio tendría que
  * iniciar sesión por separado. El puente funciona con un código de un solo uso:
  *
- *   1. El subdominio sin sesión manda al usuario a https://ohtli.quest/sso?return=<url>.
+ *   1. El subdominio sin sesión manda al usuario a https://www.ohtli.quest/sso?return=<url>.
  *   2. En ohtli.quest (donde ya hay sesión) la app llama a POST /__sso/issue con su
  *      ID token. Aquí se valida el token y se guarda un código aleatorio que vale
  *      60 s, ligado al uid y al origen de destino (solo se guarda su hash).
@@ -25,6 +25,8 @@
 const crypto = require('crypto');
 
 const MAIN_HOST = 'ohtli.quest';
+// El dominio principal se sirve en www (ohtli.quest redirige ahí); ambos emiten códigos.
+const MAIN_HOSTS = new Set([MAIN_HOST, 'www.' + MAIN_HOST]);
 const CODE_TTL_MS = 60 * 1000;
 const CODE_RE = /^[A-Za-z0-9_-]{43}$/; // 32 bytes en base64url
 
@@ -63,12 +65,12 @@ function makeHandler(admin) {
     try {
       if (action === 'issue') {
         // Solo el dominio principal emite códigos, y solo para un subdominio.
-        if (caller.host !== MAIN_HOST) {
+        if (!MAIN_HOSTS.has(caller.host)) {
           res.status(403).json({ error: 'issuer_not_allowed' });
           return;
         }
         const target = parseOhtliOrigin(body.target);
-        if (!target || target.host === MAIN_HOST) {
+        if (!target || MAIN_HOSTS.has(target.host)) {
           res.status(400).json({ error: 'invalid_target' });
           return;
         }
