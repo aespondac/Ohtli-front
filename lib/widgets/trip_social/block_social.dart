@@ -164,8 +164,8 @@ class _HoverBuilderState extends State<HoverBuilder> {
   }
 }
 
-/// Al pasar el cursor sobre [child] aparece encima la barra de reacciones, como en iMessage.
-/// En pantallas táctiles se abre con una pulsación larga.
+/// Al pasar el cursor sobre [child] aparece una burbuja con «+»; al tocarla se despliegan las
+/// reacciones, como en iMessage. En pantallas táctiles se abren con una pulsación larga.
 class HoverTapback extends StatefulWidget {
   final Widget child;
   final String? selected;
@@ -199,6 +199,7 @@ class _HoverTapbackState extends State<HoverTapback> {
   final LayerLink _link = LayerLink();
   bool _inTarget = false;
   bool _inBar = false;
+  bool _expanded = false;
   Timer? _hideTimer;
 
   void _sync() {
@@ -206,9 +207,12 @@ class _HoverTapbackState extends State<HoverTapback> {
     if (_inTarget || _inBar) {
       if (!_portal.isShowing) _portal.show();
     } else {
-      // Pequeña espera para poder mover el cursor del bloque a la barra.
-      _hideTimer = Timer(const Duration(milliseconds: 180), () {
-        if (mounted && !_inTarget && !_inBar && _portal.isShowing) _portal.hide();
+      // Pequeña espera para poder mover el cursor del bloque a la burbuja.
+      _hideTimer = Timer(Duration(milliseconds: _expanded ? 260 : 180), () {
+        if (mounted && !_inTarget && !_inBar && _portal.isShowing) {
+          _portal.hide();
+          setState(() => _expanded = false);
+        }
       });
     }
   }
@@ -218,6 +222,32 @@ class _HoverTapbackState extends State<HoverTapback> {
     _inBar = false;
     _inTarget = false;
     if (_portal.isShowing) _portal.hide();
+    if (_expanded) setState(() => _expanded = false);
+  }
+
+  Widget _plusBubble() {
+    final bool isDark = widget.isDark;
+    return Tooltip(
+      message: 'Reaccionar',
+      waitDuration: const Duration(milliseconds: 600),
+      child: Material(
+        color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+        shape: CircleBorder(side: BorderSide(color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.08))),
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: 0.3),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => setState(() => _expanded = true),
+          child: SizedBox(
+            width: 30,
+            height: 30,
+            child: Center(
+              child: Icon(Icons.add_rounded, size: 19, color: isDark ? Colors.white70 : const Color(0xFF5B6770)),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -254,20 +284,46 @@ class _HoverTapbackState extends State<HoverTapback> {
               },
               child: Material(
                 color: Colors.transparent,
-                child: TapbackPicker(
-                  compact: true,
-                  selected: widget.selected,
-                  isDark: widget.isDark,
-                  onMore: widget.onMore == null
-                      ? null
-                      : () {
-                          _hideNow();
-                          widget.onMore!();
-                        },
-                  onPick: (k) {
-                    _hideNow();
-                    widget.onPick(k);
-                  },
+                // Aparece con un pequeño salto; la burbuja «+» se abre en la fila de reacciones.
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0.6, end: 1),
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOutBack,
+                  builder: (_, t, child) => Opacity(
+                    opacity: ((t - 0.6) / 0.4).clamp(0.0, 1.0),
+                    child: Transform.scale(scale: t, alignment: follower, child: child),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 190),
+                    switchInCurve: Curves.easeOutBack,
+                    switchOutCurve: Curves.easeIn,
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: follower,
+                      children: [...previous, if (current != null) current],
+                    ),
+                    transitionBuilder: (child, a) => FadeTransition(
+                      opacity: a,
+                      child: ScaleTransition(scale: Tween(begin: 0.5, end: 1.0).animate(a), alignment: follower, child: child),
+                    ),
+                    child: !_expanded
+                        ? KeyedSubtree(key: const ValueKey('mas'), child: _plusBubble())
+                        : TapbackPicker(
+                            key: const ValueKey('reacciones'),
+                            compact: true,
+                            selected: widget.selected,
+                            isDark: widget.isDark,
+                            onMore: widget.onMore == null
+                                ? null
+                                : () {
+                                    _hideNow();
+                                    widget.onMore!();
+                                  },
+                            onPick: (k) {
+                              _hideNow();
+                              widget.onPick(k);
+                            },
+                          ),
+                  ),
                 ),
               ),
             ),
@@ -513,6 +569,19 @@ class _NoteThreadState extends State<NoteThread> {
     _controller.addListener(() => setState(() {}));
   }
 
+  /// Si no se escribió nada, al tocar fuera del campo se cierra.
+  void _closeIfEmpty() {
+    if (!mounted || _sending || _controller.text.trim().isNotEmpty) return;
+    if (widget.compact && _composerOpen) {
+      setState(() {
+        _composerOpen = false;
+        _editing = null;
+      });
+    } else if (_editing != null) {
+      setState(() => _editing = null);
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -585,7 +654,15 @@ class _NoteThreadState extends State<NoteThread> {
   Widget _composer() {
     final isDark = widget.isDark;
     final bool canSend = _controller.text.trim().isNotEmpty && !_sending;
-    return Row(
+    // TapRegion avisa de cualquier clic fuera, tenga o no el foco el campo.
+    return TapRegion(
+      onTapOutside: (_) {
+        if (_controller.text.trim().isEmpty) {
+          if (_focus.hasFocus) _focus.unfocus();
+          _closeIfEmpty();
+        }
+      },
+      child: Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
@@ -645,6 +722,7 @@ class _NoteThreadState extends State<NoteThread> {
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -690,7 +768,7 @@ class _NoteThreadState extends State<NoteThread> {
                 )
             : null,
       );
-      rows.add(bubble);
+      rows.add(PopIn(key: ValueKey('nota_${n.id}'), fromRight: mine, child: bubble));
     }
 
     final bool showAddPill = widget.canWrite && !_composerOpen && widget.revealAdd;
@@ -818,7 +896,7 @@ class _Bubble extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         Container(
-          constraints: BoxConstraints(maxWidth: compact ? 230 : 420),
+          constraints: BoxConstraints(maxWidth: compact ? 200 : 420),
           margin: EdgeInsets.only(top: hasReactions ? 12 : 0),
           padding: EdgeInsets.symmetric(horizontal: compact ? 11 : 13, vertical: compact ? 7 : 8),
           decoration: BoxDecoration(
@@ -839,19 +917,31 @@ class _Bubble extends StatelessWidget {
     );
     if (decorate != null) bubble = decorate!(bubble);
 
+    // Círculo con la foto de perfil (o la inicial) al final de cada grupo de mensajes.
+    final double avatarSize = compact ? 22 : 24;
+    final bool hasPhoto = note.authorPhoto != null && note.authorPhoto!.isNotEmpty;
     final avatar = SizedBox(
-      width: compact ? 0 : 24,
-      child: showAvatar && !mine && !compact
-          ? CircleAvatar(
-              radius: 12,
-              backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.18),
-              backgroundImage: (note.authorPhoto != null && note.authorPhoto!.isNotEmpty) ? NetworkImage(note.authorPhoto!) : null,
-              child: (note.authorPhoto == null || note.authorPhoto!.isEmpty)
-                  ? Text(
-                      note.authorName.isNotEmpty ? note.authorName.characters.first.toUpperCase() : '?',
-                      style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal),
-                    )
-                  : null,
+      width: avatarSize,
+      child: showAvatar
+          ? Container(
+              width: avatarSize,
+              height: avatarSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: isDark ? const Color(0xFF121214) : Colors.white, width: 1.5),
+                boxShadow: compact ? [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 4, offset: const Offset(0, 1))] : null,
+              ),
+              child: CircleAvatar(
+                backgroundColor: mine ? kBubbleMine.withValues(alpha: 0.18) : OhtliColors.stormyTeal.withValues(alpha: 0.2),
+                backgroundImage: hasPhoto ? NetworkImage(note.authorPhoto!) : null,
+                child: hasPhoto
+                    ? null
+                    : Text(
+                        note.authorName.isNotEmpty ? note.authorName.characters.first.toUpperCase() : '?',
+                        style: GoogleFonts.inter(
+                            fontSize: compact ? 9.5 : 10.5, fontWeight: FontWeight.w700, color: mine ? kBubbleMine : OhtliColors.stormyTeal),
+                      ),
+              ),
             )
           : null,
     );
@@ -863,7 +953,7 @@ class _Bubble extends StatelessWidget {
         children: [
           if (showName)
             Padding(
-              padding: EdgeInsets.only(left: compact ? 6 : 36, bottom: 2),
+              padding: EdgeInsets.only(left: avatarSize + 12, bottom: 2),
               child: Text(note.authorName,
                   style: GoogleFonts.inter(fontSize: 11, color: isDark ? Colors.white54 : OhtliColors.subtleText)),
             ),
@@ -872,17 +962,57 @@ class _Bubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.max,
             children: [
-              if (!mine && !compact) ...[avatar, const SizedBox(width: 6)],
+              if (!mine) ...[avatar, const SizedBox(width: 6)],
               Flexible(child: bubble),
-              if (mine) const SizedBox(width: 4),
+              if (mine) ...[const SizedBox(width: 6), avatar],
             ],
           ),
           if (footer != null)
             Padding(
-              padding: EdgeInsets.only(top: 3, left: mine ? 0 : (compact ? 6 : 36), right: mine ? 4 : 0),
+              padding: EdgeInsets.only(top: 3, left: mine ? 0 : avatarSize + 12, right: mine ? avatarSize + 10 : 0),
               child: Text(footer!, style: GoogleFonts.inter(fontSize: 10.5, color: isDark ? Colors.white38 : Colors.black38)),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Entrada con un pequeño salto la primera vez que se dibuja (p. ej. un mensaje recién enviado).
+class PopIn extends StatefulWidget {
+  final Widget child;
+  final bool fromRight;
+  const PopIn({super.key, required this.child, this.fromRight = false});
+
+  @override
+  State<PopIn> createState() => _PopInState();
+}
+
+class _PopInState extends State<PopIn> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 320))..forward();
+  late final Animation<double> _t = CurvedAnimation(parent: _c, curve: Curves.easeOutBack);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _t,
+      child: widget.child,
+      builder: (_, child) => Opacity(
+        opacity: _c.value.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, (1 - _t.value) * 10),
+          child: Transform.scale(
+            scale: 0.85 + 0.15 * _t.value,
+            alignment: widget.fromRight ? Alignment.bottomRight : Alignment.bottomLeft,
+            child: child,
+          ),
+        ),
       ),
     );
   }

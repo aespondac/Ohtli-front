@@ -33,6 +33,7 @@ import '../../widgets/place_details_form.dart';
 import '../../services/trip_social_service.dart';
 import '../../widgets/trip_social/block_social.dart';
 import '../../widgets/trip_mini_map.dart';
+import '../../widgets/reveal_on_scroll.dart';
 import '../../services/place_locator.dart';
 import 'trip_sample.dart';
 
@@ -969,7 +970,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final day = DateTime(t.travelDate!.year, t.travelDate!.month, t.travelDate!.day);
-      final bool past = day.isBefore(today);
+      // Desde el día del viaje ya se puede calificar (cada parada al visitarla).
+      final bool past = !day.isAfter(today);
+      final bool isToday = day == today;
       final rated = places.where((p) => p.rating > 0).toList();
       final avg = rated.isEmpty ? 0.0 : rated.fold<int>(0, (a, p) => a + p.rating) / rated.length;
       cards.add(_panelCard(isDark: isDark, icon: Icons.star_rounded, title: 'CALIFICAR EL VIAJE', children: [
@@ -985,7 +988,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
           Text('${rated.length} de ${places.length} paradas calificadas.', style: GoogleFonts.inter(fontSize: 12, color: sub)),
         ] else
           Text(
-            past ? 'Ya pasó ${_formatSpanishDate(t.travelDate)}. ¿Qué tal estuvo cada parada?' : 'Podrás calificar las paradas después ${_formatSpanishDate(t.travelDate).replaceFirst('el ', 'del ')}.',
+            isToday
+                ? 'Hoy es el viaje: califica cada parada cuando la visites.'
+                : past
+                    ? 'Ya pasó ${_formatSpanishDate(t.travelDate)}. ¿Qué tal estuvo cada parada?'
+                    : 'Podrás calificar las paradas a partir ${_formatSpanishDate(t.travelDate).replaceFirst('el ', 'del ')}.',
             style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg),
           ),
         if (past && canEdit) ...[
@@ -1324,7 +1331,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }).toList();
 
     if (_isSample) {
-      setState(() => _sections = updated);
+      final t = _trip!;
+      setState(() {
+        _sections = updated;
+        _trip = Trip.fromMap({...t.toMap(), 'reviewedAt': Timestamp.now()}, t.id);
+      });
       _sampleNotice('En la muestra la calificación se ve, pero no se guarda.');
       return;
     }
@@ -3088,7 +3099,12 @@ class _TripViewerPageState extends State<TripViewerPage> {
         final section = _sections[index];
         return KeyedSubtree(
           key: _blockKeys.putIfAbsent(section.id, () => GlobalKey()),
-          child: _buildBlockCard(section, isDark, isDesktop, index),
+          // Cada bloque aparece al entrar en pantalla (y al cargarse, si ya está a la vista).
+          child: RevealOnScroll(
+            key: ValueKey('reveal_${section.id}'),
+            scroll: _scrollController,
+            child: _buildBlockCard(section, isDark, isDesktop, index),
+          ),
         );
       },
     );
@@ -3123,34 +3139,37 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
     // 1) Bloque con la pastilla de reacciones montada en su borde superior derecho.
     Widget block = content;
+    // En las paradas la pastilla se monta sobre el borde superior de la tarjeta;
+    // en el resto de bloques va encima del texto para no taparlo.
+    double padTop = 30, pillTop = 0;
+    if (section is PlaceSection) {
+      final hasPhotos = section.mainPhotoUrl.isNotEmpty || section.secondaryPhotoUrls.any((u) => u.isNotEmpty);
+      final cardTop = !hasPhotos ? 0.0 : (isDesktop ? 14.0 : 86.0);
+      padTop = hasPhotos ? 0 : 12;
+      pillTop = cardTop + padTop - 12 + (_tripMode ? 52 : 0);
+    }
+    // Con mensajes al margen, las burbujas montan 42 px sobre el borde: la pastilla se corre para no taparlas.
+    final double pillRight = _marginLayout ? 58 : 18;
     if (social && (summarizeReactions(reactions).isNotEmpty || _canInteract)) {
-      // En las paradas la pastilla se monta sobre el borde superior de la tarjeta;
-      // en el resto de bloques va encima del texto para no taparlo.
-      double padTop = 30, pillTop = 0;
-      if (section is PlaceSection) {
-        final hasPhotos = section.mainPhotoUrl.isNotEmpty || section.secondaryPhotoUrls.any((u) => u.isNotEmpty);
-        final cardTop = !hasPhotos ? 0.0 : (isDesktop ? 14.0 : 86.0);
-        padTop = hasPhotos ? 0 : 12;
-        pillTop = cardTop + padTop - 12 + (_tripMode ? 52 : 0);
-      }
       block = Stack(
         clipBehavior: Clip.none,
         children: [
           Padding(padding: EdgeInsets.only(top: padTop), child: content),
           Positioned(
             top: pillTop,
-            // Con mensajes al margen, las burbujas montan 42 px sobre el borde: la pastilla se corre para no taparlas.
-            right: _marginLayout ? 58 : 18,
+            right: pillRight,
             child: ReactionSummary(byUser: reactions, myUid: uid, memberNames: names, isDark: isDark),
           ),
         ],
       );
     }
     if (_canInteract) {
+      // La burbuja «+» aparece junto a la pastilla de reacciones, en la esquina superior derecha.
       block = HoverTapback(
         selected: uid != null ? reactions[uid] : null,
         isDark: isDark,
-        offset: const Offset(16, 10),
+        alignRight: true,
+        offset: Offset(36 - pillRight, pillTop + 26),
         onPick: (k) => _reactToBlock(section.id, k),
         child: block,
       );
@@ -3234,9 +3253,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
             children: [
               Expanded(child: block),
               // Se monta sobre el borde derecho del bloque, como una nota pegada.
+              // Se monta 42 px sobre el borde del bloque. La separación de arriba es de diseño (no un
+              // desplazamiento) para que la fila crezca con los mensajes y todos reciban clics.
               Transform.translate(
-                offset: Offset(-42, top),
-                child: SizedBox(width: 236, child: thread(compact: true, revealAdd: hovered)),
+                offset: const Offset(-42, 0),
+                child: Padding(
+                  padding: EdgeInsets.only(top: top),
+                  // Los mensajes llegan un instante después del bloque, deslizándose desde el margen.
+                  child: RevealOnScroll(
+                    scroll: _scrollController,
+                    delay: const Duration(milliseconds: 160),
+                    from: const Offset(24, 0),
+                    child: SizedBox(width: 236, child: thread(compact: true, revealAdd: hovered)),
+                  ),
+                ),
               ),
             ],
           ),
