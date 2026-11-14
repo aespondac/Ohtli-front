@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
-import '../../services/user_private_data.dart';
+import '../../services/place_affinity.dart';
+import '../../services/saved_places.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
@@ -155,9 +156,11 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
 
   AnimationController? _shimmerController;
 
-  List<String> _savedPoiIds = [];
+  /// "Mis lugares": se guardan en la cuenta (ver SavedPlaces), del más reciente al más antiguo
+  List<String> get _savedPoiIds => SavedPlaces.ids.value;
   List<String> _viewedPoiIds = [];
-  List<double> _userTasteVector = [];
+  /// Afinidad real (poi_id → %) calculada por el motor; vacía si no hay perfil de gustos
+  Map<String, int> _affinity = const {};
 
   bool _isLoadingPois = true;
   String? _poisError;
@@ -240,9 +243,10 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       duration: const Duration(milliseconds: 1400),
     )..repeat();
 
-    _loadSavedPlaces();
+    SavedPlaces.ensureStarted();
+    SavedPlaces.ids.addListener(_onSavedChanged);
     _loadViewedPlaces();
-    _loadUserTasteVector();
+    _loadAffinity();
 
     // 1. In-memory cache: instantáneo (0ms) al regresar de pestañas o vistas
     if (_globalPoisCache.isNotEmpty) {
@@ -303,6 +307,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   @override
   void dispose() {
     catalogVersion.removeListener(_onCatalogUpdated);
+    SavedPlaces.ids.removeListener(_onSavedChanged);
     _shimmerController?.dispose();
     _slowLoadTimer?.cancel();
     _searchController.dispose();
@@ -382,15 +387,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     }
   }
 
-  void _loadSavedPlaces() {
-    if (kIsWeb) {
-      try {
-        final saved = html.window.localStorage['ohtli_saved_pois'];
-        if (saved != null && saved.isNotEmpty) {
-          _savedPoiIds = saved.split(',').where((id) => id.trim().isNotEmpty).toList();
-        }
-      } catch (_) {}
-    }
+  void _onSavedChanged() {
+    if (mounted) setState(() {});
   }
 
   bool get _isGuest => FirebaseAuth.instance.currentUser == null;
@@ -405,19 +403,14 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       );
       return;
     }
-    setState(() {
-      if (_savedPoiIds.contains(poiId)) {
-        _savedPoiIds.remove(poiId);
-      } else {
-        _savedPoiIds.insert(0, poiId);
+    SavedPlaces.toggle(poiId).catchError((_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo guardar el lugar. Revisa tu conexión.')),
+        );
       }
+      return false;
     });
-
-    if (kIsWeb) {
-      try {
-        html.window.localStorage['ohtli_saved_pois'] = _savedPoiIds.join(',');
-      } catch (_) {}
-    }
   }
 
   void _loadViewedPlaces() {
@@ -448,46 +441,13 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _loadUserTasteVector() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        final data = await UserPrivateData.get(user.uid);
-        {
-          final rawVec = data['taste_vector'];
-          if (rawVec is List && rawVec.isNotEmpty) {
-            _userTasteVector = rawVec.map((e) => (e as num).toDouble()).toList();
-          }
-        }
-      } catch (_) {}
-    }
-    if (mounted) {
-      setState(() {});
-    }
+  Future<void> _loadAffinity() async {
+    final scores = await PlaceAffinity.load();
+    if (mounted) setState(() => _affinity = scores);
   }
 
-  double _computeCosineSimilarity(List<double> vecA, List<double> vecB) {
-    if (vecA.isEmpty || vecB.isEmpty || vecA.length != vecB.length) return 0.0;
-    double dot = 0.0;
-    double normA = 0.0;
-    double normB = 0.0;
-    for (int i = 0; i < vecA.length; i++) {
-      dot += vecA[i] * vecB[i];
-      normA += vecA[i] * vecA[i];
-      normB += vecB[i] * vecB[i];
-    }
-    if (normA == 0.0 || normB == 0.0) return 0.0;
-    return dot / (math.sqrt(normA) * math.sqrt(normB));
-  }
-
-  int _calculateAffinity(Poi poi, int fallbackIndex) {
-    if (_userTasteVector.isNotEmpty && poi.embeddingVector.isNotEmpty && _userTasteVector.length == poi.embeddingVector.length) {
-      final sim = _computeCosineSimilarity(_userTasteVector, poi.embeddingVector);
-      return (sim * 100).clamp(70.0, 99.0).toInt();
-    }
-    const fallbackScores = [98, 97, 96, 95, 94, 93, 92, 91, 90, 89];
-    return fallbackScores[fallbackIndex % fallbackScores.length];
-  }
+  /// Porcentaje real de afinidad, o null si no se calculó para este lugar.
+  int? _calculateAffinity(Poi poi) => _affinity[poi.poiId];
 
   void _onPoiTapped(Poi poi) {
     _recordPlaceViewed(poi.poiId);
@@ -495,15 +455,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       context,
       poi,
       isSaved: _savedPoiIds.contains(poi.poiId),
-      onSaveToggle: (saved) {
-        setState(() {
-          if (saved) {
-            if (!_savedPoiIds.contains(poi.poiId)) _savedPoiIds.insert(0, poi.poiId);
-          } else {
-            _savedPoiIds.remove(poi.poiId);
-          }
-        });
-      },
+      // El diálogo guarda con SavedPlaces; esta página se entera por el listener
       onCreateRoute: () => _createRouteFromPlace(poi),
     );
   }
@@ -674,12 +626,17 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         : <Poi>[];
 
     // 1. "Para ti": Exactly 5 cards with highest affinity, double width (2x)
+    // Con perfil de gustos: los más afines según el motor. Sin perfil: el orden del catálogo.
     final paraTiPois = List<Poi>.from(allPois);
-    paraTiPois.sort((a, b) {
-      final scoreA = _calculateAffinity(a, 0);
-      final scoreB = _calculateAffinity(b, 1);
-      return scoreB.compareTo(scoreA);
-    });
+    if (_affinity.isNotEmpty) {
+      final scored = paraTiPois.where((p) => _affinity.containsKey(p.poiId)).toList()
+        ..sort((a, b) => _affinity[b.poiId]!.compareTo(_affinity[a.poiId]!));
+      if (scored.isNotEmpty) {
+        paraTiPois
+          ..removeWhere((p) => _affinity.containsKey(p.poiId))
+          ..insertAll(0, scored);
+      }
+    }
     final paraTiCards = paraTiPois.take(5).toList();
 
     // 2. "Descubre nuevos lugares": Todos los lugares indexados en la CDMX para scroll horizontal continuo
@@ -843,7 +800,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   title: isGuest ? 'Imperdibles de la ciudad' : 'Para ti',
                   subtitle: isGuest
                       ? 'Lugares destacados para empezar a explorar'
-                      : (_userTasteVector.isNotEmpty
+                      : (_affinity.isNotEmpty
                           ? 'Elegidos según tus gustos y tu forma de viajar'
                           : 'Una selección de imperdibles para empezar'),
                   icon: isGuest ? Icons.star_rounded : Icons.auto_awesome_rounded,
@@ -865,7 +822,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                     height: immersiveHeight,
                     variant: PoiCardVariant.immersive,
                     // Sin cuenta no hay perfil de gustos, así que no se muestra afinidad
-                    affinity: isGuest ? null : _calculateAffinity(poi, index),
+                    affinity: isGuest ? null : _calculateAffinity(poi),
                     isSaved: _savedPoiIds.contains(poi.poiId),
                     onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
                     onCreateRoute: () => _createRouteFromPlace(poi),

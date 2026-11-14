@@ -13,6 +13,7 @@ import '../models/trip_model.dart';
 import '../screens/trips/trip_editor_page.dart';
 import '../screens/trips/trip_viewer_page.dart';
 import '../utils/friendly_errors.dart';
+import '../services/saved_places.dart';
 import 'osrm_map_widget.dart';
 
 class PoiDetailDialog extends StatefulWidget {
@@ -89,37 +90,24 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
   }
 
   void _checkSavedStatus() {
-    if (kIsWeb) {
-      try {
-        final saved = html.window.localStorage['ohtli_saved_pois'];
-        if (saved != null && saved.isNotEmpty) {
-          final ids = saved.split(',').where((id) => id.trim().isNotEmpty).toList();
-          if (ids.contains(widget.poi.poiId)) {
-            setState(() => _isSaved = true);
-          }
-        }
-      } catch (_) {}
-    }
+    SavedPlaces.ensureStarted();
+    if (SavedPlaces.contains(widget.poi.poiId)) _isSaved = true;
   }
 
   void _toggleSave() {
     // Guardar lugares es solo para cuentas registradas
     if (FirebaseAuth.instance.currentUser == null) return;
     setState(() => _isSaved = !_isSaved);
-    if (kIsWeb) {
-      try {
-        final saved = html.window.localStorage['ohtli_saved_pois'];
-        List<String> ids = (saved != null && saved.isNotEmpty)
-            ? saved.split(',').where((id) => id.trim().isNotEmpty).toList()
-            : [];
-        if (_isSaved) {
-          if (!ids.contains(widget.poi.poiId)) ids.insert(0, widget.poi.poiId);
-        } else {
-          ids.remove(widget.poi.poiId);
-        }
-        html.window.localStorage['ohtli_saved_pois'] = ids.join(',');
-      } catch (_) {}
-    }
+    final wanted = _isSaved;
+    SavedPlaces.setSaved(widget.poi.poiId, wanted).catchError((_) {
+      if (mounted) {
+        setState(() => _isSaved = !wanted);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo guardar el lugar. Revisa tu conexión.')),
+        );
+      }
+      return !wanted;
+    });
     widget.onSaveToggle?.call(_isSaved);
 
     ScaffoldMessenger.of(context).showSnackBar(
