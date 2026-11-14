@@ -293,8 +293,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       if (hasMap)
                         ListTile(
                           leading: const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal),
-                          title: Text('Mapa y cronología', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                          onTap: () => go(() => _scrollToKey(_mapKey)),
+                          title: Text('Ruta completa en el mapa', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                          onTap: () => go(() => _showRouteModal(isDark)),
                         ),
                       ..._sections.where((s) => s is! TransferSection && s is! UnknownSection).map((s) {
                         final num = numbers[s.id];
@@ -1812,10 +1812,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     children: [
                       if (_trip?.isReleaseNotes == true)
                         _buildReleaseNotesHeader(isDark)
-                      else if (!wideAside)
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 820),
-                          child: KeyedSubtree(key: _mapKey, child: _buildRouteMapAndChronologySection(isDark, isDesktop)),
+                      else if (!wideAside && _sections.any((s) => s is PlaceSection))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 32),
+                          child: KeyedSubtree(key: _mapKey, child: _buildMiniMap(isDark)),
                         ),
                       _buildTimeline(isDark, isDesktop),
                       ConstrainedBox(
@@ -2067,20 +2067,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 style: GoogleFonts.inter(fontWeight: FontWeight.bold),
               ),
             )
-          : (!isLocked && _sections.isNotEmpty
-              ? FloatingActionButton.extended(
-                  onPressed: _isExportingPdf ? null : () => _exportPdf(),
-                  backgroundColor: OhtliColors.stormyTeal,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                  label: Text(
-                    'Generar PDF',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
-                  ),
-                )
-              : null),
+          : null,
     );
   }
 
@@ -2806,18 +2793,17 @@ class _TripViewerPageState extends State<TripViewerPage> {
         child: content,
       );
     }
-    return SizedBox(
-      height: isDesktop ? 540 : 470,
-      width: double.infinity,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image(
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Image(
             image: _getImageProvider(cover),
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => ColoredBox(color: isDark ? const Color(0xFF26343A) : OhtliColors.stormyTeal),
           ),
-          DecoratedBox(
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -2827,9 +2813,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
               ),
             ),
           ),
-          Align(alignment: Alignment.bottomCenter, child: content),
-        ],
-      ),
+        ),
+        // Crece con el texto; deja aire arriba para la barra y el botón de índice.
+        Container(
+          width: double.infinity,
+          constraints: BoxConstraints(minHeight: isDesktop ? 540 : 470),
+          padding: const EdgeInsets.only(top: 110),
+          alignment: Alignment.bottomCenter,
+          child: content,
+        ),
+      ],
     );
   }
 
@@ -4237,321 +4230,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildRouteMapAndChronologySection(bool isDark, bool isDesktop) {
-    final places = _sections.whereType<PlaceSection>().toList();
-    if (places.isEmpty) return const SizedBox.shrink();
-
-    const mapsApiKey = String.fromEnvironment('mapsApiKey');
-    const apiKey = String.fromEnvironment('apiKey');
-    final activeKey = mapsApiKey.isNotEmpty ? mapsApiKey : apiKey;
-
-    final markers = StringBuffer();
-    final path = StringBuffer('&path=color:0x2F6B6Bff|weight:5');
-    final waypointNames = <String>[];
-
-    for (int i = 0; i < places.length; i++) {
-      final p = places[i];
-      final label = (i + 1).toString();
-      if (p.lat != null && p.lng != null) {
-        markers.write('&markers=color:0xE26D5C|label:$label|${p.lat},${p.lng}');
-        path.write('|${p.lat},${p.lng}');
-        waypointNames.add('${p.lat},${p.lng}');
-      } else {
-        final encodedName = Uri.encodeComponent('${p.title}, CDMX');
-        markers.write('&markers=color:0xE26D5C|label:$label|$encodedName');
-        waypointNames.add(encodedName);
-      }
-    }
-
-    final staticMapUrl = activeKey.isNotEmpty
-        ? 'https://maps.googleapis.com/maps/api/staticmap?size=900x420&scale=2&maptype=roadmap$path$markers&key=$activeKey'
-        : '';
-
-    String googleMapsDirectionsUrl = '';
-    if (waypointNames.isNotEmpty) {
-      final origin = waypointNames.first;
-      final destination = waypointNames.last;
-      final waypoints = waypointNames.length > 2
-          ? waypointNames.sublist(1, waypointNames.length - 1).join('|')
-          : '';
-      googleMapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination' +
-          (waypoints.isNotEmpty ? '&waypoints=$waypoints' : '') +
-          '&travelmode=walking';
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 28),
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white12 : OhtliColors.cardBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.25 : 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header de la sección
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.stormyTeal.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.map_rounded, color: OhtliColors.stormyTeal, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Mapa de la Ruta',
-                        style: GoogleFonts.outfit(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : OhtliColors.onyx,
-                        ),
-                      ),
-                      Text(
-                        '${places.length} paradas organizadas cronológicamente',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: isDark ? Colors.white60 : OhtliColors.subtleText,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              if (googleMapsDirectionsUrl.isNotEmpty)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    html.window.open(googleMapsDirectionsUrl, '_blank');
-                  },
-                  icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                  label: Text(
-                    isDesktop ? 'Abrir en Google Maps' : 'Abrir Mapa',
-                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.stormyTeal,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 18),
-
-          // Contenedor visual del mapa con OpenStreetMap & OSRM
-          OsrmMapWidget(
-            onStopSelected: (stop) {
-              final id = stop['section_id'];
-              if (id is String) _scrollToBlock(id);
-            },
-            stops: places.map((p) => {
-              'section_id': p.id,
-              'name': p.title,
-              'lat': p.lat,
-              'lng': p.lng,
-              'arrival_time': p.arrivalTime ?? '',
-              'departure_time': p.departureTime ?? '',
-              'price_mxn': p.cost,
-            }).toList(),
-            height: isDesktop ? 320 : 240,
-            isDark: isDark,
-          ),
-          const SizedBox(height: 24),
-
-          // Título de la Cronología
-          Row(
-            children: [
-              const Icon(Icons.timeline_rounded, color: OhtliColors.cempasuchil, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'Cronología del Recorrido',
-                style: GoogleFonts.outfit(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : OhtliColors.onyx,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Lista de paradas de la cronología
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: places.length,
-            itemBuilder: (context, idx) => InkWell(
-              onTap: () => _scrollToBlock(places[idx].id),
-              borderRadius: BorderRadius.circular(12),
-              child: ((BuildContext context, int idx) {
-              final p = places[idx];
-              final isLast = idx == places.length - 1;
-              final timeStr = p.arrivalTime != null ? '${p.arrivalTime}${p.departureTime != null ? " - ${p.departureTime}" : ""}' : 'Parada ${idx + 1}';
-
-              final tr = idx > 0 ? transferBefore(_sections, _sections.indexOf(p)) : null;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                if (tr != null)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 42, bottom: 10, top: 0),
-                    child: Row(
-                      children: [
-                        Icon(transferModeOf(tr.mode).icon, size: 15, color: OhtliColors.stormyTeal),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            describeTransfer(tr),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: isDark ? Colors.white60 : OhtliColors.subtleText),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Columna izquierda: Número y línea conectora
-                    Column(
-                      children: [
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: OhtliColors.stormyTeal,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: OhtliColors.stormyTeal.withOpacity(0.3),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${idx + 1}',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (!isLast)
-                          Expanded(
-                            child: Container(
-                              width: 2,
-                              color: OhtliColors.stormyTeal.withOpacity(0.25),
-                              margin: const EdgeInsets.symmetric(vertical: 4),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(width: 14),
-
-                    // Columna derecha: Detalles de la parada
-                    Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    p.title,
-                                    style: GoogleFonts.outfit(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark ? Colors.white : OhtliColors.onyx,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: OhtliColors.cempasuchil.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    timeStr,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: OhtliColors.cempasuchil,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (p.cost > 0) ...[
-                              const SizedBox(height: 3),
-                              Text(
-                                '\$${p.cost.toStringAsFixed(0)} ${p.currency}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: OhtliColors.stormyTeal,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 4),
-                            Text(
-                              p.description,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: isDark ? Colors.white60 : OhtliColors.subtleText,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-                ],
-              );
-            })(context, idx),
-            ),
-          ),
-        ],
       ),
     );
   }
