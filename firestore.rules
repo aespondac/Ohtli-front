@@ -43,6 +43,11 @@ service cloud.firestore {
         request.auth.uid in trip.get('surpriseTargetIds', [])
       );
     }
+    // Viaje publicado y público: cualquiera puede leer su contenido.
+    function isPublicTrip(ownerId, tripId) {
+      let trip = get(/databases/$(database)/documents/users/$(ownerId)/trips/$(tripId)).data;
+      return trip.get('status', '') == 'published' && trip.get('visibility', '') == 'public';
+    }
     function tripUpdateAllowed(data) {
       return request.auth != null && (
         request.auth.uid == data.get('userId', '') ||
@@ -195,10 +200,12 @@ service cloud.firestore {
           );
         }
 
-        // --- Notas y reacciones del grupo: solo los miembros del viaje ---
-        // Notas tipo burbuja ancladas a un bloque.
+        // --- Mensajes y reacciones del grupo ---
+        // Los lee cualquiera que pueda leer el viaje (miembros, o todos si es público);
+        // solo los miembros del viaje escriben y reaccionan.
+        // Mensajes tipo burbuja anclados a un bloque.
         match /notes/{noteId} {
-          allow read: if isTripMember(userId, tripId);
+          allow read: if isTripMember(userId, tripId) || isPublicTrip(userId, tripId);
           allow create: if isTripMember(userId, tripId)
             && request.resource.data.keys().hasOnly(['blockId', 'authorId', 'authorName', 'authorPhoto', 'text', 'createdAt', 'reactions'])
             && request.resource.data.authorId == request.auth.uid
@@ -223,7 +230,7 @@ service cloud.firestore {
 
         // Reacciones a un bloque: un documento por bloque, un campo por usuario.
         match /reactions/{blockId} {
-          allow read: if isTripMember(userId, tripId);
+          allow read: if isTripMember(userId, tripId) || isPublicTrip(userId, tripId);
           allow create: if isTripMember(userId, tripId)
             && request.resource.data.keys().hasOnly([request.auth.uid]);
           allow update: if isTripMember(userId, tripId)
