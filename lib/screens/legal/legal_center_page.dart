@@ -1,17 +1,14 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
-
-import 'dart:html' as html;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_theme_toggle.dart';
-import '../../widgets/ohtli_service_icon.dart';
 import 'legal_content.dart';
 
-/// Centro legal: Términos, Aviso de privacidad, Cookies, API y Labs en una sola vista.
+/// Página de un documento legal (Términos, Privacidad, Cookies, API o Labs).
+/// Cada documento es independiente y todos comparten el mismo diseño sobrio:
+/// encabezado con vigencia y versión, índice lateral, puntos clave y texto completo.
 class LegalCenterPage extends StatefulWidget {
   final LegalDocId initialDoc;
   final VoidCallback onBack;
@@ -23,39 +20,10 @@ class LegalCenterPage extends StatefulWidget {
 }
 
 class _LegalCenterPageState extends State<LegalCenterPage> {
-  late LegalDocId _current = widget.initialDoc;
-  late final List<LegalDoc> _docs = _visibleDocs();
-
-  /// Términos, privacidad y cookies siempre; los de la API solo en api.ohtli.quest y los
-  /// de Labs solo en labs/lab.ohtli.quest (o si se abrió directamente ese documento).
-  List<LegalDoc> _visibleDocs() {
-    final host = kIsWeb ? (html.window.location.hostname ?? '') : '';
-    final params = Uri.base.queryParameters;
-    final isApi = host.startsWith('api.') || params.containsKey('testApi');
-    final isLabs = host.startsWith('labs.') || host.startsWith('lab.') || params.containsKey('testLab') || params.containsKey('testLabApp');
-    return kLegalDocs.where((d) {
-      if (d.id == widget.initialDoc) return true;
-      if (d.id == LegalDocId.api) return isApi;
-      if (d.id == LegalDocId.labs) return isLabs;
-      return true;
-    }).toList();
-  }
   final _scroll = ScrollController();
   final Map<int, GlobalKey> _sectionKeys = {};
 
-  static const Map<LegalDocId, (IconData, Color)> _docIcons = {
-    LegalDocId.terms: (Icons.gavel_rounded, OhtliColors.stormyTeal),
-    LegalDocId.privacy: (Icons.privacy_tip_rounded, OhtliColors.xoconostle),
-    LegalDocId.cookies: (Icons.cookie_rounded, OhtliColors.cempasuchil),
-    LegalDocId.api: (Icons.api_rounded, Color(0xFF3949AB)),
-    LegalDocId.labs: (Icons.science_rounded, Color(0xFF00897B)),
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _syncUrl();
-  }
+  LegalDoc get _doc => legalDocById(widget.initialDoc);
 
   @override
   void dispose() {
@@ -63,77 +31,72 @@ class _LegalCenterPageState extends State<LegalCenterPage> {
     super.dispose();
   }
 
-  void _select(LegalDocId id) {
-    if (id == _current) return;
-    setState(() {
-      _current = id;
-      _sectionKeys.clear();
-    });
-    _syncUrl();
-    if (_scroll.hasClients) _scroll.jumpTo(0);
-  }
-
-  // Refleja el documento en la URL para que se pueda compartir el enlace directo
-  void _syncUrl() {
-    if (!kIsWeb) return;
-    try {
-      html.window.history.replaceState(null, legalDocById(_current).title, legalDocById(_current).path);
-    } catch (_) {}
-  }
-
   void _scrollToSection(int i) {
     final ctx = _sectionKeys[i]?.currentContext;
     if (ctx != null) {
-      Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic, alignment: 0.05);
+      Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 450), curve: Curves.easeInOutCubic, alignment: 0.04);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final isMobile = width < 900;
-    final doc = legalDocById(_current);
-    final hPad = isMobile ? 20.0 : (width * 0.045).clamp(40.0, 96.0);
+    final isMobile = width < 980;
+    final hPad = isMobile ? 20.0 : (width * 0.05).clamp(40.0, 112.0);
+    final doc = _doc;
+
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(doc.intro, style: _bodyStyle.copyWith(fontSize: 16.5, height: 1.75)),
+        const SizedBox(height: 28),
+        _buildKeyPoints(doc),
+        for (var i = 0; i < doc.sections.length; i++) _buildSection(i, doc.sections[i]),
+        const SizedBox(height: 48),
+        _buildContact(),
+        const SizedBox(height: 28),
+        Text(
+          'La versión vigente de este documento es la publicada en esta página. '
+          '© ${DateTime.now().year} ${LegalInfo.responsible}. Todos los derechos reservados.',
+          style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText, height: 1.5),
+        ),
+      ],
+    );
 
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       body: SafeArea(
         child: Column(
           children: [
-            _buildTopBar(isMobile, hPad),
+            _buildTopBar(hPad),
             Expanded(
-              child: isMobile
-                  ? SingleChildScrollView(
-                      controller: _scroll,
-                      padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 48),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [_buildDocChips(), const SizedBox(height: 20), _buildDocument(doc, isMobile)],
-                      ),
-                    )
-                  : Padding(
-                      padding: EdgeInsets.symmetric(horizontal: hPad),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(width: 280, child: _buildSidebar(doc)),
-                          const SizedBox(width: 48),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              controller: _scroll,
-                              padding: const EdgeInsets.only(top: 8, bottom: 64),
-                              child: Align(
-                                alignment: Alignment.topLeft,
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 820),
-                                  child: _buildDocument(doc, isMobile),
+              child: SingleChildScrollView(
+                controller: _scroll,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(doc, isMobile, hPad),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(hPad, isMobile ? 28 : 48, hPad, 64),
+                      child: isMobile
+                          ? body
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(width: 250, child: _buildToc(doc)),
+                                const SizedBox(width: 64),
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.topLeft,
+                                    child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: body),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
                     ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -141,25 +104,34 @@ class _LegalCenterPageState extends State<LegalCenterPage> {
     );
   }
 
-  Widget _buildTopBar(bool isMobile, double hPad) {
+  TextStyle get _bodyStyle => GoogleFonts.inter(fontSize: 15.5, color: OhtliColors.onyx.withValues(alpha: 0.84), height: 1.8);
+
+  // ───────────────────────── Barra superior ─────────────────────────
+
+  Widget _buildTopBar(double hPad) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 14),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: OhtliColors.cardBorder))),
+      height: 64,
+      padding: EdgeInsets.symmetric(horizontal: hPad),
+      decoration: BoxDecoration(
+        color: OhtliColors.cloudDancer,
+        border: Border(bottom: BorderSide(color: OhtliColors.cardBorder)),
+      ),
       child: Row(
         children: [
-          IconButton(
-            tooltip: 'Volver',
+          TextButton.icon(
             onPressed: widget.onBack,
-            icon: Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
-            style: IconButton.styleFrom(
-              backgroundColor: OhtliColors.cardBg,
-              shape: CircleBorder(side: BorderSide(color: OhtliColors.cardBorder)),
+            icon: const Icon(Icons.arrow_back_rounded, size: 18),
+            label: const Text('Volver'),
+            style: TextButton.styleFrom(
+              foregroundColor: OhtliColors.onyx,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
             ),
           ),
-          const SizedBox(width: 14),
-          SvgPicture.asset('assets/logo.svg', height: 22, colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn)),
-          const SizedBox(width: 10),
-          Text('Legal', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.subtleText)),
+          const SizedBox(width: 12),
+          Container(width: 1, height: 22, color: OhtliColors.cardBorder),
+          const SizedBox(width: 16),
+          SvgPicture.asset('assets/logo.svg', height: 20, colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn)),
           const Spacer(),
           const OhtliThemeToggle(),
         ],
@@ -167,268 +139,194 @@ class _LegalCenterPageState extends State<LegalCenterPage> {
     );
   }
 
-  Widget _buildSidebar(LegalDoc doc) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(top: 28, bottom: 28),
+  // ───────────────────────── Encabezado del documento ─────────────────────────
+
+  Widget _buildHeader(LegalDoc doc, bool isMobile, double hPad) {
+    final meta = <(IconData, String)>[
+      (Icons.event_outlined, 'Vigente desde el ${LegalInfo.effectiveDate}'),
+      (Icons.tag_rounded, 'Versión ${LegalInfo.version}'),
+      (Icons.account_balance_outlined, 'Responsable: ${LegalInfo.responsible}'),
+    ];
+    return Container(
+      padding: EdgeInsets.fromLTRB(hPad, isMobile ? 32 : 56, hPad, isMobile ? 28 : 44),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        border: Border(bottom: BorderSide(color: OhtliColors.cardBorder)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('DOCUMENTOS', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.subtleText)),
-          const SizedBox(height: 12),
-          for (final d in _docs) _sidebarItem(d),
-          const SizedBox(height: 28),
-          Text('EN ESTE DOCUMENTO', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.subtleText)),
-          const SizedBox(height: 10),
-          for (var i = 0; i < doc.sections.length; i++)
-            InkWell(
-              onTap: () => _scrollToSection(i),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                child: Text(doc.sections[i].title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText)),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: Text(
+              doc.title,
+              style: GoogleFonts.outfit(
+                fontSize: isMobile ? 30 : 44,
+                fontWeight: FontWeight.w700,
+                color: OhtliColors.onyx,
+                letterSpacing: isMobile ? -0.5 : -1.0,
+                height: 1.12,
               ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sidebarItem(LegalDoc d) {
-    final selected = d.id == _current;
-    final (icon, color) = _docIcons[d.id]!;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Material(
-        color: selected ? OhtliColors.cardBg : Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: () => _select(d.id),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: selected ? OhtliColors.cardBorder : Colors.transparent),
-            ),
-            child: Row(
-              children: [
-                OhtliServiceIcon(icon: icon, color: color, size: 34, soft: !selected),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    d.navLabel,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? OhtliColors.onyx : OhtliColors.subtleText,
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDocChips() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final d in _docs)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(d.navLabel),
-                selected: d.id == _current,
-                onSelected: (_) => _select(d.id),
-                showCheckmark: false,
-                labelStyle: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: d.id == _current ? Colors.white : OhtliColors.onyx,
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 24,
+            runSpacing: 10,
+            children: [
+              for (final m in meta)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(m.$1, size: 15, color: OhtliColors.subtleText),
+                    const SizedBox(width: 7),
+                    Text(m.$2, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: OhtliColors.subtleText)),
+                  ],
                 ),
-                selectedColor: OhtliColors.stormyTeal,
-                backgroundColor: OhtliColors.cardBg,
-                side: BorderSide(color: d.id == _current ? OhtliColors.stormyTeal : OhtliColors.cardBorder),
-                shape: const StadiumBorder(),
-              ),
-            ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildDocument(LegalDoc doc, bool isMobile) {
-    final (icon, color) = _docIcons[doc.id]!;
+  // ───────────────────────── Índice ─────────────────────────
+
+  Widget _buildToc(LegalDoc doc) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(height: isMobile ? 4 : 28),
-        OhtliServiceIcon(icon: icon, color: color, size: 52),
-        const SizedBox(height: 18),
-        Text(
-          doc.title,
-          style: GoogleFonts.outfit(
-            fontSize: isMobile ? 28 : 40,
-            fontWeight: FontWeight.w800,
-            color: OhtliColors.onyx,
-            letterSpacing: isMobile ? -0.6 : -1.2,
-            height: 1.1,
+        Text('CONTENIDO', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.8, color: OhtliColors.subtleText)),
+        const SizedBox(height: 14),
+        Container(
+          decoration: BoxDecoration(border: Border(left: BorderSide(color: OhtliColors.cardBorder, width: 1.5))),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < doc.sections.length; i++)
+                InkWell(
+                  onTap: () => _scrollToSection(i),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 7, 8, 7),
+                    child: Text(
+                      doc.sections[i].title,
+                      style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.35),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _metaPill(Icons.event_rounded, 'Vigente desde el ${LegalInfo.effectiveDate}'),
-            _metaPill(Icons.history_rounded, 'Versión ${LegalInfo.version}'),
-          ],
-        ),
-        const SizedBox(height: 22),
-        Text(doc.intro, style: GoogleFonts.inter(fontSize: 16, color: OhtliColors.onyx.withValues(alpha: 0.85), height: 1.65)),
-        const SizedBox(height: 24),
-        _buildSummary(doc, color),
-        const SizedBox(height: 12),
-        for (var i = 0; i < doc.sections.length; i++) _buildSection(i, doc.sections[i]),
-        const SizedBox(height: 28),
-        _buildContactCard(),
       ],
     );
   }
 
-  Widget _metaPill(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: OhtliColors.cardBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: OhtliColors.subtleText),
-          const SizedBox(width: 6),
-          Text(text, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
-        ],
-      ),
-    );
-  }
+  // ───────────────────────── Puntos clave ─────────────────────────
 
-  Widget _buildSummary(LegalDoc doc, Color color) {
+  Widget _buildKeyPoints(LegalDoc doc) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [color.withValues(alpha: 0.12), OhtliColors.cardBg],
-        ),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: OhtliColors.cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.bolt_rounded, size: 18, color: color),
-              const SizedBox(width: 6),
-              Text('En resumen', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-            ],
-          ),
-          const SizedBox(height: 12),
+          Text('Puntos clave', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+          const SizedBox(height: 14),
           for (final s in doc.summary)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 10),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Icon(Icons.check_circle_rounded, size: 17, color: color),
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Icon(Icons.check_rounded, size: 17, color: OhtliColors.accentText),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(s, style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx, height: 1.5))),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(s, style: GoogleFonts.inter(fontSize: 14.5, color: OhtliColors.onyx.withValues(alpha: 0.9), height: 1.55))),
                 ],
               ),
             ),
-          Text('Este resumen no sustituye el texto completo.',
-              style: GoogleFonts.inter(fontSize: 12, fontStyle: FontStyle.italic, color: OhtliColors.subtleText)),
+          const SizedBox(height: 4),
+          Text('Este resumen es informativo y no sustituye el texto completo.',
+              style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText)),
         ],
       ),
     );
   }
 
+  // ───────────────────────── Secciones ─────────────────────────
+
   Widget _buildSection(int i, LegalSection section) {
     final key = _sectionKeys.putIfAbsent(i, () => GlobalKey());
-    final paragraphs = section.body.split('\n');
-    return Padding(
+    return Container(
       key: key,
-      padding: const EdgeInsets.only(top: 28),
+      margin: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.only(top: 32),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: OhtliColors.cardBorder))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(section.title, style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-          const SizedBox(height: 10),
-          for (final p in paragraphs)
+          Text(section.title,
+              style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.w700, color: OhtliColors.onyx, letterSpacing: -0.2)),
+          const SizedBox(height: 14),
+          for (final p in section.body.split('\n'))
             if (p.trim().isEmpty)
-              const SizedBox(height: 8)
+              const SizedBox(height: 10)
             else if (p.startsWith('• '))
               Padding(
-                padding: const EdgeInsets.only(bottom: 6, left: 4),
+                padding: const EdgeInsets.only(bottom: 8, left: 2),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: 9),
-                      child: Container(width: 5, height: 5, decoration: BoxDecoration(color: OhtliColors.accentText, shape: BoxShape.circle)),
+                      padding: const EdgeInsets.only(top: 11),
+                      child: Container(width: 6, height: 1.5, color: OhtliColors.onyx.withValues(alpha: 0.5)),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(child: _paragraph(p.substring(2))),
+                    const SizedBox(width: 14),
+                    Expanded(child: SelectableText(p.substring(2), style: _bodyStyle)),
                   ],
                 ),
               )
             else
-              Padding(padding: const EdgeInsets.only(bottom: 4), child: _paragraph(p)),
+              Padding(padding: const EdgeInsets.only(bottom: 4), child: SelectableText(p, style: _bodyStyle)),
         ],
       ),
     );
   }
 
-  Widget _paragraph(String text) {
-    return SelectableText(text, style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.onyx.withValues(alpha: 0.82), height: 1.7));
-  }
+  // ───────────────────────── Contacto ─────────────────────────
 
-  Widget _buildContactCard() {
+  Widget _buildContact() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: OhtliColors.cardBorder),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const OhtliServiceIcon(icon: Icons.mail_rounded, color: OhtliColors.stormyTeal, size: 46),
+          Icon(Icons.mail_outline_rounded, size: 22, color: OhtliColors.accentText),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('¿Dudas o solicitudes?', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-                const SizedBox(height: 2),
-                SelectableText(
-                  'Escríbenos a ${LegalInfo.privacyEmail}',
-                  style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText),
-                ),
+                Text('Contacto', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                const SizedBox(height: 4),
+                Text('Para dudas sobre este documento o para ejercer tus derechos, escríbenos a:',
+                    style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.5)),
+                const SizedBox(height: 6),
+                SelectableText(LegalInfo.privacyEmail,
+                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: OhtliColors.accentText)),
               ],
             ),
           ),
@@ -445,7 +343,7 @@ class _LegalCenterPageState extends State<LegalCenterPage> {
                 ),
               );
             },
-            icon: Icon(Icons.copy_rounded, color: OhtliColors.subtleText),
+            icon: Icon(Icons.copy_rounded, size: 19, color: OhtliColors.subtleText),
           ),
         ],
       ),
