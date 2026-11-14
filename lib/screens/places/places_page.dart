@@ -28,11 +28,15 @@ class PlacesPage extends StatefulWidget {
   final bool showBackButton;
   final VoidCallback? onLoginClick;
 
+  /// Lleva al registro; se usa cuando un visitante sin cuenta toca algo personal.
+  final VoidCallback? onRegisterClick;
+
   const PlacesPage({
     super.key,
     this.onBack,
     this.showBackButton = false,
     this.onLoginClick,
+    this.onRegisterClick,
   });
 
   @override
@@ -335,8 +339,18 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     }
   }
 
+  bool get _isGuest => FirebaseAuth.instance.currentUser == null;
+
   void _toggleSavePoi(String poiId) {
     if (poiId.isEmpty) return;
+    if (_isGuest) {
+      _showAccountPrompt(
+        icon: Icons.favorite_rounded,
+        title: 'Guarda tus lugares favoritos',
+        message: 'Crea tu cuenta gratis para guardar lugares y tenerlos listos para tu próxima ruta.',
+      );
+      return;
+    }
     setState(() {
       if (_savedPoiIds.contains(poiId)) {
         _savedPoiIds.remove(poiId);
@@ -443,23 +457,10 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   void _createRouteFromPlace(Poi poi) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Inicia sesión para crear una ruta desde ${poi.name}.',
-            style: GoogleFonts.inter(color: Colors.white),
-          ),
-          backgroundColor: OhtliColors.stormyTeal,
-          behavior: SnackBarBehavior.floating,
-          action: widget.onLoginClick != null
-              ? SnackBarAction(
-                  label: 'Iniciar sesión',
-                  textColor: OhtliColors.cempasuchil,
-                  onPressed: widget.onLoginClick!,
-                )
-              : null,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
+      _showAccountPrompt(
+        icon: Icons.alt_route_rounded,
+        title: 'Crea tu ruta desde ${poi.name}',
+        message: 'Con una cuenta gratis, Ohtli arma un recorrido a tu medida empezando en este lugar.',
       );
       return;
     }
@@ -647,6 +648,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     });
 
     // Medidas de tarjetas
+    final isGuest = _isGuest;
     final hPad = _hPad(isMobile);
     const standardWidth = 268.0;
     const standardHeight = 372.0;
@@ -681,7 +683,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
           height: standardHeight - 28,
           variant: PoiCardVariant.standard,
           isSaved: saved ?? _savedPoiIds.contains(poi.poiId),
-          onToggleSave: () => _toggleSavePoi(poi.poiId),
+          onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
           onCreateRoute: () => _createRouteFromPlace(poi),
           onTap: () => _onPoiTapped(poi),
         );
@@ -770,7 +772,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                           poi: poi,
                           variant: PoiCardVariant.standard,
                           isSaved: _savedPoiIds.contains(poi.poiId),
-                          onToggleSave: () => _toggleSavePoi(poi.poiId),
+                          onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
                           onCreateRoute: () => _createRouteFromPlace(poi),
                           onTap: () => _onPoiTapped(poi),
                         );
@@ -783,12 +785,14 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
               // ================= PARA TI =================
               SliverToBoxAdapter(
                 child: _buildSectionHeader(
-                  eyebrow: 'Recomendado',
-                  title: 'Para ti',
-                  subtitle: _userTasteVector.isNotEmpty
-                      ? 'Elegidos según tus gustos y tu forma de viajar'
-                      : 'Una selección de imperdibles para empezar',
-                  icon: Icons.auto_awesome_rounded,
+                  eyebrow: isGuest ? 'Selección Ohtli' : 'Recomendado',
+                  title: isGuest ? 'Imperdibles de la ciudad' : 'Para ti',
+                  subtitle: isGuest
+                      ? 'Lugares destacados para empezar a explorar'
+                      : (_userTasteVector.isNotEmpty
+                          ? 'Elegidos según tus gustos y tu forma de viajar'
+                          : 'Una selección de imperdibles para empezar'),
+                  icon: isGuest ? Icons.star_rounded : Icons.auto_awesome_rounded,
                   color: OhtliColors.stormyTeal,
                   isMobile: isMobile,
                   controller: _paraTiScrollController,
@@ -806,14 +810,23 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                     width: doubleWidth,
                     height: immersiveHeight,
                     variant: PoiCardVariant.immersive,
-                    affinity: _calculateAffinity(poi, index),
+                    // Sin cuenta no hay perfil de gustos, así que no se muestra afinidad
+                    affinity: isGuest ? null : _calculateAffinity(poi, index),
                     isSaved: _savedPoiIds.contains(poi.poiId),
-                    onToggleSave: () => _toggleSavePoi(poi.poiId),
+                    onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
                     onCreateRoute: () => _createRouteFromPlace(poi),
                     onTap: () => _onPoiTapped(poi),
                   ),
                 ),
               ),
+
+              if (isGuest)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 0),
+                    child: _buildGuestPersonalizeBanner(isMobile),
+                  ),
+                ),
 
               // ================= DESCUBRE =================
               SliverToBoxAdapter(
@@ -838,7 +851,15 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
               ),
 
               // ================= MIS LUGARES =================
-              SliverToBoxAdapter(
+              // Sin cuenta, guardados e historial se reemplazan por una invitación a registrarse
+              if (isGuest)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(hPad, isMobile ? 30 : 40, hPad, 0),
+                    child: _buildGuestSpaceCard(isMobile),
+                  ),
+                ),
+              if (!isGuest) SliverToBoxAdapter(
                 child: _buildSectionHeader(
                   eyebrow: 'Guardados',
                   title: 'Mis lugares',
@@ -852,7 +873,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   showArrows: misLugaresPois.isNotEmpty,
                 ),
               ),
-              SliverToBoxAdapter(
+              if (!isGuest) SliverToBoxAdapter(
                 child: misLugaresPois.isEmpty
                     ? Padding(
                         padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 12),
@@ -867,7 +888,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
               ),
 
               // ================= REVISITA =================
-              SliverToBoxAdapter(
+              if (!isGuest) SliverToBoxAdapter(
                 child: _buildSectionHeader(
                   eyebrow: 'Historial',
                   title: 'Revisita tus lugares',
@@ -881,7 +902,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   showArrows: revisitaPois.isNotEmpty,
                 ),
               ),
-              SliverToBoxAdapter(
+              if (!isGuest) SliverToBoxAdapter(
                 child: revisitaPois.isEmpty
                     ? Padding(
                         padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 12),
@@ -988,9 +1009,19 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                           colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
                         ),
                       const Spacer(),
-                      if (isGuest && widget.onLoginClick != null)
-                        ElevatedButton(
+                      if (isGuest && widget.onLoginClick != null && !isMobile)
+                        TextButton(
                           onPressed: widget.onLoginClick,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
+                          child: const Text('Iniciar sesión'),
+                        ),
+                      if (isGuest && (widget.onRegisterClick ?? widget.onLoginClick) != null)
+                        ElevatedButton(
+                          onPressed: widget.onRegisterClick ?? widget.onLoginClick,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
                             foregroundColor: OhtliColors.stormyTeal,
@@ -999,41 +1030,11 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                             shape: const StadiumBorder(),
                             textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13),
                           ),
-                          child: const Text('Iniciar sesión'),
+                          child: Text(widget.onRegisterClick != null ? 'Crear cuenta' : 'Iniciar sesión'),
                         ),
                     ],
                   ),
                   SizedBox(height: isMobile ? 26 : 40),
-                  // Etiqueta superior
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(color: OhtliColors.cempasuchil, shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'CIUDAD DE MÉXICO',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.6,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 640),
                     child: Text(
@@ -1071,7 +1072,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                     children: [
                       _heroStat(Icons.place_rounded, '$placesCount', 'lugares'),
                       _heroStat(Icons.category_rounded, '$categoriesCount', 'categorías'),
-                      _heroStat(Icons.favorite_rounded, '${_savedPoiIds.length}', 'guardados'),
+                      if (!isGuest) _heroStat(Icons.favorite_rounded, '${_savedPoiIds.length}', 'guardados'),
                     ],
                   ),
                 ],
@@ -1510,6 +1511,252 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         hoverColor: OhtliColors.stormyTeal.withValues(alpha: 0.1),
         fixedSize: const Size(44, 44),
         shape: CircleBorder(side: BorderSide(color: OhtliColors.cardBorder)),
+      ),
+    );
+  }
+
+  // ───────────────────────── Visitantes sin cuenta ─────────────────────────
+
+  void _goRegister() => (widget.onRegisterClick ?? widget.onLoginClick)?.call();
+
+  Future<void> _showAccountPrompt({required IconData icon, required String title, required String message}) {
+    return showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: OhtliColors.cardBg,
+        insetPadding: const EdgeInsets.all(20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 28, 28, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF3E8A8F), OhtliColors.stormyTeal],
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(icon, color: Colors.white, size: 26),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Cerrar',
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: Icon(Icons.close_rounded, color: OhtliColors.subtleText),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: OhtliColors.onyx, height: 1.15)),
+                const SizedBox(height: 8),
+                Text(message, style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText, height: 1.5)),
+                const SizedBox(height: 18),
+                for (final b in const [
+                  'Recomendaciones según tus gustos',
+                  'Guarda lugares y retoma tu historial',
+                  'Rutas optimizadas con IA en segundos',
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, size: 18, color: OhtliColors.stormyTeal),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(b, style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx))),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _goRegister();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: OhtliColors.cempasuchil,
+                      foregroundColor: const Color(0xFF1A120B),
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 17),
+                      shape: const StadiumBorder(),
+                      textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                    child: const Text('Crear cuenta gratis'),
+                  ),
+                ),
+                if (widget.onLoginClick != null)
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        widget.onLoginClick!();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: OhtliColors.stormyTeal,
+                        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                      child: const Text('Ya tengo cuenta'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _guestButtons({bool onDark = false}) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        ElevatedButton(
+          onPressed: _goRegister,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: OhtliColors.cempasuchil,
+            foregroundColor: const Color(0xFF1A120B),
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+            shape: const StadiumBorder(),
+            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 15),
+          ),
+          child: const Text('Crear cuenta gratis'),
+        ),
+        if (widget.onLoginClick != null)
+          TextButton(
+            onPressed: widget.onLoginClick,
+            style: TextButton.styleFrom(
+              foregroundColor: onDark ? Colors.white : OhtliColors.stormyTeal,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            child: const Text('Ya tengo cuenta'),
+          ),
+      ],
+    );
+  }
+
+  /// Invitación a personalizar: sin cuenta no hay perfil de gustos.
+  Widget _buildGuestPersonalizeBanner(bool isMobile) {
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.auto_awesome_rounded, size: 15, color: OhtliColors.cempasuchil),
+            const SizedBox(width: 6),
+            Text('PERSONALIZA',
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.cempasuchil)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Recomendaciones hechas a tu medida',
+          style: GoogleFonts.outfit(fontSize: isMobile ? 21 : 25, fontWeight: FontWeight.w800, color: Colors.white, height: 1.15),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Crea tu cuenta, cuéntanos qué te gusta y Ohtli ordenará la ciudad según tu estilo, con tu % de afinidad en cada lugar.',
+          style: GoogleFonts.inter(fontSize: 13.5, color: Colors.white.withValues(alpha: 0.82), height: 1.5),
+        ),
+      ],
+    );
+    return Container(
+      padding: EdgeInsets.all(isMobile ? 22 : 28),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF123338), OhtliColors.stormyTeal, Color(0xFF5A3A55)],
+          stops: [0.0, 0.6, 1.0],
+        ),
+        boxShadow: [BoxShadow(color: OhtliColors.stormyTeal.withValues(alpha: 0.25), blurRadius: 30, offset: const Offset(0, 14))],
+      ),
+      child: isMobile
+          ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [text, const SizedBox(height: 18), _guestButtons(onDark: true)])
+          : Row(children: [Expanded(child: text), const SizedBox(width: 24), _guestButtons(onDark: true)]),
+    );
+  }
+
+  /// Sustituye "Mis lugares" y "Revisita" cuando no hay cuenta.
+  Widget _buildGuestSpaceCard(bool isMobile) {
+    Widget feature(IconData icon, Color color, String title, String text) => Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(13)),
+              child: Icon(icon, size: 20, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                  const SizedBox(height: 2),
+                  Text(text, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, height: 1.4)),
+                ],
+              ),
+            ),
+          ],
+        );
+    final features = [
+      feature(Icons.favorite_rounded, OhtliColors.cempasuchil, 'Mis lugares', 'Guarda tus favoritos con un toque.'),
+      feature(Icons.history_rounded, const Color(0xFF3949AB), 'Tu historial', 'Retoma los lugares que ya exploraste.'),
+      feature(Icons.alt_route_rounded, OhtliColors.stormyTeal, 'Rutas con IA', 'Convierte tus lugares en un recorrido.'),
+    ];
+    return Container(
+      padding: EdgeInsets.all(isMobile ? 22 : 30),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: OhtliColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('TU ESPACIO EN OHTLI',
+              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.stormyTeal)),
+          const SizedBox(height: 8),
+          Text(
+            'Guarda, retoma y arma tus rutas',
+            style: GoogleFonts.outfit(fontSize: isMobile ? 22 : 28, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -0.5),
+          ),
+          const SizedBox(height: 22),
+          if (isMobile)
+            ...features.expand((f) => [f, const SizedBox(height: 14)])
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < features.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 24),
+                  Expanded(child: features[i]),
+                ],
+              ],
+            ),
+          const SizedBox(height: 24),
+          _guestButtons(),
+        ],
       ),
     );
   }

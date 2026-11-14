@@ -11,6 +11,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 
 import 'theme/colors.dart';
 import 'screens/construction_page.dart';
+import 'screens/landing/landing_page.dart';
 import 'screens/home_page.dart';
 import 'screens/login/desktop_login_page.dart';
 import 'screens/login/mobile_login_page.dart';
@@ -465,15 +466,24 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
     Widget activeView;
     if (_currentScreen == OhtliScreen.underConstruction) {
-      activeView = ConstructionPage(
-        onLoginClick: () {
-          if (isMobile) {
-            _navigateTo(OhtliScreen.mobileWelcome);
-          } else {
-            _navigateTo(OhtliScreen.login);
-          }
-        },
-      );
+      final loginScreen = isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login;
+      final registerScreen = isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register;
+      // El dominio anterior (othli) conserva la pantalla de redirección; el resto ve la landing pública
+      activeView = ConstructionPage.isOldDomain
+          ? ConstructionPage(onLoginClick: () => _navigateTo(loginScreen))
+          : LandingPage(
+              onLoginClick: () => _navigateTo(loginScreen),
+              onRegisterClick: () => _navigateTo(registerScreen),
+              onOpenPlaces: () => _navigateTo(OhtliScreen.places),
+              onOpenPublicTrip: (tripId, authorId) {
+                setState(() {
+                  _publicTripId = tripId;
+                  _publicAuthorId = authorId;
+                  _currentScreen = OhtliScreen.publicViewer;
+                });
+              },
+              onOpenTerms: () => _navigateTo(OhtliScreen.termsAndConditions),
+            );
     } else if (_currentScreen == OhtliScreen.forgotPassword) {
       activeView = ForgotPasswordPage(
         onBack: () {
@@ -530,7 +540,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         authorId: _publicAuthorId,
         isPublicLink: true,
         onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
-        onBackToDashboard: () => _navigateTo(OhtliScreen.home),
+        onBackToDashboard: () => _navigateTo(
+            FirebaseAuth.instance.currentUser != null ? OhtliScreen.home : OhtliScreen.underConstruction),
       );
     } else if (_currentScreen == OhtliScreen.test404) {
       activeView = Error404Page(
@@ -600,6 +611,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         onBack: () => _navigateTo(user != null ? OhtliScreen.home : OhtliScreen.underConstruction),
         onLoginClick: () {
           _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+        },
+        onRegisterClick: () {
+          _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register);
         },
       );
     } else if (isMobile) {
