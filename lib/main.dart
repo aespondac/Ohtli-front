@@ -40,11 +40,15 @@ import 'screens/onboarding/onboarding_wizard_page.dart';
 import 'screens/lab/experiments/taste_vector_experiment_page.dart';
 import 'screens/places/places_page.dart';
 import 'widgets/user_profile_helper.dart';
+import 'services/ohtli_sso.dart';
+import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // SSO entre subdominios: toma el código #ohtli_sso=… antes de que el enrutador lea la URL.
+  OhtliSso.captureFromUrl();
   // Sigue en vivo el modo claro/oscuro del sistema cuando el tema está en "Sistema"
   OhtliSettings.instance.attachToSystem();
 
@@ -195,6 +199,7 @@ class OhtliApp extends StatelessWidget {
 // Enumeración para controlar la navegación fluida de Ohtli
 enum OhtliScreen {
   underConstruction,
+  ssoBridge, // ohtli.quest/sso: entrega la sesión a un subdominio (lab.ohtli.quest)
   login, // Pantalla unificada (maneja split en desktop y welcome/login en móvil)
   mobileWelcome, // Pantalla oscura de bienvenida exclusiva móvil
   mobileLogin, // Formulario claro exclusivo móvil
@@ -244,6 +249,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   bool _isAuthInitialized = false;
   bool _intentLabs = false;
   bool _isLabAppHost = false;
+  // SSO: destino validado de ohtli.quest/sso?return=… y control del primer arranque.
+  Uri? _ssoTarget;
+  bool _ssoChecked = false;
+  bool _hadUser = false;
   bool _intentEval = false;
 
   bool _isOnline = true;
@@ -353,6 +362,13 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       }
     }
 
+    // ohtli.quest/sso?return=https://<sub>.ohtli.quest/…: con sesión entrega la cuenta al
+    // subdominio; sin sesión, primero pide iniciarla.
+    if (kIsWeb && OhtliSso.isMainHost && Uri.base.path.startsWith('/sso')) {
+      _ssoTarget = OhtliSso.parseReturnTarget(params['return']);
+      if (_ssoTarget != null) _currentScreen = OhtliScreen.login;
+    }
+
     if (_currentScreen == OhtliScreen.underConstruction) {
       // Si no fue capturado por subdominios, validamos los parámetros de la URL principal
       if (params.containsKey('mode') && params.containsKey('oobCode')) {
@@ -388,6 +404,22 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
       User? user,
     ) async {
+      // SSO en el subdominio (lab.ohtli.quest): sin sesión propia, canjea el código que
+      // trajo de ohtli.quest o va por él. Mientras tanto se mantiene la pantalla de carga.
+      if (user == null && !_ssoChecked && _isLabAppHost && OhtliSso.isSubdomain) {
+        _ssoChecked = true;
+        if (OhtliSso.hasPendingCode) {
+          if (await OhtliSso.redeemPendingCode()) return; // llegará otro evento con la sesión
+        } else if (OhtliSso.maybeAutoRedirect()) {
+          return; // la página está yendo a ohtli.quest
+        }
+      }
+      if (user == null && _hadUser) OhtliSso.onSignedOutOnSubdomain();
+      if (user != null) {
+        _hadUser = true;
+        OhtliSso.onSignedInOnSubdomain();
+      }
+
       if (mounted && !_isAuthInitialized) {
         setState(() {
           _isAuthInitialized = true;
@@ -418,6 +450,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   }
 
   Future<void> _handlePostAuthRedirect(User user) async {
+    if (_ssoTarget != null) {
+      _navigateTo(OhtliScreen.ssoBridge);
+      return;
+    }
     // 1. Sincronizar perfil en segundo plano sin bloquear la experiencia de navegación del usuario
     if (_currentScreen != OhtliScreen.labLanding && _currentScreen != OhtliScreen.apiLanding) {
       unawaited(UserProfileHelper.syncAndRestoreProfile(user).catchError((e) {
@@ -538,7 +574,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     final isMobile = screenSize.width < 800;
 
     Widget activeView;
-    if (_currentScreen == OhtliScreen.underConstruction) {
+    if (_currentScreen == OhtliScreen.ssoBridge && _ssoTarget != null && FirebaseAuth.instance.currentUser != null) {
+      activeView = SsoBridgePage(
+        target: _ssoTarget!,
+        onUseAnotherAccount: () => _navigateTo(OhtliScreen.login),
+      );
+    } else if (_currentScreen == OhtliScreen.underConstruction) {
       final loginScreen = isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login;
       final registerScreen = isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register;
       // El dominio anterior (othli) conserva la pantalla de redirección; el resto ve la landing pública
@@ -788,6 +829,26 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       }
     }
 
+    // En lab.ohtli.quest, en el inicio de sesión: entrar con la sesión de ohtli.quest.
+    if (_isLabAppHost &&
+        OhtliSso.isSubdomain &&
+        FirebaseAuth.instance.currentUser == null &&
+        (_currentScreen == OhtliScreen.login ||
+            _currentScreen == OhtliScreen.mobileLogin ||
+            _currentScreen == OhtliScreen.mobileWelcome)) {
+      activeView = Stack(
+        children: [
+          activeView,
+          Positioned(
+            top: 14,
+            left: 12,
+            right: 12,
+            child: Center(child: _OhtliSsoBanner(onContinue: OhtliSso.continueWithOhtli)),
+          ),
+        ],
+      );
+    }
+
     final pageView = AnimatedSwitcher(
       duration: const Duration(milliseconds: 600),
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -830,6 +891,44 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
                 : const SizedBox.shrink(),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Aviso en el inicio de sesión de un subdominio: "Continuar con tu cuenta de Ohtli".
+class _OhtliSsoBanner extends StatelessWidget {
+  final VoidCallback onContinue;
+  const _OhtliSsoBanner({required this.onContinue});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: OhtliColors.cardBg,
+      elevation: 6,
+      shadowColor: Colors.black26,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.verified_user_outlined, color: OhtliColors.stormyTeal, size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                '¿Ya iniciaste sesión en ohtli.quest?',
+                style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx),
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton(
+              onPressed: onContinue,
+              style: FilledButton.styleFrom(backgroundColor: OhtliColors.stormyTeal),
+              child: Text('Continuar con Ohtli', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
       ),
     );
   }

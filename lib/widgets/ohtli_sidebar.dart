@@ -11,6 +11,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/saved_accounts.dart';
 import '../theme/colors.dart';
 import '../screens/notifications_page.dart';
 import 'ohtli_accessibility_panel.dart';
@@ -479,26 +480,45 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     if (mounted) setState(() => _notificationsOpen = false);
   }
 
-  /// Menú de la cuenta (avatar): Mi cuenta, Accesibilidad, Atajos y Cerrar sesión.
+  /// Menú de la cuenta (avatar): cuentas recordadas para cambiar, Agregar otra cuenta,
+  /// Mi cuenta, Accesibilidad, Atajos y Cerrar sesión.
   Future<void> _openAccountMenu(BuildContext anchorContext) async {
     final anchor = anchorContext.findRenderObject() as RenderBox?;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (anchor == null || overlay == null) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    final saved = SavedAccounts.list();
+    final bool currentSaved = user != null && saved.any((a) => a.uid == user.uid);
+    final others = saved.where((a) => a.uid != user?.uid).toList();
+
+    // Se abre justo encima del botón: alto estimado de las opciones y separadores.
+    final double scale = MediaQuery.textScalerOf(context).scale(1);
+    final int accountRows = 1 + others.length;
+    final double menuHeight = (accountRows * 54 + (currentSaved ? 5 : 6) * 42) * scale + 2 * 8 + 16;
     final Offset topLeft = anchor.localToGlobal(Offset.zero, ancestor: overlay);
-    // Se abre justo encima del botón: alto estimado de las 4 opciones + separador.
-    final double menuHeight = MediaQuery.textScalerOf(context).scale(42) * 4 + 8 + 16;
-    final double top = (topLeft.dy - menuHeight - 6).clamp(8.0, overlay.size.height - menuHeight);
+    final double top = (topLeft.dy - menuHeight - 6).clamp(
+      8.0,
+      (overlay.size.height - menuHeight).clamp(8.0, double.infinity),
+    );
     final RelativeRect position = RelativeRect.fromLTRB(
       topLeft.dx,
       top,
       overlay.size.width - topLeft.dx - anchor.size.width,
-      overlay.size.height - top - menuHeight,
+      (overlay.size.height - top - menuHeight).clamp(0.0, double.infinity),
     );
     _suppressDwellUntilExit = true;
     _cancelDwell();
     _closePeek(immediate: true);
 
-    PopupMenuItem<String> entry(String value, IconData icon, String label, {String? keyHint, Color? color}) {
+    PopupMenuItem<String> entry(
+      String value,
+      IconData icon,
+      String label, {
+      String? keyHint,
+      Color? color,
+      String? subtitle,
+    }) {
       final c = color ?? OhtliColors.onyx.withOpacity(0.85);
       return PopupMenuItem<String>(
         value: value,
@@ -508,7 +528,15 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
             Icon(icon, size: 18, color: c),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label, style: GoogleFonts.inter(fontSize: 13, color: c)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: GoogleFonts.inter(fontSize: 13, color: c)),
+                  if (subtitle != null)
+                    Text(subtitle, style: GoogleFonts.inter(fontSize: 10.5, color: OhtliColors.onyx.withOpacity(0.5))),
+                ],
+              ),
             ),
             if (keyHint != null) ...[const SizedBox(width: 12), _KeyCap(keyHint, small: true)],
           ],
@@ -516,26 +544,136 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       );
     }
 
+    Widget accountRow({
+      required String initials,
+      required String? photo,
+      required String name,
+      required String email,
+      required bool current,
+    }) {
+      return Row(
+        children: [
+          _buildAvatarWidget(radius: 15, initials: initials, photoURL: photo),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.isNotEmpty ? name : email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+                ),
+                if (name.isNotEmpty && email.isNotEmpty)
+                  Text(
+                    email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.onyx.withOpacity(0.55)),
+                  ),
+              ],
+            ),
+          ),
+          if (current) Icon(Icons.check_rounded, size: 18, color: _accent),
+        ],
+      );
+    }
+
+    final String currentName = user?.displayName ?? '';
+    final String currentEmail = user?.email ?? '';
+    final String currentInitials = (currentName.isNotEmpty ? currentName : currentEmail)
+        .split(RegExp(r'[\s@.]+'))
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+
     final choice = await showMenu<String>(
       context: context,
       position: position,
       color: OhtliColors.cardBg,
       elevation: 10,
-      constraints: const BoxConstraints(minWidth: 230),
+      constraints: const BoxConstraints(minWidth: 260, maxWidth: 300),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(color: OhtliColors.cardBorder),
       ),
       items: [
+        // Cuenta actual (no se elige: solo indica con cuál estás)
+        PopupMenuItem<String>(
+          enabled: false,
+          height: 54,
+          child: accountRow(
+            initials: currentInitials,
+            photo: _localPhotoURL ?? user?.photoURL,
+            name: currentName,
+            email: currentEmail,
+            current: true,
+          ),
+        ),
+        // Otras cuentas recordadas en este navegador: un clic para cambiar
+        for (final a in others)
+          PopupMenuItem<String>(
+            value: 'switch:${a.uid}',
+            height: 54,
+            child: Tooltip(
+              message: 'Cambiar a esta cuenta',
+              waitDuration: const Duration(milliseconds: 600),
+              child: accountRow(initials: a.initials, photo: a.photoURL, name: a.name, email: a.email, current: false),
+            ),
+          ),
+        if (!currentSaved && user != null)
+          entry(
+            'remember',
+            Icons.bookmark_add_outlined,
+            'Recordar esta cuenta',
+            subtitle: 'Para volver a ella con un clic',
+          ),
+        entry(
+          'add',
+          Icons.person_add_alt_1_outlined,
+          'Agregar otra cuenta',
+          subtitle: 'Marca "Recordar sesión" para poder cambiar',
+        ),
+        const PopupMenuDivider(height: 8),
         entry('account', Icons.person_outline, 'Mi cuenta'),
         entry('a11y', Icons.accessibility_new_rounded, 'Accesibilidad', keyHint: '${_altKey}A'),
         entry('shortcuts', Icons.keyboard_outlined, 'Atajos de teclado', keyHint: '?'),
         const PopupMenuDivider(height: 8),
-        entry('logout', Icons.logout_rounded, 'Cerrar sesión', color: OhtliColors.xoconostle),
+        entry(
+          'logout',
+          Icons.logout_rounded,
+          'Cerrar sesión',
+          color: OhtliColors.xoconostle,
+          subtitle: currentSaved ? 'Y olvidar esta cuenta en este navegador' : null,
+        ),
       ],
     );
-    if (!mounted) return;
+    if (!mounted || choice == null) return;
+    if (choice.startsWith('switch:')) {
+      await _switchAccount(others.firstWhere((a) => 'switch:${a.uid}' == choice));
+      return;
+    }
     switch (choice) {
+      case 'remember':
+        await SavedAccounts.remember(user!);
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              backgroundColor: OhtliColors.stormyTeal,
+              content: Text(
+                SavedAccounts.isSaved(user.uid)
+                    ? 'Listo: podrás volver a esta cuenta desde el menú.'
+                    : 'No pudimos recordar esta cuenta. Intenta de nuevo.',
+                style: GoogleFonts.inter(color: Colors.white),
+              ),
+            ),
+          );
+        }
+      case 'add':
+        await _addAccount(currentSaved: currentSaved);
       case 'account':
         _goToAccount();
       case 'a11y':
@@ -543,8 +681,77 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       case 'shortcuts':
         _showShortcuts();
       case 'logout':
+        final uid = user?.uid;
+        if (uid != null) await SavedAccounts.forget(uid);
         widget.onLogout();
     }
+  }
+
+  Future<void> _switchAccount(SavedAccount account) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final label = account.name.isNotEmpty ? account.name : account.email;
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text('Cambiando a $label…', style: GoogleFonts.inter()),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+    final result = await SavedAccounts.switchTo(account.uid);
+    if (result == SwitchAccountResult.switched) {
+      // Arranca la app desde el inicio con la nueva cuenta (sin datos en memoria de la anterior).
+      html.window.location.assign('${html.window.location.origin}/');
+      return;
+    }
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
+      SnackBar(
+        backgroundColor: OhtliColors.xoconostle,
+        content: Text(
+          result == SwitchAccountResult.expired
+              ? 'La sesión de $label caducó. Inicia sesión de nuevo con esa cuenta para recordarla.'
+              : 'No pudimos cambiar a $label. Intenta de nuevo.',
+          style: GoogleFonts.inter(color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  /// Lleva al inicio de sesión sin olvidar las cuentas recordadas.
+  Future<void> _addAccount({required bool currentSaved}) async {
+    if (!currentSaved) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: OhtliColors.cloudDancer,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text(
+            'Agregar otra cuenta',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
+          ),
+          content: Text(
+            'Tu cuenta actual no está recordada en este navegador, así que para volver a ella '
+            'tendrás que iniciar sesión otra vez. Para poder cambiar con un clic, inicia sesión '
+            'con "Recordar sesión" marcado.',
+            style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withOpacity(0.8)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancelar', style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.7))),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(
+                'Continuar',
+                style: GoogleFonts.inter(color: _accent, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    widget.onLogout();
   }
 
   /// Panel rápido de accesibilidad: tema y tamaño de letra, junto al menú.
@@ -1162,7 +1369,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
               void open() => _openAccountMenu(anchorContext);
               return Semantics(
                 button: true,
-                label: 'Tu cuenta: Mi cuenta, Accesibilidad, Atajos y Cerrar sesión',
+                label: 'Tu cuenta: cambiar de cuenta, Mi cuenta, Accesibilidad, Atajos y Cerrar sesión',
                 child: _tooltip(
                   message: 'Tu cuenta',
                   show: !expanded,

@@ -217,3 +217,7 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
     res.status(500).send({ error: 'Gateway Error', details: error.toString() });
   }
 });
+
+// SSO entre subdominios (ohtli.quest → lab.ohtli.quest). Ver functions/sso.js.
+exports.ssoBridge = functions.https.onRequest(require('./sso').makeHandler(admin));
+

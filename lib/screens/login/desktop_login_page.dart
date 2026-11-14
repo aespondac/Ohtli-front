@@ -1,3 +1,4 @@
+import '../../services/saved_accounts.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -59,6 +60,10 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      // Con "Recordar sesión", la cuenta queda disponible para cambiar desde el menú.
+      if (_rememberSession && credential.user != null) {
+        await SavedAccounts.remember(credential.user!);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -131,6 +136,10 @@ class _DesktopLoginPageState extends State<DesktopLoginPage> {
       final credential = await FirebaseAuth.instance.signInWithPopup(
         googleProvider,
       );
+      // Con "Recordar sesión", la cuenta queda disponible para cambiar desde el menú.
+      if (_rememberSession && credential.user != null) {
+        await SavedAccounts.remember(credential.user!);
+      }
 
       // Initialize/verify user document in Cloud Firestore in background
       final user = credential.user;

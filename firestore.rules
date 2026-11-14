@@ -6,6 +6,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Códigos de SSO entre subdominios (ohtli.quest → lab.ohtli.quest): solo los lee y
+    // escribe la Cloud Function ssoBridge con el Admin SDK. Ningún cliente tiene acceso.
+    match /sso_codes/{codeHash} {
+      allow read, write: if false;
+    }
+
     // Superusuario de Ohtli (aprueba lugares sugeridos y publica notas de versión).
     // Debe coincidir con kSuperUserEmail en lib/config/admin.dart.
     function isSuperUser() {
