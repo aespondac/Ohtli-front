@@ -42,6 +42,7 @@ import 'screens/lab/experiments/taste_vector_experiment_page.dart';
 import 'screens/places/places_page.dart';
 import 'widgets/user_profile_helper.dart';
 import 'services/ohtli_sso.dart';
+import 'services/saved_accounts.dart';
 import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
 
@@ -254,6 +255,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   Uri? _ssoTarget;
   bool _ssoChecked = false;
   bool _hadUser = false;
+  bool _switchChecked = false;
   bool _intentEval = false;
   LabRole _labRole = LabRole.none;
   String? _newsSlug;
@@ -264,6 +266,18 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   String _bannerText = '';
   StreamSubscription? _onlineSub;
   StreamSubscription? _offlineSub;
+
+  void _showTemporaryBanner(String text) {
+    if (!mounted) return;
+    setState(() {
+      _showBanner = true;
+      _bannerColorIsTeal = false;
+      _bannerText = text;
+    });
+    Future.delayed(const Duration(seconds: 7), () {
+      if (mounted && _bannerText == text) setState(() => _showBanner = false);
+    });
+  }
 
   void _onConnectionChanged(bool online) {
     setState(() {
@@ -420,6 +434,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           return; // la página está yendo a ohtli.quest
         }
       }
+      // Tras cambiar de cuenta desde el menú: confirma que la cuenta elegida entró.
+      if (!_switchChecked) {
+        _switchChecked = true;
+        final failed = SavedAccounts.checkPendingSwitch(user);
+        if (failed != null) _showTemporaryBanner('La sesión de $failed ya no es válida. Inicia sesión de nuevo con esa cuenta.');
+      }
+      // Mantiene al día la sesión guardada de la cuenta actual si está recordada.
+      if (user != null) unawaited(SavedAccounts.syncCurrent(user));
       if (user == null && _hadUser) OhtliSso.onSignedOutOnSubdomain();
       if (user != null) {
         _hadUser = true;

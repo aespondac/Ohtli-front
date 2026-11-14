@@ -35,7 +35,7 @@ class _SsoBridgePageState extends State<SsoBridgePage> {
   void initState() {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    _others = SavedAccounts.list().where((a) => a.uid != uid).toList();
+    _others = SavedAccounts.list().where((a) => a.uid != uid && SavedAccounts.isSaved(a.uid)).toList();
     if (_others.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _continue());
     }

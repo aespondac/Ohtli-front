@@ -489,8 +489,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
 
     final user = FirebaseAuth.instance.currentUser;
     final saved = SavedAccounts.list();
-    final bool currentSaved = user != null && saved.any((a) => a.uid == user.uid);
-    final others = saved.where((a) => a.uid != user?.uid).toList();
+    final bool currentSaved = user != null && SavedAccounts.isSaved(user.uid);
+    final others = saved.where((a) => a.uid != user?.uid && SavedAccounts.isSaved(a.uid)).toList();
 
     // Se abre justo encima del botón: alto estimado de las opciones y separadores.
     final double scale = MediaQuery.textScalerOf(context).scale(1);
