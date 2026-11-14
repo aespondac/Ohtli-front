@@ -34,6 +34,15 @@ service cloud.firestore {
              .difference(resource.data.get('surpriseOpenedBy', []).toSet())
              .hasOnly([request.auth.uid]);
     }
+    // Miembro del viaje: dueño, coautor o destinatario de la sorpresa.
+    function isTripMember(ownerId, tripId) {
+      let trip = get(/databases/$(database)/documents/users/$(ownerId)/trips/$(tripId)).data;
+      return request.auth != null && (
+        request.auth.uid == ownerId ||
+        request.auth.uid in trip.get('coAuthorIds', []) ||
+        request.auth.uid in trip.get('surpriseTargetIds', [])
+      );
+    }
     function tripUpdateAllowed(data) {
       return request.auth != null && (
         request.auth.uid == data.get('userId', '') ||
@@ -184,6 +193,41 @@ service cloud.firestore {
             request.auth.uid == userId || 
             (get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.coAuthorIds != null && request.auth.uid in get(/databases/$(database)/documents/users/$(userId)/trips/$(tripId)).data.coAuthorIds)
           );
+        }
+
+        // --- Notas y reacciones del grupo: solo los miembros del viaje ---
+        // Notas tipo burbuja ancladas a un bloque.
+        match /notes/{noteId} {
+          allow read: if isTripMember(userId, tripId);
+          allow create: if isTripMember(userId, tripId)
+            && request.resource.data.keys().hasOnly(['blockId', 'authorId', 'authorName', 'authorPhoto', 'text', 'createdAt', 'reactions'])
+            && request.resource.data.authorId == request.auth.uid
+            && request.resource.data.blockId is string
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 1000
+            && request.resource.data.get('reactions', {}).size() == 0;
+          // El autor edita su texto; cualquier miembro cambia solo su propia reacción.
+          allow update: if isTripMember(userId, tripId) && (
+            (request.auth.uid == resource.data.authorId
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+              && request.resource.data.text is string
+              && request.resource.data.text.size() > 0
+              && request.resource.data.text.size() <= 1000) ||
+            (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+              && request.resource.data.get('reactions', {}).diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid]))
+          );
+          allow delete: if isTripMember(userId, tripId)
+            && (request.auth.uid == resource.data.authorId || request.auth.uid == userId);
+        }
+
+        // Reacciones a un bloque: un documento por bloque, un campo por usuario.
+        match /reactions/{blockId} {
+          allow read: if isTripMember(userId, tripId);
+          allow create: if isTripMember(userId, tripId)
+            && request.resource.data.keys().hasOnly([request.auth.uid]);
+          allow update: if isTripMember(userId, tripId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid]);
         }
       }
     }

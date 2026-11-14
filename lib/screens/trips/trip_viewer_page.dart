@@ -1,5 +1,6 @@
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -29,6 +30,8 @@ import '../../services/trip_transfers.dart';
 import '../../utils/friendly_errors.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../widgets/place_details_form.dart';
+import '../../services/trip_social_service.dart';
+import '../../widgets/trip_social/block_social.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -81,8 +84,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Set<String> _visited = {};
 
   // Reseña después del viaje (T5)
-  bool _reviewBannerDismissed = false;
   bool _isSavingReview = false;
+
+  // Notas y reacciones del grupo (solo miembros del viaje)
+  TripSocialService? _social;
+  StreamSubscription<List<TripNote>>? _notesSub;
+  StreamSubscription<Map<String, Map<String, String>>>? _reactionsSub;
+  List<TripNote> _notes = [];
+  Map<String, Map<String, String>> _blockReactions = {};
+  final Set<String> _openThreads = {};
 
   Future<void> _exportPdf({bool printOnly = false}) async {
     if (_trip == null || _sections.isEmpty) return;
@@ -184,6 +194,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   @override
   void dispose() {
+    _notesSub?.cancel();
+    _reactionsSub?.cancel();
     _scrollController.dispose();
     _readProgress.dispose();
     super.dispose();
@@ -459,17 +471,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
             spacing: 10,
             runSpacing: 10,
             children: [
-              if (!_isPreview)
-                FilledButton.icon(
-                  onPressed: () => _setTripMode(!_tripMode),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _tripMode ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: Icon(_tripMode ? Icons.stop_circle_outlined : Icons.near_me_rounded, size: 18),
-                  label: Text(_tripMode ? 'Salir del modo viaje' : 'Estoy en el viaje',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                ),
               OutlinedButton.icon(
                 onPressed: _isPreview ? null : () => _showShareDialog(isDark),
                 style: OutlinedButton.styleFrom(
@@ -632,14 +633,14 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
-  Widget _buildTripModePanel(bool isDark) {
+  Widget _buildTripModePanel(bool isDark, {bool embedded = false}) {
     final places = _sections.whereType<PlaceSection>().toList();
     final next = _nextStop;
     final done = places.where((p) => _visited.contains(p.id)).length;
     final Color fg = isDark ? Colors.white : OhtliColors.onyx;
     return Material(
-      elevation: 12,
-      color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+      elevation: embedded ? 0 : 12,
+      color: embedded ? Colors.transparent : (isDark ? const Color(0xFF1E1E22) : Colors.white),
       borderRadius: BorderRadius.circular(20),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
@@ -724,6 +725,382 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ],
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Miembros del viaje: notas, reacciones y panel lateral
+  // ---------------------------------------------------------------------------
+  /// Dueño, coautor o destinatario de la sorpresa (los mismos que ya pueden abrir el viaje privado).
+  bool get _isMember {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final t = _trip;
+    if (uid == null || t == null) return false;
+    return t.userId == uid || t.coAuthorIds.contains(uid) || t.surpriseTargetIds.contains(uid);
+  }
+
+  bool get _socialEnabled => _social != null && _isMember && !_isPreview && _trip?.isReleaseNotes != true;
+
+  void _startSocial() {
+    _notesSub?.cancel();
+    _reactionsSub?.cancel();
+    _social = null;
+    if (!mounted || _isPreview || _trip == null || _trip!.isReleaseNotes || !_isMember) return;
+    final social = TripSocialService(_trip!.userId, _trip!.id);
+    _social = social;
+    _notesSub = social.notesStream().listen(
+      (n) {
+        if (mounted) setState(() => _notes = n);
+      },
+      onError: (e) => debugPrint('Notas del viaje: $e'),
+    );
+    _reactionsSub = social.reactionsStream().listen(
+      (r) {
+        if (mounted) setState(() => _blockReactions = r);
+      },
+      onError: (e) => debugPrint('Reacciones del viaje: $e'),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Map<String, String> get _memberNames {
+    final names = <String, String>{};
+    if (_trip != null) names[_trip!.userId] = (_authorProfile?['displayName'] ?? 'Autor').toString();
+    for (final c in _coAuthorsProfiles) {
+      names[c['uid'].toString()] = (c['displayName'] ?? 'Viajero').toString();
+    }
+    for (final n in _notes) {
+      names.putIfAbsent(n.authorId, () => n.authorName);
+    }
+    return names;
+  }
+
+  String get _myDisplayName {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return 'Viajero';
+    final fromProfile = _memberNames[u.uid];
+    if (fromProfile != null && fromProfile.isNotEmpty && fromProfile != 'Autor') return fromProfile;
+    if (u.displayName != null && u.displayName!.trim().isNotEmpty) return u.displayName!.trim();
+    return 'Viajero';
+  }
+
+  Future<void> _guardSocial(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyError(e, fallback: 'No se pudo guardar. Revisa tu conexión.'), style: GoogleFonts.inter())),
+      );
+    }
+  }
+
+  Future<void> _reactToBlock(String blockId, String? kind) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _social == null) return;
+    // Optimista: se ve al instante; el stream confirma.
+    setState(() {
+      final m = Map<String, String>.from(_blockReactions[blockId] ?? const {});
+      if (kind == null) {
+        m.remove(uid);
+      } else {
+        m[uid] = kind;
+      }
+      _blockReactions = {..._blockReactions, blockId: m};
+    });
+    await _guardSocial(() => _social!.reactToBlock(blockId, uid, kind));
+  }
+
+  Future<void> _confirmDeleteNote(TripNote note) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('¿Borrar la nota?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: Text('Se borrará para todos los miembros del viaje.', style: GoogleFonts.inter(fontSize: 14)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _guardSocial(() => _social!.deleteNote(note.id));
+  }
+
+  String _blockLabelById(String id) {
+    for (final s in _sections) {
+      if (s.id == id) return _blockLabel(s);
+    }
+    return 'un bloque';
+  }
+
+  void _openThread(String blockId) {
+    setState(() => _openThreads.add(blockId));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(blockId));
+  }
+
+  Widget _panelCard({required bool isDark, required IconData icon, required String title, required List<Widget> children}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: OhtliColors.stormyTeal),
+              const SizedBox(width: 7),
+              Text(title,
+                  style: GoogleFonts.inter(
+                      fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.3, color: isDark ? Colors.white70 : OhtliColors.subtleText)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _memberAvatar(String name, String? photo, bool isDark, {String? badge}) {
+    return Tooltip(
+      message: badge != null ? '$name · $badge' : name,
+      child: CircleAvatar(
+        radius: 17,
+        backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.16),
+        backgroundImage: (photo != null && photo.isNotEmpty) ? NetworkImage(photo) : null,
+        child: (photo == null || photo.isEmpty)
+            ? Text(name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
+                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal))
+            : null,
+      ),
+    );
+  }
+
+  /// Contenido del panel privado. [onDone] cierra la hoja en móvil antes de navegar.
+  List<Widget> _buildMemberPanelCards(bool isDark, bool canEdit, {VoidCallback? onDone}) {
+    final t = _trip!;
+    final Color fg = isDark ? Colors.white : OhtliColors.onyx;
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final places = _sections.whereType<PlaceSection>().toList();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final cards = <Widget>[];
+
+    // Viajeros
+    final invited = t.surpriseTargetIds.where((id) => id != t.userId && !t.coAuthorIds.contains(id)).length;
+    cards.add(_panelCard(isDark: isDark, icon: Icons.groups_rounded, title: 'VIAJEROS', children: [
+      Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          _memberAvatar((_authorProfile?['displayName'] ?? 'Autor').toString(), _authorProfile?['photoURL'] as String?, isDark, badge: 'autor'),
+          for (final c in _coAuthorsProfiles)
+            _memberAvatar((c['displayName'] ?? 'Viajero').toString(), c['photoURL'] as String?, isDark, badge: 'coautor'),
+          if (invited > 0)
+            CircleAvatar(
+              radius: 17,
+              backgroundColor: OhtliColors.cempasuchil.withValues(alpha: 0.16),
+              child: Text('+$invited', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil)),
+            ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Text('Las notas y reacciones solo las ven los miembros del viaje.', style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: sub)),
+    ]));
+
+    // Modo viaje
+    if (places.isNotEmpty) {
+      cards.add(_panelCard(isDark: isDark, icon: Icons.near_me_rounded, title: 'MODO VIAJE', children: [
+        if (_tripMode && onDone == null)
+          _buildTripModePanel(isDark, embedded: true)
+        else ...[
+          Text(_tripMode ? 'El modo viaje está activo.' : 'Marca las paradas que visitas y abre la ruta a la siguiente.',
+              style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                onDone?.call();
+                _setTripMode(!_tripMode);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: _tripMode ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: Icon(_tripMode ? Icons.stop_circle_outlined : Icons.near_me_rounded, size: 18),
+              label: Text(_tripMode ? 'Salir del modo viaje' : 'Estoy en el viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ]));
+    }
+
+    // Calificar
+    if (places.isNotEmpty && t.travelDate != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final day = DateTime(t.travelDate!.year, t.travelDate!.month, t.travelDate!.day);
+      final bool past = day.isBefore(today);
+      final rated = places.where((p) => p.rating > 0).toList();
+      final avg = rated.isEmpty ? 0.0 : rated.fold<int>(0, (a, p) => a + p.rating) / rated.length;
+      cards.add(_panelCard(isDark: isDark, icon: Icons.star_rounded, title: 'CALIFICAR EL VIAJE', children: [
+        if (t.reviewedAt != null && rated.isNotEmpty) ...[
+          Row(
+            children: [
+              ...List.generate(5, (i) => Icon(i < avg.round() ? Icons.star_rounded : Icons.star_outline_rounded, size: 20, color: Colors.amber)),
+              const SizedBox(width: 6),
+              Text(avg.toStringAsFixed(1), style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: fg)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text('${rated.length} de ${places.length} paradas calificadas.', style: GoogleFonts.inter(fontSize: 12, color: sub)),
+        ] else
+          Text(
+            past ? 'Ya pasó el ${_formatSpanishDate(t.travelDate)}. ¿Qué tal estuvo cada parada?' : 'Podrás calificar las paradas después del ${_formatSpanishDate(t.travelDate)}.',
+            style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg),
+          ),
+        if (past && canEdit) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                onDone?.call();
+                _showReviewDialog(isDark);
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: OhtliColors.xoconostle,
+                side: const BorderSide(color: OhtliColors.xoconostle),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.rate_review_rounded, size: 18),
+              label: Text(t.reviewedAt != null ? 'Editar calificación' : 'Calificar paradas', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ]));
+    }
+
+    // Actividad reciente
+    final recent = _notes.reversed.take(5).toList();
+    cards.add(_panelCard(isDark: isDark, icon: Icons.forum_rounded, title: 'ACTIVIDAD', children: [
+      if (recent.isEmpty)
+        Text('Mantén presionado un bloque para reaccionar o deja una nota para el grupo.',
+            style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: sub))
+      else
+        for (final n in recent)
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              onDone?.call();
+              _openThread(n.blockId);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(color: n.authorId == uid ? kBubbleMine : OhtliColors.stormyTeal, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${n.authorId == uid ? 'Tú' : n.authorName} · ${_blockLabelById(n.blockId)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: fg)),
+                        Text(n.text, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5, height: 1.35, color: sub)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+    ]));
+
+    return cards;
+  }
+
+  /// Panel lateral fijo en pantallas anchas.
+  Widget _buildMemberAside(bool isDark, bool canEdit) {
+    return Container(
+      width: 340,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF161618) : OhtliColors.cantera.withValues(alpha: 0.14),
+        border: Border(left: BorderSide(color: isDark ? Colors.white10 : OhtliColors.cardBorder)),
+      ),
+      child: SafeArea(
+        left: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 96),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14, left: 2),
+              child: Row(
+                children: [
+                  Icon(Icons.lock_outline_rounded, size: 15, color: isDark ? Colors.white54 : OhtliColors.subtleText),
+                  const SizedBox(width: 6),
+                  Text('Tu viaje · solo miembros',
+                      style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : OhtliColors.onyx)),
+                ],
+              ),
+            ),
+            ..._buildMemberPanelCards(isDark, canEdit),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// En móvil el mismo panel se abre como hoja inferior.
+  void _showMemberSheet(bool isDark, bool canEdit) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF161618) : OhtliColors.cloudDancer,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.62,
+        maxChildSize: 0.92,
+        minChildSize: 0.35,
+        builder: (ctx, scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(color: isDark ? Colors.white24 : Colors.black12, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14, left: 2),
+              child: Text('Tu viaje · solo miembros',
+                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : OhtliColors.onyx)),
+            ),
+            ..._buildMemberPanelCards(isDark, canEdit, onDone: () => Navigator.of(ctx).pop()),
           ],
         ),
       ),
@@ -838,16 +1215,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
   // ---------------------------------------------------------------------------
   // Reseña después del viaje (T5)
   // ---------------------------------------------------------------------------
-  bool _canReview(bool canEdit) {
-    final t = _trip;
-    if (t == null || _isPreview || !canEdit || t.reviewedAt != null || _reviewBannerDismissed || t.isReleaseNotes) return false;
-    if (t.travelDate == null || !_sections.any((s) => s is PlaceSection)) return false;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final travelDay = DateTime(t.travelDate!.year, t.travelDate!.month, t.travelDate!.day);
-    return travelDay.isBefore(today);
-  }
-
   /// Encabezado de las notas de versión: versión, fecha y compartir.
   Widget _buildReleaseNotesHeader(bool isDark) {
     final t = _trip!;
@@ -884,71 +1251,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
               icon: const Icon(Icons.ios_share_rounded, size: 16),
               label: Text('Compartir', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
             ),
-        ],
-      ),
-    );
-  }
-
-  String get _reviewDismissKey => 'ohtli_review_dismissed_${_trip?.id ?? ''}';
-
-  Widget _buildReviewBanner(bool isDark) {
-    final dateText = _formatSpanishDate(_trip!.travelDate);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            OhtliColors.cempasuchil.withValues(alpha: isDark ? 0.28 : 0.16),
-            OhtliColors.xoconostle.withValues(alpha: isDark ? 0.22 : 0.10),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.rate_review_rounded, color: OhtliColors.xoconostle, size: 26),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('¿Qué tal estuvo tu viaje?',
-                    style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: isDark ? Colors.white : OhtliColors.onyx)),
-                const SizedBox(height: 4),
-                Text(
-                  'Ya pasó el $dateText. Califica tus paradas y anota lo que quieras recordar; después puedes convertirlo en una crónica.',
-                  style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.75)),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: () => _showReviewDialog(isDark),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: OhtliColors.xoconostle,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.star_rounded, size: 18),
-                      label: Text('Calificar paradas', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        try {
-                          html.window.localStorage[_reviewDismissKey] = '1';
-                        } catch (_) {}
-                        setState(() => _reviewBannerDismissed = true);
-                      },
-                      child: Text('Ahora no', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.xoconostle)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -1099,6 +1401,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         _loadTripContent(),
         _loadAuthorProfile(),
       ]);
+      _startSocial();
     } else if (widget.tripId != null && widget.authorId != null) {
       try {
         final fetchedTrip = await TripService().getTrip(widget.authorId!, widget.tripId!);
@@ -1121,6 +1424,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             _loadTripContent(),
             _loadAuthorProfile(),
           ]);
+          _startSocial();
         } else {
           setState(() {
             _errorCode = 404;
@@ -1228,9 +1532,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   Future<void> _loadTripContent() async {
     if (_trip == null) return;
-    try {
-      _reviewBannerDismissed = html.window.localStorage[_reviewDismissKey] == '1';
-    } catch (_) {}
     if (widget.previewSections != null) {
       if (mounted) {
         setState(() {
@@ -1640,7 +1941,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   if (_trip?.isReleaseNotes == true)
                     _buildReleaseNotesHeader(isDark)
                   else ...[
-                    if (_canReview(canEdit)) _buildReviewBanner(isDark),
                     _buildTripSummary(isDark, isDesktop),
                     KeyedSubtree(key: _mapKey, child: _buildRouteMapAndChronologySection(isDark, isDesktop)),
                   ],
@@ -1682,6 +1982,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
         activeContent = _buildLockedSurpriseView(isDark);
       }
     }
+
+    // Panel privado del grupo: a un lado en pantallas anchas, hoja inferior en móvil.
+    final bool showMemberPanel = _socialEnabled && !isLocked;
+    final double screenW = MediaQuery.of(context).size.width;
+    final bool sidebarShown = isDesktop && !widget.isPublicLink && hasActiveSession;
+    final bool wideAside = showMemberPanel && screenW >= (sidebarShown ? 1280 : 1100);
+    final int unreadish = _notes.length;
 
     final Widget bodyContent = Row(
       children: [
@@ -1787,8 +2094,43 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     ),
                   ),
                 ),
-              // Panel del modo viaje (V4)
-              if (_tripMode && !isLocked)
+              // Botón del panel de miembros en móvil
+              if (showMemberPanel && !wideAside && !_tripMode)
+                Positioned(
+                  left: 16,
+                  bottom: 16 + MediaQuery.of(context).padding.bottom,
+                  child: Material(
+                    color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+                    shape: const StadiumBorder(),
+                    elevation: 4,
+                    child: InkWell(
+                      customBorder: const StadiumBorder(),
+                      onTap: () => _showMemberSheet(isDark, canEdit),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.groups_rounded, size: 19, color: OhtliColors.stormyTeal),
+                            const SizedBox(width: 8),
+                            Text('Tu viaje',
+                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx)),
+                            if (unreadish > 0) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(color: kBubbleMine, borderRadius: BorderRadius.circular(10)),
+                                child: Text('$unreadish', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // Panel del modo viaje (V4): en pantallas anchas vive en el panel lateral
+              if (_tripMode && !isLocked && !wideAside)
                 Positioned(
                   left: 16,
                   right: 16,
@@ -1844,6 +2186,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ],
           ),
         ),
+        if (wideAside) _buildMemberAside(isDark, canEdit),
       ],
     );
 
@@ -2632,6 +2975,66 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ),
           ),
           Opacity(opacity: visited ? 0.6 : 1, child: blockContent),
+        ],
+      );
+    }
+
+    if (_socialEnabled) {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final notes = _notes.where((n) => n.blockId == section.id).toList();
+      final open = _openThreads.contains(section.id);
+      final names = _memberNames;
+      blockContent = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Builder(
+            builder: (bctx) => GestureDetector(
+              behavior: HitTestBehavior.deferToChild,
+              onLongPressStart: (d) => showTapbackMenu(
+                anchorContext: bctx,
+                globalPosition: d.globalPosition,
+                selected: _blockReactions[section.id]?[uid],
+                isDark: isDark,
+                onPick: (k) => _reactToBlock(section.id, k),
+              ),
+              child: blockContent,
+            ),
+          ),
+          BlockSocialBar(
+            reactions: _blockReactions[section.id] ?? const {},
+            noteCount: notes.length,
+            threadOpen: open,
+            myUid: uid,
+            memberNames: names,
+            isDark: isDark,
+            onReact: (k) => _reactToBlock(section.id, k),
+            onToggleThread: () => setState(() => open ? _openThreads.remove(section.id) : _openThreads.add(section.id)),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: open
+                ? NoteThread(
+                    key: ValueKey('thread_${section.id}'),
+                    notes: notes,
+                    myUid: uid,
+                    canModerate: _trip!.userId == uid,
+                    memberNames: names,
+                    isDark: isDark,
+                    onSend: (text) => _social!.addNote(
+                      blockId: section.id,
+                      authorId: uid,
+                      authorName: _myDisplayName,
+                      authorPhoto: FirebaseAuth.instance.currentUser?.photoURL,
+                      text: text,
+                    ),
+                    onEdit: (note, text) => _social!.editNote(note.id, text),
+                    onDelete: (note) => _confirmDeleteNote(note),
+                    onReact: (note, k) => _guardSocial(() => _social!.reactToNote(note.id, uid, k)),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
         ],
       );
     }
