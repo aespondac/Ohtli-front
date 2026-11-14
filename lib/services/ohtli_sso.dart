@@ -106,6 +106,14 @@ class OhtliSso {
     html.window.location.assign('$mainOrigin/sso?return=${Uri.encodeComponent(back)}');
   }
 
+  /// "Cambiar de cuenta" en un subdominio: cierra la sesión local y va al selector
+  /// de cuentas de ohtli.quest, que vuelve con la cuenta elegida.
+  static Future<void> switchAccountOnSubdomain() async {
+    if (!isSubdomain) return;
+    await FirebaseAuth.instance.signOut();
+    continueWithOhtli();
+  }
+
   /// Al cerrar sesión en el subdominio: no volver a entrar solo con la sesión de
   /// ohtli.quest hasta que la persona lo pida (botón) o inicie sesión.
   static void onSignedOutOnSubdomain() {
@@ -183,6 +191,24 @@ class OhtliSso {
     final code = (jsonDecode(response.responseText ?? '{}') as Map)['code'];
     if (code is! String || code.isEmpty) throw StateError('Respuesta sin código');
     html.window.location.replace('$target#$_fragmentKey=$code');
+  }
+
+  /// Tras cambiar de cuenta en el selector de ohtli.quest/sso, la página se recarga;
+  /// esta marca hace que continúe sola al subdominio con la cuenta elegida.
+  static const String _continueAfterSwitchKey = 'ohtli_sso_continue';
+
+  static void markContinueAfterSwitch() {
+    try {
+      html.window.sessionStorage[_continueAfterSwitchKey] = '1';
+    } catch (_) {}
+  }
+
+  static bool takeContinueAfterSwitch() {
+    try {
+      return html.window.sessionStorage.remove(_continueAfterSwitchKey) != null;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// "Cancelar" en ohtli.quest: vuelve al subdominio para iniciar sesión ahí.

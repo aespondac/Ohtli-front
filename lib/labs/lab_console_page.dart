@@ -1,3 +1,4 @@
+import '../widgets/ohtli_account_chip.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -78,10 +79,10 @@ class _LabConsolePageState extends State<LabConsolePage> {
             icon: const Icon(Icons.science_outlined, size: 16),
             label: Text(isMobile ? 'Técnicos' : 'Experimentos técnicos'),
           ),
-          IconButton(
-            tooltip: 'Cerrar sesión',
-            onPressed: widget.onLogout,
-            icon: Icon(Icons.logout_rounded, color: OhtliColors.onyx),
+          // Cuenta: "Cambiar de cuenta" y "Cerrar sesión".
+          OhtliAccountChip(
+            compact: isMobile,
+            onSignOut: () async => widget.onLogout(),
           ),
           const SizedBox(width: 8),
         ],

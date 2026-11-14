@@ -36,7 +36,8 @@ class _SsoBridgePageState extends State<SsoBridgePage> {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     _others = SavedAccounts.list().where((a) => a.uid != uid && SavedAccounts.isSaved(a.uid)).toList();
-    if (_others.isEmpty) {
+    // Sin otras cuentas, o justo después de elegir una (recarga): continúa solo.
+    if (_others.isEmpty || OhtliSso.takeContinueAfterSwitch()) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _continue());
     }
   }
@@ -66,6 +67,7 @@ class _SsoBridgePageState extends State<SsoBridgePage> {
     final result = await SavedAccounts.switchTo(account.uid);
     if (result == SwitchAccountResult.switched) {
       // Misma URL (/sso?return=…): al recargar continúa con la cuenta elegida.
+      OhtliSso.markContinueAfterSwitch();
       html.window.location.reload();
       return;
     }

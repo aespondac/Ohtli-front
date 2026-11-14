@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import '../../widgets/ohtli_account_chip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -195,26 +196,8 @@ class _ApiLandingPageState extends State<ApiLandingPage> {
           const Spacer(),
           const OhtliThemeToggle(),
           SizedBox(width: isMobile ? 4 : 10),
-          if (!isMobile && widget.accountLabel != null)
-            Tooltip(
-              message: 'Sesión iniciada con tu cuenta de Ohtli',
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.account_circle_outlined, size: 18, color: OhtliColors.onyx.withValues(alpha: 0.75)),
-                  const SizedBox(width: 6),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 180),
-                    child: Text(
-                      widget.accountLabel!,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14, color: OhtliColors.onyx),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-            )
+          if (widget.accountLabel != null)
+            OhtliAccountChip(compact: isMobile)
           else if (!isMobile)
             TextButton(
               onPressed: widget.onLoginRedirect,

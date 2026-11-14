@@ -1,3 +1,4 @@
+import '../../widgets/ohtli_account_chip.dart';
 import 'dart:convert';
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
@@ -405,11 +406,8 @@ class _LabsDashboardPageState extends State<LabsDashboardPage> with SingleTicker
             ),
             const SizedBox(width: 8),
           ],
-          IconButton(
-            icon: Icon(Icons.logout_rounded, color: OhtliColors.onyx),
-            onPressed: widget.onLogout,
-            tooltip: 'Cerrar sesión',
-          ),
+          // Cuenta: "Cambiar de cuenta" y "Cerrar sesión".
+          OhtliAccountChip(onSignOut: () async => widget.onLogout()),
           const SizedBox(width: 16),
         ],
       ),

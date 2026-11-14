@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/colors.dart';
+import '../widgets/ohtli_account_chip.dart';
 import '../widgets/ohtli_theme_toggle.dart';
 
 /// Secciones públicas de Ohtli Labs.
@@ -110,6 +111,8 @@ class LabsTopBar extends StatelessWidget implements PreferredSizeWidget {
             ],
             const Spacer(),
             if (trailing != null) ...[trailing!, const SizedBox(width: 6)],
+            // Con sesión: cuenta con "Cambiar de cuenta" y "Cerrar sesión".
+            OhtliAccountChip(compact: isMobile),
             const OhtliThemeToggle(),
             const SizedBox(width: 10),
             if (isMobile)
