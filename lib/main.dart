@@ -28,6 +28,7 @@ import 'screens/lab/labs_dashboard_page.dart';
 import 'labs/lab_console_page.dart';
 import 'labs/lab_eval_page.dart';
 import 'labs/labs_results_page.dart';
+import 'labs/lab_access.dart';
 import 'config/admin.dart' show isSuperUser;
 import 'screens/api/api_landing_page.dart';
 import 'screens/legal/legal_center_page.dart';
@@ -254,6 +255,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   bool _ssoChecked = false;
   bool _hadUser = false;
   bool _intentEval = false;
+  LabRole _labRole = LabRole.none;
+  String? _newsSlug;
 
   bool _isOnline = true;
   bool _showBanner = false;
@@ -338,6 +341,8 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           (hasRoute('/resultados') || hasRoute('/news'))) {
         // labs.ohtli.quest/resultados: reporte tipo paper y tablero; /news: novedades publicadas
         _currentScreen = hasRoute('/news') ? OhtliScreen.labsNews : OhtliScreen.labsResults;
+        final m = RegExp(r'/news/([A-Za-z0-9-]+)').firstMatch('$path $fragment');
+        _newsSlug = m?.group(1);
       } else if (hostname == 'lab.ohtli.quest' || params.containsKey('testLabApp')) {
         // lab.ohtli.quest: laboratorio individual. Sin sesión pide iniciarla y luego abre el panel de Labs
         // (la consola de pruebas del TT si la sesión es del superusuario)
@@ -467,12 +472,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       _navigateTo(OhtliScreen.labEval);
       return;
     }
-    if (_currentScreen == OhtliScreen.labLanding) {
-      _navigateTo(isSuperUser(user) ? OhtliScreen.labConsole : OhtliScreen.labsDashboard);
-      return;
-    } else if (_intentLabs) {
+    if (_currentScreen == OhtliScreen.labLanding || _intentLabs) {
+      // Miembros del laboratorio → consola de pruebas; el resto → espacio de testers
       _intentLabs = false;
-      _navigateTo(isSuperUser(user) ? OhtliScreen.labConsole : OhtliScreen.labsDashboard);
+      _labRole = await LabAccess.roleOf(user);
+      _navigateTo(_labRole.isMember ? OhtliScreen.labConsole : OhtliScreen.labEval);
       return;
     }
 
@@ -693,6 +697,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (_currentScreen == OhtliScreen.labConsole) {
       activeView = LabConsolePage(
+        role: isSuperUser(FirebaseAuth.instance.currentUser) ? LabRole.admin : _labRole,
         onOpenTechnical: () => _navigateTo(OhtliScreen.labsDashboard),
         onLogout: () async {
           await FirebaseAuth.instance.signOut();
@@ -712,10 +717,15 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
         },
         onOpenTerms: () => _navigateTo(OhtliScreen.labsTermsAndConditions),
+        onOpenConsole: () async {
+          _labRole = await LabAccess.roleOf(FirebaseAuth.instance.currentUser);
+          if (_labRole.isMember) _navigateTo(OhtliScreen.labConsole);
+        },
+        onOpenTechnical: () => _navigateTo(OhtliScreen.labsDashboard),
       );
     } else if (_currentScreen == OhtliScreen.labsResults || _currentScreen == OhtliScreen.labsNews) {
       activeView = LabsResultsPage(
-        newsMode: _currentScreen == OhtliScreen.labsNews,
+        slug: _newsSlug,
         onOpenEval: () => _navigateTo(OhtliScreen.labEval),
       );
     } else if (_currentScreen == OhtliScreen.apiLanding) {

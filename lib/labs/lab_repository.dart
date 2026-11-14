@@ -7,7 +7,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 ///  lab_runs/{runId}/rows/{n}     resultado de cada escenario o solicitud
 ///  lab_studies/{studyId}         estado del estudio (activo para testers, corrida fuente del juicio)
 ///  lab_responses/{id}            respuestas de testers (SUS, juicios de relevancia)
-///  lab_site/paper                texto del reporte público de labs.ohtli.quest
+///  lab_site/agg_{studyId}        agregados de los estudios con testers (con visibilidad)
+///  lab_posts/{postId}            artículos: borrador → privado → testers → público (blog)
+///  lab_members/{uid}, lab_invites/{email}  roles del laboratorio (ver lab_access.dart)
+///
+/// Visibilidad (campo visibility): private = solo miembros del laboratorio, testers = también
+/// testers registrados, public = cualquiera sin iniciar sesión (solo el superusuario).
 ///
 /// Las reglas de firestore.rules restringen la escritura al superusuario y la lectura pública a
 /// lo publicado; esta clase no decide permisos.
@@ -31,7 +36,7 @@ class LabRepository {
       'config': config,
       'startedAt': FieldValue.serverTimestamp(),
       'createdBy': FirebaseAuth.instance.currentUser?.uid,
-      'published': false,
+      'visibility': 'private',
       'evalSource': false,
       'summary': null,
       'notes': '',
@@ -50,9 +55,48 @@ class LabRepository {
   Stream<QuerySnapshot<Map<String, dynamic>>> watchRuns(String studyId) =>
       runs.where('studyId', isEqualTo: studyId).orderBy('startedAt', descending: true).limit(30).snapshots();
 
-  /// Corridas publicadas (para labs.ohtli.quest).
-  Stream<QuerySnapshot<Map<String, dynamic>>> watchPublished() =>
-      runs.where('published', isEqualTo: true).orderBy('startedAt', descending: true).limit(60).snapshots();
+  /// Corridas visibles en los niveles dados (p. ej. ['public'] para el sitio abierto).
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchVisible(List<String> levels) =>
+      runs.where('visibility', whereIn: levels).orderBy('startedAt', descending: true).limit(60).snapshots();
+
+  Future<void> setRunVisibility(String runId, String visibility) => runs.doc(runId).update({
+        'visibility': visibility,
+        if (visibility != 'private') 'releasedAt': FieldValue.serverTimestamp(),
+      });
+
+  // ---- Artículos ----
+  CollectionReference<Map<String, dynamic>> get posts => _db.collection('lab_posts');
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchAllPosts() => posts.orderBy('updatedAt', descending: true).snapshots();
+
+  /// Artículos publicados en los niveles dados (blog público: ['public']).
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchPublishedPosts(List<String> levels) => posts
+      .where('status', isEqualTo: 'published')
+      .where('visibility', whereIn: levels)
+      .orderBy('publishedAt', descending: true)
+      .limit(50)
+      .snapshots();
+
+  Future<Map<String, dynamic>?> postBySlug(String slug, List<String> levels) async {
+    final q = await posts
+        .where('slug', isEqualTo: slug)
+        .where('status', isEqualTo: 'published')
+        .where('visibility', whereIn: levels)
+        .limit(1)
+        .get();
+    return q.docs.isEmpty ? null : {...q.docs.first.data(), 'id': q.docs.first.id};
+  }
+
+  Future<String> savePost(String? id, Map<String, dynamic> data) async {
+    final ref = id == null ? posts.doc() : posts.doc(id);
+    await ref.set({
+      ...data,
+      if (id == null) 'createdAt': FieldValue.serverTimestamp(),
+      if (id == null) 'authorUid': FirebaseAuth.instance.currentUser?.uid,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return ref.id;
+  }
 
   Future<List<Map<String, dynamic>>> rows(String runId) async {
     final q = await runs.doc(runId).collection('rows').orderBy('index').get();

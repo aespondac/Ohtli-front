@@ -6,16 +6,22 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/colors.dart';
+import 'lab_access.dart';
+import 'lab_article.dart';
 import 'lab_repository.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
 
 /// lab.ohtli.quest/eval — entrada pública para testers de los estudios que lo requieren.
+/// También es el espacio de testers en lab.ohtli.quest: alta como tester, estudios abiertos y
+/// resultados liberados para testers.
 class LabEvalPage extends StatefulWidget {
   final VoidCallback onLogin;
   final VoidCallback onOpenTerms;
-  const LabEvalPage({super.key, required this.onLogin, required this.onOpenTerms});
+  final VoidCallback? onOpenConsole;
+  final VoidCallback? onOpenTechnical;
+  const LabEvalPage({super.key, required this.onLogin, required this.onOpenTerms, this.onOpenConsole, this.onOpenTechnical});
 
   @override
   State<LabEvalPage> createState() => _LabEvalPageState();
@@ -24,6 +30,26 @@ class LabEvalPage extends StatefulWidget {
 class _LabEvalPageState extends State<LabEvalPage> {
   bool _consent = false;
   String? _studyId;
+  Map<String, dynamic>? _post;
+  LabRole _role = LabRole.none;
+  bool _roleLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final r = await LabAccess.roleOf(FirebaseAuth.instance.currentUser);
+    if (mounted) {
+      setState(() {
+        _role = r;
+        _roleLoaded = true;
+        if (r.isTester) _consent = true; // ya aceptó al unirse
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,10 +58,17 @@ class _LabEvalPageState extends State<LabEvalPage> {
     Widget body;
     if (user == null) {
       body = _intro(signedIn: false);
+    } else if (!_roleLoaded) {
+      body = const Center(child: CircularProgressIndicator());
     } else if (!_consent) {
       body = _consentCard();
+    } else if (_post != null) {
+      body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextButton.icon(onPressed: () => setState(() => _post = null), icon: const Icon(Icons.arrow_back), label: const Text('Volver')),
+        LabCard(padding: const EdgeInsets.all(28), child: LabArticleView(post: _post!)),
+      ]);
     } else if (_studyId == null) {
-      body = _studyPicker();
+      body = Column(children: [_hubHeader(), const SizedBox(height: 12), _studyPicker(), const SizedBox(height: 12), _released()]);
     } else if (_studyId == 'sus') {
       body = _SusFlow(onDone: () => setState(() => _studyId = null));
     } else {
@@ -47,16 +80,22 @@ class _LabEvalPageState extends State<LabEvalPage> {
         current: LabsSection.participate,
         trailing: user == null
             ? null
-            : TextButton(
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                  setState(() {
-                    _consent = false;
-                    _studyId = null;
-                  });
-                },
-                child: const Text('Salir'),
-              ),
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+                if (_role.isMember && widget.onOpenConsole != null)
+                  TextButton.icon(onPressed: widget.onOpenConsole, icon: const Icon(Icons.biotech_rounded, size: 16), label: const Text('Consola')),
+                if (widget.onOpenTechnical != null) TextButton(onPressed: widget.onOpenTechnical, child: const Text('Experimentos')),
+                TextButton(
+                  onPressed: () async {
+                    await FirebaseAuth.instance.signOut();
+                    setState(() {
+                      _consent = false;
+                      _studyId = null;
+                      _role = LabRole.none;
+                    });
+                  },
+                  child: const Text('Salir'),
+                ),
+              ]),
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 24),
@@ -108,12 +147,72 @@ class _LabEvalPageState extends State<LabEvalPage> {
           TextButton(onPressed: widget.onOpenTerms, child: const Text('Leer los términos de Ohtli Labs')),
           const SizedBox(height: 8),
           ElevatedButton(
-            onPressed: () => setState(() => _consent = true),
+            onPressed: () async {
+              final u = FirebaseAuth.instance.currentUser;
+              if (u == null) return;
+              if (!_role.isTester) await LabAccess.joinAsTester(u);
+              setState(() {
+                _consent = true;
+                if (!_role.isTester) _role = LabRole.tester;
+              });
+            },
             style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
-            child: const Text('Acepto y quiero participar'),
+            child: const Text('Acepto y me uno como tester'),
           ),
         ]),
       );
+
+  Widget _hubHeader() => LabCard(
+        child: Row(children: [
+          const Icon(Icons.verified_user_outlined, color: OhtliColors.stormyTeal),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Espacio de testers', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+              Text('Tu rol: ${_role.label}. Aquí participas en estudios y ves los resultados que el laboratorio libera para testers.',
+                  style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+            ]),
+          ),
+          if (_role == LabRole.tester)
+            TextButton(
+              onPressed: () async {
+                final u = FirebaseAuth.instance.currentUser;
+                if (u == null) return;
+                await LabAccess.leave(u);
+                setState(() {
+                  _role = LabRole.none;
+                  _consent = false;
+                });
+              },
+              child: const Text('Dejar de ser tester'),
+            ),
+        ]),
+      );
+
+  Widget _released() {
+    final levels = [LabVisibility.testers, LabVisibility.public];
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: LabRepository.instance.watchPublishedPosts(levels),
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? [];
+        return LabCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const LabSectionTitle('Resultados liberados', caption: 'Artículos del laboratorio disponibles para testers.'),
+            if (docs.isEmpty) Text('Todavía no hay resultados liberados.', style: labCell()),
+            for (final d in docs)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(LabVisibility.icon(LabVisibility.of(d.data())), color: OhtliColors.stormyTeal),
+                title: Text('${d.data()['title']}', style: labCell(bold: true)),
+                subtitle: Text('${fmtDate(d.data()['publishedAt'])} · ${LabVisibility.label(LabVisibility.of(d.data()))}', style: labCell()),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => setState(() => _post = d.data()),
+              ),
+          ]),
+        );
+      },
+    );
+  }
 
   Widget _studyPicker() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(

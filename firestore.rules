@@ -360,33 +360,80 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // --- Ohtli Labs (lab.ohtli.quest / labs.ohtli.quest) ---
-    // Corridas de pruebas del TT: solo el superusuario las crea; el público ve las publicadas y
-    // los testers autenticados leen la corrida asignada como fuente del juicio de relevancia.
-    match /lab_runs/{runId} {
-      allow read: if isSuperUser() || resource.data.published == true
-        || (request.auth != null && resource.data.evalSource == true);
+    // --- Ohtli Labs: pipeline de pruebas y resultados ---
+    // Roles en lab_members/{uid}: researcher (miembro del laboratorio) y tester; el superusuario es admin.
+    // Visibilidad de corridas y artículos: private (laboratorio) → testers → public (sin sesión).
+    function labRole() {
+      return request.auth == null ? '' :
+        get(/databases/$(database)/documents/lab_members/$(request.auth.uid)).data.get('role', '');
+    }
+    function isLabMember() {
+      return isSuperUser() || (request.auth != null
+        && exists(/databases/$(database)/documents/lab_members/$(request.auth.uid))
+        && labRole() in ['researcher', 'admin']);
+    }
+    function isLabTester() {
+      return isLabMember() || (request.auth != null
+        && exists(/databases/$(database)/documents/lab_members/$(request.auth.uid))
+        && labRole() == 'tester');
+    }
+    function visibilityOf(d) {
+      return d.get('visibility', d.get('published', false) == true ? 'public' : 'private');
+    }
+    function canSee(d) {
+      return visibilityOf(d) == 'public'
+        || (visibilityOf(d) == 'testers' && isLabTester())
+        || isLabMember();
+    }
+    // Solo el superusuario abre algo al público.
+    function publicOnlyBySuper() {
+      return request.resource.data.get('visibility', 'private') != 'public' || isSuperUser();
+    }
+
+    match /lab_members/{uid} {
+      allow read: if isLabMember() || (request.auth != null && request.auth.uid == uid);
+      // Alta propia como tester, o aceptación de una invitación para el correo verificado
+      allow create, update: if isSuperUser() || (request.auth != null && request.auth.uid == uid && (
+          (request.resource.data.role == 'tester' && request.resource.data.keys().hasOnly(['role', 'via', 'consent', 'joinedAt']))
+          || (request.auth.token.email_verified == true
+              && exists(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower()))
+              && request.resource.data.role == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.role)));
+      allow delete: if isSuperUser() || (request.auth != null && request.auth.uid == uid);
+    }
+    match /lab_invites/{email} {
+      allow read: if isSuperUser() || (request.auth != null && request.auth.token.email.lower() == email);
       allow write: if isSuperUser();
+    }
+    match /lab_runs/{runId} {
+      allow read: if canSee(resource.data) || (request.auth != null && resource.data.get('evalSource', false) == true);
+      allow create: if isLabMember() && publicOnlyBySuper();
+      allow update: if isLabMember() && publicOnlyBySuper();
+      allow delete: if isSuperUser();
       match /rows/{rowId} {
-        allow read: if isSuperUser()
-          || get(/databases/$(database)/documents/lab_runs/$(runId)).data.published == true
-          || (request.auth != null && get(/databases/$(database)/documents/lab_runs/$(runId)).data.evalSource == true);
-        allow write: if isSuperUser();
+        allow read: if canSee(get(/databases/$(database)/documents/lab_runs/$(runId)).data)
+          || (request.auth != null && get(/databases/$(database)/documents/lab_runs/$(runId)).data.get('evalSource', false) == true);
+        allow write: if isLabMember();
       }
+    }
+    match /lab_posts/{postId} {
+      allow read: if isLabMember()
+        || (resource.data.status == 'published' && canSee(resource.data));
+      allow create, update: if isLabMember()
+        && (request.resource.data.get('status', 'draft') != 'published' || publicOnlyBySuper());
+      allow delete: if isSuperUser();
     }
     // Estado de cada estudio (activo para testers, corrida fuente): lectura pública.
     match /lab_studies/{studyId} {
       allow read: if true;
-      allow write: if isSuperUser();
+      allow write: if isLabMember();
     }
-    // Reporte público y agregados publicados.
     match /lab_site/{docId} {
-      allow read: if true;
-      allow write: if isSuperUser();
+      allow read: if isLabMember();
+      allow write: if isLabMember();
     }
-    // Respuestas de testers: anónimas (solo el uid para evitar duplicados), sin lectura pública.
+    // Respuestas de testers: anónimas (solo el uid para evitar duplicados), visibles solo para el laboratorio.
     match /lab_responses/{responseId} {
-      allow create: if request.auth != null
+      allow create: if isLabTester()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.consent == true
         && request.resource.data.studyId in ['sus', 'relevancia']
@@ -396,7 +443,7 @@ service cloud.firestore {
         && (!('sus' in request.resource.data) || request.resource.data.sus.size() == 10)
         && (!('grades' in request.resource.data) || request.resource.data.grades.size() <= 12)
         && (!('comment' in request.resource.data) || request.resource.data.comment.size() <= 1000);
-      allow read, update, delete: if isSuperUser();
+      allow read, update, delete: if isLabMember();
     }
   }
 }
