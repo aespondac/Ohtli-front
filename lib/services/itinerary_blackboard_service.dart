@@ -315,6 +315,9 @@ class ItineraryBlackboardService {
           lng: lng,
           arrivalTime: arrivalTime,
           departureTime: departureTime,
+          // Vínculo con el lugar de la base que eligió el motor
+          poiId: (stop['poi_id'] ?? stop['poiId'])?.toString(),
+          poiSource: (stop['poi_id'] ?? stop['poiId']) != null ? kPlaceSourceCatalog : null,
         ),
       );
     }

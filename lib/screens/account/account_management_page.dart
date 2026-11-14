@@ -17,6 +17,9 @@ import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../../utils/friendly_errors.dart';
 import '../construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'public_profile_page.dart';
+import '../admin/place_suggestions_page.dart';
+import '../../config/admin.dart';
+import '../../services/poi_suggestion_service.dart';
 
 enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
 
@@ -1716,6 +1719,30 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     onTap: () => setState(() => _currentSection = AccountSection.preferences),
                   ),
                 ]),
+                // Solo para el superusuario
+                if (isSuperUser(user)) ...[
+                  Builder(builder: (_) {
+                    SuperUserDirectory.registerCurrentSuperUser();
+                    return const SizedBox(height: 22);
+                  }),
+                  StreamBuilder<int>(
+                    stream: PoiSuggestionService.watchPendingCount(),
+                    builder: (context, snap) {
+                      final pending = snap.data ?? 0;
+                      return _buildSettingsGroup('Administración', [
+                        _SettingsItem(
+                          icon: Icons.add_location_alt_outlined,
+                          title: pending > 0 ? 'Lugares sugeridos · $pending por revisar' : 'Lugares sugeridos',
+                          subtitle: 'Aprueba o rechaza los lugares nuevos que proponen los viajeros',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const PlaceSuggestionsPage()),
+                          ),
+                        ),
+                      ]);
+                    },
+                  ),
+                ],
               ],
             ),
           ),

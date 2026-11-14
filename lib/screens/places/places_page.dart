@@ -490,6 +490,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         currency: 'MXN',
         lat: poi.location.isValid ? poi.location.lat : null,
         lng: poi.location.isValid ? poi.location.lng : null,
+        poiId: poi.poiId.isNotEmpty ? poi.poiId : null,
+        poiSource: poi.poiId.isNotEmpty ? kPlaceSourceCatalog : null,
       );
 
       final newTrip = Trip(

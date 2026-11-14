@@ -26,6 +26,8 @@ import '../places/places_page.dart';
 import '../../models/poi_model.dart';
 import '../../services/trip_transfers.dart';
 import '../../config/editorial.dart';
+import '../../services/poi_suggestion_service.dart';
+import 'package:http/http.dart' as http;
 
 class TripEditorPage extends StatefulWidget {
   final Trip trip;
@@ -46,6 +48,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
   List<ErrataEntry> _errataHistory = [];
   
   List<TripSection> _sections = [];
+  // Estado de las sugerencias de lugar usadas en este viaje (id → pending/approved/rejected)
+  final Map<String, String> _suggestionStatus = {};
   bool _isLoadingContent = true;
   bool _isSavingCloud = false;
   bool _isPublishing = false;
@@ -70,8 +74,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   // Tipo de publicación: viaje o notas de versión (solo equipo editorial).
   late String _kind = widget.trip.kind;
-  late final TextEditingController _versionController = TextEditingController(text: widget.trip.version ?? '');
-  bool get _canPublishReleaseNotes => isEditorialTeam(FirebaseAuth.instance.currentUser?.uid);
+  late final TextEditingController _versionController =
+      TextEditingController(text: widget.trip.version ?? (widget.trip.isReleaseNotes ? kAppVersion : ''));
+  // Solo el superusuario publica notas de versión (las reglas de Firestore lo exigen también)
+  bool get _canPublishReleaseNotes => isSuperUser();
 
   // Generación de los editores de bloque: al deshacer se recrean desde los datos.
   int _editorGeneration = 0;
@@ -225,6 +231,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       _resetUndoBaseline();
       // Check browser localStorage for newer local cache
       _checkLocalCache();
+      _syncSuggestionStatuses();
     } catch (e) {
       print("Error loading cloud content: $e");
       if (mounted) {
@@ -1016,14 +1023,39 @@ class _TripEditorPageState extends State<TripEditorPage> {
     return b.toString().toLowerCase();
   }
 
-  /// Busca un lugar del catálogo y llena la parada con su ubicación, foto y costo.
+  /// Revisa en qué quedaron las sugerencias de lugar usadas en el viaje: las aprobadas
+  /// pasan a ser lugares del catálogo (mismo id) y las demás muestran su estado.
+  Future<void> _syncSuggestionStatuses() async {
+    final ids = _sections.whereType<PlaceSection>().where((p) => p.isSuggestion).map((p) => p.poiId!).toSet();
+    if (ids.isEmpty) return;
+    final statuses = await PoiSuggestionService.statuses(ids);
+    if (!mounted || statuses.isEmpty) return;
+    setState(() => _suggestionStatus.addAll(statuses));
+    for (final place in _sections.whereType<PlaceSection>().toList()) {
+      if (place.isSuggestion && statuses[place.poiId] == kSuggestionApproved) {
+        _replacePlace(place.id, (p) => p.copyWith(poiSource: kPlaceSourceCatalog));
+      }
+    }
+  }
+
+  /// Vincula la parada con un lugar de la base de Ohtli, o crea una sugerencia de
+  /// lugar nuevo si no está en el catálogo.
   Future<void> _linkPlaceFromCatalog(String sectionId) async {
     final bool isDark = OhtliSettings.instance.isDarkMode;
-    final Poi? poi = await showDialog<Poi>(
+    final i = _idx(sectionId);
+    if (i < 0 || _sections[i] is! PlaceSection) return;
+    final current = _sections[i] as PlaceSection;
+    final Object? choice = await showDialog<Object>(
       context: context,
-      builder: (ctx) => _CatalogPickerDialog(isDark: isDark, normalize: _normalize),
+      builder: (ctx) => _CatalogPickerDialog(isDark: isDark, normalize: _normalize, initialQuery: current.title),
     );
-    if (poi == null || !mounted) return;
+    if (choice == null || !mounted) return;
+
+    if (choice is _SuggestNewPlace) {
+      await _suggestNewPlace(sectionId, choice.name);
+      return;
+    }
+    final poi = choice as Poi;
     _replacePlace(
       sectionId,
       (p) => p.copyWith(
@@ -1033,6 +1065,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
         cost: p.cost <= 0 ? (poi.priceMxnAvg ?? (poi.priceLevel * 60.0)) : null,
         lat: poi.location.isValid ? poi.location.lat : null,
         lng: poi.location.isValid ? poi.location.lng : null,
+        poiId: poi.poiId,
+        poiSource: kPlaceSourceCatalog,
       ),
       resetEditors: true,
     );
@@ -1040,11 +1074,55 @@ class _TripEditorPageState extends State<TripEditorPage> {
       SnackBar(
         content: Text(
           poi.location.isValid
-              ? '${poi.name} quedó vinculado y ya aparece en el mapa.'
+              ? '${poi.name} quedó vinculado a la base de Ohtli y ya aparece en el mapa.'
               : '${poi.name} quedó vinculado, pero no tiene coordenadas en el catálogo.',
           style: GoogleFonts.inter(),
         ),
         backgroundColor: OhtliColors.stormyTeal,
+      ),
+    );
+  }
+
+  Future<void> _suggestNewPlace(String sectionId, String name) async {
+    final i = _idx(sectionId);
+    if (i < 0 || _sections[i] is! PlaceSection) return;
+    final place = _sections[i] as PlaceSection;
+    final result = await showDialog<_SuggestedPlace>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _SuggestPlaceDialog(
+        initialName: name.trim().isNotEmpty ? name.trim() : place.title,
+        initialDescription: place.description,
+        initialLat: place.lat,
+        initialLng: place.lng,
+        photoUrl: place.mainPhotoUrl.startsWith('http') ? place.mainPhotoUrl : '',
+        priceMxnAvg: place.cost > 0 ? place.cost : null,
+        tripId: widget.trip.id,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _suggestionStatus[result.id] = kSuggestionPending);
+    _replacePlace(
+      sectionId,
+      (p) => p.copyWith(
+        title: result.name,
+        description: p.description.trim().isEmpty && result.description.isNotEmpty ? result.description : null,
+        lat: result.lat,
+        lng: result.lng,
+        poiId: result.id,
+        poiSource: kPlaceSourceSuggestion,
+      ),
+      resetEditors: true,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Enviamos "${result.name}" para revisión. Ya puedes usarlo en tu viaje; '
+          'cuando se apruebe, otras personas también podrán encontrarlo.',
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: OhtliColors.stormyTeal,
+        duration: const Duration(seconds: 6),
       ),
     );
   }
@@ -1058,8 +1136,27 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final List<String> errors = [];
     final List<String> warnings = [];
     if (_titleController.text.trim().isEmpty) errors.add('Ponle un título a tu viaje.');
-    if (_kind == kTripKindReleaseNotes && _versionController.text.trim().isEmpty) {
-      errors.add('Indica el número de versión de estas notas (ej. 1.4.0).');
+    if (_kind == kTripKindReleaseNotes) {
+      final version = _versionController.text.trim();
+      if (!isSuperUser()) {
+        errors.add('Solo el administrador de Ohtli puede publicar notas de versión.');
+      } else if (version.isEmpty) {
+        errors.add('Estas notas no tienen versión.');
+      } else {
+        // Una sola nota por versión
+        try {
+          final existing = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.trip.userId)
+              .collection('trips')
+              .where('kind', isEqualTo: kTripKindReleaseNotes)
+              .where('version', isEqualTo: version)
+              .get();
+          if (existing.docs.any((d) => d.id != widget.trip.id)) {
+            errors.add('Ya existen notas de la versión v$version. Edita esas en lugar de crear otras.');
+          }
+        } catch (_) {}
+      }
     }
     if (_sections.isEmpty) errors.add('La bitácora está vacía: añade al menos un bloque.');
     final unnamed = places.where((p) => p.title.trim().isEmpty).length;
@@ -1071,6 +1168,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
       warnings.add(noLocation == 1
           ? '1 lugar no tiene ubicación y no saldrá bien en el mapa.'
           : '$noLocation lugares no tienen ubicación y no saldrán bien en el mapa.');
+    }
+    final generic = places.where((p) => p.isGeneric && p.title.trim().isNotEmpty).length;
+    if (generic > 0) {
+      warnings.add(generic == 1
+          ? '1 lugar es genérico: vincúlalo con la base de Ohtli o sugiérelo como lugar nuevo.'
+          : '$generic lugares son genéricos: vincúlalos con la base de Ohtli o sugiérelos como lugares nuevos.');
     }
     final noPhoto = places.where((p) => p.mainPhotoUrl.isEmpty).length;
     if (noPhoto > 0) warnings.add(noPhoto == 1 ? '1 lugar no tiene foto.' : '$noPhoto lugares no tienen foto.');
@@ -2869,9 +2972,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              _buildLocationChip(section, isDark),
               _buildTimeChip(section, arrival: true, isDark: isDark),
               _buildTimeChip(section, arrival: false, isDark: isDark),
-              _buildLocationChip(section, isDark),
             ],
           ),
         ],
@@ -3332,7 +3435,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 selected: {_kind},
                 onSelectionChanged: _canPublishReleaseNotes
                     ? (v) {
-                        setState(() => _kind = v.first);
+                        setState(() {
+                          _kind = v.first;
+                          // Una nota nueva siempre es de la versión actual de la app
+                          if (_kind == kTripKindReleaseNotes && !widget.trip.isReleaseNotes) {
+                            _versionController.text = kAppVersion;
+                          }
+                        });
                         _forceNewUndoStep = true;
                         _onDataChanged();
                       }
@@ -3343,7 +3452,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   width: 140,
                   child: TextField(
                     controller: _versionController,
-                    enabled: _canPublishReleaseNotes,
+                    // Fija: solo se crean notas de la versión actual (config/app_version.dart)
+                    readOnly: true,
+                    enabled: false,
                     onChanged: (_) => _onDataChanged(),
                     style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
                     decoration: InputDecoration(
@@ -3360,6 +3471,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           if (isNotes) ...[
             const SizedBox(height: 8),
             Text(
+              'Solo puedes crear las notas de la versión actual de Ohtli (v$kAppVersion), una por versión. '
               'Al publicarlas (públicas) aparecen como historia destacada en Explorar y no en el feed de la comunidad. '
               'Usa bloques de texto, notas, tablas e imágenes para contar qué hay de nuevo.',
               style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: OhtliColors.onyx.withValues(alpha: 0.6)),
@@ -3858,16 +3970,41 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
+  /// Estado del vínculo de la parada con la base de Ohtli.
   Widget _buildLocationChip(PlaceSection place, bool isDark) {
     final bool located = place.lat != null && place.lng != null;
-    final Color tone = located ? OhtliColors.stormyTeal : OhtliColors.xoconostle;
+    final String? sugStatus = place.isSuggestion ? _suggestionStatus[place.poiId] : null;
+    IconData icon;
+    String label;
+    String tooltip;
+    Color tone;
+    if (place.isLinkedToCatalog) {
+      icon = Icons.verified_rounded;
+      label = located ? 'Lugar de Ohtli · Cambiar' : 'Lugar de Ohtli (sin coordenadas) · Cambiar';
+      tooltip = 'Vinculado a un lugar de la base de Ohtli';
+      tone = OhtliColors.stormyTeal;
+    } else if (place.isSuggestion && sugStatus == kSuggestionRejected) {
+      icon = Icons.do_not_disturb_on_outlined;
+      label = 'Sugerencia no aprobada · Vincular';
+      tooltip = 'El lugar que sugeriste no se aprobó. Sigue en tu viaje; puedes vincularlo con otro lugar de la base.';
+      tone = OhtliColors.xoconostle;
+    } else if (place.isSuggestion) {
+      icon = Icons.hourglass_top_rounded;
+      label = 'Sugerencia en revisión · Cambiar';
+      tooltip = 'Lugar nuevo sugerido por ti. Solo se usa en tu viaje hasta que se apruebe.';
+      tone = OhtliColors.cempasuchil;
+    } else {
+      icon = Icons.add_location_alt_outlined;
+      label = place.title.trim().isEmpty ? 'Elegir lugar de la base' : 'Lugar genérico · Vincular con la base';
+      tooltip = 'Busca este lugar en la base de Ohtli o sugiérelo como lugar nuevo';
+      tone = OhtliColors.xoconostle;
+    }
+    // En modo oscuro los tonos de marca se aclaran para que se lean sobre fondo oscuro
+    if (isDark) tone = Color.lerp(tone, Colors.white, 0.45)!;
     return ActionChip(
-      avatar: Icon(located ? Icons.where_to_vote_rounded : Icons.travel_explore_rounded, size: 15, color: tone),
-      label: Text(
-        located ? 'En el mapa · Cambiar lugar' : 'Sin ubicación · Buscar en el catálogo',
-        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: tone),
-      ),
-      tooltip: 'Vincular con un lugar del catálogo de Ohtli',
+      avatar: Icon(icon, size: 15, color: tone),
+      label: Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: tone)),
+      tooltip: tooltip,
       backgroundColor: tone.withValues(alpha: isDark ? 0.18 : 0.07),
       side: BorderSide(color: tone.withValues(alpha: 0.3)),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -4369,11 +4506,18 @@ class _UnlessTypingAction<T extends Intent> extends Action<T> {
 // -----------------------------------------------------------------------------
 // Buscador del catálogo de lugares (E3)
 // -----------------------------------------------------------------------------
+/// Resultado del buscador cuando la persona quiere sugerir un lugar que no está.
+class _SuggestNewPlace {
+  final String name;
+  const _SuggestNewPlace(this.name);
+}
+
 class _CatalogPickerDialog extends StatefulWidget {
   final bool isDark;
   final String Function(String) normalize;
+  final String initialQuery;
 
-  const _CatalogPickerDialog({required this.isDark, required this.normalize});
+  const _CatalogPickerDialog({required this.isDark, required this.normalize, this.initialQuery = ''});
 
   @override
   State<_CatalogPickerDialog> createState() => _CatalogPickerDialogState();
@@ -4381,7 +4525,41 @@ class _CatalogPickerDialog extends StatefulWidget {
 
 class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
   late final Future<List<Poi>> _catalog = PlacesPage.loadCatalog();
-  String _query = '';
+  late String _query = widget.initialQuery.trim();
+  late final TextEditingController _queryController = TextEditingController(text: _query);
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
+
+  Widget _suggestButton({bool prominent = false}) {
+    final name = _query.trim();
+    final label = name.isEmpty ? 'Sugerir un lugar nuevo' : 'Sugerir "$name" como lugar nuevo';
+    final child = Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontWeight: FontWeight.w700));
+    final onPressed = () => Navigator.of(context).pop(_SuggestNewPlace(name));
+    if (prominent) {
+      return ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.add_location_alt_rounded, size: 18),
+        label: child,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: OhtliColors.stormyTeal,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+      );
+    }
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+      label: child,
+      style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4401,7 +4579,7 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Vincular con un lugar',
+                      'Elegir lugar de la base',
                       style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: OhtliColors.onyx),
                     ),
                   ),
@@ -4413,12 +4591,13 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                 ],
               ),
               Text(
-                'Toma la ubicación, la foto y el costo del catálogo de Ohtli.',
+                'Vincula la parada con un lugar de Ohtli: toma su ubicación, foto y costo. Si no está, sugiérelo.',
                 style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.55)),
               ),
               const SizedBox(height: 14),
               TextField(
                 autofocus: true,
+                controller: _queryController,
                 onChanged: (v) => setState(() => _query = v),
                 style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx),
                 decoration: InputDecoration(
@@ -4456,11 +4635,28 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                         .toList();
                     if (results.isEmpty) {
                       return Center(
-                        child: Text('Sin resultados para "$_query".',
-                            style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6))),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.travel_explore_rounded, size: 40, color: OhtliColors.stormyTeal.withValues(alpha: 0.6)),
+                            const SizedBox(height: 10),
+                            Text('"$_query" no está en la base de Ohtli.',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+                            const SizedBox(height: 4),
+                            Text('Puedes sugerirlo: lo usarás en tu viaje de inmediato y,\nsi se aprueba, otras personas también podrán encontrarlo.',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.6))),
+                            const SizedBox(height: 14),
+                            _suggestButton(prominent: true),
+                          ],
+                        ),
                       );
                     }
-                    return ListView.separated(
+                    return Column(
+                      children: [
+                        Expanded(
+                          child: ListView.separated(
                       itemCount: results.length,
                       separatorBuilder: (_, __) => Divider(height: 1, color: OhtliColors.cantera.withValues(alpha: 0.3)),
                       itemBuilder: (context, i) {
@@ -4500,12 +4696,403 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                           onTap: () => Navigator.of(context).pop(p),
                         );
                       },
+                          ),
+                        ),
+                        const Divider(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('¿No lo encuentras?',
+                                  style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx.withValues(alpha: 0.6))),
+                            ),
+                            Flexible(flex: 3, child: _suggestButton()),
+                          ],
+                        ),
+                      ],
                     );
                   },
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Lugar que la persona sugirió (ya guardado en `poi_suggestions`).
+class _SuggestedPlace {
+  final String id;
+  final String name;
+  final String description;
+  final double lat;
+  final double lng;
+  const _SuggestedPlace({required this.id, required this.name, required this.description, required this.lat, required this.lng});
+}
+
+/// Formulario para sugerir un lugar que no está en la base de Ohtli.
+class _SuggestPlaceDialog extends StatefulWidget {
+  final String initialName;
+  final String initialDescription;
+  final double? initialLat;
+  final double? initialLng;
+  final String photoUrl;
+  final double? priceMxnAvg;
+  final String tripId;
+
+  const _SuggestPlaceDialog({
+    required this.initialName,
+    required this.initialDescription,
+    this.initialLat,
+    this.initialLng,
+    this.photoUrl = '',
+    this.priceMxnAvg,
+    required this.tripId,
+  });
+
+  @override
+  State<_SuggestPlaceDialog> createState() => _SuggestPlaceDialogState();
+}
+
+class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
+  late final TextEditingController _name = TextEditingController(text: widget.initialName);
+  late final TextEditingController _description = TextEditingController(text: widget.initialDescription);
+  final TextEditingController _search = TextEditingController();
+  final TextEditingController _coords = TextEditingController();
+  String _category = 'attraction';
+  double? _lat;
+  double? _lng;
+  String _address = '';
+  List<Map<String, dynamic>> _results = [];
+  bool _searching = false;
+  String? _searchError;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialLat != null && widget.initialLng != null) {
+      _lat = widget.initialLat;
+      _lng = widget.initialLng;
+      _address = 'Ubicación actual de la parada';
+    }
+    _search.text = widget.initialName;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    _search.dispose();
+    _coords.dispose();
+    super.dispose();
+  }
+
+  // Búsqueda de direcciones en OpenStreetMap (Nominatim), limitada al Valle de México.
+  Future<void> _runSearch() async {
+    final q = _search.text.trim();
+    if (q.isEmpty) return;
+    setState(() {
+      _searching = true;
+      _searchError = null;
+      _results = [];
+    });
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'q': q,
+        'format': 'jsonv2',
+        'countrycodes': 'mx',
+        'viewbox': '-99.40,19.62,-98.90,19.02',
+        'bounded': '1',
+        'limit': '6',
+        'accept-language': 'es',
+      });
+      final res = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
+      final list = (jsonDecode(utf8.decode(res.bodyBytes)) as List).cast<Map<String, dynamic>>();
+      if (!mounted) return;
+      setState(() {
+        _results = list;
+        if (list.isEmpty) _searchError = 'Sin resultados. Prueba con la calle y la colonia, o pega las coordenadas.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _searchError = 'No pudimos buscar la dirección. Revisa tu conexión o pega las coordenadas.');
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  void _applyCoords(String text) {
+    // Acepta "19.4326, -99.1332" o un enlace de Google Maps con "@19.43,-99.13"
+    final m = RegExp(r'(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)').firstMatch(text);
+    if (m == null) {
+      setState(() => _searchError = 'No reconocimos las coordenadas. Usa el formato 19.4326, -99.1332.');
+      return;
+    }
+    final lat = double.parse(m.group(1)!);
+    final lng = double.parse(m.group(2)!);
+    if (lat < 18.8 || lat > 20.0 || lng < -99.7 || lng > -98.6) {
+      setState(() => _searchError = 'Esas coordenadas quedan fuera de la Ciudad de México.');
+      return;
+    }
+    setState(() {
+      _lat = lat;
+      _lng = lng;
+      _address = 'Coordenadas $lat, $lng';
+      _searchError = null;
+    });
+  }
+
+  Future<void> _submit() async {
+    final name = _name.text.trim();
+    if (name.length < 3) {
+      setState(() => _error = 'Escribe el nombre del lugar (al menos 3 letras).');
+      return;
+    }
+    if (_lat == null || _lng == null) {
+      setState(() => _error = 'Indica dónde está el lugar: busca su dirección o pega sus coordenadas.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final id = await PoiSuggestionService.create(
+        name: name,
+        category: _category,
+        lat: _lat,
+        lng: _lng,
+        address: _address.startsWith('Ubicación actual') || _address.startsWith('Coordenadas') ? '' : _address,
+        description: _description.text,
+        photoUrl: widget.photoUrl,
+        priceMxnAvg: widget.priceMxnAvg,
+        tripId: widget.tripId,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(_SuggestedPlace(id: id, name: name, description: _description.text.trim(), lat: _lat!, lng: _lng!));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = friendlyError(e, fallback: 'No pudimos enviar la sugerencia. Intenta de nuevo.');
+      });
+    }
+  }
+
+  InputDecoration _decoration(String label, {String? hint, Widget? prefix, Widget? suffix}) => InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: prefix,
+        suffixIcon: suffix,
+        isDense: true,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = OhtliSettings.instance.isDarkMode;
+    final hasLocation = _lat != null && _lng != null;
+    return Dialog(
+      backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 540, maxHeight: 720),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 8, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Sugerir un lugar nuevo',
+                        style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: OhtliColors.onyx)),
+                  ),
+                  IconButton(
+                    tooltip: 'Cancelar',
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: OhtliColors.cempasuchil.withValues(alpha: isDark ? 0.16 : 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.info_outline_rounded, size: 18, color: OhtliColors.cempasuchil),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Lo usarás en tu viaje de inmediato. Para que aparezca en la base de Ohtli y '
+                              'otras personas lo encuentren, un administrador debe aprobarlo.',
+                              style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: OhtliColors.onyx.withValues(alpha: 0.8)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _name,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: _decoration('Nombre del lugar', hint: 'Ej. Café La Habana'),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: _category,
+                      isExpanded: true,
+                      decoration: _decoration('Tipo de lugar'),
+                      items: kSuggestionCategories.entries
+                          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value, style: GoogleFonts.inter(fontSize: 14))))
+                          .toList(),
+                      onChanged: (v) => setState(() => _category = v ?? _category),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('¿Dónde está?', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                    const SizedBox(height: 8),
+                    if (hasLocation)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.18 : 0.07),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.where_to_vote_rounded, size: 18, color: OhtliColors.stormyTeal),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(_address, maxLines: 2, overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx)),
+                            ),
+                            TextButton(
+                              onPressed: () => setState(() {
+                                _lat = null;
+                                _lng = null;
+                                _address = '';
+                              }),
+                              child: const Text('Cambiar'),
+                            ),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      TextField(
+                        controller: _search,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => _runSearch(),
+                        decoration: _decoration(
+                          'Buscar dirección o nombre',
+                          hint: 'Calle, número y colonia',
+                          prefix: const Icon(Icons.search_rounded),
+                          suffix: _searching
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                )
+                              : IconButton(icon: const Icon(Icons.arrow_forward_rounded), onPressed: _runSearch),
+                        ),
+                      ),
+                      ..._results.map((r) => ListTile(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                            leading: const Icon(Icons.place_outlined, color: OhtliColors.stormyTeal),
+                            title: Text((r['display_name'] ?? '').toString(),
+                                maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5)),
+                            onTap: () => setState(() {
+                              _lat = double.tryParse('${r['lat']}');
+                              _lng = double.tryParse('${r['lon']}');
+                              _address = (r['display_name'] ?? '').toString();
+                              _results = [];
+                            }),
+                          )),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _coords,
+                        onSubmitted: _applyCoords,
+                        decoration: _decoration(
+                          'O pega sus coordenadas',
+                          hint: '19.4326, -99.1332 o un enlace de Google Maps',
+                          prefix: const Icon(Icons.my_location_rounded),
+                          suffix: IconButton(icon: const Icon(Icons.check_rounded), onPressed: () => _applyCoords(_coords.text)),
+                        ),
+                      ),
+                      if (_searchError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(_searchError!,
+                              style: GoogleFonts.inter(fontSize: 12, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
+                        ),
+                    ],
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _description,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: _decoration('Descripción (opcional)', hint: '¿Qué lo hace especial?'),
+                    ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(_error!,
+                            style: GoogleFonts.inter(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: _saving ? null : _submit,
+                    icon: _saving
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.send_rounded, size: 18),
+                    label: Text(_saving ? 'Enviando…' : 'Usar y enviar a revisión', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: OhtliColors.stormyTeal,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -104,16 +104,19 @@ class _ExplorePageState extends State<ExplorePage> {
   /// visibility == public permite que las reglas acepten la consulta de cualquiera.
   Future<void> _loadReleaseNotes() async {
     try {
-      final results = await Future.wait(kEditorialTeamUids.map((uid) => FirebaseFirestore.instance
+      // Solo las del superusuario (único que puede publicarlas, ver config/admin.dart)
+      final superUid = await SuperUserDirectory.uid();
+      if (superUid == null) return;
+      final snapshot = await FirebaseFirestore.instance
           .collection('users')
-          .doc(uid)
+          .doc(superUid)
           .collection('trips')
           .where('kind', isEqualTo: 'release_notes')
           .where('status', isEqualTo: 'published')
           .where('visibility', isEqualTo: 'public')
           .get()
-          .timeout(const Duration(seconds: 10))));
-      final docs = results.expand((q) => q.docs).toList();
+          .timeout(const Duration(seconds: 10));
+      final docs = snapshot.docs.toList();
       DateTime when(QueryDocumentSnapshot<Map<String, dynamic>> d) {
         final u = d.data()['updatedAt'];
         return u is Timestamp ? u.toDate() : DateTime.fromMillisecondsSinceEpoch(0);

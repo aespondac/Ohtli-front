@@ -1,13 +1,13 @@
 /// Configuración editorial de Ohtli.
 ///
-/// Cuentas del equipo que pueden publicar notas de versión. Solo sus
-/// publicaciones de tipo 'release_notes' se destacan en Explorar, así nadie más
-/// puede colarse en la portada marcando un viaje como "notas de versión".
-const List<String> kEditorialTeamUids = [
-  '4cavo5EKn6Vvuoo2s46VokEj7lE3',
-];
+/// Las notas de versión solo las publica el superusuario (ver config/admin.dart y
+/// firestore.rules), y solo para la versión actual de la app (config/app_version.dart).
+/// En Explorar solo se destacan las suyas, así nadie más puede colarse en la portada
+/// marcando un viaje como "notas de versión".
+library;
 
-bool isEditorialTeam(String? uid) => uid != null && kEditorialTeamUids.contains(uid);
+export 'admin.dart' show isSuperUser, kSuperUserEmail, SuperUserDirectory;
+export 'app_version.dart' show kAppVersion;
 
 /// Cuántas notas de versión recientes se muestran en el carrusel de Explorar.
 const int kFeaturedReleaseNotes = 2;

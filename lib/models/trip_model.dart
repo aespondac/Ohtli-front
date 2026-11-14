@@ -224,6 +224,15 @@ abstract class TripSection {
   Map<String, dynamic> toMap();
 }
 
+/// Origen del lugar de una parada.
+/// - catalog: vinculado a un lugar de la base de Ohtli (`pois/{poiId}`).
+/// - suggestion: lugar nuevo sugerido por la persona (`poi_suggestions/{poiId}`); solo
+///   se usa en su viaje hasta que el superusuario lo aprueba. Al aprobarse se crea
+///   `pois/{poiId}` con el mismo id y la parada pasa a `catalog`.
+/// - null: lugar genérico, sin vínculo con la base.
+const String kPlaceSourceCatalog = 'catalog';
+const String kPlaceSourceSuggestion = 'suggestion';
+
 class PlaceSection extends TripSection {
   final String title;
   final String description;
@@ -236,6 +245,12 @@ class PlaceSection extends TripSection {
   final double? lng;
   final String? arrivalTime;
   final String? departureTime;
+  final String? poiId;
+  final String? poiSource;
+
+  bool get isLinkedToCatalog => poiId != null && poiSource == kPlaceSourceCatalog;
+  bool get isSuggestion => poiId != null && poiSource == kPlaceSourceSuggestion;
+  bool get isGeneric => !isLinkedToCatalog && !isSuggestion;
 
   PlaceSection({
     required super.id,
@@ -250,6 +265,8 @@ class PlaceSection extends TripSection {
     this.lng,
     this.arrivalTime,
     this.departureTime,
+    this.poiId,
+    this.poiSource,
   }) : super(type: 'place');
 
   /// Copia la parada conservando todos los campos que no se pasen
@@ -269,6 +286,9 @@ class PlaceSection extends TripSection {
     String? departureTime,
     bool clearArrivalTime = false,
     bool clearDepartureTime = false,
+    String? poiId,
+    String? poiSource,
+    bool clearPoi = false,
   }) {
     return PlaceSection(
       id: id,
@@ -283,6 +303,8 @@ class PlaceSection extends TripSection {
       lng: lng ?? this.lng,
       arrivalTime: clearArrivalTime ? null : (arrivalTime ?? this.arrivalTime),
       departureTime: clearDepartureTime ? null : (departureTime ?? this.departureTime),
+      poiId: clearPoi ? null : (poiId ?? this.poiId),
+      poiSource: clearPoi ? null : (poiSource ?? this.poiSource),
     );
   }
 
@@ -307,6 +329,9 @@ class PlaceSection extends TripSection {
       lng: parsedLng,
       arrivalTime: data['arrivalTime'] ?? data['arrival_time'],
       departureTime: data['departureTime'] ?? data['departure_time'],
+      poiId: (data['poiId'] ?? data['poi_id'])?.toString(),
+      poiSource: data['poiSource']?.toString() ??
+          ((data['poiId'] ?? data['poi_id']) != null ? kPlaceSourceCatalog : null),
     );
   }
 
@@ -327,6 +352,8 @@ class PlaceSection extends TripSection {
       if (lat != null && lng != null) 'location': {'lat': lat, 'lng': lng},
       'arrivalTime': arrivalTime,
       'departureTime': departureTime,
+      if (poiId != null) 'poiId': poiId,
+      if (poiId != null) 'poiSource': poiSource ?? kPlaceSourceCatalog,
     };
   }
 }
