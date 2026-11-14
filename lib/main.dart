@@ -819,8 +819,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           if (back != null) {
             _navigateTo(back);
           } else if (_isLabAppHost) {
+            // Con sesión, directo a la consola o al espacio de testers; sin sesión, a iniciarla.
             _intentLabs = true;
-            _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+            final u = FirebaseAuth.instance.currentUser;
+            if (u != null) {
+              _handlePostAuthRedirect(u);
+            } else {
+              _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login);
+            }
           } else {
             _navigateTo(OhtliScreen.labLanding);
           }

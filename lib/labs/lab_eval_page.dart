@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/ohtli_sso.dart';
 import '../theme/colors.dart';
 import 'lab_access.dart';
 import 'lab_article.dart';
@@ -140,7 +141,9 @@ class _LabEvalPageState extends State<LabEvalPage> {
           ElevatedButton.icon(
             onPressed: widget.onLogin,
             icon: const Icon(Icons.login_rounded),
-            label: const Text('Iniciar sesión para participar'),
+            // En labs/lab.ohtli.quest la sesión llega por SSO con la cuenta de ohtli.quest: si ya
+            // la tienes abierta allá, no hay que "iniciar sesión" de nuevo, solo continuar con ella.
+            label: Text(OhtliSso.isSubdomain ? 'Continuar con tu cuenta de Ohtli' : 'Iniciar sesión para participar'),
             style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
           ),
           const SizedBox(height: 8),
