@@ -693,7 +693,7 @@ class _NoteThreadState extends State<NoteThread> {
       rows.add(bubble);
     }
 
-    final bool showAddPill = widget.canWrite && !_composerOpen && (notes.isNotEmpty || widget.revealAdd);
+    final bool showAddPill = widget.canWrite && !_composerOpen && widget.revealAdd;
     final Widget addPill = AnimatedOpacity(
       duration: const Duration(milliseconds: 150),
       opacity: showAddPill ? 1 : 0,
@@ -840,8 +840,8 @@ class _Bubble extends StatelessWidget {
     if (decorate != null) bubble = decorate!(bubble);
 
     final avatar = SizedBox(
-      width: 24,
-      child: showAvatar && !mine
+      width: compact ? 0 : 24,
+      child: showAvatar && !mine && !compact
           ? CircleAvatar(
               radius: 12,
               backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.18),
@@ -863,7 +863,7 @@ class _Bubble extends StatelessWidget {
         children: [
           if (showName)
             Padding(
-              padding: const EdgeInsets.only(left: 36, bottom: 2),
+              padding: EdgeInsets.only(left: compact ? 6 : 36, bottom: 2),
               child: Text(note.authorName,
                   style: GoogleFonts.inter(fontSize: 11, color: isDark ? Colors.white54 : OhtliColors.subtleText)),
             ),
@@ -872,14 +872,14 @@ class _Bubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.max,
             children: [
-              if (!mine) ...[avatar, const SizedBox(width: 6)],
+              if (!mine && !compact) ...[avatar, const SizedBox(width: 6)],
               Flexible(child: bubble),
               if (mine) const SizedBox(width: 4),
             ],
           ),
           if (footer != null)
             Padding(
-              padding: EdgeInsets.only(top: 3, left: mine ? 0 : 36, right: mine ? 4 : 0),
+              padding: EdgeInsets.only(top: 3, left: mine ? 0 : (compact ? 6 : 36), right: mine ? 4 : 0),
               child: Text(footer!, style: GoogleFonts.inter(fontSize: 10.5, color: isDark ? Colors.white38 : Colors.black38)),
             ),
         ],

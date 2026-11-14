@@ -812,10 +812,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
               },
               style: FilledButton.styleFrom(
                 backgroundColor: _tripMode ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+                foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               icon: Icon(_tripMode ? Icons.stop_circle_outlined : Icons.near_me_rounded, size: 18),
-              label: Text(_tripMode ? 'Salir del modo viaje' : 'Estoy en el viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+              label: Text(_tripMode ? 'Salir del modo viaje' : 'Estoy en el viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
             ),
           ),
         ],
@@ -856,8 +857,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 _showReviewDialog(isDark);
               },
               style: OutlinedButton.styleFrom(
-                foregroundColor: OhtliColors.xoconostle,
-                side: const BorderSide(color: OhtliColors.xoconostle),
+                foregroundColor: isDark ? const Color(0xFFE8A3C4) : OhtliColors.xoconostle,
+                side: BorderSide(color: isDark ? const Color(0xFFE8A3C4) : OhtliColors.xoconostle),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               icon: const Icon(Icons.rate_review_rounded, size: 18),
@@ -2030,7 +2031,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ],
           ),
         ),
-        if (wideAside) _buildTripAside(isDark, canEdit),
+        if (wideAside) _buildTripAside(isDark, canEdit, showEditAction: showErrataButton && (!isSurpriseForMe || !isLocked)),
       ],
     );
 
@@ -2038,7 +2039,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
       appBar: showTopNavbar ? _buildPublicNavbar(hasActiveSession, isDark) : null,
       body: bodyContent,
-      floatingActionButton: (_isPreview || _tripMode)
+      floatingActionButton: (_isPreview || _tripMode || wideAside)
           ? null
           : (showErrataButton && (!isSurpriseForMe || !isLocked))
           ? FloatingActionButton.extended(
@@ -2711,7 +2712,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             onPressed: () => _showShareDialog(isDark),
             style: FilledButton.styleFrom(
               backgroundColor: onImage ? Colors.white : OhtliColors.stormyTeal,
-              foregroundColor: onImage ? OhtliColors.onyx : Colors.white,
+              foregroundColor: onImage ? const Color(0xFF1F2A2A) : Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
@@ -2811,7 +2812,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image(image: _getImageProvider(cover), fit: BoxFit.cover),
+          Image(
+            image: _getImageProvider(cover),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => ColoredBox(color: isDark ? const Color(0xFF26343A) : OhtliColors.stormyTeal),
+          ),
           DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -3045,7 +3050,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               Expanded(child: block),
               // Se monta sobre el borde derecho del bloque, como una nota pegada.
               Transform.translate(
-                offset: Offset(-30, top),
+                offset: Offset(-42, top),
                 child: SizedBox(width: 236, child: thread(compact: true, revealAdd: hovered)),
               ),
             ],
@@ -3093,7 +3098,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
     } catch (_) {}
   }
 
-  Widget _buildTripAside(bool isDark, bool canEdit) {
+  void _openEditorOrErrata(bool canEdit) {
+    if (canEdit) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => TripEditorPage(trip: _trip!))).then((_) => _loadTripData());
+    } else {
+      _showCoAuthorErrataDialog();
+    }
+  }
+
+  Widget _buildTripAside(bool isDark, bool canEdit, {bool showEditAction = false}) {
     final Color border = isDark ? Colors.white10 : OhtliColors.cardBorder;
     final Color bg = isDark ? const Color(0xFF161618) : Colors.white;
     final Color fg = isDark ? Colors.white : OhtliColors.onyx;
@@ -3120,6 +3133,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               if (_sections.any((s) => s is PlaceSection)) railButton(Icons.map_rounded, 'Ruta completa', () => _showRouteModal(isDark)),
               railButton(Icons.toc_rounded, 'Índice', () => _setAsideCollapsed(false)),
               if (member) railButton(Icons.handyman_rounded, 'Herramientas del viaje', () => _setAsideCollapsed(false)),
+              if (showEditAction) railButton(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, canEdit ? 'Editar' : 'Fe de erratas', () => _openEditorOrErrata(canEdit)),
             ],
           ),
         ),
@@ -3140,6 +3154,22 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   child: Text(member ? 'Tu viaje' : 'Recorrido',
                       style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: fg)),
                 ),
+                if (showEditAction)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 2),
+                    child: FilledButton.icon(
+                      onPressed: () => _openEditorOrErrata(canEdit),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
+                        foregroundColor: Colors.white,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: Icon(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, size: 16),
+                      label: Text(canEdit ? 'Editar' : 'Fe de erratas', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
                 IconButton(
                   tooltip: 'Plegar panel',
                   onPressed: () => _setAsideCollapsed(true),
