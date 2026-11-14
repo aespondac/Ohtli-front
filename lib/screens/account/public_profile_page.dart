@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
 
+import '../../services/social_graph.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'dart:convert';
@@ -68,8 +69,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   String? _pendingRequestId;
   String? _sentRequestId;
   
-  StreamSubscription<QuerySnapshot>? _followersSubscription;
-  StreamSubscription<DocumentSnapshot>? _currentUserSubscription;
+  StreamSubscription<SocialData>? _followersSubscription;
+  StreamSubscription<SocialData>? _currentUserSubscription;
   StreamSubscription<QuerySnapshot>? _requestsSubscription;
   StreamSubscription<QuerySnapshot>? _incomingRequestsSubscription;
   
@@ -83,7 +84,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   /// "Perfil público" apagado: quien no es su amigo solo ve nombre, foto y título.
   bool get _isHiddenForViewer =>
-      !_isSelf && !_isFriend && _userProfile?['profilePrivate'] == true;
+      !_isSelf && !_isFriend &&
+      (_userProfile?['profilePrivate'] == true || (_profileSocial?.hidden ?? false));
+
+  SocialData? _profileSocial;
 
   Widget _buildPrivateProfileNotice(bool isDark) {
     return Center(
@@ -172,18 +176,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           if (_isSelf && data != null) {
             final List<dynamic> possessed = data['possessedTitles'] ?? [];
             final String? active = data['activeTitleId'];
-            final List<dynamic>? following = data['following'];
-            final List<dynamic>? friends = data['friends'];
-            final List<dynamic>? closeFriends = data['closeFriends'];
-            
-            if (possessed.isEmpty || active == null || following == null || friends == null || closeFriends == null) {
+            if (possessed.isEmpty || active == null) {
               await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).set({
                 'possessedTitles': possessed.isEmpty ? ['viajero'] : possessed,
                 'activeTitleId': active ?? 'viajero',
-                'following': following ?? [],
-                'friends': friends ?? [],
-                'closeFriends': closeFriends ?? [],
               }, SetOptions(merge: true));
+            }
+            // Las listas sociales viven en users/{uid}/social/*: mover las antiguas
+            if (data.containsKey('friends') || data.containsKey('following') || data.containsKey('closeFriends')) {
+              await SocialGraph.migrateLegacy(_currentUser!.uid);
             }
           }
         } else if (mounted) {
@@ -201,30 +202,25 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       });
 
       // 2. Query followers count in real-time
-      _followersSubscription = FirebaseFirestore.instance
-          .collection('users')
-          .where('following', arrayContains: widget.userId)
-          .snapshots()
-          .listen((snapshot) {
+      // Amigos, seguidos y seguidores de este perfil (si es privado y no somos amigos,
+      // las reglas no dejan leerlos: hidden).
+      _followersSubscription = SocialGraph.watchGraph(widget.userId).listen((social) {
         if (mounted) {
           setState(() {
-            _followersCount = snapshot.docs.length;
+            _profileSocial = social;
+            _followersCount = social.followers.length;
           });
         }
       });
 
       // 3. Listen to current user following and friendship states
       if (_currentUser != null) {
-        _currentUserSubscription = FirebaseFirestore.instance
-            .collection('users')
-            .doc(_currentUser.uid)
-            .snapshots()
-            .listen((doc) {
-          if (doc.exists && mounted) {
-            final data = doc.data();
-            final List<dynamic> following = data?['following'] ?? [];
-            final List<dynamic> friends = data?['friends'] ?? [];
-            final List<dynamic> closeFriends = data?['closeFriends'] ?? [];
+        _currentUserSubscription = SocialGraph.watchGraph(_currentUser.uid, includeClose: true)
+            .listen((social) {
+          if (mounted) {
+            final following = social.following;
+            final friends = social.friends;
+            final closeFriends = social.closeFriends;
             setState(() {
               _isFollowing = following.contains(widget.userId);
               _isFriend = friends.contains(widget.userId);
@@ -288,18 +284,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       return;
     }
 
-    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser.uid);
-
     try {
-      if (_isFollowing) {
-        await docRef.set({
-          'following': FieldValue.arrayRemove([widget.userId])
-        }, SetOptions(merge: true));
-      } else {
-        await docRef.set({
-          'following': FieldValue.arrayUnion([widget.userId])
-        }, SetOptions(merge: true));
-      }
+      await SocialGraph.setFollowing(_currentUser.uid, widget.userId, !_isFollowing);
     } catch (e) {
       print("Error toggling follow: $e");
     }
@@ -436,15 +422,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         'status': 'accepted',
       });
 
-      // 3. Add Bob to Alice's friends list
-      await firestore.collection('users').doc(widget.userId).update({
-        'friends': FieldValue.arrayUnion([_currentUser.uid]),
-      });
-
-      // 4. Add Alice to Bob's friends list
-      await firestore.collection('users').doc(_currentUser.uid).update({
-        'friends': FieldValue.arrayUnion([widget.userId]),
-      });
+      // 3-4. Amistad en ambos sentidos (users/{uid}/social/graph)
+      await SocialGraph.addFriendship(_currentUser.uid, widget.userId);
 
       _showStatusSnackBar('¡Ahora son amigos!');
     } catch (e) {
@@ -454,30 +433,20 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   Future<void> _setFriendStatus(String status) async {
     if (_currentUser == null) return;
-    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser.uid);
+    final me = _currentUser.uid;
 
     try {
       if (status == 'none') {
         // Remove friendship mutually
-        await docRef.update({
-          'friends': FieldValue.arrayRemove([widget.userId]),
-          'closeFriends': FieldValue.arrayRemove([widget.userId]),
-        });
-        await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
-          'friends': FieldValue.arrayRemove([_currentUser.uid]),
-        });
+        await SocialGraph.removeFriendship(me, widget.userId);
         _showStatusSnackBar('Relación de amistad removida.');
       } else if (status == 'friend') {
         // Keep as friend, remove from closeFriends (Mejores Amigos is local-only)
-        await docRef.update({
-          'closeFriends': FieldValue.arrayRemove([widget.userId]),
-        });
+        await SocialGraph.setCloseFriend(me, widget.userId, false);
         _showStatusSnackBar('Actualizado a amigo normal.');
       } else if (status == 'closeFriend') {
         // Add to closeFriends (user is the ONLY ONE choosing their close friends)
-        await docRef.update({
-          'closeFriends': FieldValue.arrayUnion([widget.userId]),
-        });
+        await SocialGraph.setCloseFriend(me, widget.userId, true);
         _showStatusSnackBar('¡Añadido a tus Mejores Amigos!');
       }
     } catch (e) {
@@ -825,7 +794,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final String displayName = _userProfile?['displayName'] ?? 'Viajero Ohtli';
     final String? photoURL = _userProfile?['photoURL'];
     final String? coverURL = _userProfile?['coverURL'] ?? _userProfile?['coverUrl'];
-    final List<dynamic> followingList = _userProfile?['following'] ?? [];
+    final List<dynamic> followingList = _profileSocial?.following ?? const [];
     final dynamic rawCreatedAt = _userProfile?['createdAt'];
 
     final initials = displayName
@@ -1117,7 +1086,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   }
 
   Widget _buildStatsRow(bool isDark, int followingCount) {
-    final int friendsCount = (_userProfile?['friends'] as List<dynamic>?)?.length ?? 0;
+    final int friendsCount = _profileSocial?.friends.length ?? 0;
     final String friendsCountText = _isHiddenForViewer ? '—' : '$friendsCount';
 
     Widget friendsWidget = RichText(

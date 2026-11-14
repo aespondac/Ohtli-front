@@ -8,6 +8,8 @@
  * Para cuentas dadas de baja (isDeleted == true) copia también `isDeleted` al privado,
  * que es lo que usa la app para restaurar una cuenta por correo.
  *
+ * Además mueve las listas sociales a users/{uid}/social/* (ver migrateSocial).
+ *
  * "Perfil público" (privacy_public) antes no tenía efecto y venía apagado por defecto:
  * todos los perfiles quedan públicos (privacy_public: true, profilePrivate: false).
  *
@@ -42,8 +44,56 @@ admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
 const { FieldValue } = admin.firestore;
 
+const SOCIAL_FIELDS = ['friends', 'following', 'closeFriends'];
+
+/**
+ * Listas sociales: friends/following → users/{uid}/social/graph, closeFriends →
+ * users/{uid}/social/close. Calcula además followers (quién me sigue) y closeFriendOf
+ * (quién me tiene como mejor amigo) a partir de las listas de todos.
+ */
+async function migrateSocial(users) {
+  const followers = {};
+  const closeFriendOf = {};
+  for (const doc of users.docs) {
+    const d = doc.data();
+    for (const t of d.following || []) (followers[t] = followers[t] || new Set()).add(doc.id);
+    for (const t of d.closeFriends || []) (closeFriendOf[t] = closeFriendOf[t] || new Set()).add(doc.id);
+  }
+  let moved = 0;
+  for (const doc of users.docs) {
+    const d = doc.data();
+    const graph = {};
+    if (Array.isArray(d.friends) && d.friends.length) graph.friends = FieldValue.arrayUnion(...d.friends);
+    if (Array.isArray(d.following) && d.following.length) graph.following = FieldValue.arrayUnion(...d.following);
+    if (followers[doc.id]) graph.followers = FieldValue.arrayUnion(...followers[doc.id]);
+    const close = {};
+    if (Array.isArray(d.closeFriends) && d.closeFriends.length) close.closeFriends = FieldValue.arrayUnion(...d.closeFriends);
+    if (closeFriendOf[doc.id]) close.closeFriendOf = FieldValue.arrayUnion(...closeFriendOf[doc.id]);
+    const legacy = SOCIAL_FIELDS.filter((k) => Object.prototype.hasOwnProperty.call(d, k));
+    if (!Object.keys(graph).length && !Object.keys(close).length && !legacy.length) continue;
+    moved++;
+    console.log(
+      `${APPLY ? 'SOCIAL' : '[simulación] social'} ${doc.id}: graph [${Object.keys(graph).join(', ')}]` +
+        ` · close [${Object.keys(close).join(', ')}] · borra del público [${legacy.join(', ')}]`,
+    );
+    if (APPLY) {
+      const batch = db.batch();
+      if (Object.keys(graph).length) batch.set(doc.ref.collection('social').doc('graph'), graph, { merge: true });
+      if (Object.keys(close).length) batch.set(doc.ref.collection('social').doc('close'), close, { merge: true });
+      if (legacy.length) {
+        const removal = {};
+        for (const k of legacy) removal[k] = FieldValue.delete();
+        batch.update(doc.ref, removal);
+      }
+      await batch.commit();
+    }
+  }
+  return moved;
+}
+
 async function main() {
   const users = await db.collection('users').get();
+  const socialMoved = await migrateSocial(users);
   let moved = 0;
   let untouched = 0;
 
@@ -90,8 +140,9 @@ async function main() {
     moved++;
   }
 
+  console.log(`\nListas sociales: ${socialMoved} perfiles ${APPLY ? 'migrados' : 'por migrar'}`);
   console.log(
-    `\n${users.size} perfiles revisados · ${moved} ${APPLY ? 'migrados' : 'por migrar'} · ${untouched} sin datos privados`,
+    `${users.size} perfiles revisados · ${moved} ${APPLY ? 'migrados' : 'por migrar'} · ${untouched} sin datos privados`,
   );
   if (!APPLY) console.log('Nada se modificó. Ejecuta con --apply para aplicar los cambios.');
 }

@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:html' as html;
 import '../services/user_private_data.dart';
+import '../services/social_graph.dart';
 
 class UserProfileHelper {
   /// Fetches bytes from a Google photo URL using a native web request
@@ -165,9 +166,6 @@ class UserProfileHelper {
           currentData?['privacy_public'] ?? oldData?['privacy_public'] ?? true,
       'possessedTitles': currentData?['possessedTitles'] ?? oldData?['possessedTitles'] ?? ['viajero'],
       'activeTitleId': currentData?['activeTitleId'] ?? oldData?['activeTitleId'] ?? 'viajero',
-      'following': currentData?['following'] ?? oldData?['following'] ?? [],
-      'friends': currentData?['friends'] ?? oldData?['friends'] ?? [],
-      'closeFriends': currentData?['closeFriends'] ?? oldData?['closeFriends'] ?? [],
       'coverURL': currentData?['coverURL'] ?? oldData?['coverURL'] ?? '',
       'coverUrl': currentData?['coverUrl'] ?? oldData?['coverUrl'] ?? '',
       'onboarding_completed': currentData?['onboarding_completed'] ?? oldData?['onboarding_completed'] ?? false,
@@ -201,6 +199,24 @@ class UserProfileHelper {
 
     // Save to the new UID: el perfil público y los datos privados por separado
     await UserPrivateData.save(user.uid, dataToSave);
+
+    // Listas sociales en users/{uid}/social/*: mover las del perfil antiguo y las de
+    // una cuenta restaurada.
+    await SocialGraph.migrateLegacy(user.uid);
+    if (oldUid != null && oldUid != user.uid) {
+      try {
+        final old = await SocialGraph.getGraph(oldUid);
+        final lists = {
+          if (old.friends.isNotEmpty) 'friends': FieldValue.arrayUnion(old.friends),
+          if (old.following.isNotEmpty) 'following': FieldValue.arrayUnion(old.following),
+        };
+        if (lists.isNotEmpty) {
+          await SocialGraph.graphRef(user.uid).set(lists, SetOptions(merge: true));
+        }
+      } catch (e) {
+        print("Error restoring social lists: $e");
+      }
+    }
     print("User profile fully synchronized in Firestore.");
 
     // 4. Clean up the old deleted document if UID changed

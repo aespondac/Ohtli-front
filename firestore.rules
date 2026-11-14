@@ -42,6 +42,32 @@ service cloud.firestore {
       );
     }
 
+    // --- Relaciones sociales (users/{uid}/social/*) ---
+    // Otro usuario solo puede agregarse o quitarse a sí mismo de las listas permitidas.
+    function selfOnlyListChange(field) {
+      let before = resource.data.get(field, []).toSet();
+      let after = request.resource.data.get(field, []).toSet();
+      return after.difference(before).union(before.difference(after)).hasOnly([request.auth.uid]);
+    }
+    function selfOnlyListCreate(field) {
+      return request.resource.data.get(field, []).toSet().hasOnly([request.auth.uid]);
+    }
+    function othersSelfOnlyUpdate(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields)
+        && (!('friends' in fields) || selfOnlyListChange('friends'))
+        && (!('followers' in fields) || selfOnlyListChange('followers'))
+        && (!('closeFriendOf' in fields) || selfOnlyListChange('closeFriendOf'));
+    }
+    function othersSelfOnlyCreate(fields) {
+      return request.resource.data.keys().hasOnly(fields)
+        && (!('friends' in fields) || selfOnlyListCreate('friends'))
+        && (!('followers' in fields) || selfOnlyListCreate('followers'))
+        && (!('closeFriendOf' in fields) || selfOnlyListCreate('closeFriendOf'));
+    }
+    function profileIsPrivate(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.get('profilePrivate', false) == true;
+    }
+
     // --- Amistades ---
     // Otro usuario solo puede tocar el campo 'friends' de tu perfil, y únicamente para
     // agregarse o quitarse a sí mismo (aceptar una solicitud o terminar la amistad).
@@ -86,6 +112,27 @@ service cloud.firestore {
       allow update: if request.auth != null && (
         request.auth.uid == userId || onlyOwnUidInFriendsChange()
       );
+
+      // Amigos, seguidos y seguidores: el dueño, sus amigos y, si el perfil es público, todos.
+      match /social/graph {
+        allow read: if (request.auth != null && request.auth.uid == userId)
+          || !profileIsPrivate(userId)
+          || (request.auth != null && resource != null && request.auth.uid in resource.data.get('friends', []));
+        allow create: if request.auth != null && (request.auth.uid == userId
+          || othersSelfOnlyCreate(['friends', 'followers']));
+        allow update: if request.auth != null && (request.auth.uid == userId
+          || othersSelfOnlyUpdate(['friends', 'followers']));
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
+      // Mejores amigos: solo su dueño los ve. Los demás solo marcan si lo tienen como
+      // mejor amigo (closeFriendOf), agregándose o quitándose a sí mismos.
+      match /social/close {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && (request.auth.uid == userId
+          || othersSelfOnlyCreate(['closeFriendOf']));
+        allow update: if request.auth != null && (request.auth.uid == userId
+          || othersSelfOnlyUpdate(['closeFriendOf']));
+      }
 
       // Datos personales (correo, teléfono, direcciones, privacidad): solo su dueño.
       match /private/{docId} {

@@ -1,3 +1,4 @@
+import 'social_graph.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/trip_model.dart';
@@ -107,35 +108,20 @@ class TripService {
         return; // Do not notify other followers for surprise plans
       }
 
-      // 2. Fetch all followers (users who follow authorId)
-      final followersSnapshot = await _firestore
-          .collection('users')
-          .where('following', arrayContains: authorId)
-          .get();
+      // 2. Seguidores del autor: su propia lista en users/{authorId}/social/graph
+      final followers = (await SocialGraph.getGraph(authorId)).followers;
+      if (followers.isEmpty) return;
 
-      if (followersSnapshot.docs.isEmpty) return;
-
-      final batch = _firestore.batch();
-      for (var doc in followersSnapshot.docs) {
-        final followerId = doc.id;
-
-        // Check if follower already has a notification for this trip to avoid duplicate spam
-        final existing = await _firestore
-            .collection('users')
-            .doc(followerId)
-            .collection('notifications')
-            .where('tripId', isEqualTo: trip.id)
-            .where('type', isEqualTo: 'new_publication')
-            .get();
-
-        if (existing.docs.isEmpty) {
-          final notifRef = _firestore
+      // Un id fijo por viaje evita duplicados: si ya existe, las reglas rechazan
+      // reescribirlo (solo el dueño de la notificación la modifica) y se omite.
+      for (final followerId in followers) {
+        try {
+          await _firestore
               .collection('users')
               .doc(followerId)
               .collection('notifications')
-              .doc(); // Auto-generated ID
-
-          batch.set(notifRef, {
+              .doc('new_publication_${trip.id}')
+              .set({
             'type': 'new_publication',
             'senderId': authorId,
             'senderName': authorName,
@@ -147,9 +133,10 @@ class TripService {
             'read': false,
             'timestamp': FieldValue.serverTimestamp(),
           });
+        } catch (_) {
+          // Ya notificado antes
         }
       }
-      await batch.commit();
     } catch (e) {
       print("Error notifying followers of new publication: $e");
     }

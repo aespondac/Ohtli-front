@@ -1,3 +1,4 @@
+import '../services/social_graph.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -24,7 +25,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
   // Streams creados UNA sola vez: antes se recreaban en cada build (cada tecla del buscador),
   // lo que mostraba el spinner a pantalla completa y hacía perder el foco del campo de búsqueda.
-  late final Stream<DocumentSnapshot> _meStream;
+  late final Stream<SocialData> _meStream;
   late final Stream<QuerySnapshot> _sentRequestsStream;
   late final Stream<QuerySnapshot> _incomingRequestsStream;
 
@@ -45,7 +46,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     final db = FirebaseFirestore.instance;
-    _meStream = db.collection('users').doc(_uid).snapshots();
+    _meStream = SocialGraph.watchGraph(_uid, includeClose: true);
     _sentRequestsStream = db
         .collection('friend_requests')
         .where('senderId', isEqualTo: _uid)
@@ -161,18 +162,12 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
   Future<void> _toggleFriendStatus(String targetUserId, String action) async {
     if (_currentUser == null) return;
-    final docRef = FirebaseFirestore.instance.collection('users').doc(_currentUser.uid);
+    final me = _currentUser.uid;
 
     try {
       if (action == 'none') {
         // Remove friendship mutually
-        await docRef.update({
-          'friends': FieldValue.arrayRemove([targetUserId]),
-          'closeFriends': FieldValue.arrayRemove([targetUserId]),
-        });
-        await FirebaseFirestore.instance.collection('users').doc(targetUserId).update({
-          'friends': FieldValue.arrayRemove([_currentUser.uid]),
-        });
+        await SocialGraph.removeFriendship(me, targetUserId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -183,14 +178,10 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         }
       } else if (action == 'friend') {
         // Keep as friend, remove from close friends
-        await docRef.update({
-          'closeFriends': FieldValue.arrayRemove([targetUserId]),
-        });
+        await SocialGraph.setCloseFriend(me, targetUserId, false);
       } else if (action == 'closeFriend') {
         // Add to close friends (user is the ONLY ONE choosing their close friends)
-        await docRef.update({
-          'closeFriends': FieldValue.arrayUnion([targetUserId]),
-        });
+        await SocialGraph.setCloseFriend(me, targetUserId, true);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -226,15 +217,8 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         'status': 'accepted',
       });
 
-      // 3. Add Bob to Alice's friends list
-      await firestore.collection('users').doc(targetUserId).update({
-        'friends': FieldValue.arrayUnion([_currentUser.uid]),
-      });
-
-      // 4. Add Alice to Bob's friends list
-      await firestore.collection('users').doc(_currentUser.uid).update({
-        'friends': FieldValue.arrayUnion([targetUserId]),
-      });
+      // 3-4. Amistad en ambos sentidos (users/{uid}/social/graph)
+      await SocialGraph.addFriendship(_currentUser.uid, targetUserId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -482,7 +466,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
             ),
           ),
           Positioned.fill(
-            child: StreamBuilder<DocumentSnapshot>(
+            child: StreamBuilder<SocialData>(
               stream: _meStream,
               builder: (context, userSnapshot) {
                 if (userSnapshot.hasError) {
@@ -501,9 +485,9 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                   return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
                 }
 
-                final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
-                final List<dynamic> friends = userData?['friends'] ?? [];
-                final List<dynamic> closeFriends = userData?['closeFriends'] ?? [];
+                final social = userSnapshot.data!;
+                final List<dynamic> friends = social.friends;
+                final List<dynamic> closeFriends = social.closeFriends;
 
                 _ensureUsers(friends);
                 return Builder(

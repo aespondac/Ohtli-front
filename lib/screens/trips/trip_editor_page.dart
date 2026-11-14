@@ -1,3 +1,4 @@
+import '../../services/social_graph.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -141,11 +142,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (userDoc.exists) {
-          final data = userDoc.data();
-          final List<dynamic> friendsUids = data?['friends'] ?? [];
-          final List<dynamic> myCloseFriends = data?['closeFriends'] ?? [];
+        // Mis listas sociales (users/{uid}/social/*): amigos, mejores amigos y quién me
+        // tiene como mejor amigo (para saber si es mutuo sin leer las listas ajenas).
+        final social = await SocialGraph.getGraph(user.uid, includeClose: true);
+        {
+          final List<dynamic> friendsUids = social.friends;
+          final List<dynamic> myCloseFriends = social.closeFriends;
+          final List<String> closeFriendOf = social.closeFriendOf;
           
           final Set<String> uidsToFetch = {
             ...friendsUids.cast<String>(),
@@ -162,8 +165,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             final List<Map<String, dynamic>> fetched = [];
             for (var doc in friendsSnapshot.docs) {
               final dName = doc.data()['displayName'] ?? 'Viajero Ohtli';
-              final List<dynamic> friendCloseFriends = doc.data()['closeFriends'] ?? [];
-              final bool isMutualCloseFriend = friendCloseFriends.contains(user.uid) && 
+              final bool isMutualCloseFriend = closeFriendOf.contains(doc.id) &&
                   myCloseFriends.contains(doc.id);
               
               fetched.add({

@@ -1,3 +1,4 @@
+import '../services/social_graph.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -68,15 +69,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
           'status': 'accepted',
         });
 
-        // 3. Add Bob to Alice's friends list
-        await firestore.collection('users').doc(senderId).update({
-          'friends': FieldValue.arrayUnion([_currentUser.uid]),
-        });
-
-        // 4. Add Alice to Bob's friends list
-        await firestore.collection('users').doc(_currentUser.uid).update({
-          'friends': FieldValue.arrayUnion([senderId]),
-        });
+        // 3-4. Amistad en ambos sentidos (users/{uid}/social/graph)
+        await SocialGraph.addFriendship(_currentUser.uid, senderId);
 
         // 5. Clean up any other duplicate pending notifications/requests between these two users
         final duplicateRequests = await firestore
