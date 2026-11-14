@@ -106,3 +106,50 @@ class _RevealOnScrollState extends State<RevealOnScroll> with SingleTickerProvid
     );
   }
 }
+
+/// Entrada escalonada: aparece (se desvanece y se desliza) [index] × [step] después de montarse.
+/// Sirve para que el contenido de un panel entre en orden al abrirlo.
+class StaggerIn extends StatefulWidget {
+  final Widget child;
+  final int index;
+  final Duration step;
+  final Offset from;
+
+  const StaggerIn({super.key, required this.child, required this.index, this.step = const Duration(milliseconds: 70), this.from = const Offset(18, 0)});
+
+  @override
+  State<StaggerIn> createState() => _StaggerInState();
+}
+
+class _StaggerInState extends State<StaggerIn> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 380));
+  late final Animation<double> _t = CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.step * widget.index, () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _t,
+      child: widget.child,
+      builder: (_, child) => Opacity(
+        opacity: _t.value,
+        child: Transform.translate(offset: widget.from * (1 - _t.value), child: child),
+      ),
+    );
+  }
+}

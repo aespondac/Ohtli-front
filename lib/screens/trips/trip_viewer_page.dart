@@ -1949,7 +1949,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
     // Una tarjeta por etapa: antes se planea, durante va el modo viaje y después se cierra.
     final phase = _phase;
     if (phase == TripPhase.antes) cards.add(_buildPlanCard(isDark, canEdit, onDone: onDone));
-    if (phase == TripPhase.durante && places.isNotEmpty) {
+    // Durante el viaje, el modo viaje vive abajo (flotante); en el panel lateral no se repite.
+    // En el panel "Tu viaje" del teléfono sí queda el botón para activarlo.
+    if (phase == TripPhase.durante && places.isNotEmpty && onDone != null) {
       cards.add(_panelCard(isDark: isDark, icon: Icons.near_me_rounded, title: 'MODO VIAJE', children: [
         if (_tripMode && onDone == null)
           _buildTripModePanel(isDark, embedded: true)
@@ -2959,7 +2961,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   ),
                 ),
               ),
-              SizedBox(height: _tripMode ? 220 : 80),
+              // Espacio para que el panel flotante del modo viaje no tape el final.
+              SizedBox(height: _tripMode ? 360 : 110),
             ],
           ),
         );
@@ -3108,7 +3111,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   ),
                 ),
               // Panel del modo viaje (V4): en pantallas anchas vive en el panel lateral
-              if (_tripMode && !isLocked && (!wideAside || _asideCollapsed))
+              if (_tripMode && !isLocked)
                 Positioned(
                   left: 16,
                   right: 16 + asideInset,
@@ -3161,11 +3164,33 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     ),
                   ),
                 ),
-              // Barra de la muestra: abajo, salvo cuando el panel del modo viaje ocupa ese lugar.
+              // Durante el viaje, si el modo viaje no está activo, el botón para activarlo va abajo.
+              if (!isLocked && !_tripMode && _isMember && _phase == TripPhase.durante && _sections.any((s) => s is PlaceSection))
+                Positioned(
+                  left: 16,
+                  right: 16 + asideInset,
+                  bottom: 16 + MediaQuery.of(context).padding.bottom + (isDesktop ? 0 : 64),
+                  child: Center(
+                    child: FilledButton.icon(
+                      onPressed: () => _setTripMode(true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: OhtliColors.stormyTeal,
+                        foregroundColor: Colors.white,
+                        elevation: 8,
+                        shadowColor: Colors.black.withValues(alpha: 0.35),
+                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+                        shape: const StadiumBorder(),
+                      ),
+                      icon: const Icon(Icons.near_me_rounded, size: 19),
+                      label: Text('Estoy en el viaje', style: GoogleFonts.inter(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ),
+              // Barra de la muestra: abajo, salvo durante el viaje (ahí abajo va el modo viaje).
               if (_isSample && !isLocked)
                 Positioned(
-                  top: (_tripMode && (!wideAside || _asideCollapsed)) ? (isDesktop ? 14 : MediaQuery.of(context).padding.top + 58) : null,
-                  bottom: (_tripMode && (!wideAside || _asideCollapsed)) ? null : 16 + MediaQuery.of(context).padding.bottom + (isDesktop ? 0 : 56),
+                  top: _phase == TripPhase.durante ? (isDesktop ? 14 : MediaQuery.of(context).padding.top + 58) : null,
+                  bottom: _phase == TripPhase.durante ? null : 16 + MediaQuery.of(context).padding.bottom + (isDesktop ? 0 : 56),
                   left: 12,
                   right: 12 + asideInset,
                   child: Center(child: _buildSampleBar(isDark, compact: !isDesktop)),
@@ -4411,9 +4436,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
         margin: const EdgeInsets.all(_kAsideGap),
         clipBehavior: Clip.antiAlias,
         decoration: floating(26),
+        // Al desplegar el panel, su contenido entra en orden: encabezado, mapa, índice y tarjetas.
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 14, 14, 24),
           children: [
+            for (final (i, w) in <Widget>[
             Row(
               children: [
                 Expanded(
@@ -4443,11 +4470,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            if (_sections.any((s) => s is PlaceSection)) ...[
-              _buildMiniMap(isDark),
-              const SizedBox(height: 18),
-            ],
+            if (_sections.any((s) => s is PlaceSection))
+              Padding(padding: const EdgeInsets.only(top: 8, bottom: 18), child: _buildMiniMap(isDark))
+            else
+              const SizedBox(height: 8),
             _buildAsideIndex(isDark),
             if (member) ...[
               const SizedBox(height: 22),
@@ -4463,6 +4489,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
               const SizedBox(height: 10),
               ..._buildMemberPanelCards(isDark, canEdit),
             ],
+            ].indexed)
+              StaggerIn(index: i, child: w),
           ],
         ),
       ),
