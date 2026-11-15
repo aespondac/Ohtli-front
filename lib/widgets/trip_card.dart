@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -403,22 +402,6 @@ class _TripCardState extends State<TripCard> {
     );
   }
 
-  String get _bowAsset {
-    var hash = 0;
-    for (final c in widget.trip.id.codeUnits) {
-      hash += c;
-    }
-    return 'assets/ribbons/Ribbon_0_${const ['gold', 'rosegold', 'gold', 'silver'][hash % 4]}.svg';
-  }
-
-  Widget _bow() => AnimatedScale(
-        duration: const Duration(milliseconds: 380),
-        curve: Curves.easeOutBack,
-        scale: _hover ? 1.04 : 1.0,
-        alignment: Alignment.topLeft,
-        child: SvgPicture.asset(_bowAsset, fit: BoxFit.fitWidth),
-      );
-
   /// Velo cálido y destellos sobre la foto de una sorpresa.
   Widget _giftWrapTint() {
     return IgnorePointer(
@@ -428,29 +411,6 @@ class _TripCardState extends State<TripCard> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [OhtliColors.xoconostle.withValues(alpha: 0.10), Colors.transparent, const Color(0xFF7A1F3D).withValues(alpha: 0.45)],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Listón diagonal en la esquina de la foto de una sorpresa.
-  Widget _ribbonCorner() {
-    return IgnorePointer(
-      child: Align(
-        alignment: Alignment.bottomRight,
-        child: Transform.translate(
-          offset: const Offset(26, -14),
-          child: Transform.rotate(
-            angle: -0.75,
-            child: Container(
-              width: 130,
-              height: 16,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFFE8892B), OhtliColors.cempasuchil, Color(0xFFE8892B)]),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
-              ),
-            ),
           ),
         ),
       ),
@@ -671,8 +631,6 @@ class _TripCardState extends State<TripCard> {
                       ),
                     ),
                   ),
-                  // Moño de regalo que envuelve la esquina de la foto
-                  if (_isSurprise) Positioned(top: -16, left: -14, right: -10, child: IgnorePointer(child: _bow())),
                   if (_isSurprise && widget.hasNews) Positioned(bottom: 10, right: 10, child: _newsBadge()),
                 ],
               ),
@@ -745,7 +703,7 @@ class _TripCardState extends State<TripCard> {
               width: 100,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: Stack(children: [Positioned.fill(child: _photosArea(compact: true)), if (_isSurprise) Positioned.fill(child: _ribbonCorner())]),
+                child: Stack(children: [Positioned.fill(child: _photosArea(compact: true))]),
               ),
             ),
           ),

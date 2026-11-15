@@ -1,8 +1,7 @@
-import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/trip_model.dart';
 import '../theme/colors.dart';
@@ -75,31 +74,6 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
     if (mounted) widget.onOpen();
   }
 
-  int get _hash {
-    var h = 0;
-    for (final c in widget.trip.id.codeUnits) {
-      h += c;
-    }
-    return h;
-  }
-
-  /// Listón con moño (los mismos SVG de regalo del proyecto); se suelta al abrir.
-  Widget _ribbon(double t, BoxConstraints c) {
-    const horizontal = [2, 3, 5, 7];
-    const vertical = [4, 6];
-    final useVertical = _hash % 3 == 0;
-    final index = useVertical ? vertical[_hash % vertical.length] : horizontal[_hash % horizontal.length];
-    final variant = const ['gold', 'rosegold', 'gold', 'silver'][_hash % 4];
-    final svg = SvgPicture.asset('assets/ribbons/Ribbon_${index}_$variant.svg', fit: BoxFit.contain);
-    final opacity = (1 - t * 2.2).clamp(0.0, 1.0);
-    final scale = 1 + t * 0.8;
-    final child = IgnorePointer(child: Opacity(opacity: opacity, child: Transform.scale(scale: scale, child: svg)));
-    if (useVertical) {
-      return Positioned(top: 0, bottom: 0, left: c.maxWidth * 0.5 - 55, width: 110, child: child);
-    }
-    return Positioned(left: -6, right: -6, top: c.maxHeight * 0.38 - 50, height: 100, child: child);
-  }
-
   Widget _tag({bool compact = false}) {
     final photo = widget.fromPhotoUrl;
     return Container(
@@ -128,25 +102,6 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
     );
   }
 
-  Widget _centerSeal() {
-    final locked = widget.isLocked;
-    return AnimatedScale(
-      duration: const Duration(milliseconds: 260),
-      scale: _hover && !locked ? 1.08 : 1,
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: locked ? OhtliColors.onyx : OhtliColors.xoconostle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 14, offset: const Offset(0, 6))],
-        ),
-        child: Icon(locked ? Icons.lock_rounded : Icons.card_giftcard_rounded, color: Colors.white, size: 22),
-      ),
-    );
-  }
-
   Widget _desk({required bool compact}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -154,41 +109,67 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
         animation: _anim,
         builder: (context, _) {
           final t = Curves.easeInOutCubic.transform(_anim.value);
-          final flipped = t > 0.5;
           return FutureBuilder<TripPhotoInfo>(
             future: _photos,
             initialData: TripPhotos.initial(widget.trip),
             builder: (context, snap) {
-              // Volteo: escala horizontal 1 → 0 → 1 cambiando de reverso a foto
-              final sx = (math.cos(t * math.pi)).abs().clamp(0.02, 1.0);
-              final wrapped = DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: widget.isLocked
-                        ? [const Color(0xFF3A3F47), const Color(0xFF23262B)]
-                        : [OhtliColors.xoconostle, const Color(0xFFB8325A)],
+              final photo = (snap.data?.photos ?? const ['']).first;
+              // Cerrada: portada muy difuminada; al abrir se va enfocando
+              final blur = (1 - t) * 26 + 0.01;
+              final veil = (1 - t).clamp(0.0, 1.0);
+              final locked = widget.isLocked;
+              return Stack(
+                children: [
+                  Positioned.fill(
+                    child: ImageFiltered(
+                      imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur, tileMode: TileMode.clamp),
+                      child: Transform.scale(scale: 1.15 - t * 0.15, child: OhtliPhoto(photo)),
+                    ),
                   ),
-                ),
-                child: CustomPaint(painter: _ConfettiPainter(widget.trip.id.hashCode)),
-              );
-              return LayoutBuilder(
-                builder: (context, c) => Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.diagonal3Values(sx, 1, 1),
-                        child: flipped ? OhtliPhoto((snap.data?.photos ?? const ['']).first) : wrapped,
+                  // Velo de color para que no se adivine la foto
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: locked
+                                ? [const Color(0xFF2E3238).withValues(alpha: 0.72 * veil), const Color(0xFF15171A).withValues(alpha: 0.82 * veil)]
+                                : [OhtliColors.xoconostle.withValues(alpha: 0.55 * veil), const Color(0xFF6E1F45).withValues(alpha: 0.70 * veil)],
+                          ),
+                        ),
                       ),
                     ),
-                    _ribbon(t, c),
-                    if (!flipped && widget.isLocked)
-                      Center(child: Opacity(opacity: (1 - t * 2).clamp(0.0, 1.0), child: _centerSeal())),
-                    if (!compact) Positioned(bottom: 10, left: 10, child: _tag()),
-                  ],
-                ),
+                  ),
+                  // Ícono limpio en un círculo esmerilado
+                  if (t < 0.6)
+                    Center(
+                      child: Opacity(
+                        opacity: (1 - t * 1.8).clamp(0.0, 1.0),
+                        child: AnimatedScale(
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutBack,
+                          scale: _hover && !locked ? 1.08 : 1.0,
+                          child: Container(
+                            width: compact ? 40 : 58,
+                            height: compact ? 40 : 58,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.16),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.2),
+                            ),
+                            child: Icon(
+                              locked ? Icons.lock_rounded : Icons.redeem_rounded,
+                              color: Colors.white,
+                              size: compact ? 18 : 26,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (!compact) Positioned(bottom: 10, left: 10, child: _tag()),
+                ],
               );
             },
           );
@@ -216,10 +197,16 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
 
   Widget _statusPill() {
     final locked = widget.isLocked;
-    final c = locked ? OhtliColors.onyx.withValues(alpha: 0.7) : OhtliColors.xoconostle;
+    final c = locked ? OhtliColors.onyx.withValues(alpha: 0.8) : Colors.white;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(30)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: locked ? OhtliColors.innerCardBg : null,
+        gradient: locked ? null : const LinearGradient(colors: [OhtliColors.xoconostle, Color(0xFFB8325A)]),
+        borderRadius: BorderRadius.circular(30),
+        border: locked ? Border.all(color: OhtliColors.cardBorder) : null,
+        boxShadow: locked ? null : [BoxShadow(color: OhtliColors.xoconostle.withValues(alpha: _hover ? 0.45 : 0.25), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -307,23 +294,4 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
       ),
     );
   }
-}
-
-/// Papel de regalo: puntos y destellos suaves en posiciones fijas por viaje.
-class _ConfettiPainter extends CustomPainter {
-  final int seed;
-  _ConfettiPainter(this.seed);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rnd = math.Random(seed);
-    final paint = Paint()..color = Colors.white.withValues(alpha: 0.14);
-    for (var i = 0; i < 26; i++) {
-      final o = Offset(rnd.nextDouble() * size.width, rnd.nextDouble() * size.height);
-      canvas.drawCircle(o, 1.5 + rnd.nextDouble() * 3.5, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ConfettiPainter old) => old.seed != seed;
 }
