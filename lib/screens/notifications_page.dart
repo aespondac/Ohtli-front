@@ -5,9 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
 import 'construction_page.dart'; // To reuse RouteBackgroundPainter
-import 'trips/trip_viewer_page.dart';
 import 'account/public_profile_page.dart';
 import '../utils/friendly_errors.dart';
+import 'trips/trip_screens.dart' deferred as trips;
+import '../widgets/deferred_view.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -415,7 +416,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => TripViewerPage(tripId: data['tripId'], authorId: navAuthorId),
+                              builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(tripId: data['tripId'], authorId: navAuthorId)),
                             ),
                           );
                         }

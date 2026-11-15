@@ -18,11 +18,11 @@ import '../../models/trip_model.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../services/trip_service.dart';
-import '../trips/trip_viewer_page.dart';
-import '../trips/trip_editor_page.dart';
 import 'account_management_page.dart';
 import '../friends_page.dart';
 import '../../utils/web_helpers.dart';
+import '../../screens/trips/trip_screens.dart' deferred as trips;
+import '../../widgets/deferred_view.dart';
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;
@@ -1563,17 +1563,17 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => TripViewerPage(
+                  builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(
                     trip: trip,
                     onBackToDashboard: () => Navigator.pop(context),
-                  ),
+                  )),
                 ),
               );
             } else {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => TripEditorPage(trip: trip),
+                  builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripEditorPage(trip: trip)),
                 ),
               );
             }
@@ -1582,7 +1582,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => TripEditorPage(trip: trip),
+                builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripEditorPage(trip: trip)),
               ),
             );
           },

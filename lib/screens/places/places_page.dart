@@ -22,8 +22,9 @@ import '../../models/trip_model.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../../widgets/trip_planner_dialog.dart';
-import '../trips/trip_editor_page.dart';
 import '../../utils/friendly_errors.dart';
+import '../../screens/trips/trip_screens.dart' deferred as trips;
+import '../../widgets/deferred_view.dart';
 
 class PlacesPage extends StatefulWidget {
   final VoidCallback? onBack;
@@ -632,7 +633,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => TripEditorPage(trip: newTrip),
+            builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripEditorPage(trip: newTrip)),
           ),
         );
       }

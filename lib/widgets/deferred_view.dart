@@ -18,21 +18,27 @@ class DeferredView extends StatefulWidget {
 class _DeferredViewState extends State<DeferredView> {
   // Una carga por biblioteca: volver a la pantalla no la vuelve a pedir
   static final Map<Object, Future<void>> _loads = {};
+  // Bibliotecas ya cargadas: se dibujan al instante, sin un cuadro de espera
+  static final Set<Object> _loaded = {};
   late Future<void> _future;
+
+  Future<void> _start() =>
+      _loads.putIfAbsent(widget.load, () => widget.load().then((_) => _loaded.add(widget.load)));
 
   @override
   void initState() {
     super.initState();
-    _future = _loads.putIfAbsent(widget.load, widget.load);
+    _future = _start();
   }
 
   void _retry() {
     _loads.remove(widget.load);
-    setState(() => _future = _loads.putIfAbsent(widget.load, widget.load));
+    setState(() => _future = _start());
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loaded.contains(widget.load)) return widget.builder(context);
     return FutureBuilder<void>(
       future: _future,
       builder: (context, snapshot) {

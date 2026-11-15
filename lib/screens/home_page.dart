@@ -13,13 +13,14 @@ import '../theme/colors.dart';
 import '../widgets/ohtli_sidebar.dart';
 import '../widgets/ohtli_accessibility_panel.dart';
 import 'construction_page.dart';
-import 'trips/trips_dashboard_page.dart';
 import 'explore/explore_page.dart';
 import 'account/public_profile_page.dart';
 import 'friends_page.dart';
 import 'notifications_page.dart';
 import 'places/places_page.dart';
 import '../widgets/trip_planner_dialog.dart';
+import 'trips/trip_screens.dart' deferred as trips;
+import '../widgets/deferred_view.dart';
 
 class HomePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -232,7 +233,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildBody(bool isMobile) {
     if (_currentIndex == 1) {
-      return const TripsDashboardPage();
+      return DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripsDashboardPage());
     }
     if (_currentIndex == 2) {
       final user = FirebaseAuth.instance.currentUser;

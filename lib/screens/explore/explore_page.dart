@@ -9,7 +9,6 @@ import '../../theme/colors.dart';
 import '../../models/poi_model.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../places/places_page.dart';
-import '../trips/trip_viewer_page.dart';
 import '../../config/editorial.dart';
 import '../../services/explore_config_service.dart';
 import '../../services/saved_places.dart';
@@ -19,6 +18,8 @@ import '../../widgets/poi_card.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import '../../widgets/trip_polaroid.dart';
 import '../../models/trip_model.dart';
+import '../../screens/trips/trip_screens.dart' deferred as trips;
+import '../../widgets/deferred_view.dart';
 
 // Crónicas destacadas (fijadas por el equipo editorial)
 class PinnedStory {
@@ -245,7 +246,7 @@ class _ExplorePageState extends State<ExplorePage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TripViewerPage(tripId: tripId, authorId: authorId),
+        builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(tripId: tripId, authorId: authorId)),
       ),
     );
   }
@@ -714,7 +715,7 @@ class _ExplorePageState extends State<ExplorePage> {
         void open() {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => TripViewerPage(tripId: pinned.tripId, authorId: pinned.authorId)),
+            MaterialPageRoute(builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(tripId: pinned.tripId, authorId: pinned.authorId))),
           );
         }
 

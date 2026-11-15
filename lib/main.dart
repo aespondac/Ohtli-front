@@ -22,7 +22,6 @@ import 'screens/login/auth_action_page.dart';
 import 'screens/register/desktop_register_page.dart';
 import 'screens/register/mobile_register_page.dart';
 import 'screens/account/account_management_page.dart';
-import 'screens/trips/trip_viewer_page.dart';
 import 'screens/trips/trip_sample.dart';
 import 'screens/error_404_page.dart';
 import 'screens/lab/lab_landing_page.dart' deferred as lab_landing;
@@ -45,6 +44,7 @@ import 'services/app_url.dart';
 import 'services/saved_accounts.dart';
 import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
+import 'screens/trips/trip_screens.dart' deferred as trips;
 
 
 void main() async {
@@ -127,7 +127,13 @@ void main() async {
   // pantalla ya se dibujó: no compite con la descarga inicial. Lugares y Explorar lo piden
   // antes si lo necesitan.
   WidgetsBinding.instance.addPostFrameCallback(
-    (_) => Future.delayed(const Duration(seconds: 2), PlacesPage.prefetch),
+    (_) => Future.delayed(const Duration(seconds: 2), () {
+      PlacesPage.prefetch();
+      // Con sesión, también las pantallas de viajes (parte diferida): Mis viajes abre sin espera
+      if (FirebaseAuth.instance.currentUser != null) {
+        trips.loadLibrary().catchError((Object e) => debugPrint('[trips] precarga: $e'));
+      }
+    }),
   );
 }
 
@@ -885,14 +891,14 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         },
       );
     } else if (_currentScreen == OhtliScreen.publicViewer) {
-      activeView = TripViewerPage(
+      activeView = DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(
         tripId: _publicTripId,
         authorId: _publicAuthorId,
         isPublicLink: true,
         onLoginRedirect: () => _navigateTo(isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login),
         onBackToDashboard: () => _navigateTo(
             FirebaseAuth.instance.currentUser != null ? OhtliScreen.home : OhtliScreen.underConstruction),
-      );
+      ));
     } else if (_currentScreen == OhtliScreen.test404) {
       activeView = Error404Page(
         onExploreHome: () => _navigateTo(OhtliScreen.home),

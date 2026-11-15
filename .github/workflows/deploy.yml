@@ -47,6 +47,15 @@ jobs:
             exit 1
           fi
 
+      - name: Pantallas de viajes en carga diferida
+        run: |
+          # Fuera de lib/screens/trips, las pantallas de viajes se importan solo con
+          # "trip_screens.dart' deferred as trips"; un import normal las regresa a la descarga inicial
+          if grep -rnE "^import .*trips/(trip_editor_page|trip_viewer_page|trips_dashboard_page|trip_planner_page|trip_screens)\.dart'" lib | grep -v "^lib/screens/trips/" | grep -v "deferred as"; then
+            echo "Importa 'screens/trips/trip_screens.dart' deferred as trips y envuelve la pantalla en DeferredView."
+            exit 1
+          fi
+
       # 4.1 Pruebas (bloquean el despliegue si fallan). El código usa dart:html, por lo que
       # las pruebas se ejecutan en la plataforma web (Chrome incluido en ubuntu-latest).
       - name: Run tests

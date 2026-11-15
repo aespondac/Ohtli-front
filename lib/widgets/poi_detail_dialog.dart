@@ -10,11 +10,11 @@ import 'package:uuid/uuid.dart';
 import '../theme/colors.dart';
 import '../models/poi_model.dart';
 import '../models/trip_model.dart';
-import '../screens/trips/trip_editor_page.dart';
-import '../screens/trips/trip_viewer_page.dart';
 import '../utils/friendly_errors.dart';
 import '../services/saved_places.dart';
 import 'osrm_map_widget.dart';
+import '../screens/trips/trip_screens.dart' deferred as trips;
+import 'deferred_view.dart';
 
 class PoiDetailDialog extends StatefulWidget {
   final Poi poi;
@@ -275,7 +275,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => TripEditorPage(trip: newTrip),
+            builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripEditorPage(trip: newTrip)),
           ),
         );
       }
@@ -824,10 +824,10 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => TripViewerPage(
+                builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(
                   tripId: tripData['tripId'],
                   authorId: tripData['authorId'],
-                ),
+                )),
               ),
             );
           },
