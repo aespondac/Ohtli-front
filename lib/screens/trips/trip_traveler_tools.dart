@@ -2,8 +2,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
-import 'dart:typed_data';
 import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
@@ -13,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../services/trip_transfers.dart';
 import '../../theme/colors.dart';
 import '../../widgets/image_cropper_dialog.dart';
+import '../../utils/web_helpers.dart';
 
 /// Herramientas del viajero: diálogos para registrar lo que pasa en el viaje
 /// (desvíos, traslados, precio real, texto, imagen, tabla y nota). Solo piden los
@@ -167,41 +166,24 @@ Widget _afterPicker(List<BlockOption> options, String value, ValueChanged<String
 }
 
 /// Elige una foto del dispositivo y la recorta (3:4). Devuelve un data URL JPEG.
-Future<String?> pickAndCropPhoto(BuildContext context, {double aspectRatio = 3 / 4}) {
+Future<String?> pickAndCropPhoto(BuildContext context, {double aspectRatio = 3 / 4}) async {
+  final picked = await pickFile(accept: 'image/*');
+  if (picked == null || picked.bytes.isEmpty || !context.mounted) return null;
   final completer = Completer<String?>();
-  final input = html.FileUploadInputElement()..accept = 'image/*';
-  input.onChange.listen((_) {
-    final files = input.files;
-    if (files == null || files.isEmpty) {
-      if (!completer.isCompleted) completer.complete(null);
-      return;
-    }
-    final reader = html.FileReader();
-    reader.onLoadEnd.listen((_) {
-      final result = reader.result;
-      if (result is! String || !context.mounted) {
-        if (!completer.isCompleted) completer.complete(null);
-        return;
-      }
-      final Uint8List bytes = base64Decode(result.split(',').last);
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => OhtliImageCropperDialog(
-          imageBytes: bytes,
-          isCircle: false,
-          aspectRatio: aspectRatio,
-          onCropped: (dataUrl) {
-            if (!completer.isCompleted) completer.complete(dataUrl);
-          },
-        ),
-      ).then((_) {
-        if (!completer.isCompleted) completer.complete(null);
-      });
-    });
-    reader.readAsDataUrl(files.first);
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => OhtliImageCropperDialog(
+      imageBytes: picked.bytes,
+      isCircle: false,
+      aspectRatio: aspectRatio,
+      onCropped: (dataUrl) {
+        if (!completer.isCompleted) completer.complete(dataUrl);
+      },
+    ),
+  ).then((_) {
+    if (!completer.isCompleted) completer.complete(null);
   });
-  input.click();
   return completer.future;
 }
 

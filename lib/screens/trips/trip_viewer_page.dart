@@ -1,5 +1,5 @@
 // ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -41,6 +41,7 @@ import '../../services/trip_changes.dart';
 import 'trip_sample.dart';
 import 'trip_traveler_tools.dart';
 import '../../config/admin.dart' show isSuperUser;
+import '../../utils/web_helpers.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -221,7 +222,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   void initState() {
     super.initState();
     try {
-      _asideCollapsed = html.window.localStorage['ohtli_trip_aside_collapsed'] == '1';
+      _asideCollapsed = web.window.localStorage.getItem('ohtli_trip_aside_collapsed') == '1';
     } catch (_) {}
     _scrollController.addListener(_onScroll);
     _loadTripData();
@@ -392,14 +393,14 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   void _loadVisited() {
     try {
-      final raw = html.window.localStorage[_visitedStorageKey];
+      final raw = web.window.localStorage.getItem(_visitedStorageKey);
       if (raw != null) _visited = Set<String>.from(jsonDecode(raw) as List);
     } catch (_) {}
   }
 
   void _saveVisited() {
     try {
-      html.window.localStorage[_visitedStorageKey] = jsonEncode(_visited.toList());
+      web.window.localStorage.setItem(_visitedStorageKey, jsonEncode(_visited.toList()));
     } catch (_) {}
   }
 
@@ -433,7 +434,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         : Uri.encodeComponent('${p.title}, Ciudad de México');
     final t = transferBefore(_sections, _sections.indexOf(p));
     final travelMode = t != null ? transferModeOf(t.mode).googleTravelMode : 'walking';
-    html.window.open('https://www.google.com/maps/dir/?api=1&destination=$dest&travelmode=$travelMode', '_blank');
+    web.window.open('https://www.google.com/maps/dir/?api=1&destination=$dest&travelmode=$travelMode', '_blank');
   }
 
   /// Bloque de traslado en la lectura: un conector compacto entre paradas.
@@ -514,7 +515,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ],
                 if (routeUrl != null && !_isPreview)
                   TextButton.icon(
-                    onPressed: () => html.window.open(routeUrl, '_blank'),
+                    onPressed: () => web.window.open(routeUrl, '_blank'),
                     style: TextButton.styleFrom(
                       foregroundColor: OhtliColors.stormyTeal,
                       padding: EdgeInsets.zero,
@@ -988,11 +989,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
       }
       await TripService().updateTripContent(user.uid, id, TripContent(sections: sections));
       try {
-        html.window.localStorage.remove('ohtli_trip_visited_$id');
+        web.window.localStorage.removeItem('ohtli_trip_visited_$id');
       } catch (_) {}
       if (!mounted) return;
       _notice('Listo. Abriendo tu viaje…');
-      html.window.location.assign('${Uri.base.origin}/?tripId=$id&authorId=${user.uid}');
+      web.window.location.assign('${Uri.base.origin}/?tripId=$id&authorId=${user.uid}');
     } catch (e) {
       _notice(friendlyError(e, fallback: 'No se pudo guardar el viaje en tu cuenta.'));
     }
@@ -1807,12 +1808,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
       _notice('Agrega horarios a las paradas para poder pasarlas al calendario.');
       return;
     }
-    final blob = html.Blob([b.toString()], 'text/calendar');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    html.AnchorElement(href: url)
-      ..download = '${t.title.isEmpty ? 'viaje' : t.title}.ics'
-      ..click();
-    html.Url.revokeObjectUrl(url);
+    downloadBytes(
+      utf8.encode(b.toString()),
+      '${t.title.isEmpty ? 'viaje' : t.title}.ics',
+      'text/calendar',
+    );
   }
 
   // ---------- acciones de después
@@ -2418,12 +2418,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         actions: [
           TextButton.icon(
             onPressed: () {
-              final blob = html.Blob([svg], 'image/svg+xml');
-              final href = html.Url.createObjectUrlFromBlob(blob);
-              html.AnchorElement(href: href)
-                ..download = 'ohtli-viaje-qr.svg'
-                ..click();
-              html.Url.revokeObjectUrl(href);
+              downloadBytes(utf8.encode(svg), 'ohtli-viaje-qr.svg', 'image/svg+xml');
             },
             icon: const Icon(Icons.qr_code_2_rounded, size: 18),
             label: Text('Descargar QR', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
@@ -3064,7 +3059,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
     // Sin conexión, "no encontrado" significa que el viaje no está en la caché local
     // (persistencia de Firestore), no que el autor lo haya eliminado.
-    if (_errorCode == 404 && !(html.window.navigator.onLine ?? true)) {
+    if (_errorCode == 404 && !web.window.navigator.onLine) {
       return Scaffold(
         body: Center(
           child: Padding(
@@ -4620,7 +4615,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   void _setAsideCollapsed(bool v) {
     setState(() => _asideCollapsed = v);
     try {
-      html.window.localStorage['ohtli_trip_aside_collapsed'] = v ? '1' : '0';
+      web.window.localStorage.setItem('ohtli_trip_aside_collapsed', v ? '1' : '0');
     } catch (_) {}
   }
 

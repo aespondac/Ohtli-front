@@ -7,7 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'dart:async';
 import 'dart:convert';
 import '../../models/trip_model.dart';
@@ -31,6 +31,7 @@ import '../../config/editorial.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../widgets/place_details_form.dart';
 import 'package:http/http.dart' as http;
+import '../../utils/web_helpers.dart';
 
 class TripEditorPage extends StatefulWidget {
   final Trip trip;
@@ -289,7 +290,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (!kIsWeb) return;
 
     try {
-      final String? cachedStr = html.window.localStorage['ohtli_trip_draft_${widget.trip.id}'];
+      final String? cachedStr = web.window.localStorage.getItem('ohtli_trip_draft_${widget.trip.id}');
       if (cachedStr != null && cachedStr.isNotEmpty) {
         final decoded = jsonDecode(cachedStr) as Map<String, dynamic>;
         final int localUpdatedAt = decoded['updatedAt'] ?? 0;
@@ -405,7 +406,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   void _discardLocalCache() {
     if (kIsWeb) {
-      html.window.localStorage.remove('ohtli_trip_draft_${widget.trip.id}');
+      web.window.localStorage.removeItem('ohtli_trip_draft_${widget.trip.id}');
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -625,7 +626,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         }
       };
 
-      html.window.localStorage['ohtli_trip_draft_${widget.trip.id}'] = jsonEncode(cacheData);
+      web.window.localStorage.setItem('ohtli_trip_draft_${widget.trip.id}', jsonEncode(cacheData));
 
       // Trigger cloud auto-save debounce
       _triggerCloudAutoSaveDebounce();
@@ -1396,21 +1397,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final String sectionId = _sections[startIndex].id;
 
     try {
-      final uploadInput = html.FileUploadInputElement()
-        ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
-      uploadInput.click();
-      uploadInput.onChange.listen((e) {
-        final files = uploadInput.files;
-        if (files != null && files.isNotEmpty) {
-          final file = files[0];
-          final reader = html.FileReader();
-          reader.onLoadEnd.listen((e) {
-            final dynamic result = reader.result;
-            if (result is String && result.isNotEmpty) {
-              if (!mounted) return;
+      pickFile(accept: 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw').then((picked) {
+        if (picked == null || picked.bytes.isEmpty || !mounted) return;
               try {
-                final String base64Data = result.split(',').last;
-                final Uint8List bytes = base64Decode(base64Data);
+                final Uint8List bytes = picked.bytes;
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -1437,10 +1427,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
               } catch (err) {
                 print("Error decodando imagen: $err");
               }
-            }
-          });
-          reader.readAsDataUrl(file);
-        }
       });
     } catch (err) {
       print("Error abriendo selector de imágenes: $err");
@@ -1451,21 +1437,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (!kIsWeb) return;
 
     try {
-      final uploadInput = html.FileUploadInputElement()
-        ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
-      uploadInput.click();
-      uploadInput.onChange.listen((e) {
-        final files = uploadInput.files;
-        if (files != null && files.isNotEmpty) {
-          final file = files[0];
-          final reader = html.FileReader();
-          reader.onLoadEnd.listen((e) {
-            final dynamic result = reader.result;
-            if (result is String && result.isNotEmpty) {
-              if (!mounted) return;
+      pickFile(accept: 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw').then((picked) {
+        if (picked == null || picked.bytes.isEmpty || !mounted) return;
               try {
-                final String base64Data = result.split(',').last;
-                final Uint8List bytes = base64Decode(base64Data);
+                final Uint8List bytes = picked.bytes;
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -1483,10 +1458,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
               } catch (err) {
                 print("Error decodando portada: $err");
               }
-            }
-          });
-          reader.readAsDataUrl(file);
-        }
       });
     } catch (err) {
       print("Error abriendo selector de portada: $err");
