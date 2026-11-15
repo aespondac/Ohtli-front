@@ -914,8 +914,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
                       child: Text(
-                        'Se borrará el contenido de «$replacedTitle» (paradas, textos y fotos del plan) y no se puede deshacer. '
-                        'Se conservan quiénes son coautores y su visibilidad; los mensajes anteriores dejarán de verse.',
+                        'Se borrará todo lo de «$replacedTitle»: paradas, textos, fotos, mensajes, reacciones y fe de erratas. '
+                        'No se puede deshacer. Se conservan quiénes son coautores y su visibilidad.',
                         style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: isDark ? const Color(0xFFFF8A80) : Colors.red.shade700),
                       ),
                     ),
@@ -962,13 +962,28 @@ class _TripViewerPageState extends State<TripViewerPage> {
         await trips.doc(id).set(trip.toMap());
       } else {
         id = chosen;
-        await trips.doc(id).update({
+        final tripRef = trips.doc(id);
+        // Reemplazar es empezar de cero: se borran los mensajes, las reacciones y la fe de
+        // erratas del viaje anterior, y deja de estar terminado o calificado.
+        for (final col in const ['notes', 'reactions']) {
+          final docs = (await tripRef.collection(col).get()).docs;
+          for (int i = 0; i < docs.length; i += 400) {
+            final batch = FirebaseFirestore.instance.batch();
+            for (final d in docs.skip(i).take(400)) {
+              batch.delete(d.reference);
+            }
+            await batch.commit();
+          }
+        }
+        await tripRef.update({
           'title': sample.title,
           'description': sample.description,
           'coverUrl': sample.coverUrl,
           'travelDate': Timestamp.fromDate(today),
           'updatedAt': Timestamp.fromDate(now),
+          'errataHistory': <Map<String, dynamic>>[],
           'reviewedAt': FieldValue.delete(),
+          'finishedAt': FieldValue.delete(),
         });
       }
       await TripService().updateTripContent(user.uid, id, TripContent(sections: sections));

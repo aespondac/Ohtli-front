@@ -244,6 +244,8 @@ service cloud.firestore {
             && request.resource.data.keys().hasOnly([request.auth.uid]);
           allow update: if isTripMember(userId, tripId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid]);
+          // Solo el dueño del viaje las borra (p. ej. al reemplazar el contenido del viaje).
+          allow delete: if request.auth != null && request.auth.uid == userId;
         }
       }
     }
