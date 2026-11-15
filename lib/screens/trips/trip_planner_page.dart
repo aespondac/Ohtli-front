@@ -3,7 +3,7 @@
 import '../../services/user_private_data.dart';
 import '../../services/saved_places.dart';
 import 'dart:async';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'dart:ui' show lerpDouble;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -3259,7 +3259,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           trailing: googleMapsDirectionsUrl.isEmpty
               ? null
               : TextButton.icon(
-                  onPressed: () => html.window.open(googleMapsDirectionsUrl, '_blank'),
+                  onPressed: () => web.window.open(googleMapsDirectionsUrl, '_blank'),
                   icon: const Icon(Icons.open_in_new_rounded, size: 15),
                   label: Text('Abrir en Google Maps', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
                   style: TextButton.styleFrom(
