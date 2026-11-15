@@ -69,7 +69,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
   bool _isEditingAddress = false;
   int? _editingAddressIndex;
-  final _addressFormKey = GlobalKey<FormState>();
 
   // Privacy state
   bool _shareTravelData = true;
@@ -804,13 +803,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             "${_firstNameController.text.trim()} ${_lastNameController.text.trim()}"
                 .trim();
         final phoneText = _phoneController.text.trim();
-        final currentPhone =
-            web.window.localStorage.getItem('ohtli_phone_${user.uid}') ?? '';
 
         // Check if anything actually changed to avoid unnecessary operations
         final nameChanged =
             newName.isNotEmpty && newName != (user.displayName ?? '');
-        final phoneChanged = phoneText != currentPhone;
 
         if (nameChanged) {
           await user.updateDisplayName(newName);

@@ -1,6 +1,5 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:convert';
-import 'package:web/web.dart' as web;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';

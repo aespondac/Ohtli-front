@@ -29,8 +29,6 @@ import 'labs/labs_app_page.dart' deferred as labs_app;
 import 'labs/lab_experiments.dart';
 import 'labs/lab_eval_page.dart' deferred as lab_eval;
 import 'labs/labs_results_page.dart' deferred as labs_results;
-import 'labs/lab_access.dart';
-import 'config/admin.dart' show isSuperUser;
 import 'screens/api/api_landing_page.dart' deferred as api_landing;
 import 'widgets/deferred_view.dart';
 import 'screens/legal/legal_center_page.dart';

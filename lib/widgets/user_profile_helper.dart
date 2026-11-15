@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:web/web.dart' as web;
 import '../services/user_private_data.dart';
 import '../services/social_graph.dart';
 import 'package:http/http.dart' as http;
