@@ -4547,7 +4547,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   static const double _spineX = 22; // centro de la línea punteada (coincide con el ícono del traslado)
   static const double _spineIndent = 56; // sangría de los bloques respecto a la línea
 
-  bool get _useTimeline => _sections.any((s) => s is PlaceSection);
+  bool get _useTimeline => _isNotes ? _sections.isNotEmpty : _sections.any((s) => s is PlaceSection);
 
   /// Notas de versión: se leen como una crónica; las "paradas" son novedades.
   bool get _isNotes => _trip?.isReleaseNotes == true;
@@ -4659,6 +4659,27 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   dot: OhtliColors.cempasuchil,
                   ring: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
                 ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (_useTimeline && _isNotes && section is! PlaceSection && section is! TransferSection) {
+      // En las notas, cada bloque es una parada del recorrido: un punto sobre la línea.
+      block = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          block,
+          Positioned(
+            left: -(_spineIndent - _spineX) - 6,
+            top: 8,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isDark ? const Color(0xFF3A3A3E) : OhtliColors.cantera,
+                border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 2),
               ),
             ),
           ),
@@ -5845,75 +5866,61 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   Widget _buildTextImageBlockViewer(TextImageSection section, bool isDark, bool isDesktop) {
-    final Widget imageWidget = section.imageUrl.isNotEmpty
-        ? Center(
-            child: Container(
-              width: 120,
-              height: 160,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: GestureDetector(
-                  onTap: () => _showImageLightbox(
-                    urls: [section.imageUrl],
-                    initialIndex: 0,
-                    title: "Foto adjunta",
-                  ),
-                  child: Image(
-                    image: _getImageProvider(section.imageUrl),
-                    fit: BoxFit.cover,
+    // El texto se ve igual que un bloque de texto (mismo tamaño, títulos y viñetas).
+    final Widget textWidget = _buildTextBlockViewer(TextSection(id: section.id, markdownText: section.markdownText), isDark);
+    if (section.imageUrl.isEmpty) return textWidget;
+
+    // La foto, como una impresión pegada en la bitácora (marco claro, sombra y un leve giro).
+    final bool isLeft = section.layout != 'right';
+    Widget print({required double width, required double aspect}) => Transform.rotate(
+          angle: (isLeft ? -1.6 : 1.6) * math.pi / 180,
+          child: Container(
+            width: width,
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 22),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF2A2A2E) : Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.14), blurRadius: 16, offset: const Offset(0, 6)),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 2, offset: const Offset(0, 1)),
+              ],
+            ),
+            child: GestureDetector(
+              onTap: () => _showImageLightbox(urls: [section.imageUrl], initialIndex: 0, title: 'Foto adjunta'),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.zoomIn,
+                child: AspectRatio(
+                  aspectRatio: aspect,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: Image(
+                      image: _getImageProvider(section.imageUrl),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => ColoredBox(color: isDark ? const Color(0xFF26343A) : OhtliColors.cantera.withValues(alpha: 0.4)),
+                    ),
                   ),
                 ),
               ),
             ),
-          )
-        : const SizedBox.shrink();
+          ),
+        );
 
-    final Widget textWidget = section.markdownText.isNotEmpty
-        ? OhtliMarkdownText(
-            text: section.markdownText,
-            style: GoogleFonts.inter(
-              fontSize: 13.5,
-              color: isDark ? Colors.white70 : OhtliColors.onyx,
-              height: 1.5,
-            ),
-          )
-        : const SizedBox.shrink();
-
-    if (isDesktop && section.imageUrl.isNotEmpty) {
-      final bool isLeft = section.layout == 'left';
+    if (isDesktop) {
+      final photo = print(width: 230, aspect: 3 / 4);
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (isLeft) ...[
-            imageWidget,
-            const SizedBox(width: 20),
-          ],
-          Expanded(child: textWidget),
-          if (!isLeft) ...[
-            const SizedBox(width: 20),
-            imageWidget,
-          ],
+          if (isLeft) ...[photo, const SizedBox(width: 30)],
+          Expanded(child: Padding(padding: const EdgeInsets.only(top: 6), child: textWidget)),
+          if (!isLeft) ...[const SizedBox(width: 30), photo],
         ],
       );
     }
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (section.imageUrl.isNotEmpty) ...[
-          imageWidget,
-          const SizedBox(height: 14),
-        ],
+        Center(child: print(width: 280, aspect: 4 / 3)),
+        const SizedBox(height: 20),
         textWidget,
       ],
     );
