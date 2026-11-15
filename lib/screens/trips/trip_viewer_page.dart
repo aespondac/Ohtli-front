@@ -4561,6 +4561,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
       itemCount: _sections.length,
       itemBuilder: (context, index) {
         final section = _sections[index];
+        // Bloques vacíos (texto o imagen sin contenido) no ocupan lugar ni dejan un punto en la línea.
+        final bool empty = (section is TextSection && section.markdownText.trim().isEmpty) ||
+            (section is TextImageSection && section.markdownText.trim().isEmpty && section.imageUrl.isEmpty);
+        if (empty) return SizedBox.shrink(key: _blockKeys.putIfAbsent(section.id, () => GlobalKey()));
         return KeyedSubtree(
           key: _blockKeys.putIfAbsent(section.id, () => GlobalKey()),
           // Cada bloque aparece al entrar en pantalla (y al cargarse, si ya está a la vista).
