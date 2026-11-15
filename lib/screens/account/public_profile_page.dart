@@ -926,7 +926,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: OhtliColors.stormyTeal,
-          border: Border.all(color: _isCloseFriend ? OhtliColors.cempasuchil : (border >= 4 ? OhtliColors.cloudDancer : Colors.white), width: border),
+          border: Border.all(color: border >= 4 ? OhtliColors.cloudDancer : Colors.white, width: border),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 18, offset: const Offset(0, 6))],
         ),
         child: ClipOval(
