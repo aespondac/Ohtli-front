@@ -2764,13 +2764,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: _activeAddresses.isEmpty ? MainAxisSize.min : MainAxisSize.max,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   _activeAddresses.isEmpty
-                      ? 'Aún no tienes direcciones'
+                      ? 'Sin direcciones todavía'
                       : '${_activeAddresses.length} ${_activeAddresses.length == 1 ? 'dirección guardada' : 'direcciones guardadas'}',
                   style: GoogleFonts.inter(
                     fontSize: 14,
@@ -2807,34 +2808,37 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             ),
             const SizedBox(height: 20),
 
-            Expanded(
+            Flexible(
+              fit: _activeAddresses.isEmpty ? FlexFit.loose : FlexFit.tight,
               child: _activeAddresses.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.location_off_outlined,
-                            color: OhtliColors.onyx.withValues(alpha: 0.2),
-                            size: 48,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No tienes direcciones guardadas.',
-                            style: GoogleFonts.inter(
-                              color: OhtliColors.onyx.withValues(alpha: 0.5),
-                              fontSize: 14,
+                  ? Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+                        decoration: BoxDecoration(
+                          color: OhtliColors.cloudDancer,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: OhtliColors.cardBorder),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.add_location_alt_outlined, color: OhtliColors.accentText, size: 36),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Guarda tu casa, tu hotel o la oficina',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '¡Agrega una para tus futuros viajes!',
-                            style: GoogleFonts.inter(
-                              color: OhtliColors.onyx.withValues(alpha: 0.4),
-                              fontSize: 12,
+                            const SizedBox(height: 6),
+                            Text(
+                              'Así podrás empezar tus rutas desde ahí con un toque.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.4),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     )
                   : ListView.builder(
@@ -3055,7 +3059,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   });
                 },
               ),
-              const Divider(height: 32, color: OhtliColors.cantera),
+              Divider(height: 32, color: OhtliColors.cardBorder),
 
               // Switch 2: Notificaciones
               SwitchListTile(
@@ -3083,7 +3087,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   });
                 },
               ),
-              const Divider(height: 32, color: OhtliColors.cantera),
+              Divider(height: 32, color: OhtliColors.cardBorder),
 
               // Switch 3: Perfil público
               SwitchListTile(
@@ -3111,7 +3115,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   });
                 },
               ),
-              const Divider(height: 32, color: OhtliColors.cantera),
+              Divider(height: 32, color: OhtliColors.cardBorder),
 
               // DANGER ZONE: ACCOUNT DELETION
               Container(
@@ -3136,7 +3140,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Zona de Peligro',
+                          'Zona de riesgo',
                           style: GoogleFonts.inter(
                             fontWeight: FontWeight.w700,
                             color: OhtliColors.xoconostle,
@@ -3281,7 +3285,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
                   // Card for Visual Theme
                   Text(
-                    'Apariencia (Tema)',
+                    'Apariencia',
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -3323,7 +3327,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
                   // Card for Font Size
                   Text(
-                    'Tamaño de la Letra',
+                    'Tamaño de letra',
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -3350,7 +3354,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ),
                       const SizedBox(height: 10),
                       _buildFontSizeTile(
-                        title: 'Medio (100% - Por defecto)',
+                        title: 'Mediano (100%, predeterminado)',
                         description: 'Diseño original del sistema.',
                         isSelected: settings.fontSize == OhtliFontSize.medium,
                         onTap: () => settings.fontSize = OhtliFontSize.medium,
@@ -3366,7 +3370,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ),
                       const SizedBox(height: 10),
                       _buildFontSizeTile(
-                        title: 'Muy Grande (130%)',
+                        title: 'Muy grande (130%)',
                         description: 'Máxima accesibilidad de lectura.',
                         isSelected: settings.fontSize == OhtliFontSize.extraLarge,
                         onTap: () => settings.fontSize = OhtliFontSize.extraLarge,
@@ -3467,9 +3471,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               : OhtliColors.inputBg.withValues(alpha: 0.3),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected
-                ? OhtliColors.stormyTeal
-                : OhtliColors.cantera.withValues(alpha: 0.4),
+            color: isSelected ? OhtliColors.accentText : OhtliColors.cardBorder,
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -3478,9 +3480,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             Icon(
               icon,
               size: 26,
-              color: isSelected
-                  ? OhtliColors.stormyTeal
-                  : OhtliColors.onyx.withValues(alpha: 0.7),
+              color: isSelected ? OhtliColors.accentText : OhtliColors.onyx.withValues(alpha: 0.7),
             ),
             const SizedBox(height: 8),
             Text(
@@ -3488,7 +3488,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               style: GoogleFonts.inter(
                 fontSize: 13.5,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                color: isSelected ? OhtliColors.stormyTeal : OhtliColors.onyx,
+                color: isSelected ? OhtliColors.accentText : OhtliColors.onyx,
               ),
             ),
           ],
