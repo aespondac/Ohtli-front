@@ -88,7 +88,7 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
       final seq = ++_pollSeq;
       setState(() {
         _currentJobId = jobId;
-        _job = {'status': 'pending', 'progress': 0, 'message': 'Encolando en Yollotl Engine...'};
+        _job = {'status': 'pending', 'progress': 0, 'message': 'Encolando en Yollotl Engine… (20 lugares tardan unos 5 minutos)'};
         _selectedPois.clear();
       });
       _pollJob(jobId, seq);
@@ -104,9 +104,10 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
     }
   }
 
-  /// Sigue el trabajo en el motor hasta que termina, falla o pasan ~3 minutos.
+  /// Sigue el trabajo en el motor hasta que termina, falla o pasan ~10 minutos (el motor lo
+  /// detiene a los 9: enriquecer cada lugar toma 10-15 s, así que 20 lugares son ~5 min).
   Future<void> _pollJob(String jobId, int seq) async {
-    for (var i = 0; i < 120; i++) {
+    for (var i = 0; i < 400; i++) {
       await Future.delayed(const Duration(milliseconds: 1500));
       if (!mounted || seq != _pollSeq) return;
       try {
@@ -124,7 +125,10 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
       }
     }
     if (mounted && seq == _pollSeq) {
-      setState(() => _job = {'status': 'error', 'error_detail': 'La exploración tardó demasiado. Inténtalo de nuevo más tarde.'});
+      setState(() => _job = {
+            'status': 'error',
+            'error_detail': 'La exploración no terminó en 10 minutos y el motor la detuvo. Prueba con un radio menor.',
+          });
     }
   }
 

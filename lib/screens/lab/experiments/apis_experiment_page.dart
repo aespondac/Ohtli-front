@@ -25,7 +25,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   late String _selectedMode = _canExplore ? 'oep' : 'vibe';
   // Cambia con cada ejecución o cambio de modo: un sondeo anterior se detiene al verlo distinto.
   int _runSeq = 0;
-  static const int _maxPolls = 90; // ~90 s
+  static const int _maxPolls = 600; // ~10 min: la exploración tarda 10-15 s por lugar (el motor la detiene a los 9)
   bool _isLoading = false;
   String _errorMessage = '';
 
@@ -154,7 +154,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
     }
   }
 
-  /// Sondea la exploración hasta que termina, falla, se cambia de modo o pasan ~90 s.
+  /// Sondea la exploración hasta que termina, falla, se cambia de modo o pasan ~10 min.
   Future<void> _pollJobStatus(String jobId, int seq) async {
     for (var i = 0; i < _maxPolls; i++) {
       await Future.delayed(const Duration(seconds: 1));
@@ -188,7 +188,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
     if (mounted && seq == _runSeq) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'La exploración tardó demasiado. Puedes revisar el catálogo más tarde o lanzarla de nuevo.';
+        _errorMessage = 'La exploración no terminó en 10 minutos y el motor la detuvo. Prueba con un radio menor.';
       });
     }
   }
