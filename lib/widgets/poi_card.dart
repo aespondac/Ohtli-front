@@ -6,6 +6,7 @@ import '../theme/colors.dart';
 import '../theme/cdmx_photos.dart';
 import '../models/poi_model.dart';
 import 'poi_detail_dialog.dart';
+import 'poi_status_badge.dart';
 
 /// Estilos visuales de la tarjeta de lugar.
 /// - [immersive]: foto a sangre completa con la información encima (sección "Para ti").
@@ -316,6 +317,7 @@ class _PoiCardState extends State<PoiCard> {
                   runSpacing: 8,
                   children: [
                     _categoryChip(),
+                    if (poi.isClosedTemporarily) const PoiClosedBadge(),
                     if (widget.affinity != null) _affinityBadge(),
                   ],
                 ),
@@ -356,7 +358,7 @@ class _PoiCardState extends State<PoiCard> {
                         ),
                         _dot(),
                         Text(
-                          poi.priceSymbols,
+                          poi.priceShort,
                           style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white),
                         ),
                       ],
@@ -496,7 +498,14 @@ class _PoiCardState extends State<PoiCard> {
                         top: 12,
                         left: 12,
                         right: 60,
-                        child: Align(alignment: Alignment.centerLeft, child: _categoryChip()),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _categoryChip(),
+                            if (poi.isClosedTemporarily) const PoiClosedBadge(),
+                          ],
+                        ),
                       ),
                       Positioned(top: 10, right: 10, child: _saveButton()),
                       if (widget.affinity != null)
@@ -574,7 +583,7 @@ class _PoiCardState extends State<PoiCard> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        poi.priceSymbols,
+                        poi.priceShort,
                         style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal),
                       ),
                     ],
@@ -676,7 +685,7 @@ class _PoiCardState extends State<PoiCard> {
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          '${poi.categoryDisplay} · ${poi.priceSymbols}',
+                          '${poi.categoryDisplay} · ${poi.priceShort}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText),
@@ -685,12 +694,15 @@ class _PoiCardState extends State<PoiCard> {
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    _subtitleText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText.withValues(alpha: 0.8)),
-                  ),
+                  if (poi.isClosedTemporarily)
+                    const PoiClosedBadge(small: true)
+                  else
+                    Text(
+                      _subtitleText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText.withValues(alpha: 0.8)),
+                    ),
                 ],
               ),
             ),

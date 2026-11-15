@@ -22,6 +22,43 @@ class PoiLocation {
   bool get isValid => lat != 0.0 || lng != 0.0;
 }
 
+/// Rango de precio por persona en MXN (p. ej. el `priceRange` de Google Places).
+/// [max] nulo significa "de [min] en adelante" (la banda más alta de Google es "$1,000+").
+class PoiPriceRange {
+  final double min;
+  final double? max;
+
+  const PoiPriceRange({required this.min, this.max});
+
+  /// Acepta `{"min": 200, "max": 600}`; devuelve null si el dato no sirve.
+  static PoiPriceRange? tryParse(dynamic raw) {
+    if (raw is! Map) return null;
+    final min = (raw['min'] as num?)?.toDouble();
+    final max = (raw['max'] as num?)?.toDouble();
+    if (min == null) return null;
+    if (min < 0 || (max != null && max < min)) return null;
+    return PoiPriceRange(min: min, max: max);
+  }
+
+  /// Texto corto: "$200–600", "$1,000+" o "$300" si ambos extremos coinciden.
+  String get label {
+    final hi = max;
+    if (hi == null) return '\$${_money(min)}+';
+    if (hi == min) return '\$${_money(min)}';
+    return '\$${_money(min)}–${_money(hi)}';
+  }
+
+  static String _money(double v) {
+    final digits = v.round().toString();
+    final out = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      out.write(digits[i]);
+    }
+    return out.toString();
+  }
+}
+
 class Poi {
   final String poiId;
   final String name;
@@ -30,9 +67,16 @@ class Poi {
   final PoiLocation location;
   final int priceLevel; // 0: Gratis, 1: Económico, 2: Moderado, 3: Costoso, 4: Lujo
   final double? priceMxnAvg;
-  /// false solo cuando el precio proviene de un dato (etiquetas fee/charge de OSM);
-  /// en otro caso es una estimación por categoría.
+  /// false solo cuando el precio proviene de un dato (etiquetas fee/charge de OSM
+  /// o el rango de Google); en otro caso es una estimación por categoría.
   final bool priceIsEstimate;
+  /// Rango por persona en MXN cuando el motor lo tiene (p. ej. de Google Places).
+  final PoiPriceRange? priceRangeMxn;
+  /// De dónde salió el precio según el motor (`google_rango`, `foursquare_nivel`…).
+  final String priceSource;
+  /// Estado del lugar: `operational` (por omisión) o `closed_temporarily`.
+  /// Los cerrados definitivamente ya no llegan desde `/v1/pois`.
+  final String operationalStatus;
   final String description;
   final String editorialSummary;
   final String semanticDescription;
@@ -73,6 +117,9 @@ class Poi {
     this.priceLevel = 1,
     this.priceMxnAvg,
     this.priceIsEstimate = true,
+    this.priceRangeMxn,
+    this.priceSource = '',
+    this.operationalStatus = 'operational',
     this.description = '',
     this.editorialSummary = '',
     this.semanticDescription = '',
@@ -178,6 +225,8 @@ class Poi {
     final rawPriceLvl = (data['price_level'] as num?)?.toInt() ?? 1;
     final rawPriceMxn = (data['price_mxn_avg'] as num?)?.toDouble();
     final resolvedPriceLvl = inferPriceLevel(poiName, poiCat, rawPriceLvl, rawPriceMxn);
+    final priceSource = (data['price_source'] ?? '').toString();
+    final rawStatus = (data['operational_status'] ?? '').toString().trim().toLowerCase();
 
     return Poi(
       poiId: (data['poi_id'] ?? fallbackId ?? '').toString(),
@@ -187,7 +236,11 @@ class Poi {
       location: loc,
       priceLevel: resolvedPriceLvl,
       priceMxnAvg: rawPriceMxn,
-      priceIsEstimate: data['price_is_estimate'] != false,
+      // El rango de Google es un dato del lugar, no una estimación por categoría
+      priceIsEstimate: priceSource == 'google_rango' ? false : data['price_is_estimate'] != false,
+      priceRangeMxn: PoiPriceRange.tryParse(data['price_range_mxn']),
+      priceSource: priceSource,
+      operationalStatus: rawStatus.isEmpty ? 'operational' : rawStatus,
       description: (data['description'] ?? '').toString(),
       editorialSummary: (data['editorial_summary'] ?? '').toString(),
       semanticDescription: (data['semantic_description'] ?? '').toString(),
@@ -545,7 +598,22 @@ class Poi {
     return result;
   }
 
+  /// Cerrado por ahora (según Google): conviene avisarlo en la tarjeta y en el detalle.
+  bool get isClosedTemporarily => operationalStatus == 'closed_temporarily';
+
+  /// "$200–600 por persona" cuando hay rango; null si no lo hay.
+  String? get priceRangeLabel {
+    final r = priceRangeMxn;
+    if (r == null) return null;
+    return '${r.label} por persona';
+  }
+
+  /// Precio corto para tarjetas: el rango ("$200–600") si existe; si no, los signos del nivel.
+  String get priceShort => priceRangeMxn?.label ?? priceSymbols;
+
   String get priceRangeEstimate {
+    final range = priceRangeLabel;
+    if (range != null) return priceIsEstimate ? '$range, estimado' : range;
     if (priceMxnAvg != null && priceMxnAvg! > 0 && !priceIsEstimate) {
       return '\$${priceMxnAvg!.toStringAsFixed(0)} MXN';
     }

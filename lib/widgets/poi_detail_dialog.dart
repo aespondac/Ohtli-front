@@ -19,6 +19,7 @@ import '../utils/friendly_errors.dart';
 import '../services/saved_places.dart';
 import 'osrm_map_widget.dart';
 import 'ohtli_ui.dart';
+import 'poi_status_badge.dart';
 import '../screens/places/places_page.dart';
 import '../screens/trips/trip_screens.dart' deferred as trips;
 import 'deferred_view.dart';
@@ -634,6 +635,10 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                         ],
                       ),
                     ),
+                    if (poi.isClosedTemporarily) ...[
+                      const SizedBox(width: 8),
+                      const Flexible(child: PoiClosedBadge()),
+                    ],
                     const Spacer(),
                     if (photos.length > 1)
                       Row(
@@ -752,6 +757,10 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     final vibes = poi.vibeTags.map((v) => v.startsWith('#') ? v.substring(1) : v).where((v) => v.trim().isNotEmpty).toList();
     final reviews = poi.reviewsSnippets.where((r) => r.trim().length > 12).take(6).toList();
     return [
+      if (poi.isClosedTemporarily) ...[
+        const PoiClosedNotice(),
+        const SizedBox(height: 14),
+      ],
       _buildQuickFacts(poi, isMobile),
       const SizedBox(height: 30),
       _buildTitle('SOBRE ESTE LUGAR', 'La historia en corto', Icons.auto_stories_rounded, OhtliColors.stormyTeal),
