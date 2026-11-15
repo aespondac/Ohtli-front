@@ -28,6 +28,7 @@ import '../places/places_page.dart';
 import '../../models/poi_model.dart';
 import '../../services/trip_transfers.dart';
 import '../../services/trip_changes.dart';
+import '../../theme/cdmx_photos.dart';
 import '../../config/editorial.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../widgets/place_details_form.dart';
@@ -747,9 +748,24 @@ class _TripEditorPageState extends State<TripEditorPage> {
           finalSec.add(secUrl);
         }
 
+        String? finalCover = section.coverUrl;
+        if (finalCover != null && finalCover.startsWith('data:')) {
+          try {
+            final Uint8List bytes = base64Decode(finalCover.split(',').last);
+            final String filename = "${section.id}_cover_$timestamp.jpg";
+            final storageRef = FirebaseStorage.instance.ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
+            await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+            finalCover = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
+          } catch (e) {
+            print("Error uploading section cover: $e");
+            _failedUploads++;
+          }
+        }
+
         updatedSections.add(section.copyWith(
           mainPhotoUrl: finalMain,
           secondaryPhotoUrls: finalSec,
+          coverUrl: finalCover,
         ));
       } else if (section is TextImageSection) {
         String finalImg = section.imageUrl;
@@ -844,6 +860,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               referencedUrls.add(url);
             }
           }
+          if ((sec.coverUrl ?? '').isNotEmpty) referencedUrls.add(sec.coverUrl!);
         } else if (sec is TextImageSection) {
           if (sec.imageUrl.isNotEmpty) {
             referencedUrls.add(sec.imageUrl);
@@ -898,6 +915,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       _forceNewUndoStep = true;
       _onDataChanged();
     });
+    if (type == 'transfer') _openTransfers.add(id);
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(id));
   }
 
@@ -3008,6 +3026,151 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
+  /// Portada de la parada: la elegida, o una de referencia (tenue) para invitar a elegirla.
+  Widget _buildPlaceCoverStrip(PlaceSection p, bool isDark) {
+    final bool has = (p.coverUrl ?? '').isNotEmpty;
+    final seed = p.id.codeUnits.fold<int>(0, (a, c) => a + c);
+    final String url = has ? p.coverUrl! : CdmxPhotos.forCategory(p.title, seed);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        height: 116,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Opacity(
+              opacity: has ? 1 : 0.45,
+              child: Image(
+                image: _getImageProvider(url),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => ColoredBox(color: isDark ? const Color(0xFF26343A) : OhtliColors.cantera.withValues(alpha: 0.4)),
+              ),
+            ),
+            if (!has)
+              Positioned(
+                left: 10,
+                top: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(8)),
+                  child: Text('Foto de referencia', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                ),
+              ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: Row(
+                children: [
+                  if (has)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: IconButton.filledTonal(
+                        tooltip: 'Quitar portada',
+                        onPressed: () => _replacePlace(p.id, (x) => x.copyWith(clearCoverUrl: true)),
+                        style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.9), foregroundColor: const Color(0xFF1F2A2A)),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 17),
+                      ),
+                    ),
+                  FilledButton.icon(
+                    onPressed: () => _pickPlaceCover(p.id),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.92),
+                      foregroundColor: const Color(0xFF1F2A2A),
+                      visualDensity: VisualDensity.compact,
+                      shape: const StadiumBorder(),
+                    ),
+                    icon: const Icon(Icons.wallpaper_rounded, size: 16),
+                    label: Text(has ? 'Cambiar portada' : 'Elegir portada', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _pickPlaceCover(String sectionId) {
+    pickFile(accept: 'image/*').then((picked) {
+      if (picked == null || picked.bytes.isEmpty || !mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => OhtliImageCropperDialog(
+          imageBytes: picked.bytes,
+          isCircle: false,
+          aspectRatio: 16 / 9,
+          onCropped: (String dataUrl) => _replacePlace(sectionId, (p) => p.copyWith(coverUrl: dataUrl)),
+        ),
+      );
+    });
+  }
+
+  Future<double?> _askAmount(String title, {double? initial, String? helper}) async {
+    final ctrl = TextEditingController(text: initial != null && initial > 0 ? initial.toStringAsFixed(0) : '');
+    final r = await showDialog<double?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                decoration: const InputDecoration(prefixText: '\$ ', hintText: '0'),
+                onSubmitted: (_) => Navigator.pop(ctx, double.tryParse(ctrl.text.trim()) ?? -1),
+              ),
+              if (helper != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(helper, style: GoogleFonts.inter(fontSize: 12))),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: OhtliColors.stormyTeal),
+            onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text.trim()) ?? -1),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return r;
+  }
+
+  Future<void> _editPlaceCost(PlaceSection p, TextEditingController costController) async {
+    final v = await _askAmount('Costo estimado', initial: p.cost, helper: 'Cuánto calculan gastar en «${p.title}» (${p.currency}).');
+    if (v == null || !mounted) return;
+    final value = v < 0 ? 0.0 : v;
+    costController.text = value > 0 ? value.toString() : '';
+    _updatePlaceBlock(_idx(p.id), cost: value);
+  }
+
+  Future<void> _editPlaceRealCost(PlaceSection p) async {
+    final v = await _askAmount('Gasto real', initial: p.realCost, helper: 'Lo que realmente gastaron. Déjalo vacío para quitarlo.');
+    if (v == null || !mounted) return;
+    _replacePlace(p.id, (x) => v <= 0 ? x.copyWith(clearRealCost: true) : x.copyWith(realCost: v));
+  }
+
+  Future<void> _editPlaceRealTimes(PlaceSection p) async {
+    final arrived = await showTimePicker(context: context, initialTime: _parseTime(p.arrivedAt) ?? const TimeOfDay(hour: 10, minute: 0), helpText: 'Llegaron a las');
+    if (arrived == null || !mounted) return;
+    final left = await showTimePicker(context: context, initialTime: _parseTime(p.leftAt) ?? arrived, helpText: 'Se fueron a las (cancela si siguen ahí)');
+    if (!mounted) return;
+    _replacePlace(
+      p.id,
+      (x) => left == null ? x.copyWith(arrivedAt: _formatTime(arrived), clearLeftAt: true) : x.copyWith(arrivedAt: _formatTime(arrived), leftAt: _formatTime(left)),
+    );
+  }
+
   /// Menú de bloques: insertar en [at] o cambiar el tipo del texto vacío [replaceId] ("/").
   Future<void> _showInsertMenu({int? at, String? replaceId}) async {
     final bool isDark = OhtliSettings.instance.isDarkMode;
@@ -3188,241 +3351,165 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
       final uploadedSlots = slots.where((s) => (s['url'] as String).isNotEmpty).toList();
 
-      final Widget rightColumnWidget = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: titleController,
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: OhtliColors.onyx,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Nombre del Lugar',
-                    hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                    border: const UnderlineInputBorder(borderSide: BorderSide(color: OhtliColors.cantera)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Rating Stars Bar
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(5, (starIndex) {
-                  return IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: Icon(
-                      starIndex < section.rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: starIndex < section.rating ? Colors.amber : OhtliColors.cantera,
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      _updatePlaceBlock(_idx(section.id), rating: starIndex + 1);
-                    },
-                  );
-                }),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Description Box wrapping toolbar and text field
-          OhtliMarkdownEditor(
-            controller: controller,
-            focusNode: focusNode,
-            hintText: 'Escribe una breve reseña de este lugar...',
-            minLines: 2,
-            maxLines: null,
-          ),
-          // Yellow Cost Block
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF332711) : const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isDark ? const Color(0xFFFBBF24).withValues(alpha: 0.3) : const Color(0xFFFDE68A),
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.payments_rounded,
-                    color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Costo:',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  DropdownButton<String>(
-                    value: section.currency.isNotEmpty ? section.currency : 'MXN',
-                    dropdownColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: OhtliColors.onyx,
-                    ),
-                    underline: const SizedBox(),
-                    isDense: true,
-                    items: <String>['MXN', 'USD', 'EUR', 'CAD', 'GBP'].map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        _updatePlaceBlock(_idx(section.id), currency: val);
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 70,
-                    child: TextFormField(
-                      controller: costController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      style: GoogleFonts.inter(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.bold,
-                        color: OhtliColors.onyx,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: '0.00',
-                        hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.3)),
-                        isDense: true,
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Horarios y ubicación (E3)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _buildLocationChip(section, isDark),
-              _buildTimeChip(section, arrival: true, isDark: isDark),
-              _buildTimeChip(section, arrival: false, isDark: isDark),
-            ],
-          ),
-        ],
-      );
-
-      // Determine next empty slot callback to auto-add
+      // Parada compacta: portada arriba; fotos reales y nombre juntos; detalles en chips.
       final nextEmptySlot = slots.firstWhere((s) => (s['url'] as String).isEmpty, orElse: () => {});
-      final nextEmptySlotOnTap = nextEmptySlot.isNotEmpty ? nextEmptySlot['onTap'] as VoidCallback? : null;
+      final VoidCallback? nextEmptySlotOnTap = nextEmptySlot.isNotEmpty ? nextEmptySlot['onTap'] as VoidCallback? : null;
+      // Calificación, gasto real, hora real y desvío son de después del viaje.
+      final bool post = _isPostTrip || section.rating > 0 || section.realCost != null || section.arrivedAt != null || section.unplanned;
+      final Color fgP = isDark ? Colors.white : const Color(0xFF1F2A2A);
+      final Color subP = isDark ? Colors.white60 : OhtliColors.subtleText;
 
-
-      final Widget leftColumnWidget = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      final Widget photos = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           uploadedSlots.isNotEmpty
               ? _buildPhotoStack(uploadedSlots, isDark)
               : SizedBox(
-                  width: 120,
-                  height: 160,
+                  width: 104,
+                  height: 132,
                   child: _buildPlacePhotoSlot(
                     blockIndex: index,
                     photoUrl: '',
-                    label: 'Principal',
+                    label: 'Foto',
                     onTap: () => _uploadImageForBlock(_idx(section.id), 'place_main'),
                     onDelete: () => _updatePlaceBlock(_idx(section.id), mainPhoto: ''),
                     isDark: isDark,
                   ),
                 ),
-          if (nextEmptySlotOnTap != null)
-            Container(
-              width: 120,
-              margin: EdgeInsets.only(
-                top: uploadedSlots.isNotEmpty ? 0 : 8,
-                left: uploadedSlots.isNotEmpty ? 10 : 0,
-              ),
-              child: OutlinedButton(
-                onPressed: nextEmptySlotOnTap,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: OhtliColors.stormyTeal,
-                  side: BorderSide(
-                    color: OhtliColors.stormyTeal.withValues(alpha: 0.5),
-                    width: 1.5,
+          if (nextEmptySlotOnTap != null && uploadedSlots.isNotEmpty)
+            TextButton.icon(
+              onPressed: nextEmptySlotOnTap,
+              style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal, visualDensity: VisualDensity.compact),
+              icon: const Icon(Icons.add_photo_alternate_rounded, size: 16),
+              label: Text('Foto', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
+            ),
+        ],
+      );
+
+      final Widget nameAndText = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextFormField(
+            controller: titleController,
+            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 19, color: fgP),
+            decoration: InputDecoration(
+              hintText: 'Nombre del lugar',
+              hintStyle: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: subP.withValues(alpha: 0.6)),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 6),
+              border: InputBorder.none,
+            ),
+          ),
+          if (post)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(5, (starIndex) {
+                return IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: '${starIndex + 1} ${starIndex == 0 ? 'estrella' : 'estrellas'}',
+                  icon: Icon(
+                    starIndex < section.rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: starIndex < section.rating ? Colors.amber : subP,
+                    size: 20,
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                ),
+                  onPressed: () => _updatePlaceBlock(_idx(section.id), rating: starIndex + 1),
+                );
+              }),
+            ),
+          const SizedBox(height: 4),
+          OhtliMarkdownEditor(
+            controller: controller,
+            focusNode: focusNode,
+            hintText: 'Qué hay aquí, qué pedir, qué no perderse…',
+            minLines: 2,
+            maxLines: null,
+          ),
+        ],
+      );
+
+      Widget pill(IconData icon, String text, VoidCallback onTap, {Color? color, bool strong = false}) => Material(
+            color: (color ?? OhtliColors.stormyTeal).withValues(alpha: strong ? 0.14 : (isDark ? 0.10 : 0.06)),
+            shape: StadiumBorder(side: BorderSide(color: (color ?? OhtliColors.stormyTeal).withValues(alpha: 0.25))),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.add_photo_alternate_rounded, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Añadir Foto',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Icon(icon, size: 15, color: color ?? OhtliColors.stormyTeal),
+                    const SizedBox(width: 6),
+                    Text(text, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: isDark ? Colors.white : (color ?? OhtliColors.stormyTeal))),
                   ],
                 ),
               ),
             ),
+          );
+
+      final Widget chips = Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _buildTimeChip(section, arrival: true, isDark: isDark),
+          _buildTimeChip(section, arrival: false, isDark: isDark),
+          pill(
+            Icons.payments_rounded,
+            section.cost > 0 ? '\$${section.cost.toStringAsFixed(0)} ${section.currency}' : 'Costo',
+            () => _editPlaceCost(section, costController),
+            color: const Color(0xFFB45309),
+          ),
+          _buildLocationChip(section, isDark),
+          if (post) ...[
+            pill(
+              Icons.receipt_long_rounded,
+              section.realCost != null ? 'Gasto real \$${section.realCost!.toStringAsFixed(0)}' : 'Gasto real',
+              () => _editPlaceRealCost(section),
+            ),
+            pill(
+              Icons.schedule_rounded,
+              section.arrivedAt != null ? 'Real ${section.arrivedAt}${section.leftAt != null ? '–${section.leftAt}' : ''}' : 'Hora real',
+              () => _editPlaceRealTimes(section),
+            ),
+            FilterChip(
+              selected: section.unplanned,
+              showCheckmark: false,
+              avatar: Icon(Icons.alt_route_rounded, size: 16, color: section.unplanned ? Colors.white : OhtliColors.cempasuchil),
+              label: Text('Desvío', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: section.unplanned ? Colors.white : OhtliColors.cempasuchil)),
+              selectedColor: OhtliColors.cempasuchil,
+              side: BorderSide(color: OhtliColors.cempasuchil.withValues(alpha: 0.4)),
+              shape: const StadiumBorder(),
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) => _replacePlace(section.id, (p) => p.copyWith(unplanned: !p.unplanned)),
+            ),
+          ],
         ],
       );
 
       blockContent = LayoutBuilder(
         builder: (context, constraints) {
-          final bool isDesktop = constraints.maxWidth >= 500;
-          if (isDesktop) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                leftColumnWidget,
-                const SizedBox(width: 16),
-                Expanded(child: rightColumnWidget),
+          final bool roomy = constraints.maxWidth >= 430;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildPlaceCoverStrip(section, isDark),
+              const SizedBox(height: 12),
+              if (roomy)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [photos, const SizedBox(width: 14), Expanded(child: nameAndText)],
+                )
+              else ...[
+                Align(alignment: Alignment.centerLeft, child: photos),
+                const SizedBox(height: 10),
+                nameAndText,
               ],
-            );
-          } else {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: leftColumnWidget,
-                ),
-                const SizedBox(height: 16),
-                rightColumnWidget,
-              ],
-            );
-          }
+              const SizedBox(height: 10),
+              chips,
+            ],
+          );
         },
       );
     } else if (section is TextSection) {
@@ -3966,7 +4053,56 @@ class _TripEditorPageState extends State<TripEditorPage> {
     ));
   }
 
+  /// Traslados abiertos para editarse; cerrados se ven en una línea.
+  final Set<String> _openTransfers = {};
+
+  /// Traslado en una línea ("A pie · 13 min · 1 km"); al tocarlo se despliega para editarlo.
   Widget _buildTransferEditor(TransferSection t, bool isDark) {
+    final bool open = _openTransfers.contains(t.id);
+    final mode = transferModeOf(t.mode);
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final String costText = t.cost > 0 ? ' · \$${t.cost.toStringAsFixed(0)}' : '';
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      alignment: Alignment.topCenter,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => open ? _openTransfers.remove(t.id) : _openTransfers.add(t.id)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Icon(mode.icon, size: 20, color: OhtliColors.stormyTeal),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text('${describeTransfer(t)}$costText',
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: fg)),
+                  ),
+                  if (t.isEstimated)
+                    Container(
+                      margin: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(color: OhtliColors.cempasuchil.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8)),
+                      child: Text('Estimado', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil)),
+                    ),
+                  const SizedBox(width: 6),
+                  Text(open ? 'Listo' : 'Editar', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal)),
+                  Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20, color: sub),
+                ],
+              ),
+            ),
+          ),
+          if (open) Padding(padding: const EdgeInsets.only(top: 10), child: _buildTransferEditorFull(t, isDark)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransferEditorFull(TransferSection t, bool isDark) {
     final sid = t.id;
     TextEditingController ctrl(String suffix, String initial, void Function(String) onChange) {
       return _blockControllers.putIfAbsent('${sid}_$suffix', () {

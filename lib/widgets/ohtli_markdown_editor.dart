@@ -798,17 +798,17 @@ class _OhtliMarkdownEditorState extends State<OhtliMarkdownEditor> {
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
+    // La barra de formato y el conteo solo aparecen al escribir; en reposo se ve como texto.
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      padding: EdgeInsets.all(_isFocused ? 12 : 10),
       decoration: BoxDecoration(
-        color: isDark 
-            ? const Color(0xFF25252A) 
-            : OhtliColors.cantera.withValues(alpha: 0.05),
+        color: _isFocused
+            ? (isDark ? const Color(0xFF25252A) : Colors.white)
+            : (isDark ? Colors.white.withValues(alpha: 0.03) : OhtliColors.cantera.withValues(alpha: 0.05)),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: _isFocused
-              ? OhtliColors.stormyTeal
-              : (isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.15)),
+          color: _isFocused ? OhtliColors.stormyTeal : Colors.transparent,
           width: _isFocused ? 1.5 : 1,
         ),
         boxShadow: _isFocused
@@ -825,24 +825,39 @@ class _OhtliMarkdownEditorState extends State<OhtliMarkdownEditor> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildMarkdownToolbar(isDark),
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Text(
-                  '$_wordCount palabras  |  $_charCount caracteres',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    color: OhtliColors.onyx.withValues(alpha: 0.35),
-                    fontWeight: FontWeight.w500,
+          AnimatedSize(
+            duration: const Duration(milliseconds: 160),
+            alignment: Alignment.topLeft,
+            child: !_isFocused
+                ? const SizedBox(width: double.infinity)
+                // Tocar la barra cuenta como tocar el campo: no se pierde el foco.
+                : TextFieldTapRegion(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildMarkdownToolbar(isDark),
+                          Flexible(
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 4, left: 8),
+                              child: Text(
+                                '$_wordCount palabras',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  color: (isDark ? Colors.white : OhtliColors.onyx).withValues(alpha: 0.35),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
           ),
-          const SizedBox(height: 8),
           CallbackShortcuts(
             bindings: <ShortcutActivator, VoidCallback>{
               const SingleActivator(LogicalKeyboardKey.keyB, control: true): () => _injectMarkdown('**'),
