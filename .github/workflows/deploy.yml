@@ -31,6 +31,14 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      # 4.0 La app usa package:web (compila a WebAssembly): no se aceptan dart:html ni dart:js.
+      - name: Sin dart:html ni dart:js
+        run: |
+          if grep -rnE "^import 'dart:(html|js|js_util)'" lib; then
+            echo "Usa package:web y dart:js_interop (ver lib/utils/web_helpers.dart)."
+            exit 1
+          fi
+
       # 4.1 Pruebas (bloquean el despliegue si fallan). El código usa dart:html, por lo que
       # las pruebas se ejecutan en la plataforma web (Chrome incluido en ubuntu-latest).
       - name: Run tests
