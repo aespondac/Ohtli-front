@@ -556,8 +556,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
       updatedAt: updatedAt ?? DateTime.now(),
       travelDate: _travelDate,
       errataHistory: _errataHistory,
-      coAuthorIds: _coAuthorIds,
-      coAuthorNames: _coAuthorNames,
+      // Las notas de versión solo las escribe el administrador: nunca llevan coautores.
+      coAuthorIds: _isNotes ? const [] : _coAuthorIds,
+      coAuthorNames: _isNotes ? const [] : _coAuthorNames,
       isSurprise: _isSurprise,
       surpriseTargetIds: _surpriseTargetIds,
       surpriseTargetNames: _surpriseTargetNames,
@@ -1730,6 +1731,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           },
                         ),
                       ),
+                      if (!_isNotes) ...[
                       const SizedBox(height: 14),
                       Text(
                         'Co-autores (Opcional):',
@@ -1787,6 +1789,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           );
                         },
                       ),
+                      ],
                     ],
                   ),
                 ),
@@ -2617,7 +2620,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 onSelectionChanged: (v) => _changeVisibility(v.first),
               ),
             ),
-          if (_ownerUi)
+          if (_ownerUi && !_isNotes)
             row(
               Icons.group_outlined,
               'Coautores',

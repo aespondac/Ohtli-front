@@ -20,11 +20,12 @@ service cloud.firestore {
         && request.auth.token.email_verified == true;
     }
 
-    // Las notas de versión (kind == 'release_notes') solo las guarda el superusuario.
+    // Las notas de versión (kind == 'release_notes') solo las guarda el superusuario,
+    // y sin coautores: nadie que no sea administrador puede figurar como autor.
     function notReleaseNotesUnlessSuper() {
       return !('kind' in request.resource.data)
         || request.resource.data.kind != 'release_notes'
-        || isSuperUser();
+        || (isSuperUser() && request.resource.data.get('coAuthorIds', []).size() == 0);
     }
 
     // --- Viajes: qué puede cambiar cada participante ---

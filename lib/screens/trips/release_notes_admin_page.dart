@@ -40,6 +40,32 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
 
   bool get _isDark => OhtliSettings.instance.isDarkMode;
 
+  @override
+  void initState() {
+    super.initState();
+    _clearCoAuthors();
+  }
+
+  /// Las notas de versión solo las escribe el administrador. Si alguna quedó con
+  /// coautores (p. ej. copiados de un borrador), se le quitan.
+  Future<void> _clearCoAuthors() async {
+    if (_uid == null || !isSuperUser()) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_uid)
+          .collection('trips')
+          .where('kind', isEqualTo: kTripKindReleaseNotes)
+          .get();
+      for (final d in snap.docs) {
+        final ids = d.data()['coAuthorIds'];
+        if (ids is List && ids.isNotEmpty) {
+          await d.reference.update({'coAuthorIds': <String>[], 'coAuthorNames': <String>[]});
+        }
+      }
+    } catch (_) {}
+  }
+
   // ---------------------------------------------------------------------------
   // Crear
   // ---------------------------------------------------------------------------
@@ -289,25 +315,8 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
       }
       final cover = source.coverUrl.isEmpty ? '' : await _copyImage(source.coverUrl, id, 'cover.jpg');
       final base = _baseNote(id, title: source.title, description: source.description, coverUrl: cover, date: source.travelDate);
-      // Mismos autores que el borrador como coautores (sin volver a notificarles). Si el
-      // borrador era de otra persona, ella queda como coautora y tú como autor.
-      final ids = <String>[], names = <String>[];
-      if (source.userId != _uid) {
-        String name = 'Coautor';
-        try {
-          final p = await FirebaseFirestore.instance.collection('users').doc(source.userId).get();
-          name = (p.data()?['displayName'] ?? name).toString();
-        } catch (_) {}
-        ids.add(source.userId);
-        names.add(name);
-      }
-      for (int i = 0; i < source.coAuthorIds.length; i++) {
-        final cid = source.coAuthorIds[i];
-        if (cid == _uid || ids.contains(cid)) continue;
-        ids.add(cid);
-        names.add(i < source.coAuthorNames.length ? source.coAuthorNames[i] : 'Coautor');
-      }
-      final note = Trip.fromMap({...base.toMap(), 'coAuthorIds': ids, 'coAuthorNames': names}, id);
+      // Sin coautores: las notas de versión solo las escribe el administrador.
+      final note = base;
       await _ref(id).set(note.toMap());
       await TripService().updateTripContent(_uid!, id, TripContent(sections: sections));
       if (!mounted) return;

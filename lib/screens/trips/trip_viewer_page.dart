@@ -2740,7 +2740,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
       }
 
       // Load co-authors profiles
-      if (_trip!.coAuthorIds.isNotEmpty) {
+      // Las notas de versión no tienen coautores (solo las escribe el administrador).
+      if (_trip!.coAuthorIds.isNotEmpty && !_trip!.isReleaseNotes) {
         final coAuthorsSnapshot = await FirebaseFirestore.instance
             .collection('users')
             .where(FieldPath.documentId, whereIn: _trip!.coAuthorIds)
