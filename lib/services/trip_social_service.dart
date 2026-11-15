@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 /// Reacciones rápidas estilo "tapback": una por persona en cada bloque o nota.
 class Tapback {
@@ -114,7 +116,14 @@ class TripSocialService {
   }) {
     final clean = text.trim();
     if (clean.isEmpty) return Future.value();
-    return _notes.add({
+    final ref = _notes.doc();
+    _notify(
+      toUserId: ownerId,
+      docId: 'note_${ref.id}',
+      type: 'trip_comment',
+      extra: {'commentText': clean.length > 140 ? '${clean.substring(0, 140)}…' : clean},
+    );
+    return ref.set({
       'blockId': blockId,
       'authorId': authorId,
       'authorName': authorName,
@@ -137,10 +146,56 @@ class TripSocialService {
   Future<void> deleteNote(String noteId) => _notes.doc(noteId).delete();
 
   /// [kind] null quita la reacción.
-  Future<void> reactToNote(String noteId, String uid, String? kind) =>
-      _notes.doc(noteId).update({'reactions.$uid': kind ?? FieldValue.delete()});
+  Future<void> reactToNote(String noteId, String uid, String? kind) async {
+    await _notes.doc(noteId).update({'reactions.$uid': kind ?? FieldValue.delete()});
+    if (kind == null) return;
+    // Le avisa a quien escribió el mensaje.
+    try {
+      final note = await _notes.doc(noteId).get();
+      final author = note.data()?['authorId'] as String?;
+      if (author != null) {
+        _notify(toUserId: author, docId: 'react_${uid}_$noteId', type: 'trip_reaction', extra: {'reaction': kind, 'onComment': true});
+      }
+    } catch (e) {
+      debugPrint('[Social] autor del mensaje: $e');
+    }
+  }
 
   /// [kind] null quita la reacción.
-  Future<void> reactToBlock(String blockId, String uid, String? kind) =>
-      _reactions.doc(blockId).set({uid: kind ?? FieldValue.delete()}, SetOptions(merge: true));
+  Future<void> reactToBlock(String blockId, String uid, String? kind) async {
+    await _reactions.doc(blockId).set({uid: kind ?? FieldValue.delete()}, SetOptions(merge: true));
+    if (kind != null) {
+      _notify(toUserId: ownerId, docId: 'react_${uid}_${tripId}_$blockId', type: 'trip_reaction', extra: {'reaction': kind});
+    }
+  }
+
+  String? _tripTitle;
+
+  /// Notificación para [toUserId] (dueño del viaje o autor del mensaje). No se avisa a uno mismo.
+  /// El id es fijo: si ya existía, las reglas no dejan sobrescribirla, así que una persona
+  /// no llena de avisos a otra reaccionando una y otra vez al mismo bloque.
+  /// No bloquea la acción y los errores solo se registran.
+  void _notify({required String toUserId, required String docId, required String type, Map<String, dynamic> extra = const {}}) {
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null || me.uid == toUserId || _dbOverride != null) return;
+    () async {
+      try {
+        _tripTitle ??= ((await _trip.get()).data()?['title'] as String?) ?? '';
+        await _db.collection('users').doc(toUserId).collection('notifications').doc(docId).set({
+          'type': type,
+          'senderId': me.uid,
+          'senderName': me.displayName ?? 'Un viajero',
+          'senderPhoto': me.photoURL,
+          'tripId': tripId,
+          'tripOwnerId': ownerId,
+          'tripTitle': _tripTitle,
+          ...extra,
+          'read': false,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('[Social] aviso $type: $e');
+      }
+    }();
+  }
 }

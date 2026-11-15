@@ -419,18 +419,24 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       transitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (ctx, _, _) {
         final mq = MediaQuery.of(ctx);
-        final double width = (mq.size.width - left - 24).clamp(320.0, 440.0);
+        final double width = (mq.size.width - left - 34).clamp(320.0, 440.0);
         return Stack(
           children: [
+            // Tarjeta flotante redondeada (como los paneles del visor de viajes).
             Positioned(
-              left: left,
-              top: 0,
-              bottom: 0,
+              left: left + 10,
+              top: 12,
+              bottom: 12,
               width: width,
               child: Material(
                 color: OhtliColors.cloudDancer,
                 elevation: 16,
                 shadowColor: Colors.black.withOpacity(0.3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                  side: BorderSide(color: OhtliColors.cardBorder),
+                ),
+                clipBehavior: Clip.antiAlias,
                 child: Stack(
                   children: [
                     // La página se acomoda como en una pantalla angosta.

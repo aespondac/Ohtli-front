@@ -5,6 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
 import '../widgets/ohtli_ui.dart';
+import 'friends_feed.dart' show sendCheer;
+import 'friends_page.dart';
+import '../services/notification_text.dart';
+import '../widgets/ohtli_live_alerts.dart' show OhtliAlerts;
+import 'package:flutter_svg/flutter_svg.dart';
 import 'trips/trip_screens.dart' deferred as trips;
 import '../widgets/deferred_view.dart';
 import 'account/public_profile_page.dart';
@@ -19,6 +24,17 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   final User? _currentUser = FirebaseAuth.instance.currentUser;
+
+  /// Se crea una sola vez: si se recreara en cada build (p. ej. al cambiar de filtro)
+  /// la lista volvería a "cargando" y parpadearía.
+  late final Stream<QuerySnapshot>? _stream = _currentUser == null
+      ? null
+      : FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser.uid)
+          .collection('notifications')
+          .orderBy('timestamp', descending: true)
+          .snapshots();
 
   @override
   void initState() {
@@ -56,19 +72,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
       if (accept) {
         // 1. Update the top-level friend request
-        await firestore.collection('friend_requests').doc(notificationId).update({
-          'status': 'accepted',
-        });
+        await firestore.collection('friend_requests').doc(notificationId).update({'status': 'accepted'});
 
         // 2. Update Bob's private notification
-        await firestore
-            .collection('users')
-            .doc(_currentUser.uid)
-            .collection('notifications')
-            .doc(notificationId)
-            .update({
-          'status': 'accepted',
-        });
+        await firestore.collection('users').doc(_currentUser.uid).collection('notifications').doc(notificationId).update({'status': 'accepted'});
 
         // 3-4. Amistad en ambos sentidos (users/{uid}/social/graph)
         await SocialGraph.addFriendship(_currentUser.uid, senderId);
@@ -84,14 +91,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         for (var requestDoc in duplicateRequests.docs) {
           if (requestDoc.id != notificationId) {
             await requestDoc.reference.update({'status': 'accepted'});
-            await firestore
-                .collection('users')
-                .doc(_currentUser.uid)
-                .collection('notifications')
-                .doc(requestDoc.id)
-                .update({
-              'status': 'accepted',
-            });
+            await firestore.collection('users').doc(_currentUser.uid).collection('notifications').doc(requestDoc.id).update({'status': 'accepted'});
           }
         }
 
@@ -106,19 +106,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
       } else {
         // Decline request
         // 1. Update the top-level request
-        await firestore.collection('friend_requests').doc(notificationId).update({
-          'status': 'declined',
-        });
+        await firestore.collection('friend_requests').doc(notificationId).update({'status': 'declined'});
 
         // 2. Update Bob's private notification
-        await firestore
-            .collection('users')
-            .doc(_currentUser.uid)
-            .collection('notifications')
-            .doc(notificationId)
-            .update({
-          'status': 'declined',
-        });
+        await firestore.collection('users').doc(_currentUser.uid).collection('notifications').doc(notificationId).update({'status': 'declined'});
 
         // 3. Clean up any other duplicate pending requests as declined
         final duplicateRequests = await firestore
@@ -131,14 +122,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         for (var requestDoc in duplicateRequests.docs) {
           if (requestDoc.id != notificationId) {
             await requestDoc.reference.update({'status': 'declined'});
-            await firestore
-                .collection('users')
-                .doc(_currentUser.uid)
-                .collection('notifications')
-                .doc(requestDoc.id)
-                .update({
-              'status': 'declined',
-            });
+            await firestore.collection('users').doc(_currentUser.uid).collection('notifications').doc(requestDoc.id).update({'status': 'declined'});
           }
         }
 
@@ -187,37 +171,30 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return 'Antes';
   }
 
-  ({IconData icon, Color color}) _typeBadge(String type) {
-    switch (type) {
-      case 'friend_request':
-        return (icon: Icons.person_add_alt_1_rounded, color: OhtliColors.stormyTeal);
-      case 'surprise_plan':
-        return (icon: Icons.card_giftcard_rounded, color: OhtliColors.xoconostle);
-      case 'co_author_added':
-        return (icon: Icons.group_add_rounded, color: OhtliColors.cempasuchil);
-      default:
-        return (icon: Icons.auto_stories_rounded, color: OhtliColors.stormyTeal);
-    }
-  }
-
   /// Filtro activo: null = todas.
   String? _filter;
+
+  /// Avisos a los que ya respondiste con «Felicitar» o «Saludar» en esta visita.
+  final Set<String> _cheered = {};
 
   static const _filters = <({String? key, String label, IconData icon})>[
     (key: null, label: 'Todas', icon: Icons.inbox_rounded),
     (key: 'friends', label: 'Amistades', icon: Icons.people_alt_rounded),
     (key: 'trips', label: 'Viajes', icon: Icons.map_rounded),
     (key: 'surprises', label: 'Sorpresas', icon: Icons.card_giftcard_rounded),
+    (key: 'ai', label: 'Rutas con IA', icon: Icons.auto_awesome_rounded),
   ];
 
   bool _matchesFilter(String type) {
     switch (_filter) {
       case 'friends':
-        return type == 'friend_request';
+        return type == 'friend_request' || type == 'cheer';
       case 'trips':
-        return type == 'new_publication' || type == 'co_author_added';
+        return type == 'new_publication' || type == 'co_author_added' || type == 'trip_comment' || type == 'trip_reaction';
       case 'surprises':
         return type == 'surprise_plan';
+      case 'ai':
+        return type == 'itinerary_ready' || type == 'itinerary_failed';
       default:
         return true;
     }
@@ -253,12 +230,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(_currentUser.uid)
-            .collection('notifications')
-            .orderBy('timestamp', descending: true)
-            .snapshots(),
+        stream: _stream,
         builder: (context, snapshot) {
           final bool loading = snapshot.connectionState == ConnectionState.waiting;
           final allDocs = snapshot.data?.docs ?? [];
@@ -280,10 +252,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
           final String summary = loading
               ? 'Cargando tu actividad…'
               : pending > 0
-                  ? (pending == 1 ? 'Tienes 1 solicitud de amistad por responder.' : 'Tienes $pending solicitudes de amistad por responder.')
-                  : visible.isEmpty
-                      ? 'Aquí aparece lo que pasa con tus amigos y tus viajes.'
-                      : 'Estás al día con tu actividad.';
+              ? (pending == 1 ? 'Tienes 1 solicitud de amistad por responder.' : 'Tienes $pending solicitudes de amistad por responder.')
+              : visible.isEmpty
+              ? 'Aquí aparece lo que pasa con tus amigos y tus viajes.'
+              : 'Estás al día con tu actividad.';
 
           // Encabezados por día (Hoy / Ayer / Esta semana / Antes)
           final entries = <Object>[];
@@ -321,12 +293,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             child: Row(
               children: [
                 for (final f in _filters) ...[
-                  OhtliChoiceChip(
-                    label: f.label,
-                    icon: f.icon,
-                    selected: _filter == f.key,
-                    onTap: () => setState(() => _filter = f.key),
-                  ),
+                  OhtliChoiceChip(label: f.label, icon: f.icon, selected: _filter == f.key, onTap: () => setState(() => _filter = f.key)),
                   const SizedBox(width: 8),
                 ],
               ],
@@ -352,10 +319,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
               child: Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: visible.isEmpty
-                    ? const OhtliEmptyState(
+                    ? OhtliEmptyState(
                         icon: Icons.notifications_none_rounded,
                         title: 'Todo al día',
                         message: 'Aquí verás solicitudes de amistad, viajes nuevos de tus amigos, invitaciones como coautor y planes sorpresa.',
+                        action: OhtliPrimaryButton(
+                          compact: true,
+                          label: 'Buscar amigos',
+                          icon: Icons.person_add_alt_1_rounded,
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FriendsPage(showBackButton: true))),
+                        ),
                       )
                     : OhtliEmptyState(
                         icon: _filters.firstWhere((f) => f.key == _filter).icon,
@@ -376,10 +349,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     child: Text(entry.toUpperCase(), style: OhtliUi.eyebrow(OhtliColors.subtleText)),
                   );
                 }
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _buildNotification(entry as QueryDocumentSnapshot, width),
-                );
+                return Padding(padding: const EdgeInsets.only(bottom: 12), child: _buildNotification(entry as QueryDocumentSnapshot, width));
               },
             );
           }
@@ -402,7 +372,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget _buildNotification(QueryDocumentSnapshot doc, double width) {
     final data = doc.data() as Map<String, dynamic>;
     final String type = data['type'] ?? 'friend_request';
-    final String senderName = data['senderName'] ?? 'Viajero Ohtli';
+    final look = describeNotification(data);
+    final String senderName = look.sender;
     final String senderId = data['senderId'] ?? '';
     final String status = data['status'] ?? 'pending';
     final String? senderPhoto = data['senderPhoto'];
@@ -410,92 +381,114 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final String tripTitle = data['tripTitle'] ?? 'su itinerario';
     final bool isPlan = data['isPlan'] ?? false;
 
-    String messageText = '';
-    if (type == 'friend_request') {
-      messageText = status == 'pending'
-          ? 'te envió una solicitud de amistad.'
-          : status == 'accepted'
-              ? 'y tú ahora son amigos.'
-              : 'te envió una solicitud (rechazada).';
-    } else if (type == 'new_publication') {
-      messageText = 'publicó un nuevo ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
-    } else if (type == 'surprise_plan') {
-      messageText = 'te preparó un plan sorpresa: "$tripTitle".';
-    } else if (type == 'co_author_added') {
-      messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
-    }
-
+    final String messageText = look.message;
     final initials = senderName.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
-    final bool isClickable = (type == 'new_publication' || type == 'surprise_plan' || type == 'co_author_added') && data['tripId'] != null;
+    final bool isClickable =
+        (type == 'new_publication' ||
+            type == 'surprise_plan' ||
+            type == 'co_author_added' ||
+            type == 'cheer' ||
+            type == 'trip_comment' ||
+            type == 'trip_reaction') &&
+        data['tripId'] != null;
     final bool isPendingRequest = type == 'friend_request' && status == 'pending';
-    final badge = _typeBadge(type);
+    final badge = (icon: look.icon, color: look.color);
     final bool isDesktop = width > 600;
 
     void openTrip() {
       // En co_author_added el dueño del viaje es tripOwnerId (senderId es quien te agregó)
-      final String navAuthorId = (type == 'co_author_added' && data['tripOwnerId'] != null) ? data['tripOwnerId'] : senderId;
-      Navigator.push(context, MaterialPageRoute(builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(tripId: data['tripId'], authorId: navAuthorId))));
+      final String navAuthorId = (data['tripOwnerId'] != null && type != 'new_publication' && type != 'surprise_plan')
+          ? data['tripOwnerId']
+          : senderId;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DeferredView(
+            load: trips.loadLibrary,
+            builder: (_) => trips.TripViewerPage(tripId: data['tripId'], authorId: navAuthorId),
+          ),
+        ),
+      );
     }
 
     void openProfile() {
       if (senderId.isEmpty) return;
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (ctx) => PublicProfilePage(userId: senderId, showBackButton: true, onBack: () => Navigator.pop(ctx))),
+        MaterialPageRoute(
+          builder: (ctx) => PublicProfilePage(userId: senderId, showBackButton: true, onBack: () => Navigator.pop(ctx)),
+        ),
       );
     }
 
     Widget initialsText() => Center(
-          child: Text(initials, style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
-        );
-
-    final avatar = Semantics(
-      button: senderId.isNotEmpty,
-      label: 'Perfil de $senderName',
-      child: GestureDetector(
-        onTap: openProfile,
-        child: MouseRegion(
-          cursor: senderId.isEmpty ? MouseCursor.defer : SystemMouseCursors.click,
-          child: SizedBox(
-            width: 52,
-            height: 52,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: OhtliColors.stormyTeal,
-                    border: Border.all(color: OhtliColors.cardBg, width: 2),
-                    boxShadow: OhtliUi.softShadow(),
-                  ),
-                  child: ClipOval(
-                    child: senderPhoto != null && senderPhoto.isNotEmpty
-                        ? Image.network(senderPhoto, fit: BoxFit.cover, errorBuilder: (c, e, st) => initialsText())
-                        : initialsText(),
-                  ),
-                ),
-                Positioned(
-                  right: -3,
-                  bottom: -3,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: badge.color,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: OhtliColors.cardBg, width: 2.5),
-                    ),
-                    child: Icon(badge.icon, size: 11, color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      child: Text(
+        initials,
+        style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
       ),
     );
+
+    final Widget systemAvatar = Container(
+      width: 50,
+      height: 50,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: look.color,
+        shape: BoxShape.circle,
+        boxShadow: OhtliUi.softShadow(color: look.color),
+      ),
+      child: SvgPicture.asset('assets/icon_isologo.svg', colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
+    );
+
+    final avatar = look.fromSystem
+        ? systemAvatar
+        : Semantics(
+            button: senderId.isNotEmpty,
+            label: 'Perfil de $senderName',
+            child: GestureDetector(
+              onTap: openProfile,
+              child: MouseRegion(
+                cursor: senderId.isEmpty ? MouseCursor.defer : SystemMouseCursors.click,
+                child: SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: OhtliColors.stormyTeal,
+                          border: Border.all(color: OhtliColors.cardBg, width: 2),
+                          boxShadow: OhtliUi.softShadow(),
+                        ),
+                        child: ClipOval(
+                          child: senderPhoto != null && senderPhoto.isNotEmpty
+                              ? Image.network(senderPhoto, fit: BoxFit.cover, errorBuilder: (c, e, st) => initialsText())
+                              : initialsText(),
+                        ),
+                      ),
+                      Positioned(
+                        right: -3,
+                        bottom: -3,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: badge.color,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: OhtliColors.cardBg, width: 2.5),
+                          ),
+                          child: Icon(badge.icon, size: 11, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
 
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -504,8 +497,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
           text: TextSpan(
             style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14.5, height: 1.45),
             children: [
-              TextSpan(text: '$senderName ', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 15.5)),
-              TextSpan(text: messageText, style: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.8))),
+              if (!look.fromSystem)
+                TextSpan(
+                  text: '$senderName ',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 15.5),
+                ),
+              TextSpan(
+                text: messageText,
+                style: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.8)),
+              ),
             ],
           ),
         ),
@@ -516,21 +516,70 @@ class _NotificationsPageState extends State<NotificationsPage> {
             children: [
               Icon(Icons.schedule_rounded, size: 13, color: OhtliColors.subtleText),
               const SizedBox(width: 4),
-              Text(_relativeTime(ts), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+              Text(
+                _relativeTime(ts),
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText),
+              ),
             ],
           ),
         ],
       ],
     );
 
-    final actionButtons = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        OhtliSecondaryButton(compact: true, label: 'Rechazar', onPressed: () => _handleFriendRequest(doc.id, senderId, false)),
-        const SizedBox(width: 8),
+    // Acciones claras para cada tipo de aviso.
+    final String cheerKey = '${data['tripId'] ?? doc.id}';
+    final List<Widget> ctas = switch (type) {
+      'friend_request' when isPendingRequest => [
         OhtliPrimaryButton(compact: true, label: 'Aceptar', icon: Icons.check_rounded, onPressed: () => _handleFriendRequest(doc.id, senderId, true)),
+        OhtliSecondaryButton(compact: true, label: 'Rechazar', onPressed: () => _handleFriendRequest(doc.id, senderId, false)),
       ],
-    );
+      'friend_request' when status == 'accepted' => [
+        OhtliSecondaryButton(compact: true, label: 'Ver perfil', icon: Icons.person_rounded, onPressed: openProfile),
+        _cheerButton(
+          cheerKey,
+          label: '👋  Saludar',
+          onTap: () => sendCheer(toUserId: senderId),
+        ),
+      ],
+      'new_publication' when isClickable => [
+        _cheerButton(
+          cheerKey,
+          label: '🎉  Felicitar',
+          onTap: () => sendCheer(toUserId: senderId, tripId: data['tripId'], tripTitle: tripTitle, tripOwnerId: senderId),
+        ),
+        OhtliSecondaryButton(compact: true, label: isPlan ? 'Ver plan' : 'Ver viaje', icon: Icons.arrow_forward_rounded, onPressed: openTrip),
+      ],
+      'surprise_plan' when isClickable => [OhtliPrimaryButton(compact: true, highlight: true, label: '🎁  Abrir sorpresa', onPressed: openTrip)],
+      'co_author_added' when isClickable => [
+        OhtliPrimaryButton(compact: true, label: isPlan ? 'Abrir plan' : 'Abrir viaje', icon: Icons.edit_note_rounded, onPressed: openTrip),
+      ],
+      'trip_comment' when isClickable => [OhtliPrimaryButton(compact: true, label: 'Responder', icon: Icons.reply_rounded, onPressed: openTrip)],
+      'trip_reaction' when isClickable => [
+        OhtliSecondaryButton(compact: true, label: 'Ver viaje', icon: Icons.arrow_forward_rounded, onPressed: openTrip),
+      ],
+      'itinerary_ready' => [
+        OhtliPrimaryButton(
+          compact: true,
+          highlight: true,
+          label: 'Ver propuestas',
+          icon: Icons.auto_awesome_rounded,
+          onPressed: () => OhtliAlerts.openTab(context, 1),
+        ),
+      ],
+      'itinerary_failed' => [
+        OhtliSecondaryButton(
+          compact: true,
+          label: 'Intentar de nuevo',
+          icon: Icons.refresh_rounded,
+          onPressed: () => OhtliAlerts.openTab(context, 1),
+        ),
+      ],
+      'cheer' => [
+        if (isClickable) OhtliSecondaryButton(compact: true, label: 'Ver tu viaje', icon: Icons.arrow_forward_rounded, onPressed: openTrip),
+        OhtliSecondaryButton(compact: true, label: 'Ver perfil', icon: Icons.person_rounded, onPressed: openProfile),
+      ],
+      _ => const <Widget>[],
+    };
 
     return OhtliSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 18, 16),
@@ -546,23 +595,50 @@ class _NotificationsPageState extends State<NotificationsPage> {
               avatar,
               const SizedBox(width: 14),
               Expanded(child: text),
-              if (isPendingRequest && isDesktop) ...[const SizedBox(width: 12), actionButtons],
-              if (isClickable)
-                Container(
-                  margin: const EdgeInsets.only(left: 10),
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(color: OhtliColors.innerCardBg, shape: BoxShape.circle),
-                  child: Icon(Icons.arrow_forward_rounded, size: 17, color: OhtliColors.accentText),
-                ),
             ],
           ),
-          if (isPendingRequest && !isDesktop) ...[
+          if (ctas.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Align(alignment: Alignment.centerRight, child: actionButtons),
+            Padding(
+              padding: EdgeInsets.only(left: isDesktop ? 66 : 0),
+              child: Wrap(spacing: 8, runSpacing: 8, children: ctas),
+            ),
           ],
         ],
       ),
+    );
+  }
+
+  /// «Felicitar» / «Saludar»: al tocarlo queda marcado como hecho.
+  Widget _cheerButton(String key, {required String label, required Future<void> Function() onTap}) {
+    final done = _cheered.contains(key);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+      child: done
+          ? Container(
+              key: const ValueKey('done'),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              decoration: BoxDecoration(
+                color: OhtliColors.cempasuchil.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.4)),
+              ),
+              child: Text(
+                '¡Listo!',
+                style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+              ),
+            )
+          : OhtliPrimaryButton(
+              key: const ValueKey('cheer'),
+              compact: true,
+              highlight: true,
+              label: label,
+              onPressed: () {
+                setState(() => _cheered.add(key));
+                onTap();
+              },
+            ),
     );
   }
 }

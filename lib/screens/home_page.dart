@@ -21,6 +21,7 @@ import 'places/places_page.dart';
 import '../widgets/trip_planner_dialog.dart';
 import 'trips/trip_screens.dart' deferred as trips;
 import '../widgets/deferred_view.dart';
+import '../widgets/ohtli_live_alerts.dart';
 
 class HomePage extends StatefulWidget {
   final VoidCallback onLogout;
@@ -73,6 +74,25 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _currentIndex = widget.initialIndex;
     _syncProfilePic();
+    OhtliAlerts.requestedTab.addListener(_onTabRequested);
+  }
+
+  @override
+  void dispose() {
+    OhtliAlerts.requestedTab.removeListener(_onTabRequested);
+    super.dispose();
+  }
+
+  /// Un aviso o una notificación pidió ir a otra pestaña.
+  void _onTabRequested() {
+    final index = OhtliAlerts.requestedTab.value;
+    if (index != null && mounted) _selectTab(index);
+  }
+
+  /// Envuelve la pantalla con los avisos flotantes en vivo (solo con sesión).
+  Widget _withAlerts(Widget child) {
+    final user = FirebaseAuth.instance.currentUser;
+    return user == null ? child : OhtliLiveAlerts(uid: user.uid, child: child);
   }
 
   @override
@@ -291,7 +311,7 @@ class _HomePageState extends State<HomePage> {
     final colorSidebar = isDark ? const Color(0xFF1E1E22) : const Color(0xFFE4E1DA);
 
     if (isMobile) {
-      return Scaffold(
+      return _withAlerts(Scaffold(
         key: _scaffoldKey,
         backgroundColor: OhtliColors.cloudDancer,
         appBar: AppBar(
@@ -460,10 +480,10 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-      );
+      ));
     }
 
-    return Scaffold(
+    return _withAlerts(Scaffold(
       key: _scaffoldKey,
       backgroundColor: OhtliColors.cloudDancer,
       // Sin botón flotante en escritorio: el menú lateral ya tiene "Planea un viaje" siempre visible
@@ -483,7 +503,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-    );
+    ));
   }
 
 }
