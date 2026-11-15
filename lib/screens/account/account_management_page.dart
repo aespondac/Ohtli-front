@@ -16,7 +16,6 @@ import '../../widgets/ohtli_sidebar.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../../utils/friendly_errors.dart';
-import '../construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'public_profile_page.dart';
 import '../admin/place_suggestions_page.dart';
 import '../admin/explore_featured_page.dart';
@@ -1268,6 +1267,20 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             width: radius * 2,
             height: radius * 2,
             fit: BoxFit.cover,
+            // Mientras llega la foto se ven las iniciales, no un círculo vacío
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (wasSynchronouslyLoaded || frame != null) return child;
+              return Center(
+                child: Text(
+                  initials,
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: radius * 0.7,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              );
+            },
             errorBuilder: (context, error, stackTrace) {
               return Center(
                 child: Text(
@@ -1388,16 +1401,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
         final screenSize = MediaQuery.of(context).size;
         final isMobile = screenSize.width < 800;
-    // Body content with background lines
+    // Sin las líneas de mapa de fondo: cruzaban la foto, el nombre y los botones
     Widget mainBody = Stack(
       children: [
-        Positioned.fill(
-          child: CustomPaint(
-            painter: RouteBackgroundPainter(
-              OhtliColors.cantera.withValues(alpha: 0.4),
-            ),
-          ),
-        ),
         SafeArea(
           child: Column(
             children: [
@@ -1575,11 +1581,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           Text(
             displayName,
             textAlign: TextAlign.center,
-            style: GoogleFonts.caprasimo(
-              fontSize: isMobile ? 24 : 28,
-              fontWeight: FontWeight.w400,
-              color: OhtliColors.stormyTeal,
-              letterSpacing: 0.5,
+            style: GoogleFonts.outfit(
+              fontSize: isMobile ? 26 : 30,
+              fontWeight: FontWeight.w800,
+              color: OhtliColors.onyx,
+              letterSpacing: -0.5,
             ),
           ),
           const SizedBox(height: 4),
@@ -1610,8 +1616,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               icon: const Icon(Icons.badge_outlined, size: 18),
               label: Text('Ver mi perfil', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
               style: OutlinedButton.styleFrom(
-                foregroundColor: OhtliColors.stormyTeal,
-                side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+                foregroundColor: OhtliColors.accentText,
+                side: BorderSide(color: OhtliColors.accentText.withValues(alpha: 0.5)),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
