@@ -11,6 +11,7 @@ import 'lab_article.dart';
 import 'lab_repository.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
+import 'lab_runs_board.dart';
 
 /// labs.ohtli.quest/news (y /resultados): blog público de resultados de Ohtli Labs.
 /// Solo muestra artículos publicados con visibilidad pública; no requiere iniciar sesión.
@@ -411,6 +412,64 @@ class _ArticleState extends State<_Article> {
           child: LabArticleView(post: post),
         );
       },
+    );
+  }
+}
+
+
+/// labs.ohtli.quest/resultados: tablero público de las corridas que el laboratorio liberó al
+/// público (antes era un alias de /news y marcar una corrida como «Público» no la mostraba).
+class LabsPublicResultsPage extends StatelessWidget {
+  const LabsPublicResultsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 760;
+    final hPad = isMobile ? 20.0 : 56.0;
+    return Scaffold(
+      backgroundColor: OhtliColors.cloudDancer,
+      appBar: const LabsTopBar(current: LabsSection.results),
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Container(
+            padding: EdgeInsets.fromLTRB(hPad, isMobile ? 28 : 56, hPad, isMobile ? 24 : 44),
+            decoration: BoxDecoration(color: OhtliColors.cardBg, border: Border(bottom: BorderSide(color: OhtliColors.cardBorder))),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1040),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Resultados',
+                        style: GoogleFonts.outfit(
+                            fontSize: isMobile ? 30 : 44, fontWeight: FontWeight.w700, color: OhtliColors.onyx, letterSpacing: isMobile ? -0.5 : -1.0)),
+                    const SizedBox(height: 10),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: Text(
+                        'Corridas de prueba del sistema multiagente de itinerarios que el laboratorio liberó al público: '
+                        'latencia, viabilidad de los itinerarios (CA-01), diversidad entre alternativas y pruebas de carga. '
+                        'Abre una corrida para ver cada escenario.',
+                        style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText, height: 1.6),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(hPad, isMobile ? 28 : 48, hPad, 64),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1040),
+                child: LabRunsBoard(levels: [LabVisibility.public]),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

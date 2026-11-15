@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme/colors.dart';
 import 'lab_access.dart';
 import 'lab_aggregates.dart';
+import 'lab_article.dart';
 import 'lab_publishing.dart';
 import 'lab_repository.dart';
 import 'lab_runner.dart';
@@ -744,7 +745,7 @@ class _RunHistory extends StatelessWidget {
     return LabCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const LabSectionTitle('Historial de corridas',
-            caption: 'Publicar una corrida la muestra en labs.ohtli.quest. Las exportaciones sirven como anexo del TT.'),
+            caption: 'Visibilidad «Público»: aparece en labs.ohtli.quest/resultados. «Testers»: en Labs › Resultados liberados. Las exportaciones sirven como anexo del TT.'),
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: repo.watchRuns(study.id),
           builder: (context, snap) {
@@ -768,20 +769,7 @@ class _RunTile extends StatelessWidget {
   final LabStudy study;
   const _RunTile({required this.id, required this.data, required this.study});
 
-  String _headline() {
-    final s = (data['summary'] as Map?) ?? {};
-    switch (study.kind) {
-      case LabStudyKind.scenarios:
-        return '${s['completed'] ?? '—'}/${s['n'] ?? '—'} completados · p95 ${fmtNum(s['e2e_p95_s'], suffix: ' s')} · CA-01 ${fmtNum(s['feasible_pct'], suffix: '%')} · traslape ${fmtNum(s['overlap_mean'], digits: 2)}';
-      case LabStudyKind.load:
-        final lv = (s['levels'] as Map?) ?? {};
-        return lv.entries.map((e) => '${e.key}: ${(e.value as Map)['completed']}/${(e.value as Map)['n']} (${fmtNum((e.value as Map)['error_rate_pct'], suffix: '% error')})').join(' · ');
-      case LabStudyKind.checklist:
-        return '${s['pass'] ?? 0}/${s['total'] ?? 0} pasos aprobados · ${s['fail'] ?? 0} fallas';
-      default:
-        return '';
-    }
-  }
+  String _headline() => labRunHeadline(study.kind, (data['summary'] as Map?) ?? {});
 
   Future<void> _export(BuildContext context, {required bool csv}) async {
     final rows = await LabRepository.instance.rows(id);

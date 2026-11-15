@@ -14,6 +14,7 @@ import 'lab_repository.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
+import 'lab_runs_board.dart';
 
 /// labs.ohtli.quest/eval sin sesión: qué es el estudio y cómo participar. Con sesión, la app
 /// muestra el Labs unificado (LabsAppPage) en la sección "Participa".
@@ -248,6 +249,15 @@ class _LabReleasedViewState extends State<LabReleasedView> {
         LabCard(padding: const EdgeInsets.all(28), child: LabArticleView(post: _post!)),
       ]);
     }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _posts(),
+      const SizedBox(height: 16),
+      const LabSectionTitle('Corridas liberadas', caption: 'Pruebas del sistema que el laboratorio comparte con testers y con el público.'),
+      LabRunsBoard(levels: [LabVisibility.testers, LabVisibility.public]),
+    ]);
+  }
+
+  Widget _posts() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _releasedPosts,
       builder: (context, snap) {

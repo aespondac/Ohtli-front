@@ -10,7 +10,7 @@ import '../widgets/ohtli_account_chip.dart';
 import '../widgets/ohtli_theme_toggle.dart';
 
 /// Secciones públicas de Ohtli Labs.
-enum LabsSection { home, news, participate }
+enum LabsSection { home, news, results, participate }
 
 /// Barra superior común de Ohtli Labs (landing, noticias, resultados y participación),
 /// para que labs.ohtli.quest, lab.ohtli.quest y /eval se sientan como un mismo sitio.
@@ -38,12 +38,14 @@ class LabsTopBar extends StatelessWidget implements PreferredSizeWidget {
       return switch (s) {
         LabsSection.home => 'https://labs.ohtli.quest/',
         LabsSection.news => 'https://labs.ohtli.quest/news',
+        LabsSection.results => 'https://labs.ohtli.quest/resultados',
         LabsSection.participate => 'https://labs.ohtli.quest/eval',
       };
     }
     return switch (s) {
       LabsSection.home => '/?testLab',
       LabsSection.news => '/news?testLab',
+      LabsSection.results => '/resultados?testLab',
       LabsSection.participate => '/eval?testEval',
     };
   }
@@ -107,6 +109,7 @@ class LabsTopBar extends StatelessWidget implements PreferredSizeWidget {
               const SizedBox(width: 28),
               link(LabsSection.home, 'Inicio'),
               link(LabsSection.news, 'Noticias'),
+              link(LabsSection.results, 'Resultados'),
               link(LabsSection.participate, 'Participa'),
             ],
             const Spacer(),
@@ -123,6 +126,7 @@ class LabsTopBar extends StatelessWidget implements PreferredSizeWidget {
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: LabsSection.home, child: Text('Inicio')),
                   PopupMenuItem(value: LabsSection.news, child: Text('Noticias')),
+                  PopupMenuItem(value: LabsSection.results, child: Text('Resultados')),
                   PopupMenuItem(value: LabsSection.participate, child: Text('Participa')),
                 ],
               ),

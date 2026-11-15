@@ -42,6 +42,24 @@ Future<Map<String, dynamic>> buildRunSnapshot(String runId, Map<String, dynamic>
   return snap;
 }
 
+/// Métricas principales de una corrida en una línea (consola y tablero de resultados).
+String labRunHeadline(LabStudyKind? kind, Map summary) {
+  final s = summary;
+  switch (kind) {
+    case LabStudyKind.scenarios:
+      return '${s['completed'] ?? '—'}/${s['n'] ?? '—'} completados · p95 ${fmtNum(s['e2e_p95_s'], suffix: ' s')} · CA-01 ${fmtNum(s['feasible_pct'], suffix: '%')} · traslape ${fmtNum(s['overlap_mean'], digits: 2)}';
+    case LabStudyKind.load:
+      final lv = (s['levels'] as Map?) ?? {};
+      return lv.entries
+          .map((e) => '${e.key}: ${(e.value as Map)['completed']}/${(e.value as Map)['n']} (${fmtNum((e.value as Map)['error_rate_pct'], suffix: '% error')})')
+          .join(' · ');
+    case LabStudyKind.checklist:
+      return '${s['pass'] ?? 0}/${s['total'] ?? 0} pasos aprobados · ${s['fail'] ?? 0} fallas';
+    default:
+      return '';
+  }
+}
+
 Map<String, dynamic> buildAggregateSnapshot(LabStudy study, Map<String, dynamic> agg) => {
       'type': 'aggregate',
       'studyId': study.id,
@@ -73,7 +91,7 @@ class LabArticleView extends StatelessWidget {
       ],
       const SizedBox(height: 18),
       LabMarkdown(text: '${post['body'] ?? ''}'),
-      for (final b in blocks) ...[const SizedBox(height: 18), _SnapshotBlock(block: b)],
+      for (final b in blocks) ...[const SizedBox(height: 18), LabSnapshotBlock(block: b)],
     ]);
   }
 }
@@ -122,9 +140,10 @@ class LabMarkdown extends StatelessWidget {
   }
 }
 
-class _SnapshotBlock extends StatelessWidget {
+/// Bloque de una corrida o un agregado (artículos y tablero de /resultados).
+class LabSnapshotBlock extends StatelessWidget {
   final Map<String, dynamic> block;
-  const _SnapshotBlock({required this.block});
+  const LabSnapshotBlock({super.key, required this.block});
 
   @override
   Widget build(BuildContext context) {

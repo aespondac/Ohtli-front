@@ -961,7 +961,13 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           },
         ),
       );
-    } else if (_currentScreen == OhtliScreen.labsResults || _currentScreen == OhtliScreen.labsNews) {
+    } else if (_currentScreen == OhtliScreen.labsResults) {
+      // labs.ohtli.quest/resultados: tablero de las corridas liberadas al público.
+      activeView = DeferredView(
+        load: labs_results.loadLibrary,
+        builder: (_) => labs_results.LabsPublicResultsPage(),
+      );
+    } else if (_currentScreen == OhtliScreen.labsNews) {
       activeView = DeferredView(
         load: labs_results.loadLibrary,
         builder: (_) => labs_results.LabsResultsPage(
