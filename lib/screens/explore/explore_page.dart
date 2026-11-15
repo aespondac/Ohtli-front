@@ -20,6 +20,7 @@ import '../../widgets/trip_polaroid.dart';
 import '../../models/trip_model.dart';
 import '../../screens/trips/trip_screens.dart' deferred as trips;
 import '../../widgets/deferred_view.dart';
+import '../../widgets/featured_story_card.dart';
 
 // Crónicas destacadas (fijadas por el equipo editorial)
 class PinnedStory {
@@ -712,17 +713,14 @@ class _ExplorePageState extends State<ExplorePage> {
         final trip = Trip.fromMap({...?tripData, 'userId': pinned.authorId}, pinned.tripId);
         final accent = isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.xoconostle;
 
-        void open() {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(tripId: pinned.tripId, authorId: pinned.authorId))),
-          );
-        }
-
         final avatar = Container(
-          width: 34,
-          height: 34,
-          decoration: const BoxDecoration(shape: BoxShape.circle, color: OhtliColors.stormyTeal),
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: OhtliColors.stormyTeal,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2),
+          ),
           child: ClipOval(
             child: authorPhoto != null && authorPhoto.isNotEmpty
                 ? Image(
@@ -740,126 +738,57 @@ class _ExplorePageState extends State<ExplorePage> {
           ),
         );
 
-        bool isHovered = false;
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final text = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(30)),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(isReleaseNotes ? Icons.new_releases_rounded : Icons.auto_stories_rounded, color: accent, size: 13),
-                      const SizedBox(width: 6),
-                      Text(badgeText, style: GoogleFonts.inter(color: accent, fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-                    ],
+        final author = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            avatar,
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(authorName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('titles').doc(activeTitleId).snapshots(),
+                    builder: (context, titleSnapshot) {
+                      String titleName = 'Viajero';
+                      if (titleSnapshot.hasData && titleSnapshot.data!.exists) {
+                        final titleData = titleSnapshot.data!.data() as Map<String, dynamic>?;
+                        titleName = titleData?['name'] ?? 'Viajero';
+                      }
+                      return Text(titleName, style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withValues(alpha: 0.72)));
+                    },
                   ),
-                ),
-                SizedBox(height: isMobile ? 12 : 18),
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.outfit(
-                    color: OhtliColors.onyx,
-                    fontSize: isMobile ? 24 : 34,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.8,
-                    height: 1.05,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(desc, maxLines: isMobile ? 2 : 3, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: isMobile ? 14 : 15.5)),
-                SizedBox(height: isMobile ? 14 : 22),
-                Row(
-                  children: [
-                    avatar,
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(authorName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.outfit(color: OhtliColors.onyx, fontSize: 14, fontWeight: FontWeight.w700)),
-                          StreamBuilder<DocumentSnapshot>(
-                            stream: FirebaseFirestore.instance.collection('titles').doc(activeTitleId).snapshots(),
-                            builder: (context, titleSnapshot) {
-                              String titleName = 'Viajero';
-                              if (titleSnapshot.hasData && titleSnapshot.data!.exists) {
-                                final titleData = titleSnapshot.data!.data() as Map<String, dynamic>?;
-                                titleName = titleData?['name'] ?? 'Viajero';
-                              }
-                              return Text(titleName, style: OhtliUi.body(size: 12));
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (!isMobile) ...[
-                      const SizedBox(width: 16),
-                      OhtliPrimaryButton(
-                        label: isReleaseNotes ? 'Ver novedades' : 'Leer historia',
-                        icon: Icons.arrow_forward_rounded,
-                        highlight: !isReleaseNotes,
-                        onPressed: open,
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            );
-
-            final desk = ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: AnimatedScale(
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.easeOutCubic,
-                scale: isHovered ? 1.04 : 1.0,
-                child: SizedBox.expand(child: OhtliPhoto(TripPhotos.initial(trip).photos.first)),
+                ],
               ),
-            );
+            ),
+          ],
+        );
 
-            return MouseRegion(
-              onEnter: (_) => setState(() => isHovered = true),
-              onExit: (_) => setState(() => isHovered = false),
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: open,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  margin: EdgeInsets.symmetric(horizontal: isMobile ? 16.0 : 40.0, vertical: isMobile ? 12.0 : 16.0),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.cardBg,
-                    borderRadius: BorderRadius.circular(32),
-                    border: Border.all(color: isHovered ? accent.withValues(alpha: 0.35) : OhtliColors.cardBorder),
-                    boxShadow: OhtliUi.softShadow(color: isHovered ? accent : null, raised: isHovered),
-                  ),
-                  child: isMobile
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: desk),
-                            Padding(padding: const EdgeInsets.fromLTRB(10, 16, 10, 8), child: text),
-                          ],
-                        )
-                      : Row(
-                          children: [
-                            Expanded(flex: 5, child: Padding(padding: const EdgeInsets.fromLTRB(30, 20, 24, 20), child: text)),
-                            Expanded(flex: 6, child: desk),
-                          ],
-                        ),
-                ),
-              ),
-            );
-          },
+        // Foto a todo lo ancho; al tocarla crece hasta el visor.
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: isMobile ? 16.0 : 40.0, vertical: isMobile ? 12.0 : 16.0),
+          child: FeaturedStoryCard(
+            photoUrl: TripPhotos.initial(trip).photos.first,
+            title: title,
+            description: desc,
+            badgeText: badgeText,
+            badgeIcon: isReleaseNotes ? Icons.new_releases_rounded : Icons.auto_stories_rounded,
+            accent: accent,
+            author: author,
+            buttonLabel: isReleaseNotes ? 'Ver novedades' : 'Leer historia',
+            highlightButton: !isReleaseNotes,
+            isMobile: isMobile,
+            background: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+            pageBuilder: (_) => DeferredView(
+              load: trips.loadLibrary,
+              builder: (_) => trips.TripViewerPage(trip: trip, tripId: pinned.tripId, authorId: pinned.authorId),
+            ),
+          ),
         );
       },
     );
