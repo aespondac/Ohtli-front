@@ -62,6 +62,7 @@ class _NavEntry {
 class _LabsAppPageState extends State<LabsAppPage> {
   LabRole _role = LabRole.none;
   bool _loaded = false;
+  String? _roleError;
   late String _section;
   // Secciones ya abiertas: se mantienen vivas (IndexedStack) para que cambiar de sección no
   // corte una corrida en curso ni pierda lo que se estaba llenando.
@@ -75,10 +76,17 @@ class _LabsAppPageState extends State<LabsAppPage> {
   }
 
   Future<void> _load() async {
-    final r = await LabAccess.roleOf(FirebaseAuth.instance.currentUser);
+    LabRole r;
+    try {
+      r = await LabAccess.roleOf(FirebaseAuth.instance.currentUser);
+    } catch (e) {
+      if (mounted) setState(() => _roleError = '$e');
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _role = r;
+      _roleError = null;
       _loaded = true;
       _section = LabsAppPage.validSection(_section, r);
     });
@@ -124,6 +132,37 @@ class _LabsAppPageState extends State<LabsAppPage> {
   Widget build(BuildContext context) {
     currentLabRole = _role;
     final isMobile = MediaQuery.of(context).size.width < 900;
+    if (_roleError != null) {
+      return Scaffold(
+        backgroundColor: OhtliColors.cloudDancer,
+        appBar: _topBar(isMobile: isMobile, title: 'Ohtli Labs', withMenu: false),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: LabCard(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('No pudimos verificar tu acceso a Labs',
+                      style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+                  const SizedBox(height: 8),
+                  Text('Revisa tu conexión e inténtalo de nuevo.', style: labCell()),
+                  const SizedBox(height: 14),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() => _roleError = null);
+                      _load();
+                    },
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Reintentar'),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     if (!_loaded) {
       return Scaffold(
         backgroundColor: OhtliColors.cloudDancer,

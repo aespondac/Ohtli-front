@@ -179,7 +179,8 @@ class _PostEditorState extends State<_PostEditor> {
   final Set<String> _aggs = {};
   List<Map<String, dynamic>> _snapshots = [];
   bool _loading = true, _saving = false, _preview = false;
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _runs = [];
+  bool _wasPublished = false; // conserva la fecha de publicación al corregir un artículo publicado
+  List<DocumentSnapshot<Map<String, dynamic>>> _runs = [];
 
   @override
   void initState() {
@@ -203,6 +204,16 @@ class _PostEditorState extends State<_PostEditor> {
       _runIds.addAll(((m['runIds'] as List?) ?? []).map((e) => '$e'));
       _aggs.addAll(((m['aggregateStudies'] as List?) ?? []).map((e) => '$e'));
       _snapshots = ((m['snapshots'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      _wasPublished = m['status'] == 'published' && m['publishedAt'] != null;
+      // Corridas citadas que ya no están entre las 60 más recientes: se cargan por ID para que
+      // sigan apareciendo (y no se pierdan al volver a congelar los datos).
+      final loaded = _runs.map((r) => r.id).toSet();
+      for (final id in _runIds.where((id) => !loaded.contains(id))) {
+        try {
+          final d = await repo.runs.doc(id).get();
+          if (d.exists) _runs.add(d);
+        } catch (_) {}
+      }
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -210,7 +221,7 @@ class _PostEditorState extends State<_PostEditor> {
   Future<List<Map<String, dynamic>>> _freeze() async {
     final out = <Map<String, dynamic>>[];
     for (final r in _runs.where((r) => _runIds.contains(r.id))) {
-      out.add(await buildRunSnapshot(r.id, r.data()));
+      out.add(await buildRunSnapshot(r.id, r.data() ?? const {}));
     }
     for (final sid in _aggs) {
       final study = studyById(sid);
@@ -240,15 +251,38 @@ class _PostEditorState extends State<_PostEditor> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Solo el superusuario puede publicar en abierto.')));
       return;
     }
+    // La ruta del artículo (/news/<ruta>) no puede quedar vacía ni repetida.
+    final slug = _current()['slug'] as String;
+    if (slug.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La ruta del artículo necesita letras o números. Escribe una ruta o cambia el título.')));
+      return;
+    }
     setState(() => _saving = true);
     try {
+      final same = await LabRepository.instance.posts.where('slug', isEqualTo: slug).limit(2).get();
+      if (same.docs.any((d) => d.id != widget.postId)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ya hay otro artículo en /news/$slug. Cambia la ruta.')));
+          setState(() => _saving = false);
+        }
+        return;
+      }
       if (refreeze || _snapshots.isEmpty) _snapshots = await _freeze();
       final data = _current()
         ..['runIds'] = _runIds.toList()
         ..['aggregateStudies'] = _aggs.toList()
         ..['frozenAt'] = FieldValue.serverTimestamp();
-      data['publishedAt'] = _status == 'published' ? FieldValue.serverTimestamp() : null;
+      // La fecha de publicación se fija al publicar por primera vez; corregir una errata ya no la
+      // cambia (ni manda el artículo al primer lugar del blog).
+      if (_status != 'published') {
+        data['publishedAt'] = null;
+      } else if (_wasPublished) {
+        data.remove('publishedAt');
+      } else {
+        data['publishedAt'] = FieldValue.serverTimestamp();
+      }
       await LabRepository.instance.savePost(widget.postId, data);
+      _wasPublished = _status == 'published';
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Artículo guardado')));
       if (widget.postId == null) widget.onClose();
     } catch (e) {
@@ -293,7 +327,7 @@ class _PostEditorState extends State<_PostEditor> {
           for (final r in _runs)
             FilterChip(
               selected: _runIds.contains(r.id),
-              label: Text('${studyById('${r.data()['studyId']}')?.title ?? r.data()['studyId']} · ${fmtDate(r.data()['startedAt'])}',
+              label: Text('${studyById('${r.data()?['studyId']}')?.title ?? r.data()?['studyId']} · ${fmtDate(r.data()?['startedAt'])}',
                   style: GoogleFonts.inter(fontSize: 11.5)),
               onSelected: (v) => setState(() => v ? _runIds.add(r.id) : _runIds.remove(r.id)),
             ),

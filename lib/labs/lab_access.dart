@@ -55,6 +55,14 @@ LabRole _parse(dynamic r) => switch (r) {
       _ => LabRole.none,
     };
 
+/// No se pudo leer el rol (la pantalla ofrece reintentar).
+class LabRoleUnavailable implements Exception {
+  final String detail;
+  LabRoleUnavailable(this.detail);
+  @override
+  String toString() => 'No se pudo verificar tu rol en Ohtli Labs ($detail)';
+}
+
 /// Rol de la sesión en Labs (lo fija LabsAppPage); decide qué controles se muestran en la
 /// consola y en los experimentos. Las reglas de Firestore y el motor son los que protegen.
 LabRole currentLabRole = LabRole.none;
@@ -99,8 +107,10 @@ class LabAccess {
         }
       }
       return role;
-    } catch (_) {
-      return LabRole.none;
+    } catch (e) {
+      // Un error (red, permisos) no es "sin rol": si se tomara como tal, un miembro vería el
+      // consentimiento y, al aceptarlo, quedaría degradado a tester.
+      throw LabRoleUnavailable('$e');
     }
   }
 

@@ -13,6 +13,15 @@ import 'lab_studies.dart';
 ///
 /// No usa el simulador de respaldo del planificador: si el motor falla, la corrida lo registra
 /// como error en lugar de inventar un itinerario.
+/// Latencia de punta a punta con las marcas del servidor: acuse (cliente) + created_at →
+/// completed_at (mismo reloj del motor). Null si faltan las marcas o no son coherentes.
+double? serverE2eSeconds(int? ackMs, Map<String, dynamic> job) {
+  final created = DateTime.tryParse('${job['created_at'] ?? ''}');
+  final completed = DateTime.tryParse('${job['completed_at'] ?? ''}');
+  if (ackMs == null || created == null || completed == null || !completed.isAfter(created)) return null;
+  return ackMs / 1000.0 + completed.difference(created).inMilliseconds / 1000.0;
+}
+
 class LabRunner {
   static const String apiBase = 'https://api.ohtli.quest';
   static const Duration jobTimeout = Duration(minutes: 5);
@@ -88,8 +97,15 @@ class LabRunner {
           }
         } catch (_) {}
       }
-      row['e2e_s'] = DateTime.now().difference(t0).inMilliseconds / 1000.0;
+      final pollE2e = DateTime.now().difference(t0).inMilliseconds / 1000.0;
+      row['e2e_poll_s'] = pollE2e;
+      row['e2e_s'] = pollE2e;
       if (job == null) return row..addAll({'status': 'timeout'});
+      // Sondear cada 2 s sumaba entre 0 y 2 s a cada medida: con las marcas del servidor la
+      // latencia es el acuse más lo que tardó el trabajo de verdad.
+      final server = serverE2eSeconds(row['ack_ms'] as int?, job);
+      if (server != null) row['e2e_s'] = server;
+      row['e2e_source'] = server != null ? 'servidor' : 'sondeo';
       row['status'] = job['status'];
       row['error'] = job['error_detail'];
       row['agent_ms'] = {

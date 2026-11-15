@@ -36,7 +36,7 @@ class LabStudyPanel extends StatelessWidget {
 
 class _StudyPanel extends StatelessWidget {
   final LabStudy study;
-  const _StudyPanel({super.key, required this.study});
+  const _StudyPanel({required this.study});
 
   @override
   Widget build(BuildContext context) {
@@ -118,11 +118,18 @@ class _ScenarioRunnerState extends State<_ScenarioRunner> {
   }
 
   Future<void> _run() async {
-    final selected = _scenarios.where((s) => _enabled.contains(s.id)).toList();
+    // Fechas de viaje calculadas al correr (no al abrir la consola): con la consola abierta varios
+    // días, "el próximo lunes" ya habría pasado.
+    final fresh = {for (final s in (_isBattery ? batteryScenarios(int.tryParse(_count.text) ?? 30) : formalScenarios())) s.id: s};
+    final selected = _scenarios.where((s) => _enabled.contains(s.id)).map((s) => fresh[s.id] ?? s).toList();
     if (selected.isEmpty) return;
     final sla = double.tryParse(_sla.text) ?? 45;
     final pause = int.tryParse(_pause.text) ?? 5;
-    setState(() {
+    void update(VoidCallback f) {
+      if (mounted) setState(f);
+    }
+
+    update(() {
       _running = true;
       _cancel = false;
       _rows.clear();
@@ -130,37 +137,53 @@ class _ScenarioRunnerState extends State<_ScenarioRunner> {
       _summary = null;
     });
     final runner = LabRunner();
-    final runId = await LabRepository.instance.createRun(widget.study.id, {
-      'scenarios': selected.map((s) => s.toJson()).toList(),
-      'pause_s': pause,
-      'sla_s': sla,
-      'api': LabRunner.apiBase,
-      'mode': 'secuencial',
-    }, label: _label.text.trim());
-    setState(() => _runId = runId);
-    for (var i = 0; i < selected.length; i++) {
-      if (_cancel) break;
-      final sc = selected[i];
-      setState(() => _stage[sc.id] = 'iniciando');
-      final row = await runner.runScenario(sc, onStage: (s) {
-        if (mounted) setState(() => _stage[sc.id] = s);
-      });
-      await LabRepository.instance.addRow(runId, i, row);
-      if (!mounted) return;
-      setState(() {
+    String? runId;
+    var status = 'completed';
+    String? error;
+    // La corrida siempre se cierra (completada, cancelada o con error): antes, si fallaba algo a la
+    // mitad, quedaba "running" para siempre y no se podía citar, publicar ni borrar.
+    try {
+      runId = await LabRepository.instance.createRun(widget.study.id, {
+        'scenarios': selected.map((s) => s.toJson()).toList(),
+        'pause_s': pause,
+        'sla_s': sla,
+        'api': LabRunner.apiBase,
+        'mode': 'secuencial',
+        'e2e': 'acuse + duración en el servidor (created_at → completed_at); e2e_poll_s guarda la medida por sondeo',
+      }, label: _label.text.trim());
+      update(() => _runId = runId);
+      for (var i = 0; i < selected.length; i++) {
+        if (_cancel) break;
+        final sc = selected[i];
+        update(() => _stage[sc.id] = 'iniciando');
+        final row = await runner.runScenario(sc, onStage: (s) => update(() => _stage[sc.id] = s));
+        await LabRepository.instance.addRow(runId, i, row);
         _rows.add(row);
-        _stage[sc.id] = '${row['status']}';
-        _summary = summarizeRows(_rows, slaSeconds: sla);
-      });
-      if (i < selected.length - 1 && !_cancel) await Future.delayed(Duration(seconds: pause));
-    }
-    final summary = summarizeRows(_rows, slaSeconds: sla);
-    await LabRepository.instance.finishRun(runId, summary, status: _cancel ? 'cancelled' : 'completed');
-    if (mounted) {
-      setState(() {
+        update(() {
+          _stage[sc.id] = '${row['status']}';
+          _summary = summarizeRows(_rows, slaSeconds: sla);
+        });
+        if (i < selected.length - 1 && !_cancel) await Future.delayed(Duration(seconds: pause));
+      }
+      if (_cancel) status = 'cancelled';
+    } catch (e) {
+      status = 'error';
+      error = '$e';
+    } finally {
+      final summary = summarizeRows(_rows, slaSeconds: sla);
+      if (error != null) summary['error'] = error;
+      if (runId != null) {
+        try {
+          await LabRepository.instance.finishRun(runId, summary, status: status);
+        } catch (_) {}
+      }
+      update(() {
         _running = false;
         _summary = summary;
       });
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('La corrida terminó con error: $error')));
+      }
     }
   }
 
@@ -331,49 +354,67 @@ class _LoadRunnerState extends State<_LoadRunner> {
     final levels = _levels.text.split(RegExp(r'[,\s]+')).map(int.tryParse).whereType<int>().where((x) => x > 0 && x <= 60).toList();
     if (levels.isEmpty) return;
     final pause = int.tryParse(_pause.text) ?? 90;
-    setState(() {
+    void update(VoidCallback f) {
+      if (mounted) setState(f);
+    }
+
+    update(() {
       _running = true;
       _byLevel.clear();
       _done.clear();
     });
-    final runId = await LabRepository.instance.createRun(widget.study.id, {
-      'levels': levels,
-      'pause_between_levels_s': pause,
-      'api': LabRunner.apiBase,
-      'mode': 'ráfaga simultánea por nivel; escenarios de la batería en orden cíclico',
-    }, label: _label.text.trim());
-    final runner = LabRunner();
-    await runner.vibeVector('cultural');
-    await runner.vibeVector('gastronomico');
-    await runner.vibeVector('naturaleza');
-    var idx = 0;
-    for (var li = 0; li < levels.length; li++) {
-      final n = levels[li];
-      setState(() => _status = 'Nivel $n: enviando $n solicitudes simultáneas…');
-      final scs = batteryScenarios(n);
-      _done[n] = 0;
-      final futures = scs.map((sc) => runner.runScenario(sc).then((r) {
-            if (mounted) setState(() => _done[n] = (_done[n] ?? 0) + 1);
-            return r;
-          }));
-      final rows = await Future.wait(futures);
-      for (final r in rows) {
-        r['level'] = n;
-        await LabRepository.instance.addRow(runId, idx++, r);
+    String? runId;
+    String? error;
+    // Siempre se cierra la corrida (ver _ScenarioRunner._run).
+    try {
+      runId = await LabRepository.instance.createRun(widget.study.id, {
+        'levels': levels,
+        'pause_between_levels_s': pause,
+        'api': LabRunner.apiBase,
+        'mode': 'ráfaga simultánea por nivel; escenarios de la batería en orden cíclico',
+      }, label: _label.text.trim());
+      final runner = LabRunner();
+      await runner.vibeVector('cultural');
+      await runner.vibeVector('gastronomico');
+      await runner.vibeVector('naturaleza');
+      var idx = 0;
+      for (var li = 0; li < levels.length; li++) {
+        final n = levels[li];
+        update(() => _status = 'Nivel $n: enviando $n solicitudes simultáneas…');
+        final scs = batteryScenarios(n);
+        _done[n] = 0;
+        final futures = scs.map((sc) => runner.runScenario(sc).then((r) {
+              update(() => _done[n] = (_done[n] ?? 0) + 1);
+              return r;
+            }));
+        final rows = await Future.wait(futures);
+        for (final r in rows) {
+          r['level'] = n;
+          await LabRepository.instance.addRow(runId, idx++, r);
+        }
+        _byLevel[n] = summarizeRows(rows);
+        update(() {});
+        await LabRepository.instance.updateRun(runId, {'summary': {'levels': {for (final e in _byLevel.entries) '${e.key}': e.value}}});
+        if (li < levels.length - 1) {
+          update(() => _status = 'Pausa de $pause s antes del siguiente nivel…');
+          await Future.delayed(Duration(seconds: pause));
+        }
       }
-      final s = summarizeRows(rows);
-      setState(() => _byLevel[n] = s);
-      await LabRepository.instance.updateRun(runId, {'summary': {'levels': {for (final e in _byLevel.entries) '${e.key}': e.value}}});
-      if (li < levels.length - 1) {
-        setState(() => _status = 'Pausa de $pause s antes del siguiente nivel…');
-        await Future.delayed(Duration(seconds: pause));
+    } catch (e) {
+      error = '$e';
+    } finally {
+      final summary = <String, dynamic>{
+        'levels': {for (final e in _byLevel.entries) '${e.key}': e.value},
+        if (error != null) 'error': error,
+      };
+      if (runId != null) {
+        try {
+          await LabRepository.instance.finishRun(runId, summary, status: error == null ? 'completed' : 'error');
+        } catch (_) {}
       }
-    }
-    await LabRepository.instance.finishRun(runId, {'levels': {for (final e in _byLevel.entries) '${e.key}': e.value}});
-    if (mounted) {
-      setState(() {
+      update(() {
         _running = false;
-        _status = 'Corrida terminada (lab_runs/$runId).';
+        _status = error == null ? 'Corrida terminada (lab_runs/$runId).' : 'La corrida terminó con error: $error';
       });
     }
   }
@@ -471,6 +512,16 @@ class _ChecklistRunnerState extends State<_ChecklistRunner> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
+    try {
+      await _saveRun();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar la verificación: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveRun() async {
     final runId = await LabRepository.instance.createRun(widget.study.id, {
       'browsers': browsers,
       'items': kOfflineChecklist.map((i) => {'id': i.id, 'text': i.text}).toList(),
@@ -495,8 +546,9 @@ class _ChecklistRunnerState extends State<_ChecklistRunner> {
       'per_browser': perBrowser,
       'notes': _notes.text.trim(),
     });
+    // El artículo lee las notas de la corrida (run.notes), no las del resumen.
+    if (_notes.text.trim().isNotEmpty) await LabRepository.instance.updateRun(runId, {'notes': _notes.text.trim()});
     if (mounted) {
-      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Guardado en lab_runs/$runId')));
     }
   }
@@ -682,8 +734,11 @@ class _RunHistory extends StatelessWidget {
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: repo.watchRuns(study.id),
           builder: (context, snap) {
-            if (snap.hasError) return Text('Error: ${snap.error}', style: labCell());
-            final docs = snap.data?.docs ?? [];
+            if (snap.hasError) return Text('No pudimos cargar el historial: ${snap.error}', style: labCell());
+            if (!snap.hasData) {
+              return const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+            }
+            final docs = snap.data!.docs;
             if (docs.isEmpty) return Text('Aún no hay corridas.', style: labCell());
             return Column(children: docs.map((d) => _RunTile(id: d.id, data: d.data(), study: study)).toList());
           },
@@ -752,6 +807,12 @@ class _RunTile extends StatelessWidget {
           ),
           TextButton.icon(onPressed: () => _export(context, csv: true), icon: const Icon(Icons.table_chart_outlined, size: 16), label: const Text('CSV')),
           TextButton.icon(onPressed: () => _export(context, csv: false), icon: const Icon(Icons.data_object_rounded, size: 16), label: const Text('JSON')),
+          if (data['status'] == 'running')
+            TextButton.icon(
+              onPressed: () => _closeStuck(context),
+              icon: const Icon(Icons.stop_circle_outlined, size: 16),
+              label: const Text('Marcar como cancelada'),
+            ),
           TextButton.icon(
             onPressed: () => _editNotes(context),
             icon: const Icon(Icons.edit_note_rounded, size: 16),
@@ -760,6 +821,25 @@ class _RunTile extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Corridas que quedaron "running" (se cerró la pestaña a la mitad): se cierran como canceladas
+  /// para poder citarlas o publicarlas con lo que alcanzaron a guardar.
+  Future<void> _closeStuck(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Marcar como cancelada?'),
+        content: const Text('Úsalo si la corrida se interrumpió (por ejemplo, se cerró la pestaña) y ya no está avanzando.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Marcar como cancelada')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await LabRepository.instance.updateRun(id, {'status': 'cancelled', 'finishedAt': FieldValue.serverTimestamp(), 'closedManually': true});
+    }
   }
 
   Future<void> _editNotes(BuildContext context) async {

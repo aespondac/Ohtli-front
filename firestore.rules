@@ -396,12 +396,17 @@ service cloud.firestore {
 
     match /lab_members/{uid} {
       allow read: if isLabMember() || (request.auth != null && request.auth.uid == uid);
-      // Alta propia como tester, o aceptación de una invitación para el correo verificado
-      allow create, update: if isSuperUser() || (request.auth != null && request.auth.uid == uid && (
+      // Alta propia como tester (solo crear: así un miembro no puede quedar degradado a tester si
+      // acepta el consentimiento por error), o aceptación de una invitación para el correo verificado.
+      allow create: if isSuperUser() || (request.auth != null && request.auth.uid == uid && (
           (request.resource.data.role == 'tester' && request.resource.data.keys().hasOnly(['role', 'via', 'consent', 'joinedAt']))
           || (request.auth.token.email_verified == true
               && exists(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower()))
               && request.resource.data.role == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.role)));
+      allow update: if isSuperUser() || (request.auth != null && request.auth.uid == uid
+          && request.auth.token.email_verified == true
+          && exists(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower()))
+          && request.resource.data.role == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.role);
       allow delete: if isSuperUser() || (request.auth != null && request.auth.uid == uid);
     }
     match /lab_invites/{email} {
