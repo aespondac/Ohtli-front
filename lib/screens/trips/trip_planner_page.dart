@@ -3,6 +3,8 @@
 import '../../services/user_private_data.dart';
 import '../../services/saved_places.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 import 'dart:ui' show lerpDouble;
 import 'package:flutter/gestures.dart';
@@ -746,12 +748,34 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     return total > 0 ? total : 180;
   }
 
-  // Fichas completas de lugares (Firestore) para que la descripción del itinerario
-  // sea exactamente la misma que muestra el detalle del lugar.
+  // Fichas completas de lugares para que la descripción del itinerario sea exactamente la misma
+  // que muestra el detalle del lugar.
   final Map<String, Poi> _poiCache = {};
   final Set<String> _poiRequested = {};
+  static const String _apiUrl = String.fromEnvironment('yollotlApiUrl', defaultValue: 'https://api.ohtli.quest');
 
   String _stopPoiId(Map<String, dynamic> stop) => (stop['poi_id'] ?? stop['id'] ?? '').toString();
+
+  /// Fichas desde el motor (/v1/pois?ids=), con las reseñas, el precio y el horario al día. La base
+  /// de Firestore de la app solo tiene los lugares de OSM (sin DENUE, SIC ni mercados) y no recibe
+  /// lo que agrega el refresco del catálogo, así que queda como respaldo.
+  Future<Map<String, Poi>> _fetchPoisFromEngine(List<String> ids) async {
+    final out = <String, Poi>{};
+    if (ids.isEmpty) return out;
+    try {
+      final uri = Uri.parse('$_apiUrl/v1/pois').replace(queryParameters: {'ids': ids.take(200).join(',')});
+      final response = await http.get(uri).timeout(const Duration(seconds: 60));
+      if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      for (final item in ((decoded as Map)['pois'] as List? ?? const [])) {
+        final poi = Poi.fromMap(Map<String, dynamic>.from(item as Map));
+        if (poi.poiId.isNotEmpty) out[poi.poiId] = poi;
+      }
+    } catch (e) {
+      debugPrint('[TripPlanner] No se pudieron traer lugares del motor: $e');
+    }
+    return out;
+  }
 
   void _prefetchStopPois(List<dynamic> stops) {
     final ids = <String>[];
@@ -761,6 +785,15 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       if (id.isNotEmpty && _poiRequested.add(id)) ids.add(id);
     }
     if (ids.isEmpty) return;
+    _fetchPoisFromEngine(ids).then((found) {
+      if (!mounted) return;
+      if (found.isNotEmpty) setState(() => _poiCache.addAll(found));
+      final rest = ids.where((id) => !found.containsKey(id)).toList();
+      if (rest.isNotEmpty) _prefetchFromFirestore(rest);
+    });
+  }
+
+  void _prefetchFromFirestore(List<String> ids) {
     final FirebaseFirestore db;
     try {
       db = FirebaseFirestore.instance;
@@ -822,6 +855,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final poiId = _stopPoiId(stop);
     Poi? fullPoi = _poiCache[poiId];
 
+    if (fullPoi == null && poiId.isNotEmpty) {
+      fullPoi = (await _fetchPoisFromEngine([poiId]))[poiId];
+      if (fullPoi != null) _poiCache[poiId] = fullPoi;
+    }
     if (fullPoi == null && poiId.isNotEmpty) {
       try {
         final doc = await FirebaseFirestore.instance.collection('pois').doc(poiId).get();
