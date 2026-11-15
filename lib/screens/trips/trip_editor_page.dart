@@ -937,6 +937,17 @@ class _TripEditorPageState extends State<TripEditorPage> {
           secondaryPhotoUrls: [],
           changeTag: _isNotes ? 'nuevo' : null,
         ));
+      } else if (type == 'detour') {
+        // En las notas de versión, un desvío cuenta algo que viene en camino.
+        add(PlaceSection(
+          id: id,
+          title: '',
+          description: '',
+          rating: 0,
+          mainPhotoUrl: '',
+          secondaryPhotoUrls: [],
+          unplanned: true,
+        ));
       } else if (type == 'text') {
         add(TextSection(
           id: id,
@@ -1048,6 +1059,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (s is UnknownSection) return ('Bloque no compatible', Icons.help_outline_rounded);
     if (s is PlaceSection) {
       final t = s.title.trim();
+      if (_isNotes && s.unplanned) return (t.isEmpty ? 'Próximamente sin título' : t, Icons.alt_route_rounded);
       if (_isNotes) return (t.isEmpty ? 'Novedad sin título' : t, Icons.new_releases_rounded);
       return (t.isEmpty ? 'Lugar sin nombre' : t, Icons.location_on_rounded);
     }
@@ -2797,7 +2809,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
             fact(Icons.event_rounded, _travelDate == null ? 'Sin fecha' : _fmtDate(_travelDate!), onTap: _pickTravelDate),
             if (_isNotes) ...[
               fact(Icons.new_releases_outlined, 'v${_versionController.text.trim().isEmpty ? kAppVersion : _versionController.text.trim()}'),
-              fact(Icons.auto_awesome_rounded, '${places.length} ${places.length == 1 ? 'novedad' : 'novedades'}'),
+              fact(Icons.auto_awesome_rounded, () {
+                final n = places.where((p) => !p.unplanned).length;
+                return '$n ${n == 1 ? 'novedad' : 'novedades'}';
+              }()),
+              if (places.any((p) => p.unplanned))
+                fact(Icons.alt_route_rounded, '${places.where((p) => p.unplanned).length} en camino'),
             ] else
               fact(Icons.place_rounded, '${places.length} ${places.length == 1 ? 'parada' : 'paradas'}'),
             if (starts.isNotEmpty && !_isNotes) fact(Icons.schedule_rounded, '${hhmm(starts.reduce(math.min))}–${hhmm(ends.reduce(math.max))}'),
@@ -3216,9 +3233,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
     final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
     final options = <(String, IconData, String, String)>[
-      if (_isNotes)
-        ('place', Icons.new_releases_rounded, 'Novedad', 'Algo nuevo, una mejora o un arreglo')
-      else ...[
+      if (_isNotes) ...[
+        ('place', Icons.new_releases_rounded, 'Novedad', 'Algo nuevo, una mejora o un arreglo'),
+        ('detour', Icons.alt_route_rounded, 'Próximamente', 'Un desvío: lo que viene en camino'),
+      ] else ...[
         ('place', Icons.place_rounded, 'Parada', 'Un lugar del recorrido'),
         ('transfer', Icons.route_rounded, 'Traslado', 'Cómo van de un lugar a otro'),
       ],
@@ -3330,8 +3348,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
         style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withValues(alpha: 0.6)),
       );
     } else if (section is PlaceSection) {
-      typeLabel = _isNotes ? "Novedad" : (section.unplanned ? "Desvío" : "Parada");
-      typeIcon = _isNotes ? Icons.new_releases_rounded : Icons.location_on_rounded;
+      typeLabel = _isNotes ? (section.unplanned ? "Próximamente" : "Novedad") : (section.unplanned ? "Desvío" : "Parada");
+      typeIcon = section.unplanned ? Icons.alt_route_rounded : (_isNotes ? Icons.new_releases_rounded : Icons.location_on_rounded);
       
       final titleController = _blockControllers.putIfAbsent(
         '${section.id}_title',
@@ -3436,7 +3454,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             controller: titleController,
             style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 19, color: fgP),
             decoration: InputDecoration(
-              hintText: _isNotes ? '¿Qué hay de nuevo?' : 'Nombre del lugar',
+              hintText: _isNotes ? (section.unplanned ? '¿Qué viene en camino?' : '¿Qué hay de nuevo?') : 'Nombre del lugar',
               hintStyle: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: subP.withValues(alpha: 0.6)),
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 6),
@@ -3492,7 +3510,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
           );
 
       final Widget chips = _isNotes
-          ? _buildReleaseTagPicker(section, isDark)
+          ? (section.unplanned
+              ? Text('Se verá como un desvío del recorrido: algo que todavía no llega.',
+                  style: GoogleFonts.inter(fontSize: 12, color: subP))
+              : _buildReleaseTagPicker(section, isDark))
           : Wrap(
         spacing: 6,
         runSpacing: 6,

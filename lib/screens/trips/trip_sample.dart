@@ -184,6 +184,15 @@ class TripSample {
           markdownText: '> [!TIP]\n> Las notas de versión ahora se escriben desde **Mi cuenta → Administración → Notas de versión**.',
         ),
         PlaceSection(
+          id: 'rn_next',
+          title: 'Recomendaciones según tu perfil cultural',
+          description: 'En Labs ya probamos una huella cultural de cada viajero para encontrar los lugares más afines. Pronto llegará a Lugares.',
+          rating: 0,
+          mainPhotoUrl: '',
+          secondaryPhotoUrls: const [],
+          unplanned: true,
+        ),
+        PlaceSection(
           id: 'rn_4',
           title: 'El corazón vuelve a ser rojo',
           description: 'La reacción de corazón se veía negra en algunos equipos; ahora usa el rojo clásico.',

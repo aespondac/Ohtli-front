@@ -4247,7 +4247,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
   /// Datos de la portada de unas notas de versión: fecha y cuántas novedades de cada tipo.
   List<(IconData, String)> _releaseFacts() {
     final t = _trip!;
-    final items = _sections.whereType<PlaceSection>().toList();
+    final items = _sections.whereType<PlaceSection>().where((p) => !p.unplanned).toList();
+    final upcoming = _sections.whereType<PlaceSection>().where((p) => p.unplanned).length;
     final facts = <(IconData, String)>[(Icons.event_rounded, _formatSpanishDate(t.travelDate ?? t.updatedAt).replaceFirst(RegExp(r'^el '), ''))];
     String count(String tag, int c) => switch (tag) {
           'mejora' => c == 1 ? '1 mejora' : '$c mejoras',
@@ -4258,6 +4259,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       final c = items.where((p) => (p.changeTag ?? 'nuevo') == tag).length;
       if (c > 0) facts.add((releaseTagIcon(tag), count(tag, c)));
     }
+    if (upcoming > 0) facts.add((Icons.alt_route_rounded, '$upcoming en camino'));
     return facts;
   }
 
@@ -4686,7 +4688,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         ],
       );
     } else if (_useTimeline && section is PlaceSection && _isNotes) {
-      final items = _sections.whereType<PlaceSection>().toList();
+      final items = _sections.whereType<PlaceSection>().where((p) => !p.unplanned).toList();
       final n = items.indexOf(section) + 1;
       final Color tag = releaseTagColor(section.changeTag);
       block = Column(
@@ -5116,8 +5118,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
               if (isPlace && _isNotes) ...[
                 CircleAvatar(
                   radius: 11,
-                  backgroundColor: releaseTagColor(s.changeTag),
-                  child: Icon(releaseTagIcon(s.changeTag), size: 12, color: Colors.white),
+                  backgroundColor: detour ? OhtliColors.cempasuchil.withValues(alpha: 0.18) : releaseTagColor(s.changeTag),
+                  child: Icon(detour ? Icons.alt_route_rounded : releaseTagIcon(s.changeTag),
+                      size: 12, color: detour ? OhtliColors.cempasuchil : Colors.white),
                 ),
                 const SizedBox(width: 10),
               ] else if (isPlace) ...[
@@ -5323,7 +5326,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
   /// Novedad de unas notas de versión: tarjeta con una franja del color de su etiqueta,
   /// título, texto y capturas.
   Widget _buildNoveltyViewer(PlaceSection item, bool isDark) {
-    final Color tag = releaseTagColor(item.changeTag);
+    final bool upcoming = item.unplanned;
+    final Color tag = upcoming ? OhtliColors.cempasuchil : releaseTagColor(item.changeTag);
     final photos = [item.mainPhotoUrl, ...item.secondaryPhotoUrls].where((u) => u.isNotEmpty).toList();
     Widget shot(String url, double ratio) => ClipRRect(
           borderRadius: BorderRadius.circular(14),
@@ -5353,8 +5357,21 @@ class _TripViewerPageState extends State<TripViewerPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (upcoming) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.alt_route_rounded, size: 14, color: isDark ? Color.lerp(tag, Colors.white, 0.3) : tag),
+                      const SizedBox(width: 6),
+                      Text('PRÓXIMAMENTE · EN CAMINO',
+                          style: GoogleFonts.inter(
+                              fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: isDark ? Color.lerp(tag, Colors.white, 0.3) : tag)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Text(
-                  item.title.trim().isNotEmpty ? item.title.trim() : 'Novedad',
+                  item.title.trim().isNotEmpty ? item.title.trim() : (upcoming ? 'Próximamente' : 'Novedad'),
                   style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.bold, height: 1.15, color: isDark ? Colors.white : OhtliColors.onyx),
                 ),
                 if (item.description.trim().isNotEmpty) ...[

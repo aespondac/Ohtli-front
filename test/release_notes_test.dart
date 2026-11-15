@@ -50,5 +50,7 @@ void main() {
     expect(trip.version, isNotEmpty);
     final tags = TripSample.releaseNotesSections().whereType<PlaceSection>().map((p) => p.changeTag).toSet();
     expect(tags, containsAll(kReleaseTags.keys));
+    // Y al menos un desvío "Próximamente"
+    expect(TripSample.releaseNotesSections().whereType<PlaceSection>().any((p) => p.unplanned), isTrue);
   });
 }
