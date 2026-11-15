@@ -654,7 +654,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
           'add',
           Icons.person_add_alt_1_outlined,
           'Agregar otra cuenta',
-          subtitle: 'Marca "Recordar sesión" para poder cambiar',
+          subtitle: 'Marca "Recordarme" al iniciar sesión para poder cambiar',
         ),
         const PopupMenuDivider(height: 8),
         entry('account', Icons.person_outline, 'Mi cuenta'),
@@ -705,8 +705,9 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       case 'shortcuts':
         _showShortcuts();
       case 'logout':
-        final uid = user?.uid;
-        if (uid != null) await SavedAccounts.forget(uid);
+        // Si la cuenta se recordó en este dispositivo, se guarda su sesión más reciente para
+        // el inicio rápido; se olvida con la × en la pantalla de inicio de sesión.
+        if (user != null && SavedAccounts.isSaved(user.uid)) await SavedAccounts.remember(user);
         widget.onLogout();
     }
   }
@@ -755,7 +756,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
           content: Text(
             'Tu cuenta actual no está recordada en este navegador, así que para volver a ella '
             'tendrás que iniciar sesión otra vez. Para poder cambiar con un clic, inicia sesión '
-            'con "Recordar sesión" marcado.',
+            'con "Recordarme en este dispositivo" marcado.',
             style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withOpacity(0.8)),
           ),
           actions: [

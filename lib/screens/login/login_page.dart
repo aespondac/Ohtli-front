@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:web/web.dart' as web;
 
 import '../../services/saved_accounts.dart';
 import '../../theme/colors.dart';
@@ -40,22 +41,86 @@ class _LoginPageState extends State<LoginPage> {
   bool _loadingEmail = false;
   bool _loadingGoogle = false;
   String? _error;
+  final _passwordFocus = FocusNode();
 
-  bool get _busy => _loadingEmail || _loadingGoogle;
+  /// Cuentas que se recordaron en este dispositivo ("Mantener la sesión abierta").
+  List<SavedAccount> _quick = SavedAccounts.list();
+
+  /// Con cuentas recordadas, primero se ofrecen ellas; el formulario completo aparece
+  /// con "Usar otra cuenta".
+  late bool _showFullForm = _quick.isEmpty;
+  String? _switchingUid;
+
+  bool get _busy => _loadingEmail || _loadingGoogle || _switchingUid != null;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
+
+  /// Entra con una cuenta recordada sin escribir la contraseña (misma sesión guardada que
+  /// usa el cambio de cuenta del menú). Si esa sesión ya no sirve, pide la contraseña.
+  Future<void> _quickLogin(SavedAccount account) async {
+    if (_busy) return;
+    if (!SavedAccounts.isSaved(account.uid)) {
+      _askPassword(account);
+      return;
+    }
+    setState(() {
+      _error = null;
+      _switchingUid = account.uid;
+    });
+    final result = await SavedAccounts.switchTo(account.uid);
+    if (result == SwitchAccountResult.switched) {
+      // Arranca la app desde el inicio con esa cuenta
+      web.window.location.assign('${web.window.location.origin}/');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _switchingUid = null);
+    if (result == SwitchAccountResult.expired) {
+      _askPassword(account, expired: true);
+    } else {
+      setState(() => _error = 'No pudimos entrar con esa cuenta. Intenta de nuevo o escribe tu contraseña.');
+    }
+  }
+
+  void _askPassword(SavedAccount account, {bool expired = true}) {
+    setState(() {
+      _quick = SavedAccounts.list();
+      _showFullForm = true;
+      _emailController.text = account.email;
+      _passwordController.clear();
+      _error = expired ? 'Por seguridad, escribe de nuevo la contraseña de ${_label(account)}.' : null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _passwordFocus.requestFocus();
+    });
+  }
+
+  Future<void> _forget(SavedAccount account) async {
+    await SavedAccounts.forget(account.uid);
+    if (!mounted) return;
+    setState(() {
+      _quick = SavedAccounts.list();
+      if (_quick.isEmpty) _showFullForm = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Se quitó ${_label(account)} de este dispositivo.')),
+    );
+  }
+
+  static String _label(SavedAccount a) => a.name.trim().isNotEmpty ? a.name.trim() : a.email;
 
   void _welcome(User? user) {
     final name = (user?.displayName?.trim().isNotEmpty ?? false) ? user!.displayName!.split(' ').first : null;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          name != null ? '¡Hola de nuevo, $name!' : '¡Hola de nuevo!',
+          name != null ? 'Sesión iniciada. ¡Qué gusto verte, $name!' : 'Sesión iniciada.',
           style: GoogleFonts.inter(fontWeight: FontWeight.w500),
         ),
         backgroundColor: OhtliColors.stormyTeal,
@@ -145,63 +210,225 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return AuthShell(
       onBack: widget.onBack,
-      title: 'Hola de nuevo',
-      subtitle: 'Entra para ver tus rutas, tus lugares guardados y lo que comparten tus amigos.',
-      children: [
-        AuthGoogleButton(onPressed: _busy ? null : _handleGoogleSignIn),
-        const SizedBox(height: 22),
-        const AuthDivider(),
-        const SizedBox(height: 22),
-        Form(
-          key: _formKey,
-          child: AutofillGroup(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                AuthField(
-                  controller: _emailController,
-                  label: 'Correo electrónico',
-                  hint: 'nombre@correo.com',
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email, AutofillHints.username],
-                  validator: validateEmail,
-                  onChanged: (_) => _error == null ? null : setState(() => _error = null),
-                ),
-                const SizedBox(height: 18),
-                AuthField(
-                  controller: _passwordController,
-                  label: 'Contraseña',
-                  obscure: _obscurePassword,
-                  onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
-                  autofillHints: const [AutofillHints.password],
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _handleLogin(),
-                  onChanged: (_) => _error == null ? null : setState(() => _error = null),
-                  validator: (v) => (v == null || v.isEmpty) ? 'Escribe tu contraseña.' : null,
-                  trailingLabel: AuthLink(
-                    '¿La olvidaste?',
-                    fontSize: 13,
-                    onTap: widget.onForgotPasswordClick,
-                  ),
-                ),
-              ],
+      title: 'Iniciar sesión',
+      logoHeader: true,
+      children: _showFullForm ? _fullForm() : _quickChoices(),
+    );
+  }
+
+  List<Widget> _quickChoices() {
+    return [
+      Text(
+        'Continuar como',
+        style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w600, color: OhtliColors.subtleText),
+      ),
+      const SizedBox(height: 10),
+      for (final account in _quick) ...[
+        _QuickAccountTile(
+          account: account,
+          label: _label(account),
+          needsPassword: !SavedAccounts.isSaved(account.uid),
+          loading: _switchingUid == account.uid,
+          enabled: !_busy,
+          onTap: () => _quickLogin(account),
+          onForget: () => _forget(account),
+        ),
+        const SizedBox(height: 10),
+      ],
+      if (_error != null) ...[
+        const SizedBox(height: 6),
+        AuthErrorBox(_error!),
+      ],
+      const SizedBox(height: 14),
+      SizedBox(
+        height: 52,
+        child: OutlinedButton.icon(
+          onPressed: _busy ? null : () => setState(() => _showFullForm = true),
+          icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
+          label: const Text('Usar otra cuenta'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: OhtliColors.onyx,
+            side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.16)),
+            shape: const StadiumBorder(),
+            textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+      const SizedBox(height: 22),
+      AuthSwitchLine(prompt: '¿Primera vez en Ohtli?', action: 'Crea tu cuenta', onTap: widget.onRegisterClick),
+    ];
+  }
+
+  List<Widget> _fullForm() {
+    return [
+      if (_quick.isNotEmpty) ...[
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                      _showFullForm = false;
+                      _error = null;
+                    }),
+            icon: const Icon(Icons.arrow_back_rounded, size: 18),
+            label: Text(_quick.length == 1 ? 'Volver a ${_label(_quick.first)}' : 'Volver a mis cuentas'),
+            style: TextButton.styleFrom(
+              foregroundColor: OhtliColors.accentText,
+              textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
             ),
           ),
         ),
         const SizedBox(height: 10),
-        _RememberRow(
-          value: _rememberSession,
-          onChanged: (v) => setState(() => _rememberSession = v),
-        ),
-        const SizedBox(height: 18),
-        if (_error != null) ...[
-          AuthErrorBox(_error!),
-          const SizedBox(height: 16),
-        ],
-        AuthPrimaryButton(label: 'Iniciar sesión', loading: _loadingEmail, onPressed: _handleLogin),
-        const SizedBox(height: 22),
-        AuthSwitchLine(prompt: '¿Primera vez en Ohtli?', action: 'Crea tu cuenta', onTap: widget.onRegisterClick),
       ],
+      AuthGoogleButton(onPressed: _busy ? null : _handleGoogleSignIn),
+      const SizedBox(height: 22),
+      const AuthDivider(),
+      const SizedBox(height: 22),
+      Form(
+        key: _formKey,
+        child: AutofillGroup(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AuthField(
+                controller: _emailController,
+                label: 'Correo electrónico',
+                hint: 'nombre@correo.com',
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email, AutofillHints.username],
+                validator: validateEmail,
+                onChanged: (_) => _error == null ? null : setState(() => _error = null),
+              ),
+              const SizedBox(height: 18),
+              AuthField(
+                controller: _passwordController,
+                focusNode: _passwordFocus,
+                label: 'Contraseña',
+                obscure: _obscurePassword,
+                onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+                autofillHints: const [AutofillHints.password],
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _handleLogin(),
+                onChanged: (_) => _error == null ? null : setState(() => _error = null),
+                validator: (v) => (v == null || v.isEmpty) ? 'Escribe tu contraseña.' : null,
+                trailingLabel: AuthLink(
+                  '¿La olvidaste?',
+                  fontSize: 13,
+                  onTap: widget.onForgotPasswordClick,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 10),
+      _RememberRow(
+        value: _rememberSession,
+        onChanged: (v) => setState(() => _rememberSession = v),
+      ),
+      const SizedBox(height: 18),
+      if (_error != null) ...[
+        AuthErrorBox(_error!),
+        const SizedBox(height: 16),
+      ],
+      AuthPrimaryButton(label: 'Iniciar sesión', loading: _loadingEmail, onPressed: _handleLogin),
+      const SizedBox(height: 22),
+      AuthSwitchLine(prompt: '¿Primera vez en Ohtli?', action: 'Crea tu cuenta', onTap: widget.onRegisterClick),
+    ];
+  }
+}
+
+/// Una cuenta recordada: foto o iniciales, nombre y correo. Al tocarla entra; la × la
+/// quita de este dispositivo.
+class _QuickAccountTile extends StatelessWidget {
+  const _QuickAccountTile({
+    required this.account,
+    required this.label,
+    required this.needsPassword,
+    required this.loading,
+    required this.enabled,
+    required this.onTap,
+    required this.onForget,
+  });
+
+  final SavedAccount account;
+  final String label;
+  final bool needsPassword;
+  final bool loading;
+  final bool enabled;
+  final VoidCallback onTap;
+  final VoidCallback onForget;
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = account.photoURL;
+    final secondary = needsPassword ? 'Escribe tu contraseña para entrar' : account.email;
+    return Material(
+      color: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: OhtliColors.stormyTeal,
+                foregroundImage: (photo != null && photo.isNotEmpty) ? NetworkImage(photo) : null,
+                onForegroundImageError: (photo != null && photo.isNotEmpty) ? (_, _) {} : null,
+                child: Text(
+                  account.initials,
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      secondary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
+                    ),
+                  ],
+                ),
+              ),
+              if (loading)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.2, color: OhtliColors.accentText),
+                  ),
+                )
+              else ...[
+                Icon(Icons.arrow_forward_rounded, size: 20, color: OhtliColors.accentText),
+                IconButton(
+                  onPressed: enabled ? onForget : null,
+                  tooltip: 'Quitar $label de este dispositivo',
+                  icon: Icon(Icons.close_rounded, size: 18, color: OhtliColors.subtleText),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -236,7 +463,7 @@ class _RememberRow extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Mantener la sesión abierta en este dispositivo',
+                  'Recordarme en este dispositivo para entrar con un toque',
                   style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText),
                 ),
               ),

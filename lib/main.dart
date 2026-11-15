@@ -16,6 +16,7 @@ import 'screens/landing/landing_page.dart';
 import 'screens/home_page.dart';
 import 'screens/login/forgot_password_page.dart';
 import 'screens/login/login_page.dart';
+import 'screens/login/mobile_welcome_page.dart';
 import 'screens/register/register_page.dart';
 import 'screens/login/auth_action_page.dart';
 import 'screens/account/account_management_page.dart';
@@ -1037,17 +1038,24 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register);
         },
       );
+    } else if (isMobile && _currentScreen == OhtliScreen.mobileWelcome) {
+      // Portada de bienvenida del teléfono: unirse o iniciar sesión
+      activeView = MobileWelcomePage(
+        onBack: _goPublicHome,
+        onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
+        onJoinClick: () => _navigateTo(OhtliScreen.mobileRegister),
+      );
     } else if (_currentScreen == OhtliScreen.register || _currentScreen == OhtliScreen.mobileRegister) {
       // Una sola pantalla de registro para escritorio y teléfono
       activeView = RegisterPage(
-        onBack: _goPublicHome,
+        onBack: isMobile ? () => _navigateTo(OhtliScreen.mobileWelcome) : _goPublicHome,
         onLoginClick: () => _navigateTo(_loginScreen),
         onRegisterSuccess: _onAuthSuccess,
       );
     } else {
-      // Entrar: login, mobileLogin y mobileWelcome muestran la misma pantalla
+      // Entrar (login y mobileLogin; mobileWelcome en escritorio)
       activeView = LoginPage(
-        onBack: _goPublicHome,
+        onBack: isMobile ? () => _navigateTo(OhtliScreen.mobileWelcome) : _goPublicHome,
         onRegisterClick: () => _navigateTo(_registerScreen),
         onLoginSuccess: _onAuthSuccess,
         onForgotPasswordClick: () => _navigateTo(OhtliScreen.forgotPassword),

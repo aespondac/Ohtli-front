@@ -14,10 +14,11 @@ class AuthShell extends StatelessWidget {
     super.key,
     required this.onBack,
     required this.title,
-    required this.subtitle,
+    this.subtitle = '',
     required this.children,
     this.photo = 0,
     this.backTooltip = 'Volver',
+    this.logoHeader = false,
   });
 
   final VoidCallback onBack;
@@ -28,6 +29,10 @@ class AuthShell extends StatelessWidget {
 
   /// Índice de [CdmxPhotos.covers] para la foto del panel.
   final int photo;
+
+  /// Encabeza el formulario con el logotipo de Ohtli en lugar del título y el subtítulo
+  /// ([title] queda solo para lectores de pantalla). En teléfono se omite la franja de foto.
+  final bool logoHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -47,18 +52,24 @@ class AuthShell extends StatelessWidget {
                     Row(
                       children: [
                         _BackButton(onBack: onBack, tooltip: backTooltip),
-                        const Spacer(),
-                        SvgPicture.asset('assets/logo.svg', height: 26),
-                        const Spacer(),
-                        const SizedBox(width: 48),
+                        if (!logoHeader) ...[
+                          const Spacer(),
+                          SvgPicture.asset('assets/logo.svg', height: 26),
+                          const Spacer(),
+                          const SizedBox(width: 48),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 132,
-                      child: _PhotoPanel(photo: photo, compact: true),
-                    ),
-                    const SizedBox(height: 28),
+                    if (logoHeader)
+                      const SizedBox(height: 24)
+                    else ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 132,
+                        child: _PhotoPanel(photo: photo, compact: true),
+                      ),
+                      const SizedBox(height: 28),
+                    ],
                     form,
                   ],
                 ),
@@ -69,7 +80,7 @@ class AuthShell extends StatelessWidget {
                     flex: 10,
                     child: Padding(
                       padding: const EdgeInsets.all(20),
-                      child: _PhotoPanel(photo: photo),
+                      child: _PhotoPanel(photo: photo, showLogo: !logoHeader),
                     ),
                   ),
                   Expanded(
@@ -100,6 +111,23 @@ class AuthShell extends StatelessWidget {
   }
 
   Widget _form(bool isMobile) {
+    if (logoHeader) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            header: true,
+            label: title,
+            child: ExcludeSemantics(
+              child: Center(child: SvgPicture.asset('assets/logo.svg', height: isMobile ? 56 : 64)),
+            ),
+          ),
+          SizedBox(height: isMobile ? 32 : 40),
+          ...children,
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -147,10 +175,11 @@ class _BackButton extends StatelessWidget {
 
 /// Foto de la ciudad con el lema de la portada.
 class _PhotoPanel extends StatelessWidget {
-  const _PhotoPanel({required this.photo, this.compact = false});
+  const _PhotoPanel({required this.photo, this.compact = false, this.showLogo = true});
 
   final int photo;
   final bool compact;
+  final bool showLogo;
 
   @override
   Widget build(BuildContext context) {
@@ -181,7 +210,7 @@ class _PhotoPanel extends StatelessWidget {
               ),
             ),
           ),
-          if (!compact)
+          if (!compact && showLogo)
             Positioned(
               top: 32,
               left: 36,
@@ -238,6 +267,7 @@ class AuthField extends StatelessWidget {
     this.onChanged,
     this.validator,
     this.trailingLabel,
+    this.focusNode,
   });
 
   final TextEditingController controller;
@@ -256,6 +286,7 @@ class AuthField extends StatelessWidget {
 
   /// A la derecha de la etiqueta (p. ej. "¿Olvidaste tu contraseña?").
   final Widget? trailingLabel;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +316,7 @@ class AuthField extends StatelessWidget {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
+          focusNode: focusNode,
           obscureText: obscure,
           keyboardType: keyboardType,
           autofillHints: autofillHints,
