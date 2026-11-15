@@ -1110,23 +1110,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               color: OhtliColors.stormyTeal,
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: List.generate(3, (i) {
-              return Expanded(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  height: 4,
-                  margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
-                  decoration: BoxDecoration(
-                    color: i <= step ? OhtliColors.stormyTeal : OhtliColors.cardBorder,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              );
-            }),
-          ),
         ],
       ),
     );
