@@ -786,7 +786,7 @@ class _ExplorePageState extends State<ExplorePage> {
             background: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
             pageBuilder: (_) => DeferredView(
               load: trips.loadLibrary,
-              builder: (_) => trips.TripViewerPage(trip: trip, tripId: pinned.tripId, authorId: pinned.authorId),
+              builder: (_) => trips.TripViewerPage(trip: trip, tripId: pinned.tripId, authorId: pinned.authorId, presentedAsCard: true),
             ),
           ),
         );

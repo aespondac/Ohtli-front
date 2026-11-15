@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:barcode/barcode.dart';
@@ -55,6 +56,10 @@ class TripViewerPage extends StatefulWidget {
   /// Vista previa desde el editor (E6): se muestran estos bloques sin leer Firestore.
   final List<TripSection>? previewSections;
 
+  /// Abierto desde una tarjeta (crónica destacada de Explorar): se cierra con «Cerrar» o
+  /// deslizando hacia abajo estando arriba del todo, y vuelve a la tarjeta.
+  final bool presentedAsCard;
+
   const TripViewerPage({
     super.key,
     this.trip,
@@ -64,6 +69,7 @@ class TripViewerPage extends StatefulWidget {
     this.onLoginRedirect,
     this.onBackToDashboard,
     this.previewSections,
+    this.presentedAsCard = false,
   });
 
   @override
@@ -85,6 +91,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   // Lectura: progreso, índice y saltos a bloques (V2/V3)
   final ScrollController _scrollController = ScrollController();
+
+  // Cerrar deslizando hacia abajo (solo si se abrió desde una tarjeta).
+  static const double _kPullClose = 150;
+  final ValueNotifier<double> _pull = ValueNotifier<double>(0);
+  bool _pullSnapping = false;
+  bool _closingCard = false;
+  bool _wasAtTop = true;
+  DateTime _atTopSince = DateTime.now();
+  Timer? _pullDecay;
   final ValueNotifier<double> _readProgress = ValueNotifier(0);
   final Map<String, GlobalKey> _blockKeys = {};
   final GlobalKey _mapKey = GlobalKey();
@@ -237,6 +252,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     _reactionsSub?.cancel();
     _scrollController.dispose();
     _readProgress.dispose();
+    _pullDecay?.cancel();
+    _pull.dispose();
     super.dispose();
   }
 
@@ -244,6 +261,127 @@ class _TripViewerPageState extends State<TripViewerPage> {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     _readProgress.value = pos.maxScrollExtent <= 0 ? 0 : (pos.pixels / pos.maxScrollExtent).clamp(0.0, 1.0);
+    final bool atTop = pos.pixels <= pos.minScrollExtent + 0.5;
+    if (atTop && !_wasAtTop) _atTopSince = DateTime.now();
+    _wasAtTop = atTop;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cerrar la crónica abierta desde una tarjeta
+  // ---------------------------------------------------------------------------
+  bool get _atTop =>
+      !_scrollController.hasClients || _scrollController.position.pixels <= _scrollController.position.minScrollExtent + 0.5;
+
+  /// Suma [d] al jalón hacia abajo. Con rueda o trackpad no cuenta si apenas se llegó
+  /// arriba haciendo scroll (para no cerrar por inercia) y se cierra al pasar el umbral.
+  void _pullBy(double d, {required bool wheel}) {
+    if (!widget.presentedAsCard || _closingCard) return;
+    if (wheel && DateTime.now().difference(_atTopSince) < const Duration(milliseconds: 450)) return;
+    _pullSnapping = false;
+    _pull.value = (_pull.value + d).clamp(0.0, _kPullClose * 1.3);
+    if (wheel) {
+      if (_pull.value >= _kPullClose) {
+        _closeCard();
+        return;
+      }
+      _pullDecay?.cancel();
+      _pullDecay = Timer(const Duration(milliseconds: 450), _releasePull);
+    }
+  }
+
+  void _releasePull() {
+    if (_closingCard || _pull.value == 0) return;
+    if (_pull.value >= _kPullClose) {
+      _closeCard();
+      return;
+    }
+    _pullSnapping = true;
+    _pull.value = 0;
+  }
+
+  void _closeCard() {
+    if (_closingCard) return;
+    _closingCard = true;
+    _pullDecay?.cancel();
+    Navigator.of(context).maybePop();
+  }
+
+  bool _onCardScroll(ScrollNotification n) {
+    if (!widget.presentedAsCard || n.depth != 0) return false;
+    if (n is OverscrollNotification && n.dragDetails != null && n.overscroll < 0) {
+      _pullBy(-n.overscroll, wheel: false);
+    } else if (n is ScrollUpdateNotification && n.dragDetails != null) {
+      final double delta = n.scrollDelta ?? 0;
+      if (n.metrics.pixels < n.metrics.minScrollExtent) {
+        // Física con rebote (iOS): la página ya se pasa del borde
+        _pullSnapping = false;
+        _pull.value = (n.metrics.minScrollExtent - n.metrics.pixels).clamp(0.0, _kPullClose * 1.3);
+      } else if (_pull.value > 0 && delta > 0) {
+        _pullBy(-delta, wheel: false);
+      }
+    } else if (n is ScrollEndNotification) {
+      _releasePull();
+    }
+    return false;
+  }
+
+  /// Envuelve la página: al jalar se encoge y se redondea, con un aviso arriba.
+  Widget _wrapPullToClose(Widget page, bool isDark) {
+    return Listener(
+      onPointerSignal: (e) {
+        if (e is PointerScrollEvent && e.scrollDelta.dy < 0 && _atTop) _pullBy(-e.scrollDelta.dy * 0.6, wheel: true);
+      },
+      child: ValueListenableBuilder<double>(
+        valueListenable: _pull,
+        child: page,
+        builder: (context, v, child) {
+          return TweenAnimationBuilder<double>(
+            tween: Tween(end: (v / _kPullClose).clamp(0.0, 1.0)),
+            duration: _pullSnapping ? const Duration(milliseconds: 220) : Duration.zero,
+            curve: Curves.easeOutCubic,
+            child: child,
+            builder: (context, p, child) => Stack(
+              children: [
+                Transform.translate(
+                  offset: Offset(0, 48 * p),
+                  child: Transform.scale(
+                    scale: 1 - 0.08 * p,
+                    alignment: Alignment.topCenter,
+                    child: ClipRRect(borderRadius: BorderRadius.circular(28 * p), child: child),
+                  ),
+                ),
+                if (p > 0.04)
+                  Positioned(
+                    top: 12,
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Opacity(
+                          opacity: p,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(20)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(p >= 1 ? Icons.close_rounded : Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.white),
+                                const SizedBox(width: 6),
+                                Text(p >= 1 ? 'Suelta para cerrar' : 'Desliza para cerrar',
+                                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -3187,7 +3325,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
         // Mensajes al margen de cada bloque cuando hay espacio a la derecha.
         _marginLayout = _socialVisible && box.maxWidth - asideInset >= 1060;
         final double readingWidth = _marginLayout ? 1040 : 820;
-        return SingleChildScrollView(
+        return NotificationListener<ScrollNotification>(
+          onNotification: _onCardScroll,
+          child: SingleChildScrollView(
           controller: _scrollController,
           child: Column(
             children: [
@@ -3231,6 +3371,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               SizedBox(height: _tripMode ? 360 : 110),
             ],
           ),
+        ),
         );
       },
     );
@@ -3396,7 +3537,35 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     child: Center(child: CircularProgressIndicator(color: Colors.white)),
                   ),
                 ),
-              if (!widget.isPublicLink && !isDesktop)
+              if (widget.presentedAsCard)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 12,
+                  left: 16,
+                  child: Material(
+                    color: (isDark ? const Color(0xFF1E1E22) : Colors.white).withValues(alpha: 0.9),
+                    shape: const StadiumBorder(),
+                    elevation: 3,
+                    child: InkWell(
+                      customBorder: const StadiumBorder(),
+                      onTap: _closeCard,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 9, vertical: 9),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.close_rounded, size: 18, color: isDark ? Colors.white : OhtliColors.onyx),
+                            if (isDesktop) ...[
+                              const SizedBox(width: 6),
+                              Text('Cerrar',
+                                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else if (!widget.isPublicLink && !isDesktop)
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 12,
                   left: 16,
@@ -3474,7 +3643,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       ],
     );
 
-    return Scaffold(
+    final Widget page = Scaffold(
       backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
       appBar: showTopNavbar ? _buildPublicNavbar(hasActiveSession, isDark) : null,
       body: bodyContent,
@@ -3510,6 +3679,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             )
           : null,
     );
+    return widget.presentedAsCard ? _wrapPullToClose(page, isDark) : page;
   }
 
   PreferredSizeWidget _buildPublicNavbar(bool isLoggedIn, bool isDark) {
