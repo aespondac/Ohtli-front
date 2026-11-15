@@ -52,7 +52,10 @@ class _PoiCardState extends State<PoiCard> {
 
   /// Sin colonia conocida se muestra el horario en vez de repetir "Ciudad de México" en cada tarjeta.
   bool get _hasArea => widget.poi.coloniaAlcaldiaDisplay != 'Ciudad de México';
-  String get _subtitleText => _hasArea ? widget.poi.coloniaAlcaldiaDisplay : widget.poi.openingHoursDisplay;
+  String get _subtitleText => _hasArea
+      ? widget.poi.coloniaAlcaldiaDisplay
+      // Sin horario real no se muestra el típico de la categoría como si fuera el del lugar
+      : (widget.poi.hasOpeningHours ? widget.poi.openingHoursDisplay : 'Horario por confirmar');
   IconData _subtitleIcon({bool outlined = false}) => _hasArea
       ? (outlined ? Icons.location_on_outlined : Icons.location_on_rounded)
       : Icons.schedule_rounded;

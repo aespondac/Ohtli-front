@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../theme/cdmx_photos.dart';
+import '../utils/opening_hours.dart';
 
 class PoiLocation {
   final double lat;
@@ -568,8 +569,13 @@ class Poi {
     }
   }
 
+  /// Si el lugar tiene un horario real (no el típico de su categoría).
+  bool get hasOpeningHours => formatOpeningHours(openingHours).isNotEmpty;
+
+  /// Horario en español; sin dato, el típico de la categoría (mostrarlo como aproximado).
   String get openingHoursDisplay {
-    if (openingHours.isNotEmpty) return openingHours;
+    final formatted = formatOpeningHours(openingHours);
+    if (formatted.isNotEmpty) return formatted;
     switch (category) {
       case 'cafe':
         return 'Lun - Dom: 07:30 - 21:00';

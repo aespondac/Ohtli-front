@@ -815,7 +815,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
 
   // Datos clave en tarjetas
   Widget _buildQuickFacts(Poi poi, bool isMobile) {
-    final hasRealHours = poi.openingHours.trim().isNotEmpty;
+    final hasRealHours = poi.hasOpeningHours;
     final cuisine = _cuisineDisplay;
     final facts = [
       _QuickFact(Icons.payments_rounded, poi.priceIsEstimate ? 'Precio estimado' : 'Precio', poi.priceRangeEstimate.replaceAll(', estimado', ''), OhtliColors.stormyTeal),
