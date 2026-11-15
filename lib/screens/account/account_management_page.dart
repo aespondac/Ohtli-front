@@ -2177,7 +2177,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Correo electrónico (no se puede cambiar)',
+                    labelText: 'Correo (no se puede cambiar)',
                     labelStyle: GoogleFonts.inter(
                       color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
@@ -2813,6 +2813,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               child: _activeAddresses.isEmpty
                   ? Align(
                       alignment: Alignment.topCenter,
+                      heightFactor: 1, // a la medida del aviso, sin estirar la tarjeta
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
