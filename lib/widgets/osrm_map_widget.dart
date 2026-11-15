@@ -32,6 +32,10 @@ class OsrmMapWidget extends StatefulWidget {
   /// Oculta la etiqueta de ruta y los botones de mapas externos (p. ej. en el modal de un lugar,
   /// que ya ofrece "Cómo llegar"). Por defecto se muestran.
   final bool compact;
+  /// Medio de traslado de la ruta (ícono, etiqueta y modo de Google Maps). Por defecto, a pie.
+  final IconData modeIcon;
+  final String modeLabel;
+  final String googleTravelMode;
 
   const OsrmMapWidget({
     super.key,
@@ -46,6 +50,9 @@ class OsrmMapWidget extends StatefulWidget {
     this.onResetView,
     this.onStopSelected,
     this.compact = false,
+    this.modeIcon = Icons.directions_walk_rounded,
+    this.modeLabel = 'Caminando',
+    this.googleTravelMode = 'walking',
   });
 
   @override
@@ -547,7 +554,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
         ? _parsedStops.sublist(1, _parsedStops.length - 1).map((s) => '${s['lat']},${s['lng']}').join('|')
         : '';
     final url =
-        'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination${waypoints.isNotEmpty ? '&waypoints=$waypoints' : ''}&travelmode=walking';
+        'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination${waypoints.isNotEmpty ? '&waypoints=$waypoints' : ''}&travelmode=${widget.googleTravelMode}';
     if (kIsWeb) {
       web.window.open(url, '_blank');
     }
@@ -631,15 +638,15 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.directions_walk_rounded,
+                  Icon(
+                    widget.modeIcon,
                     color: OhtliColors.stormyTeal,
                     size: 16,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      widget.title ?? 'Caminando · Ruta OSRM · ${_parsedStops.length} paradas',
+                      widget.title ?? '${widget.modeLabel} · Ruta OSRM · ${_parsedStops.length} paradas',
                       style: GoogleFonts.inter(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
@@ -941,14 +948,14 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
-                          Icons.directions_walk_rounded,
+                        Icon(
+                          widget.modeIcon,
                           color: OhtliColors.stormyTeal,
                           size: 14,
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          widget.title ?? 'Caminando · OpenStreetMap & OSRM',
+                          widget.title ?? '${widget.modeLabel} · OpenStreetMap & OSRM',
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,

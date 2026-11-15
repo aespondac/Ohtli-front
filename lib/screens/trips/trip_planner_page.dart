@@ -1250,7 +1250,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         // Tarjeta 1: Obtener planes con IA
         _buildBifurcationCard(
           title: 'Obtener planes con IA',
-          subtitle: 'Te proponemos 3 rutas según tus gustos y presupuesto, con traslados a pie bien calculados.',
+          subtitle: 'Te proponemos 3 rutas según tus gustos y presupuesto, con traslados bien calculados.',
           badge: 'RECOMENDADO',
           badgeColor: OhtliColors.stormyTeal,
           icon: Icons.explore_rounded,
@@ -1896,7 +1896,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         const SizedBox(height: 8),
         Text(
           _currentAgentName == 'Generador'
-              ? 'Trazando el recorrido y calculando los traslados a pie...'
+              ? 'Trazando el recorrido y calculando los traslados ${_selectedTransportMode == 'walking' ? 'a pie' : '(${plannerModeOf(_selectedTransportMode).label.toLowerCase()})'}...'
               : (_currentAgentName == 'Recomendador'
                   ? 'Dando los últimos toques a cada propuesta...'
                   : 'Buscando los lugares que van con tu estilo...'),
@@ -1924,7 +1924,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               const Divider(height: 24),
               _buildAgentStateRow(
                 agentLabel: 'Trazamos el recorrido',
-                taskDesc: 'Ordenamos las paradas para que camines lo justo',
+                taskDesc: _selectedTransportMode == 'walking'
+                    ? 'Ordenamos las paradas para que camines lo justo'
+                    : 'Ordenamos las paradas para que te traslades lo justo',
                 isActive: _currentAgentName == 'Generador',
                 isDone: _blackboardProgress > 70,
               ),
@@ -3217,14 +3219,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final nextStop = rawStops[idx + 1] as Map<String, dynamic>;
       final nextWalkMins = (nextStop['travel_time_from_prev_mins'] as num?)?.toInt() ?? 10;
       final nextDistKm = (nextStop['travel_distance_from_prev_km'] as num?)?.toDouble() ?? 0.8;
+      // Medio de este tramo según el motor (los tramos cortos van a pie aunque el medio sea otro).
+      final legMode = plannerModeOf(nextStop['transport_mode']?.toString() ?? 'walking');
+      final legCost = (nextStop['transport_cost_mxn'] as num?)?.toDouble() ?? 0.0;
+      final legLabel = legMode.id == 'walking' ? 'a pie' : legMode.label.toLowerCase();
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
-            const Icon(Icons.directions_walk_rounded, size: 15, color: OhtliColors.stormyTeal),
+            Icon(legMode.icon, size: 15, color: OhtliColors.stormyTeal),
             const SizedBox(width: 6),
             Text(
-              '$nextWalkMins min · ${nextDistKm.toStringAsFixed(1)} km a pie',
+              '$nextWalkMins min · ${nextDistKm.toStringAsFixed(1)} km $legLabel'
+              '${legCost > 0 ? ' · ~\$${legCost.toStringAsFixed(0)}' : ''}',
               style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: textSecondary),
             ),
           ],
@@ -3345,6 +3352,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               height: isMobile ? 260 : 380,
               isDark: isDark,
               onStopSelected: (stop) => _openStopPoiModal(stop),
+              modeIcon: optionMode.icon,
+              modeLabel: optionMode.label,
+              googleTravelMode: optionMode.googleTravelMode,
             ),
           ),
         ),
