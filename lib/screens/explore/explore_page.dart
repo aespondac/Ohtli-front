@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, avoid_print
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,7 +14,6 @@ import '../../config/editorial.dart';
 import '../../services/explore_config_service.dart';
 import '../../services/saved_places.dart';
 import '../../widgets/ohtli_ui.dart';
-import '../../widgets/ohtli_service_icon.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import '../../widgets/trip_polaroid.dart';
@@ -95,6 +95,22 @@ class _ExplorePageState extends State<ExplorePage> {
   final Map<String, Future<DocumentSnapshot>> _authorFutures = {};
   int _pinnedPage = 0;
 
+  /// El carrusel de destacadas avanza solo; se pausa con el cursor encima.
+  Timer? _autoplay;
+  bool _carouselHovered = false;
+  static const Duration _autoplayEvery = Duration(seconds: 7);
+
+  void _restartAutoplay() {
+    _autoplay?.cancel();
+    _autoplay = Timer.periodic(_autoplayEvery, (_) {
+      if (!mounted || _carouselHovered || _featured.length < 2 || !_pinnedController.hasClients) return;
+      // Solo si Explorar está a la vista (no con otra pantalla encima).
+      if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      final next = (_pinnedPage + 1) % _featured.length;
+      _pinnedController.animateToPage(next, duration: const Duration(milliseconds: 650), curve: Curves.easeInOutCubic);
+    });
+  }
+
   // Historias destacadas: últimas notas de versión del equipo + crónicas fijadas.
   List<PinnedStory> _featured = List<PinnedStory>.from(kPinnedStories);
 
@@ -107,6 +123,7 @@ class _ExplorePageState extends State<ExplorePage> {
     _placesFuture = _loadDailyPlaces();
     _communityFuture = _loadCommunityTrips();
     _loadFeatured();
+    _restartAutoplay();
   }
 
   // Viajes que el superusuario eligió para el bloque principal (null = destacados por defecto)
@@ -169,6 +186,7 @@ class _ExplorePageState extends State<ExplorePage> {
 
   @override
   void dispose() {
+    _autoplay?.cancel();
     _pinnedController.dispose();
     super.dispose();
   }
@@ -335,15 +353,6 @@ class _ExplorePageState extends State<ExplorePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.explore_rounded, size: 14, color: OhtliColors.accentText),
-              const SizedBox(width: 6),
-              Text('EXPLORAR · CIUDAD DE MÉXICO', style: OhtliUi.eyebrow(OhtliColors.accentText)),
-            ],
-          ),
-          const SizedBox(height: 8),
           Text(
             firstName.isNotEmpty ? '$salute, $firstName' : salute,
             style: OhtliUi.title(size: isMobile ? 28 : 38),
@@ -411,17 +420,28 @@ class _ExplorePageState extends State<ExplorePage> {
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: gutter),
+      // Una sola línea: en pantallas angostas se desliza de lado.
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final columns = constraints.maxWidth < 560 ? 2 : 4;
-          const spacing = 12.0;
-          final itemWidth = (constraints.maxWidth - spacing * (columns - 1)) / columns;
-          return Wrap(
-            spacing: spacing,
-            runSpacing: spacing,
-            children: actions
-                .map((a) => SizedBox(width: itemWidth, child: _QuickActionCard(action: a)))
-                .toList(),
+          const spacing = 10.0;
+          if (constraints.maxWidth < 640) {
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              child: Row(
+                children: [
+                  for (final a in actions) Padding(padding: const EdgeInsets.only(right: spacing), child: _QuickActionCard(action: a)),
+                ],
+              ),
+            );
+          }
+          return Row(
+            children: [
+              for (var i = 0; i < actions.length; i++) ...[
+                if (i > 0) const SizedBox(width: spacing),
+                Expanded(child: _QuickActionCard(action: actions[i])),
+              ],
+            ],
           );
         },
       ),
@@ -640,20 +660,29 @@ class _ExplorePageState extends State<ExplorePage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildPinnedStoriesCarousel(bool isMobile, bool isDark) {
-    final double height = isMobile ? 420.0 : 340.0;
+    // Ganó el espacio de la etiqueta y de los accesos (ahora de una línea).
+    final double height = isMobile ? 470.0 : 440.0;
 
-    return SizedBox(
+    return MouseRegion(
+      onEnter: (_) => _carouselHovered = true,
+      onExit: (_) => _carouselHovered = false,
+      child: SizedBox(
       height: height,
       width: double.infinity,
       child: PageView.builder(
         controller: _pinnedController,
         itemCount: _featured.length,
-        onPageChanged: (page) => setState(() => _pinnedPage = page),
+        onPageChanged: (page) {
+          setState(() => _pinnedPage = page);
+          // Si la persona deslizó, el siguiente cambio espera el tiempo completo.
+          _restartAutoplay();
+        },
         itemBuilder: (context, index) {
           final pinned = _featured[index];
           return _buildPinnedStoryCard(pinned, isMobile, isDark);
         },
       ),
+    ),
     );
   }
 
@@ -838,56 +867,47 @@ class _QuickActionCardState extends State<_QuickActionCard> {
   @override
   Widget build(BuildContext context) {
     final a = widget.action;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: a.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOutCubic,
-          height: 96,
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-          transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [a.color.withValues(alpha: _hover ? 0.20 : 0.13), OhtliColors.cardBg],
+    // Botón sólido de una línea: ícono, título y flecha.
+    return Semantics(
+      button: true,
+      label: '${a.title}: ${a.subtitle}',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: a.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            transform: Matrix4.translationValues(0, _hover ? -2 : 0, 0),
+            decoration: BoxDecoration(
+              color: _hover ? Color.lerp(a.color, Colors.black, 0.12) : a.color,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: OhtliUi.softShadow(color: a.color, raised: _hover),
             ),
-            border: Border.all(color: _hover ? a.color.withValues(alpha: 0.45) : a.color.withValues(alpha: 0.16)),
-            boxShadow: OhtliUi.softShadow(color: _hover ? a.color : null, raised: _hover),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  OhtliServiceIcon(icon: a.icon, color: a.color, size: 34),
-                  const Spacer(),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 240),
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(color: _hover ? a.color : Colors.white.withValues(alpha: 0.8), shape: BoxShape.circle),
-                    child: Icon(Icons.arrow_outward_rounded, size: 16, color: _hover ? Colors.white : a.color),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(a.title,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(a.icon, size: 19, color: Colors.white),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(a.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -0.2)),
-                  Text(a.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12.5)),
-                ],
-              ),
-            ],
+                      style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.1)),
+                ),
+                const SizedBox(width: 8),
+                AnimatedSlide(
+                  duration: const Duration(milliseconds: 200),
+                  offset: Offset(_hover ? 0.15 : 0, 0),
+                  child: Icon(Icons.arrow_forward_rounded, size: 17, color: Colors.white.withValues(alpha: 0.85)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
