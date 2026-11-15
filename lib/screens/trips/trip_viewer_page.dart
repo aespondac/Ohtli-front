@@ -4647,36 +4647,45 @@ class _TripViewerPageState extends State<TripViewerPage> {
         );
 
     if (_asideCollapsed) {
-      Widget railButton(IconData icon, String tip, VoidCallback onTap, {bool accent = false}) => Tooltip(
-            message: tip,
-            child: IconButton(
-              onPressed: onTap,
-              icon: Icon(icon, size: 21, color: accent ? OhtliColors.stormyTeal : (isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.7))),
+      // Plegado: cada acceso es un botón flotante independiente (como los bloques del panel).
+      Widget bubble(IconData icon, String tip, VoidCallback onTap, {bool accent = false}) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Tooltip(
+              message: tip,
+              child: DecoratedBox(
+                decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: _floatShadow(isDark)),
+                child: Material(
+                  color: accent ? OhtliColors.stormyTeal : bg,
+                  shape: CircleBorder(side: BorderSide(color: accent ? Colors.transparent : border)),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onTap,
+                    child: SizedBox(
+                      width: 46,
+                      height: 46,
+                      child: Icon(icon, size: 21, color: accent ? Colors.white : (isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.75))),
+                    ),
+                  ),
+                ),
+              ),
             ),
           );
-      // Riel plegado: una píldora flotante con los accesos.
+      final bubbles = <Widget>[
+        bubble(Icons.keyboard_double_arrow_left_rounded, 'Abrir panel', () => _setAsideCollapsed(false), accent: true),
+        if (_sections.any((s) => s is PlaceSection)) bubble(Icons.map_rounded, 'Ruta completa', () => _showRouteModal(isDark)),
+        bubble(Icons.toc_rounded, 'Índice', () => _setAsideCollapsed(false)),
+        if (member) bubble(Icons.handyman_rounded, 'Herramientas del viaje', () => _setAsideCollapsed(false)),
+        if (showEditAction)
+          bubble(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, canEdit ? 'Editar' : 'Fe de erratas', () => _openEditorOrErrata(canEdit)),
+      ];
       return SafeArea(
         left: false,
-        child: Align(
-          alignment: Alignment.topRight,
-          child: Container(
-            width: _kRailW,
-            margin: const EdgeInsets.all(_kAsideGap),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: floating(_kRailW / 2),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                railButton(Icons.keyboard_double_arrow_left_rounded, 'Abrir panel', () => _setAsideCollapsed(false), accent: true),
-                Container(width: 24, height: 1, margin: const EdgeInsets.symmetric(vertical: 4), color: border),
-                if (_sections.any((s) => s is PlaceSection)) railButton(Icons.map_rounded, 'Ruta completa', () => _showRouteModal(isDark)),
-                railButton(Icons.toc_rounded, 'Índice', () => _setAsideCollapsed(false)),
-                if (member) railButton(Icons.handyman_rounded, 'Herramientas del viaje', () => _setAsideCollapsed(false)),
-                if (showEditAction)
-                  railButton(canEdit ? Icons.edit_rounded : Icons.history_edu_rounded, canEdit ? 'Editar' : 'Fe de erratas',
-                      () => _openEditorOrErrata(canEdit)),
-              ],
-            ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(_kAsideGap, _kAsideGap, _kAsideGap + 5, _kAsideGap),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [for (final (i, b) in bubbles.indexed) StaggerIn(index: i, from: const Offset(0, -10), child: b)],
           ),
         ),
       );
