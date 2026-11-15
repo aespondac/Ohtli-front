@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
 import 'account/public_profile_page.dart'; // To visit their profile!
+import 'friends_feed.dart';
 import '../widgets/ohtli_ui.dart';
 
 class FriendsPage extends StatefulWidget {
@@ -44,7 +45,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     final db = FirebaseFirestore.instance;
     _meStream = SocialGraph.watchGraph(_uid, includeClose: true);
     _sentRequestsStream = db
@@ -526,6 +527,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                       labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
                       unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
                       tabs: [
+                        const Tab(height: 42, text: 'Actividad'),
                         Tab(height: 42, text: friends.isEmpty ? 'Tus amigos' : 'Tus amigos · ${friends.length}'),
                         Tab(height: 42, text: closeCount == 0 ? 'Mejores amigos' : 'Mejores amigos · $closeCount'),
                         Tab(height: 42, text: incoming == 0 ? 'Sugeridos' : 'Sugeridos · $incoming nuevas'),
@@ -544,6 +546,13 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                             : TabBarView(
                                 controller: _tabController,
                                 children: [
+                                  FriendsActivityFeed(
+                                    friendIds: friends.map((e) => e.toString()).toList(),
+                                    users: _userCache,
+                                    padding: padding,
+                                    onOpenProfile: _openProfile,
+                                    onShowSuggestions: () => _tabController.animateTo(3),
+                                  ),
                                   _buildFriendsList(friendUsers, closeFriends, width, padding, isSuggested: false, onlyCloseFriends: false),
                                   _buildFriendsList(friendUsers, closeFriends, width, padding, isSuggested: false, onlyCloseFriends: true),
                                   _buildFriendsList(
@@ -679,7 +688,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                             compact: true,
                             label: 'Ver sugeridos',
                             icon: Icons.person_add_alt_1_rounded,
-                            onPressed: () => _tabController.animateTo(2),
+                            onPressed: () => _tabController.animateTo(3),
                           ),
                         ),
         ),
