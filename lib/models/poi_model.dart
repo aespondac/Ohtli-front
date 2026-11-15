@@ -56,6 +56,10 @@ class Poi {
   final List<double> embeddingVector;
 
   final String photoUrl;
+  /// Fotos reales del lugar (la primera es la portada).
+  final List<String> photos;
+  /// Tipo de cocina (OSM), p. ej. "mexican;tacos".
+  final String cuisine;
   final String address;
   final String openingHours;
 
@@ -75,6 +79,8 @@ class Poi {
     this.vibeTags = const [],
     this.reviewsSnippets = const [],
     this.photoUrl = '',
+    this.photos = const [],
+    this.cuisine = '',
     this.address = '',
     this.openingHours = '',
     this.nivelSeguridad = '',
@@ -188,6 +194,11 @@ class Poi {
       vibeTags: vibes,
       reviewsSnippets: reviews,
       photoUrl: photo,
+      photos: [
+        for (final x in (data['photos'] is List ? data['photos'] as List : const []))
+          if (x != null && x.toString().startsWith('http')) x.toString(),
+      ],
+      cuisine: (data['cuisine'] ?? '').toString(),
       address: addr,
       openingHours: schedule,
       nivelSeguridad: (data['nivel_seguridad'] ?? '').toString(),
