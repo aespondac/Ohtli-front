@@ -45,6 +45,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   late TextEditingController _cityController;
   late TextEditingController _stateController;
   late TextEditingController _countryController;
+  final TextEditingController _searchController = TextEditingController();
 
   // Category state
   String _selectedCategory = 'Otro';
@@ -139,14 +140,12 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     // Trigger initial geocoding or center
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (kIsWeb && globalContext.has('mountOhtliAddressMap')) {
-        globalContext.callMethod('mountOhtliAddressMap'.toJS);
-        
+        globalContext.callMethod('mountOhtliAddressMap'.toJS, OhtliSettings.instance.isDarkMode.toJS);
+
         final isNew = widget.initialAddress == null;
-        if (isNew) {
-          if (globalContext.has('geocodeAndPanOhtliAddressMap')) {
-            globalContext.callMethodVarArgs('geocodeAndPanOhtliAddressMap'.toJS, <JSAny?>['Ciudad de México, México'.toJS]);
-          }
-        } else {
+        // Nueva: el mapa arranca en la ciudad y los campos vacíos hasta que la persona busque
+        // o mueva el pin. Editar: centra en la dirección guardada.
+        if (!isNew) {
           final lat = _selectedLat;
           final lng = _selectedLng;
           if (lat != null && lng != null && globalContext.has('panOhtliAddressMapToLatLng')) {
@@ -171,6 +170,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     _cityController.dispose();
     _stateController.dispose();
     _countryController.dispose();
+    _searchController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
   }
@@ -398,26 +398,54 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
           { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#FFFFFF" }] }
         ];
 
-        window.mountOhtliAddressMap = function() {
+        const ohtliMapStylesDark = [
+          { elementType: "geometry", stylers: [{ color: "#1E1E22" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#B9B5AC" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#1E1E22" }] },
+          { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#3A3A42" }] },
+          { featureType: "poi", elementType: "geometry", stylers: [{ color: "#25252B" }] },
+          { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#C89AB2" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#34343C" }] },
+          { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#4A4A54" }] },
+          { featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#3A3A42" }] },
+          { featureType: "water", elementType: "geometry", stylers: [{ color: "#1F4A50" }] },
+          { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9FD0D6" }] }
+        ];
+
+        // El mapa se crea unos milisegundos después de pedirlo: lo que se pida antes (centrar
+        // en una dirección guardada) queda pendiente y se aplica al crearlo.
+        window.mountOhtliAddressMap = function(isDark) {
+          window.ohtliCurrentMap = null;
+          window.ohtliMapUserMoved = false;
           const checkExist = setInterval(function() {
             const mapDiv = document.getElementById('ohtli-map-container');
             if (mapDiv && window.google && window.google.maps) {
               clearInterval(checkExist);
               
               const defaultLatLng = { lat: 19.4326, lng: -99.1332 }; // CDMX
+              const pending = window.ohtliPendingCenter;
+              window.ohtliPendingCenter = null;
               const map = new google.maps.Map(mapDiv, {
-                center: defaultLatLng,
-                zoom: 15,
+                center: pending || defaultLatLng,
+                zoom: pending ? 16 : 13,
                 disableDefaultUI: true,
                 zoomControl: true,
-                styles: ohtliMapStyles
+                gestureHandling: 'greedy',
+                styles: isDark ? ohtliMapStylesDark : ohtliMapStyles
               });
               
               window.ohtliCurrentMap = map;
               const geocoder = new google.maps.Geocoder();
+              // Solo cuando la persona mueve el mapa se llenan los campos con lo que hay bajo el pin
+              map.addListener('dragstart', () => { window.ohtliMapUserMoved = true; });
+              if (window.ohtliPendingAddress) {
+                const addr = window.ohtliPendingAddress;
+                window.ohtliPendingAddress = null;
+                window.geocodeAndPanOhtliAddressMap(addr);
+              }
               
               map.addListener('idle', () => {
-                if (window.ohtliMapProgrammaticPanning) {
+                if (window.ohtliMapProgrammaticPanning || !window.ohtliMapUserMoved) {
                   return;
                 }
                 const center = map.getCenter();
@@ -479,7 +507,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
         };
 
         window.panOhtliAddressMapToLatLng = function(lat, lng) {
-          if (!window.ohtliCurrentMap) return;
+          if (!window.ohtliCurrentMap) { window.ohtliPendingCenter = { lat: lat, lng: lng }; return; }
           window.ohtliMapProgrammaticPanning = true;
           window.ohtliCurrentMap.setCenter({ lat: lat, lng: lng });
           window.ohtliCurrentMap.setZoom(16);
@@ -489,7 +517,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
         };
 
         window.geocodeAndPanOhtliAddressMap = function(addressStr) {
-          if (!window.google || !window.google.maps) return;
+          if (!window.google || !window.google.maps || !window.ohtliCurrentMap) { window.ohtliPendingAddress = addressStr; return; }
           const geocoder = new google.maps.Geocoder();
           window.ohtliMapProgrammaticPanning = true;
           geocoder.geocode({ address: addressStr, componentRestrictions: { country: 'mx' } }, (results, status) => {
@@ -579,6 +607,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
     setState(() {
       _predictions = [];
+      _searchController.text = prediction['description'] ?? '';
       _isSearchingPredictions = true;
       _autocompleteError = null;
       _cdmxBoundaryError = null;
@@ -671,10 +700,10 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     }
     
     return Container(
-      height: isMobile ? 240 : 340,
+      height: isMobile ? 260 : 320,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: OhtliColors.cantera, width: 1.5),
+        border: Border.all(color: OhtliColors.cardBorder, width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
@@ -721,9 +750,9 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                     const Icon(Icons.touch_app_outlined, size: 14, color: OhtliColors.stormyTeal),
                     const SizedBox(width: 6),
                     Text(
-                      'Arrastra para ajustar posición',
+                      'Mueve el mapa para poner el pin en la entrada',
                       style: GoogleFonts.inter(
-                        fontSize: 10.5,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w600,
                         color: OhtliColors.onyx,
                       ),
@@ -745,36 +774,146 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
       avatar: Icon(
         icon,
         size: 16,
-        color: isSelected ? Colors.white : OhtliColors.onyx.withValues(alpha: 0.7),
+        color: isSelected ? Colors.white : OhtliColors.subtleText,
       ),
       label: Text(
         categoryName,
         style: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-          color: isSelected ? Colors.white : OhtliColors.onyx.withValues(alpha: 0.8),
+          fontSize: 13,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          color: isSelected ? Colors.white : OhtliColors.onyx,
         ),
       ),
       selected: isSelected,
       onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _selectedCategory = categoryName;
-          });
-        }
+        if (selected) setState(() => _selectedCategory = categoryName);
       },
       selectedColor: OhtliColors.stormyTeal,
       backgroundColor: OhtliColors.cloudDancer,
       elevation: 0,
       pressElevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cantera.withValues(alpha: 0.5),
-          width: 1,
-        ),
+      shape: StadiumBorder(
+        side: BorderSide(color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder),
       ),
     );
+  }
+
+  /// Etiqueta arriba del campo (no dentro, donde se encimaba con el borde).
+  Widget _field({
+    required String label,
+    required TextEditingController controller,
+    String? hint,
+    IconData? icon,
+    TextInputType? keyboardType,
+    FormFieldValidator<String>? validator,
+    ValueChanged<String>? onChanged,
+    Iterable<String>? autofillHints,
+  }) {
+    OutlineInputBorder border(Color c, double w) =>
+        OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c, width: w));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+        const SizedBox(height: 6),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          validator: validator,
+          onChanged: onChanged,
+          autofillHints: autofillHints,
+          style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14.5),
+          cursorColor: OhtliColors.accentText,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.4), fontSize: 14.5),
+            prefixIcon: icon == null ? null : Icon(icon, color: OhtliColors.accentText, size: 20),
+            filled: true,
+            fillColor: OhtliColors.cloudDancer,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: border(OhtliColors.cardBorder, 1),
+            enabledBorder: border(OhtliColors.cardBorder, 1),
+            focusedBorder: border(OhtliColors.accentText, 1.6),
+            errorBorder: border(OhtliColors.xoconostle, 1.2),
+            focusedErrorBorder: border(OhtliColors.xoconostle, 1.6),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionTitle(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(
+          text,
+          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+        ),
+      );
+
+  Widget _notice(String text, {IconData icon = Icons.info_outline_rounded}) {
+    final color = OhtliSettings.instance.isDarkMode ? const Color(0xFFF2A3A3) : const Color(0xFFB3261E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx, height: 1.4)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+
+    final bool isCoordsInCDMX = _isCoordinateInCDMX(_selectedLat, _selectedLng);
+    final bool isStateCDMX = _isOfficialCDMX(_googleState);
+    final bool isZipCDMX = _isValidCDMXZip(_zipController.text);
+
+    final String streetText = _streetController.text.toLowerCase();
+    final String suburbText = _suburbController.text.toLowerCase();
+    final String cityText = _cityController.text.toLowerCase();
+
+    bool containsBlacklisted = false;
+    for (final term in _blacklistedMunicipalities) {
+      if (streetText.contains(term) || suburbText.contains(term) || cityText.contains(term)) {
+        containsBlacklisted = true;
+        break;
+      }
+    }
+
+    if (_selectedLat == null || _selectedLng == null) {
+      setState(() => _cdmxBoundaryError = 'Busca la dirección o mueve el mapa para marcar dónde está.');
+      return;
+    }
+    if (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted) {
+      setState(() => _cdmxBoundaryError = 'Elige una dirección dentro de la Ciudad de México o mueve el pin.');
+      return;
+    }
+
+    widget.onSave({
+      'customName': _customNameController.text.trim(),
+      'category': _selectedCategory,
+      'street': _streetController.text.trim(),
+      'suburb': _suburbController.text.trim(),
+      'zip': _zipController.text.trim(),
+      'city': _cityController.text.trim(),
+      'state': 'Ciudad de México',
+      'country': 'México',
+      'lat': _selectedLat,
+      'lng': _selectedLng,
+    });
   }
 
   @override
@@ -782,63 +921,150 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     final isNew = widget.initialAddress == null;
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 900;
+    final requiredText = (String msg) => (String? v) => v == null || v.trim().isEmpty ? msg : null;
 
     return Card(
       elevation: 0,
-      color: OhtliColors.inputBg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isMobile ? 18 : 26),
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1. Header Title
                 Text(
-                  isNew ? 'Nueva Dirección' : 'Editar Dirección',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
-                  ),
+                  isNew ? 'Nueva dirección' : 'Editar dirección',
+                  style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 4),
+                Text(
+                  'Úsala como punto de partida de tus rutas. Por ahora Ohtli funciona dentro de la CDMX.',
+                  style: GoogleFonts.inter(fontSize: 13.5, height: 1.45, color: OhtliColors.subtleText),
+                ),
+                const SizedBox(height: 22),
 
-                TextFormField(
+                // 1. Buscar
+                _field(
+                  label: 'Busca la dirección',
+                  controller: _searchController,
+                  hint: 'Calle, número y colonia',
+                  icon: Icons.search_rounded,
+                  onChanged: _onAddressInputChanged,
+                ),
+                if (_isSearchingPredictions) ...[
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(minHeight: 2, color: OhtliColors.accentText, backgroundColor: Colors.transparent),
+                ],
+                if (_predictions.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.cloudDancer,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: OhtliColors.cardBorder),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: _predictions.length,
+                      itemBuilder: (context, idx) {
+                        final pred = _predictions[idx];
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(Icons.location_on_outlined, color: OhtliColors.accentText, size: 18),
+                          title: Text(
+                            pred['description'] ?? '',
+                            style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx),
+                          ),
+                          onTap: () => _selectPrediction(pred),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                if (_autocompleteError != null) ...[
+                  const SizedBox(height: 8),
+                  _notice(
+                    'No pudimos buscar direcciones en este momento. Mueve el mapa hasta el lugar o escribe los datos abajo.',
+                    icon: Icons.wifi_off_rounded,
+                  ),
+                ],
+                const SizedBox(height: 14),
+
+                // 2. Mapa
+                _buildMapPickerWidget(isMobile),
+                if (_cdmxBoundaryError != null) ...[
+                  const SizedBox(height: 12),
+                  _notice(_cdmxBoundaryError!),
+                ],
+                const SizedBox(height: 24),
+
+                // 3. Datos
+                _sectionTitle('Datos de la dirección'),
+                _field(
+                  label: 'Calle y número',
+                  controller: _streetController,
+                  icon: Icons.signpost_outlined,
+                  autofillHints: const [AutofillHints.streetAddressLine1],
+                  validator: requiredText('Escribe la calle y el número.'),
+                ),
+                const SizedBox(height: 14),
+                _field(
+                  label: 'Colonia',
+                  controller: _suburbController,
+                  validator: requiredText('Escribe la colonia.'),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: _field(
+                        label: 'Código postal',
+                        controller: _zipController,
+                        keyboardType: TextInputType.number,
+                        autofillHints: const [AutofillHints.postalCode],
+                        validator: requiredText('Falta el C.P.'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 3,
+                      child: _field(
+                        label: 'Alcaldía',
+                        controller: _cityController,
+                        validator: requiredText('Falta la alcaldía.'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // 4. Nombre y tipo
+                _sectionTitle('¿Cómo la quieres llamar?'),
+                _field(
+                  label: 'Nombre (opcional)',
                   controller: _customNameController,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
+                  hint: 'Ej. Casa, Oficina, Hotel del viaje',
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return null;
                     final trimmed = value.trim().toLowerCase();
                     if (widget.existingNames.map((e) => e.toLowerCase()).contains(trimmed)) {
-                      return 'Ya existe una dirección con este nombre';
+                      return 'Ya tienes una dirección con este nombre.';
                     }
                     return null;
                   },
-                  decoration: InputDecoration(
-                    labelText: 'Nombre Personalizado (ej. Mi Casa, Oficina)',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
-                    prefixIcon: const Icon(Icons.bookmark_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
-                    filled: true,
-                    fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
                 ),
-                const SizedBox(height: 16),
-
-                // Categoría
-                Text(
-                  'Categoría',
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx.withValues(alpha: 0.7),
-                  ),
-                ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 14),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -851,306 +1077,39 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                     _buildCategoryChip('Otro', Icons.location_on_rounded),
                   ],
                 ),
-                const SizedBox(height: 20),
-                if (_cdmxBoundaryError != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.xoconostle.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.25), width: 1.5),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline_rounded, color: OhtliColors.xoconostle, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _cdmxBoundaryError!,
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: OhtliColors.xoconostle,
-                              fontWeight: FontWeight.w600,
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // 2. Street Input
-                TextFormField(
-                  controller: _streetController,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                  onChanged: _onAddressInputChanged,
-                  validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa la calle y número' : null,
-                  decoration: InputDecoration(
-                    labelText: 'Calle y Número',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
-                    prefixIcon: const Icon(Icons.home_outlined, color: OhtliColors.stormyTeal, size: 20),
-                    filled: true,
-                    fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
-                ),
-
-                if (_autocompleteError != null) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.xoconostle.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.25), width: 1.5),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.error_outline_rounded, color: OhtliColors.xoconostle, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Error de autocompletado: $_autocompleteError. Verifica que "Places API (Legacy)" esté habilitada en tu consola GCP y asociada a tu API Key.',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: OhtliColors.xoconostle,
-                              fontWeight: FontWeight.w600,
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                // Autocomplete predictions dropdown
-                if (_predictions.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 180),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.cloudDancer,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _predictions.length,
-                      itemBuilder: (context, idx) {
-                        final pred = _predictions[idx];
-                        return ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.location_on_rounded, color: OhtliColors.stormyTeal, size: 16),
-                          title: Text(
-                            pred['description'] ?? '',
-                            style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx),
-                          ),
-                          onTap: () => _selectPrediction(pred),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-                if (_isSearchingPredictions) ...[
-                  const SizedBox(height: 8),
-                  const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: OhtliColors.stormyTeal),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-
-                // 3. Suburb Input
-                TextFormField(
-                  controller: _suburbController,
-                  style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                  validator: (value) => value == null || value.trim().isEmpty ? 'Ingresa la colonia o delegación' : null,
-                  decoration: InputDecoration(
-                    labelText: 'Colonia / Zona',
-                    labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
-                    prefixIcon: const Icon(Icons.map_outlined, color: OhtliColors.stormyTeal, size: 20),
-                    filled: true,
-                    fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // 4. Zip and City Inputs
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: TextFormField(
-                        controller: _zipController,
-                        keyboardType: TextInputType.number,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                        validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
-                        decoration: InputDecoration(
-                          labelText: 'Código Postal',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
-                          prefixIcon: const Icon(Icons.markunread_mailbox_outlined, color: OhtliColors.stormyTeal, size: 20),
-                          filled: true,
-                          fillColor: OhtliColors.cloudDancer,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _cityController,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14),
-                        validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
-                        decoration: InputDecoration(
-                          labelText: 'Ciudad / Delegación',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.5)),
-                          filled: true,
-                          fillColor: OhtliColors.cloudDancer,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // 5. State and Country (CDMX, México)
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _stateController,
-                        readOnly: true,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.55), fontSize: 14),
-                        validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
-                        decoration: InputDecoration(
-                          labelText: 'Estado (CDMX)',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.4)),
-                          prefixIcon: const Icon(Icons.map_outlined, color: OhtliColors.stormyTeal, size: 20),
-                          filled: true,
-                          fillColor: OhtliColors.cloudDancer.withValues(alpha: 0.6),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _countryController,
-                        readOnly: true,
-                        style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.55), fontSize: 14),
-                        validator: (value) => value == null || value.trim().isEmpty ? 'Requerido' : null,
-                        decoration: InputDecoration(
-                          labelText: 'País (México)',
-                          labelStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.4)),
-                          prefixIcon: const Icon(Icons.public_rounded, color: OhtliColors.stormyTeal, size: 20),
-                          filled: true,
-                          fillColor: OhtliColors.cloudDancer.withValues(alpha: 0.6),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // 6. Map Section Title
-                Text(
-                  'Ubicación en Mapa',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // 7. Full-width Map Widget
-                _buildMapPickerWidget(isMobile),
                 const SizedBox(height: 28),
 
-                // 8. Form Actions
+                // 5. Acciones
                 Row(
                   children: [
                     Expanded(
-                      child: TextButton(
-                        onPressed: widget.onCancel,
-                        child: Text(
-                          'Cancelar',
-                          style: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.6)),
+                      child: SizedBox(
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: widget.onCancel,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: OhtliColors.onyx,
+                            side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.16)),
+                            shape: const StadiumBorder(),
+                            textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+                          ),
+                          child: const Text('Cancelar'),
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (!_formKey.currentState!.validate()) return;
-
-                          final bool isCoordsInCDMX = _isCoordinateInCDMX(_selectedLat, _selectedLng);
-                          final bool isStateCDMX = _isOfficialCDMX(_googleState);
-                          final bool isZipCDMX = _isValidCDMXZip(_zipController.text);
-
-                          final String streetText = _streetController.text.toLowerCase();
-                          final String suburbText = _suburbController.text.toLowerCase();
-                          final String cityText = _cityController.text.toLowerCase();
-
-                          bool containsBlacklisted = false;
-                          for (final term in _blacklistedMunicipalities) {
-                            if (streetText.contains(term) ||
-                                suburbText.contains(term) ||
-                                cityText.contains(term)) {
-                              containsBlacklisted = true;
-                              break;
-                            }
-                          }
-
-                          if (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted) {
-                            setState(() {
-                              _cdmxBoundaryError = "Por favor selecciona una dirección o mueve el pin dentro de la Ciudad de México.";
-                            });
-                            return;
-                          }
-
-                          widget.onSave({
-                            'customName': _customNameController.text.trim(),
-                            'category': _selectedCategory,
-                            'street': _streetController.text.trim(),
-                            'suburb': _suburbController.text.trim(),
-                            'zip': _zipController.text.trim(),
-                            'city': _cityController.text.trim(),
-                            'state': 'Ciudad de México',
-                            'country': 'México',
-                            'lat': _selectedLat,
-                            'lng': _selectedLng,
-                          });
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: OhtliColors.stormyTeal,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                      child: SizedBox(
+                        height: 50,
+                        child: FilledButton(
+                          onPressed: _submit,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: OhtliColors.stormyTeal,
+                            foregroundColor: Colors.white,
+                            shape: const StadiumBorder(),
+                            textStyle: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700),
                           ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          elevation: 0,
-                        ),
-                        child: Text(
-                          isNew ? 'Agregar' : 'Actualizar',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          child: Text(isNew ? 'Guardar dirección' : 'Guardar cambios'),
                         ),
                       ),
                     ),

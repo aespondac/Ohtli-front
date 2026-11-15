@@ -24,6 +24,7 @@ import '../../widgets/deferred_view.dart';
 import '../../config/admin.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../utils/web_helpers.dart';
+import '../register/register_page.dart' show PasswordChecklist, PasswordRules;
 
 enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
 
@@ -1038,7 +1039,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                             ? 'Ingresa tu contraseña actual'
                             : null,
                         decoration: InputDecoration(
-                          labelText: 'Contraseña Actual',
+                          labelText: 'Contraseña actual',
                           labelStyle: GoogleFonts.inter(
                             color: OhtliColors.onyx.withValues(alpha: 0.5),
                           ),
@@ -1870,7 +1871,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Correo Electrónico (No editable)',
+                    labelText: 'Correo electrónico (no se puede cambiar)',
                     labelStyle: GoogleFonts.inter(
                       color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
@@ -1909,7 +1910,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ? 'Ingresa tus nombres'
                       : null,
                   decoration: InputDecoration(
-                    labelText: 'Nombres',
+                    labelText: 'Nombre',
                     labelStyle: GoogleFonts.inter(
                       color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
@@ -1967,7 +1968,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Número Telefónico',
+                    labelText: 'Teléfono (opcional)',
                     labelStyle: GoogleFonts.inter(
                       color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
@@ -2099,7 +2100,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         ? 'Ingresa tu contraseña actual'
                         : null,
                     decoration: InputDecoration(
-                      labelText: 'Contraseña Actual',
+                      labelText: 'Contraseña actual',
                       labelStyle: GoogleFonts.inter(
                         color: OhtliColors.onyx.withValues(alpha: 0.5),
                       ),
@@ -2138,17 +2139,18 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     color: OhtliColors.onyx,
                     fontSize: 14,
                   ),
+                  onChanged: (_) => setState(() {}), // actualiza la lista de requisitos
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Ingresa la nueva contraseña';
+                      return 'Escribe la nueva contraseña.';
                     }
-                    if (value.length < 6) {
-                      return 'Debe tener al menos 6 caracteres';
+                    if (!PasswordRules.meetsAll(value)) {
+                      return 'Aún le falta algo de la lista.';
                     }
                     return null;
                   },
                   decoration: InputDecoration(
-                    labelText: 'Nueva Contraseña',
+                    labelText: 'Nueva contraseña',
                     labelStyle: GoogleFonts.inter(
                       color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
@@ -2176,6 +2178,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 10),
+                PasswordChecklist(password: _newPasswordController.text, highlightMissing: false),
                 const SizedBox(height: 16),
 
                 // Confirmar Contraseña
@@ -2186,11 +2190,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     color: OhtliColors.onyx,
                     fontSize: 14,
                   ),
-                  validator: (value) => value == null || value.isEmpty
-                      ? 'Confirma la nueva contraseña'
-                      : null,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Repite la nueva contraseña.';
+                    if (value != _newPasswordController.text) return 'No coincide con la de arriba.';
+                    return null;
+                  },
                   decoration: InputDecoration(
-                    labelText: 'Confirmar Nueva Contraseña',
+                    labelText: 'Repite la nueva contraseña',
                     labelStyle: GoogleFonts.inter(
                       color: OhtliColors.onyx.withValues(alpha: 0.5),
                     ),
@@ -2459,7 +2465,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Mis Direcciones',
+                  'Mis direcciones',
                   style: GoogleFonts.inter(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
