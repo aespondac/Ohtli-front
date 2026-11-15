@@ -4621,7 +4621,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   void _openEditorOrErrata(bool canEdit) {
     if (_isSample) {
-      _sampleNotice('El viaje de muestra no se puede editar.');
+      // Editor de muestra: se puede probar todo, pero no se guarda nada.
+      Navigator.push(context, MaterialPageRoute(builder: (context) => TripEditorPage(trip: _trip!, sampleSections: List.of(_sections))));
       return;
     }
     if (canEdit) {

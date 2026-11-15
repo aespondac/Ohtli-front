@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:web/web.dart' as web;
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../theme/colors.dart';
@@ -36,7 +37,11 @@ import '../../utils/web_helpers.dart';
 class TripEditorPage extends StatefulWidget {
   final Trip trip;
 
-  const TripEditorPage({super.key, required this.trip});
+  /// Editor de muestra: abre con estos bloques y no guarda nada (ni en la nube ni en el
+  /// dispositivo). Lo usa el viaje de muestra (/muestra).
+  final List<TripSection>? sampleSections;
+
+  const TripEditorPage({super.key, required this.trip, this.sampleSections});
 
   @override
   State<TripEditorPage> createState() => _TripEditorPageState();
@@ -252,6 +257,15 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   // Double resilient load
   Future<void> _loadCloudContentAndCheckCache() async {
+    if (_isSampleEditor) {
+      setState(() {
+        _sections = List.of(widget.sampleSections!);
+        _isLoadingContent = false;
+      });
+      _resetUndoBaseline();
+      _resetErrataBaseline();
+      return;
+    }
     try {
       final cloudContent = await TripService().getTripContent(widget.trip.userId, widget.trip.id);
       if (cloudContent != null) {
@@ -609,6 +623,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
   void _saveToLocalCache() {
     if (!kIsWeb) return;
     _syncAllTables();
+    if (_isSampleEditor) {
+      _triggerCloudAutoSaveDebounce();
+      return;
+    }
 
     try {
       final now = DateTime.now();
@@ -651,6 +669,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   Future<void> _saveToCloudFirestore() async {
+    if (_isSampleEditor) {
+      if (mounted) setState(() => _savedEditVersion = _editVersion);
+      return;
+    }
     if (_isSavingCloud) return;
     _syncAllTables();
 
@@ -857,11 +879,32 @@ class _TripEditorPageState extends State<TripEditorPage> {
   int _idx(String id) => _sections.indexWhere((s) => s.id == id);
 
   // Actions on Blocks
-  void _addBlock(String type) {
+  /// Agrega un bloque al final, en la posición [at] o en lugar del bloque [replaceId].
+  void _addBlock(String type, {int? at, String? replaceId}) {
+    final String id = 'sec_${DateTime.now().millisecondsSinceEpoch}_${_sections.length}';
+    final added = <TripSection>[];
+    void add(TripSection s) => added.add(s);
+    _buildNewBlock(type, id, add);
+    if (added.isEmpty) return;
     setState(() {
-      final String id = 'sec_${DateTime.now().millisecondsSinceEpoch}_${_sections.length}';
+      final int replaceAt = replaceId == null ? -1 : _sections.indexWhere((s) => s.id == replaceId);
+      if (replaceAt >= 0) {
+        _sections[replaceAt] = added.first;
+      } else if (at != null && at >= 0 && at <= _sections.length) {
+        _sections.insert(at, added.first);
+      } else {
+        _sections.add(added.first);
+      }
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(id));
+  }
+
+  void _buildNewBlock(String type, String id, void Function(TripSection) add) {
+    {
       if (type == 'place') {
-        _sections.add(PlaceSection(
+        add(PlaceSection(
           id: id,
           title: '',
           description: '',
@@ -870,33 +913,31 @@ class _TripEditorPageState extends State<TripEditorPage> {
           secondaryPhotoUrls: [],
         ));
       } else if (type == 'text') {
-        _sections.add(TextSection(
+        add(TextSection(
           id: id,
           markdownText: '',
         ));
       } else if (type == 'text_image') {
-        _sections.add(TextImageSection(
+        add(TextImageSection(
           id: id,
           markdownText: '',
           imageUrl: '',
           layout: 'left',
         ));
       } else if (type == 'table') {
-        _sections.add(TextSection(
+        add(TextSection(
           id: id,
           markdownText: '| Columna 1 | Columna 2 |\n|---|---|\n| Celda 1 | Celda 2 |',
         ));
       } else if (type == 'notes') {
-        _sections.add(TextSection(
+        add(TextSection(
           id: id,
           markdownText: '> [!NOTE]\n> Escribe tu nota aquí',
         ));
       } else if (type == 'transfer') {
-        _sections.add(TransferSection(id: id));
+        add(TransferSection(id: id));
       }
-      _forceNewUndoStep = true;
-      _onDataChanged();
-    });
+    }
   }
 
   void _moveUp(int index) {
@@ -1359,6 +1400,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
   void _updateTextBlock(int index, {String? markdown}) {
     if (index < 0 || index >= _sections.length || _sections[index] is! TextSection) return;
     final current = _sections[index] as TextSection;
+    if (markdown != null && markdown.trim() == '/' && current.markdownText.trim().isEmpty) {
+      final id = current.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showInsertMenu(replaceId: id));
+    }
     final newSection = TextSection(
       id: current.id,
       markdownText: markdown ?? current.markdownText,
@@ -1958,6 +2003,15 @@ class _TripEditorPageState extends State<TripEditorPage> {
     return user != null && user.uid == widget.trip.userId;
   }
 
+  bool get _isSampleEditor => widget.sampleSections != null;
+
+  /// Los controles del dueño también se ven en la muestra (sin guardar).
+  bool get _ownerUi => _isOwner || _isSampleEditor;
+
+  void _sampleNotice(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text, style: GoogleFonts.inter())));
+  }
+
   Widget _buildCoAuthorsAvatarStack() {
     if (_coAuthorIds.isEmpty) return const SizedBox.shrink();
 
@@ -2034,6 +2088,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   void _showCoAuthorsSelectionDialog() async {
+    if (_isSampleEditor) {
+      _sampleNotice('En la muestra no se invitan coautores.');
+      return;
+    }
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (BuildContext context) {
@@ -2073,6 +2131,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   Future<void> _handlePublishAction() async {
+    if (_isSampleEditor) {
+      _sampleNotice('Es el editor de muestra: aquí no se publica.');
+      return;
+    }
     if (_status == 'published') {
       await _showErrataDialog();
     } else {
@@ -2084,6 +2146,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // Exit checking
   Future<bool> _onWillPop() async {
     _debounceTimer?.cancel();
+    if (_isSampleEditor) return true;
     _syncAllTables();
     if (_isPostTrip) {
       final entry = _errataSinceBaseline();
@@ -2143,315 +2206,42 @@ class _TripEditorPageState extends State<TripEditorPage> {
   Widget build(BuildContext context) {
     final bool isDark = OhtliSettings.instance.isDarkMode;
 
-    String syncStatusText = "Cambios guardados en este dispositivo";
+    String syncStatusText = "Guardado en este dispositivo";
     IconData syncIcon = Icons.cloud_queue_rounded;
     Color syncColor = OhtliColors.stormyTeal;
 
-    if (_isSavingCloud) {
-      syncStatusText = "Guardando en la nube...";
+    if (_isSampleEditor) {
+      syncStatusText = "Editor de muestra · no se guarda";
+      syncIcon = Icons.science_outlined;
+      syncColor = OhtliColors.cempasuchil;
+    } else if (_isSavingCloud) {
+      syncStatusText = "Guardando…";
       syncIcon = Icons.sync_rounded;
       syncColor = OhtliColors.cempasuchil;
     } else if (_cloudSaveError != null) {
-      syncStatusText = "Sin guardar en la nube · Toca para reintentar";
+      syncStatusText = "Sin guardar · toca para reintentar";
       syncIcon = Icons.cloud_off_rounded;
       syncColor = OhtliColors.xoconostle;
     } else if (_hasPendingCloudChanges) {
-      syncStatusText = "Cambios sin subir...";
+      syncStatusText = "Cambios sin subir…";
       syncIcon = Icons.cloud_upload_outlined;
     } else if (_lastSavedCloudTime != null) {
-      syncStatusText = "Sincronizado en la nube";
+      syncStatusText = "Guardado";
       syncIcon = Icons.cloud_done_rounded;
     }
 
-    Widget mainContent = _isLoadingContent
-        ? const Center(
-            child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
+    final double screenW = MediaQuery.of(context).size.width;
+    final bool wide = screenW >= 1180;
+    final bool compactBar = screenW < 760;
+    const double panelW = 300;
+    final double panelInset = (wide && !_isLoadingContent) ? panelW + 28 : 0;
+
+    final Widget canvas = _isLoadingContent
+        ? const Padding(
+            padding: EdgeInsets.only(top: 120),
+            child: Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal)),
           )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Cover Image Selector
-              GestureDetector(
-                onTap: _uploadCoverImage,
-                child: Container(
-                  width: double.infinity,
-                  height: 180,
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
-                      width: 1,
-                    ),
-                    image: _coverUrl.isNotEmpty
-                        ? DecorationImage(
-                            image: _getImageProvider(_coverUrl),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: _coverUrl.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.image_outlined,
-                                size: 36,
-                                color: OhtliColors.stormyTeal,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Añadir imagen de portada',
-                                style: GoogleFonts.inter(
-                                  fontWeight: FontWeight.w600,
-                                  color: OhtliColors.stormyTeal,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : Container(
-                          alignment: Alignment.bottomRight,
-                          padding: const EdgeInsets.all(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.edit_rounded, color: Colors.white, size: 12),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Cambiar portada',
-                                  style: GoogleFonts.inter(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Title and Description inputs
-              TextFormField(
-                controller: _titleController,
-                maxLines: 2,
-                onChanged: (_) => _onDataChanged(),
-                style: GoogleFonts.inter(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: OhtliColors.onyx,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Título de tu viaje',
-                  hintStyle: GoogleFonts.inter(
-                    color: OhtliColors.onyx.withValues(alpha: 0.3),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const SizedBox(height: 8),
-              OhtliMarkdownEditor(
-                controller: _descriptionController,
-                focusNode: _getFocusNode('trip_description'),
-                hintText: 'Escribe una breve descripción del viaje...',
-                minLines: 3,
-                maxLines: null,
-                onChanged: _onDataChanged,
-              ),
-
-              if (_canPublishReleaseNotes || _kind == kTripKindReleaseNotes) ...[
-                const SizedBox(height: 16),
-                _buildKindSelector(isDark),
-              ],
-
-              const Divider(height: 48, color: OhtliColors.cantera),
-
-              // Blocks List Header
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  Text(
-                    'Bitácora del Viaje',
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: OhtliColors.onyx,
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_sections.whereType<PlaceSection>().length >= 2)
-                        TextButton.icon(
-                          onPressed: _fillAllTransfers,
-                          style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal, visualDensity: VisualDensity.compact),
-                          icon: const Icon(Icons.add_road_rounded, size: 16),
-                          label: Text('Completar traslados', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        ),
-                      if (_sections.any((s) => s is PlaceSection))
-                        TextButton.icon(
-                          onPressed: _recalculateTimes,
-                          style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal, visualDensity: VisualDensity.compact),
-                          icon: const Icon(Icons.schedule_rounded, size: 16),
-                          label: Text('Ajustar horarios', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${_sections.length} bloques',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: OhtliColors.onyx.withValues(alpha: 0.4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Blocks List
-              _sections.isEmpty
-                  ? Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(40),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.playlist_add_rounded, size: 40, color: OhtliColors.cantera),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Tu bitácora está vacía',
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w600,
-                              color: OhtliColors.onyx.withValues(alpha: 0.6),
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '¡Añade bloques abajo para empezar a documentar!',
-                            style: GoogleFonts.inter(
-                              color: OhtliColors.onyx.withValues(alpha: 0.4),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ReorderableListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      buildDefaultDragHandles: false,
-                      itemCount: _sections.length,
-                      onReorder: _reorderBlocks,
-                      proxyDecorator: (child, index, animation) => Material(
-                        color: Colors.transparent,
-                        elevation: 10,
-                        shadowColor: OhtliColors.onyx.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(20),
-                        child: child,
-                      ),
-                      itemBuilder: (context, index) {
-                        final section = _sections[index];
-                        final bool needsTransfer = section is PlaceSection &&
-                            _sections.take(index).any((s) => s is PlaceSection) &&
-                            transferBefore(_sections, index) == null;
-                        return KeyedSubtree(
-                          key: ValueKey('${section.id}_$_editorGeneration'),
-                          child: needsTransfer
-                              ? Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildMissingTransferConnector(section.id),
-                                    _buildBlockCard(index, section, isDark),
-                                  ],
-                                )
-                              : _buildBlockCard(index, section, isDark),
-                        );
-                      },
-                    ),
-
-              const SizedBox(height: 32),
-              
-              // Bottom Action Blocks Selection
-              Text(
-                'Añadir Bloque de Contenido',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: OhtliColors.onyx.withValues(alpha: 0.5),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                alignment: WrapAlignment.start,
-                children: [
-                  _buildAddBlockButton(
-                    label: 'Lugar',
-                    icon: Icons.location_on_rounded,
-                    onTap: () => _addBlock('place'),
-                    width: 105,
-                  ),
-                  _buildAddBlockButton(
-                    label: 'Texto',
-                    icon: Icons.notes_rounded,
-                    onTap: () => _addBlock('text'),
-                    width: 105,
-                  ),
-                  _buildAddBlockButton(
-                    label: 'Texto/Imagen',
-                    icon: Icons.photo_library_rounded,
-                    onTap: () => _addBlock('text_image'),
-                    width: 125,
-                  ),
-                  _buildAddBlockButton(
-                    label: 'Tabla',
-                    icon: Icons.table_chart_rounded,
-                    onTap: () => _addBlock('table'),
-                    width: 105,
-                  ),
-                  _buildAddBlockButton(
-                    label: 'Notas',
-                    icon: Icons.info_outline_rounded,
-                    onTap: () => _addBlock('notes'),
-                    width: 105,
-                  ),
-                  _buildAddBlockButton(
-                    label: 'Traslado',
-                    icon: Icons.add_road_rounded,
-                    onTap: () => _addBlock('transfer'),
-                    width: 105,
-                  ),
-                ],
-              ),
-            ],
-          );
+        : _buildCanvas(isDark, screenW);
 
     final Widget mainWidgetTree = PopScope(
       canPop: false,
@@ -2464,213 +2254,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: OhtliColors.cloudDancer,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
-            color: OhtliColors.onyx,
-            onPressed: () async {
-              if (_isPublishing) return;
-              final bool shouldPop = await _onWillPop();
-              if (shouldPop && context.mounted) {
-                Navigator.pop(context);
-              }
-            },
-          ),
-          title: InkWell(
-            onTap: _cloudSaveError != null && !_isSavingCloud ? _saveToCloudFirestore : null,
-            borderRadius: BorderRadius.circular(8),
-            child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(syncIcon, color: syncColor, size: 18),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  syncStatusText,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    color: _cloudSaveError != null ? OhtliColors.xoconostle : OhtliColors.onyx.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          ),
-          actions: [
-            // 0. Deshacer / rehacer, índice y vista previa (E4–E6)
-            if (MediaQuery.of(context).size.width >= 760) ...[
-              IconButton(
-                tooltip: 'Deshacer (Ctrl+Z)',
-                icon: const Icon(Icons.undo_rounded, size: 20),
-                color: OhtliColors.stormyTeal,
-                onPressed: _undoStack.isEmpty ? null : _undo,
-              ),
-              IconButton(
-                tooltip: 'Rehacer (Ctrl+Shift+Z)',
-                icon: const Icon(Icons.redo_rounded, size: 20),
-                color: OhtliColors.stormyTeal,
-                onPressed: _redoStack.isEmpty ? null : _redo,
-              ),
-              if (MediaQuery.of(context).size.width < _outlinePanelMinWidth)
-                IconButton(
-                  tooltip: 'Índice de bloques',
-                  icon: const Icon(Icons.toc_rounded, size: 20),
-                  color: OhtliColors.stormyTeal,
-                  onPressed: _sections.isEmpty ? null : () => _showOutlineSheet(isDark),
-                ),
-              IconButton(
-                tooltip: 'Vista previa',
-                icon: const Icon(Icons.visibility_outlined, size: 20),
-                color: OhtliColors.stormyTeal,
-                onPressed: _isLoadingContent ? null : _openPreview,
-              ),
-              const SizedBox(width: 4),
-            ] else
-              PopupMenuButton<String>(
-                tooltip: 'Más acciones',
-                icon: const Icon(Icons.more_vert_rounded, color: OhtliColors.stormyTeal),
-                onSelected: (v) {
-                  if (v == 'undo') _undo();
-                  if (v == 'redo') _redo();
-                  if (v == 'outline') _showOutlineSheet(isDark);
-                  if (v == 'preview') _openPreview();
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: 'undo',
-                    enabled: _undoStack.isNotEmpty,
-                    child: const ListTile(dense: true, leading: Icon(Icons.undo_rounded), title: Text('Deshacer')),
-                  ),
-                  PopupMenuItem(
-                    value: 'redo',
-                    enabled: _redoStack.isNotEmpty,
-                    child: const ListTile(dense: true, leading: Icon(Icons.redo_rounded), title: Text('Rehacer')),
-                  ),
-                  PopupMenuItem(
-                    value: 'outline',
-                    enabled: _sections.isNotEmpty,
-                    child: const ListTile(dense: true, leading: Icon(Icons.toc_rounded), title: Text('Índice de bloques')),
-                  ),
-                  PopupMenuItem(
-                    value: 'preview',
-                    enabled: !_isLoadingContent,
-                    child: const ListTile(dense: true, leading: Icon(Icons.visibility_outlined), title: Text('Vista previa')),
-                  ),
-                ],
-              ),
-            // 1. Co-authors button for plans (drafts) - ONLY for the owner/creator
-            if (_isOwner) ...[
-              _buildCoAuthorsAvatarStack(),
-              const SizedBox(width: 4),
-              IconButton(
-                icon: const Icon(Icons.people_outline_rounded, color: OhtliColors.stormyTeal, size: 20),
-                tooltip: 'Co-autores del Plan',
-                onPressed: _showCoAuthorsSelectionDialog,
-              ),
-              const SizedBox(width: 4),
-            ],
-            // 2. Publish / Errata action button
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: _status == 'published'
-                  ? ElevatedButton.icon(
-                      onPressed: _handlePublishAction,
-                      icon: const Icon(Icons.history_edu_rounded, size: 14, color: Colors.white),
-                      label: Text(
-                        'Fe de Errata',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.xoconostle,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                      ),
-                    )
-                  : (_isOwner
-                      ? ElevatedButton.icon(
-                          onPressed: _handlePublishAction,
-                          icon: const Icon(Icons.publish_rounded, size: 14, color: Colors.white),
-                          label: Text(
-                            'Publicar',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: OhtliColors.stormyTeal,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            elevation: 0,
-                          ),
-                        )
-                      : const SizedBox.shrink()),
-            ),
-            // 3. Visibility Dropdown - ONLY for the owner/creator
-            if (_isOwner)
-              Container(
-                margin: const EdgeInsets.only(right: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
-                    width: 1,
-                  ),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _visibility,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
-                    iconEnabledColor: OhtliColors.stormyTeal,
-                    dropdownColor: isDark ? const Color(0xFF25252A) : Colors.white,
-                    items: [
-                      DropdownMenuItem(
-                        value: 'private',
-                        child: Text(
-                          'Privado',
-                          style: GoogleFonts.inter(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: OhtliColors.onyx,
-                          ),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'public',
-                        child: Text(
-                          'Público',
-                          style: GoogleFonts.inter(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: OhtliColors.onyx,
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) {
-                        _changeVisibility(val);
-                      }
-                    },
-                  ),
-                ),
-              ),
-          ],
-        ),
+        backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
         body: SafeArea(
           child: Shortcuts(
             shortcuts: const <ShortcutActivator, Intent>{
@@ -2687,39 +2271,28 @@ class _TripEditorPageState extends State<TripEditorPage> {
               },
               child: Focus(
                 autofocus: true,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final Widget editorColumn = Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 800),
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(24),
-                          child: mainContent,
+                child: Stack(
+                  children: [
+                    // Lienzo: se ve como el viaje publicado y se edita en el lugar.
+                    Positioned.fill(
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(16, 84, 16 + panelInset, 140),
+                        child: Center(
+                          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: canvas),
                         ),
                       ),
-                    );
-                    if (constraints.maxWidth < _outlinePanelMinWidth || _isLoadingContent || _sections.isEmpty) {
-                      return editorColumn;
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 260,
-                          margin: const EdgeInsets.fromLTRB(16, 24, 0, 24),
-                          decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
-                            ),
-                          ),
-                          child: _buildOutline(isDark),
-                        ),
-                        Expanded(child: editorColumn),
-                      ],
-                    );
-                  },
+                    ),
+                    // Barra flotante: volver, guardado, deshacer, vista previa y publicar.
+                    Positioned(
+                      top: 12,
+                      left: 16,
+                      right: 16,
+                      child: _buildTopBar(isDark, compact: compactBar, wide: wide, syncText: syncStatusText, syncIcon: syncIcon, syncColor: syncColor),
+                    ),
+                    // Bloques flotantes: datos del viaje, antes de publicar e índice.
+                    if (wide && !_isLoadingContent)
+                      Positioned(top: 76, right: 16, bottom: 0, width: panelW, child: _buildSidePanel(isDark)),
+                  ],
                 ),
               ),
             ),
@@ -2741,18 +2314,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
+                      const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                       const SizedBox(height: 24),
                       Text(
                         "Subiendo imágenes y preparando tu aventura...",
-                        style: GoogleFonts.inter(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.none,
-                        ),
+                        style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
                       ),
                     ],
                   ),
@@ -2765,6 +2331,780 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
 
     return mainWidgetTree;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lienzo del editor
+  // ---------------------------------------------------------------------------
+  static const double _kSpineX = 21;
+  static const double _kSpineIndent = 46;
+
+  List<BoxShadow> _floatShadow(bool isDark) => [
+        BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.42 : 0.10), blurRadius: 22, offset: const Offset(0, 8)),
+        BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.04), blurRadius: 3, offset: const Offset(0, 1)),
+      ];
+
+  BoxDecoration _floatBlock(bool isDark, {double radius = 20}) => BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder.withValues(alpha: 0.7)),
+        boxShadow: _floatShadow(isDark),
+      );
+
+  static String _fmtDate(DateTime d) {
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return '${d.day} ${months[d.month - 1]} ${d.year}';
+  }
+
+  Future<void> _pickTravelDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _travelDate ?? now,
+      firstDate: DateTime(now.year - 10),
+      lastDate: DateTime(now.year + 5),
+      helpText: 'Fecha del viaje',
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _travelDate = picked);
+    _onDataChanged();
+  }
+
+  Widget _buildTopBar(bool isDark,
+      {required bool compact, required bool wide, required String syncText, required IconData syncIcon, required Color syncColor}) {
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    Widget iconBtn(IconData icon, String tip, VoidCallback? onTap) => IconButton(
+          tooltip: tip,
+          onPressed: onTap,
+          icon: Icon(icon, size: 20),
+          color: OhtliColors.stormyTeal,
+          disabledColor: isDark ? Colors.white24 : Colors.black26,
+        );
+    final bool published = _status == 'published';
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: _floatBlock(isDark, radius: 18),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Volver',
+            icon: Icon(Icons.arrow_back_rounded, color: fg),
+            onPressed: () async {
+              if (_isPublishing) return;
+              final bool shouldPop = await _onWillPop();
+              if (shouldPop && mounted) Navigator.pop(context);
+            },
+          ),
+          Flexible(
+            child: InkWell(
+              onTap: _cloudSaveError != null && !_isSavingCloud ? _saveToCloudFirestore : null,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(syncIcon, color: syncColor, size: 17),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(syncText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: _cloudSaveError != null ? OhtliColors.xoconostle : fg.withValues(alpha: 0.65))),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const Spacer(),
+          if (!compact) ...[
+            iconBtn(Icons.undo_rounded, 'Deshacer (Ctrl+Z)', _undoStack.isEmpty ? null : _undo),
+            iconBtn(Icons.redo_rounded, 'Rehacer (Ctrl+Shift+Z)', _redoStack.isEmpty ? null : _redo),
+            iconBtn(Icons.visibility_outlined, 'Vista previa', _isLoadingContent ? null : _openPreview),
+          ] else
+            PopupMenuButton<String>(
+              tooltip: 'Más acciones',
+              icon: const Icon(Icons.more_horiz_rounded, color: OhtliColors.stormyTeal),
+              onSelected: (v) {
+                if (v == 'undo') _undo();
+                if (v == 'redo') _redo();
+                if (v == 'preview') _openPreview();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'undo', enabled: _undoStack.isNotEmpty, child: const ListTile(dense: true, leading: Icon(Icons.undo_rounded), title: Text('Deshacer'))),
+                PopupMenuItem(value: 'redo', enabled: _redoStack.isNotEmpty, child: const ListTile(dense: true, leading: Icon(Icons.redo_rounded), title: Text('Rehacer'))),
+                PopupMenuItem(value: 'preview', enabled: !_isLoadingContent, child: const ListTile(dense: true, leading: Icon(Icons.visibility_outlined), title: Text('Vista previa'))),
+              ],
+            ),
+          if (!wide) iconBtn(Icons.tune_rounded, 'Datos, revisión e índice', _isLoadingContent ? null : () => _showPanelSheet(isDark)),
+          const SizedBox(width: 4),
+          if (published || _ownerUi)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilledButton.icon(
+                onPressed: _handlePublishAction,
+                style: FilledButton.styleFrom(
+                  backgroundColor: published ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16),
+                  shape: const StadiumBorder(),
+                ),
+                icon: Icon(published ? Icons.history_edu_rounded : Icons.publish_rounded, size: 17),
+                label: Text(published ? 'Fe de errata' : 'Publicar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// En pantallas angostas, los bloques del panel se abren en una hoja.
+  void _showPanelSheet(bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        builder: (ctx, scroll) => _buildSidePanel(isDark, controller: scroll, onNavigate: () => Navigator.of(ctx).pop()),
+      ),
+    );
+  }
+
+  /// Lo que falta antes de publicar: (texto, bloque al que lleva).
+  List<(String, String?)> _publishIssues() {
+    final out = <(String, String?)>[];
+    if (_titleController.text.trim().isEmpty) out.add(('Ponle un título al viaje', null));
+    if (_coverUrl.isEmpty) out.add(('Agrega una portada', null));
+    if (_descriptionController.markdownText.trim().isEmpty) out.add(('Escribe una descripción', null));
+    if (_sections.isEmpty) out.add(('Agrega al menos un bloque', null));
+    bool seenPlace = false;
+    for (int i = 0; i < _sections.length; i++) {
+      final s = _sections[i];
+      if (s is! PlaceSection || s.unplanned) continue;
+      final name = s.title.trim().isEmpty ? 'Una parada' : '«${s.title.trim()}»';
+      if (s.title.trim().isEmpty) out.add(('Una parada no tiene nombre', s.id));
+      if ((s.arrivalTime ?? '').trim().isEmpty) out.add(('$name no tiene hora', s.id));
+      if (seenPlace && transferBefore(_sections, i) == null) out.add(('Falta el traslado a $name', s.id));
+      seenPlace = true;
+    }
+    return out;
+  }
+
+  Widget _buildSidePanel(bool isDark, {ScrollController? controller, VoidCallback? onNavigate}) {
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    Widget title(IconData icon, String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: OhtliColors.stormyTeal),
+              const SizedBox(width: 7),
+              Text(text, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: sub)),
+            ],
+          ),
+        );
+    Widget row(IconData icon, String label, Widget trailing) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: sub),
+              const SizedBox(width: 8),
+              Text(label, style: GoogleFonts.inter(fontSize: 13, color: sub)),
+              const Spacer(),
+              trailing,
+            ],
+          ),
+        );
+
+    final issues = _publishIssues();
+    final places = _sections.whereType<PlaceSection>().length;
+
+    final datos = Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: _floatBlock(isDark),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          title(Icons.tune_rounded, 'DATOS DEL VIAJE'),
+          row(
+            Icons.flag_outlined,
+            'Estado',
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: (_status == 'published' ? OhtliColors.stormyTeal : OhtliColors.cempasuchil).withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(_status == 'published' ? 'Publicado' : 'Borrador',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _status == 'published' ? OhtliColors.stormyTeal : OhtliColors.cempasuchil)),
+            ),
+          ),
+          row(
+            Icons.event_rounded,
+            'Fecha',
+            TextButton(
+              onPressed: _pickTravelDate,
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: OhtliColors.stormyTeal),
+              child: Text(_travelDate == null ? 'Elegir' : _fmtDate(_travelDate!), style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+            ),
+          ),
+          if (_ownerUi)
+            row(
+              _visibility == 'public' ? Icons.public_rounded : Icons.lock_outline_rounded,
+              'Visibilidad',
+              SegmentedButton<String>(
+                showSelectedIcon: false,
+                style: SegmentedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  selectedBackgroundColor: OhtliColors.stormyTeal,
+                  selectedForegroundColor: Colors.white,
+                  textStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                segments: const [
+                  ButtonSegment(value: 'private', label: Text('Privado')),
+                  ButtonSegment(value: 'public', label: Text('Público')),
+                ],
+                selected: {_visibility},
+                onSelectionChanged: (v) => _changeVisibility(v.first),
+              ),
+            ),
+          if (_ownerUi)
+            row(
+              Icons.group_outlined,
+              'Coautores',
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildCoAuthorsAvatarStack(),
+                  TextButton(
+                    onPressed: _showCoAuthorsSelectionDialog,
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: OhtliColors.stormyTeal),
+                    child: Text(_coAuthorIds.isEmpty ? 'Invitar' : 'Gestionar', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+          if (_canPublishReleaseNotes || _kind == kTripKindReleaseNotes) ...[
+            const SizedBox(height: 6),
+            _buildKindSelector(isDark),
+          ],
+        ],
+      ),
+    );
+
+    final revision = Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: _floatBlock(isDark),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          title(Icons.fact_check_outlined, 'ANTES DE PUBLICAR'),
+          if (issues.isEmpty)
+            Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, size: 18, color: OhtliColors.stormyTeal),
+                const SizedBox(width: 8),
+                Text('Todo listo para publicar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: fg)),
+              ],
+            )
+          else ...[
+            for (final it in issues.take(6))
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: it.$2 == null
+                    ? null
+                    : () {
+                        onNavigate?.call();
+                        _scrollToBlock(it.$2!);
+                      },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded, size: 16, color: OhtliColors.cempasuchil),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(it.$1, style: GoogleFonts.inter(fontSize: 12.5, color: fg))),
+                      if (it.$2 != null) Icon(Icons.chevron_right_rounded, size: 16, color: sub),
+                    ],
+                  ),
+                ),
+              ),
+            if (issues.length > 6)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text('y ${issues.length - 6} más', style: GoogleFonts.inter(fontSize: 12, color: sub)),
+              ),
+          ],
+          if (places > 0) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if (places >= 2)
+                  ActionChip(
+                    avatar: const Icon(Icons.add_road_rounded, size: 16, color: OhtliColors.stormyTeal),
+                    label: Text('Completar traslados', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+                    onPressed: _fillAllTransfers,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.schedule_rounded, size: 16, color: OhtliColors.stormyTeal),
+                  label: Text('Ajustar horarios', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600)),
+                  onPressed: _recalculateTimes,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+
+    final indice = Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: _floatBlock(isDark),
+      clipBehavior: Clip.antiAlias,
+      child: _sections.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('El índice aparece al agregar bloques.', style: GoogleFonts.inter(fontSize: 12.5, color: sub)),
+            )
+          : _buildOutline(isDark, onNavigate: onNavigate),
+    );
+
+    return ListView(
+      controller: controller,
+      clipBehavior: Clip.none,
+      padding: EdgeInsets.fromLTRB(controller != null ? 16 : 0, controller != null ? 20 : 0, controller != null ? 16 : 0, 28),
+      children: [datos, revision, indice],
+    );
+  }
+
+  Widget _buildCanvas(bool isDark, double screenW) {
+    final bool isDesktop = screenW >= 700;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final places = _sections.whereType<PlaceSection>().toList();
+    final starts = places.map((p) => _hm(p.arrivalTime)).whereType<int>().toList();
+    final ends = places.map((p) => _hm(p.departureTime) ?? _hm(p.arrivalTime)).whereType<int>().toList();
+    String hhmm(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+    final double budget = places.fold<double>(0, (a, p) => a + p.cost) + _sections.whereType<TransferSection>().fold<double>(0, (a, t) => a + t.cost);
+
+    Widget fact(IconData icon, String text, {VoidCallback? onTap}) => Material(
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+          shape: StadiumBorder(side: BorderSide(color: isDark ? Colors.white12 : OhtliColors.cardBorder)),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 14, color: OhtliColors.stormyTeal),
+                  const SizedBox(width: 6),
+                  Text(text, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: fg)),
+                ],
+              ),
+            ),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_isPostTrip && !_isSampleEditor)
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(color: OhtliColors.xoconostle.withValues(alpha: isDark ? 0.18 : 0.08), borderRadius: BorderRadius.circular(14)),
+            child: Row(
+              children: [
+                const Icon(Icons.history_edu_rounded, size: 18, color: OhtliColors.xoconostle),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Después del viaje: lo que cambies quedará en la fe de erratas con tu nombre.',
+                      style: GoogleFonts.inter(fontSize: 12.5, height: 1.35, color: fg)),
+                ),
+              ],
+            ),
+          ),
+        _buildCoverEditor(isDark, isDesktop: isDesktop),
+        const SizedBox(height: 14),
+        OhtliMarkdownEditor(
+          controller: _descriptionController,
+          focusNode: _getFocusNode('trip_description'),
+          hintText: 'Cuenta de qué va el viaje…',
+          minLines: 2,
+          maxLines: null,
+          onChanged: _onDataChanged,
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            fact(Icons.event_rounded, _travelDate == null ? 'Sin fecha' : _fmtDate(_travelDate!), onTap: _pickTravelDate),
+            fact(Icons.place_rounded, '${places.length} ${places.length == 1 ? 'parada' : 'paradas'}'),
+            if (starts.isNotEmpty) fact(Icons.schedule_rounded, '${hhmm(starts.reduce(math.min))}–${hhmm(ends.reduce(math.max))}'),
+            if (budget > 0) fact(Icons.account_balance_wallet_rounded, '\$${budget.toStringAsFixed(0)} MXN'),
+          ],
+        ),
+        const SizedBox(height: 26),
+        if (_sections.isEmpty)
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _showInsertMenu(at: 0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: 0.4), width: 1.5),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.add_circle_outline_rounded, size: 34, color: OhtliColors.stormyTeal),
+                  const SizedBox(height: 10),
+                  Text('Agrega la primera parada o un texto', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
+                  const SizedBox(height: 4),
+                  Text('También puedes escribir «/» en un texto vacío para elegir el tipo de bloque.',
+                      textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 12.5, color: sub)),
+                ],
+              ),
+            ),
+          )
+        else
+          Stack(
+            children: [
+              Positioned(
+                left: _kSpineX - 1,
+                top: 14,
+                bottom: 24,
+                child: CustomPaint(size: const Size(2, double.infinity), painter: _EditorSpinePainter(isDark ? Colors.white24 : OhtliColors.onyx.withValues(alpha: 0.22))),
+              ),
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: _sections.length,
+                onReorder: _reorderBlocks,
+                proxyDecorator: (child, index, animation) => Material(
+                  color: Colors.transparent,
+                  elevation: 10,
+                  shadowColor: OhtliColors.onyx.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(20),
+                  child: child,
+                ),
+                itemBuilder: (context, index) {
+                  final section = _sections[index];
+                  final bool needsTransfer = section is PlaceSection &&
+                      !section.unplanned &&
+                      _sections.take(index).any((s) => s is PlaceSection) &&
+                      transferBefore(_sections, index) == null;
+                  return KeyedSubtree(
+                    key: ValueKey('${section.id}_$_editorGeneration'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _InsertLine(spineX: _kSpineX, isDark: isDark, onTap: () => _showInsertMenu(at: index)),
+                        if (needsTransfer)
+                          Padding(padding: const EdgeInsets.only(left: _kSpineIndent), child: _buildMissingTransferConnector(section.id)),
+                        _buildTimelineRow(index, section, isDark),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        if (_sections.isNotEmpty) ...[
+          _InsertLine(spineX: _kSpineX, isDark: isDark, onTap: () => _showInsertMenu(at: _sections.length)),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: _kSpineIndent),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _showInsertMenu(at: _sections.length),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: OhtliColors.stormyTeal,
+                  side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  shape: const StadiumBorder(),
+                ),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: Text('Agregar bloque', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  static int? _hm(String? t) {
+    final m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(t ?? '');
+    if (m == null) return null;
+    return int.parse(m.group(1)!) * 60 + int.parse(m.group(2)!);
+  }
+
+  /// Portada grande con el título encima, como en el viaje publicado.
+  Widget _buildCoverEditor(bool isDark, {required bool isDesktop}) {
+    final bool has = _coverUrl.isNotEmpty;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        height: isDesktop ? 300 : 230,
+        decoration: BoxDecoration(
+          color: has ? Colors.black : OhtliColors.stormyTeal,
+          image: has ? DecorationImage(image: _getImageProvider(_coverUrl), fit: BoxFit.cover) : null,
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: const [0, 0.45, 1],
+                    colors: [Colors.black.withValues(alpha: has ? 0.25 : 0), Colors.transparent, Colors.black.withValues(alpha: has ? 0.75 : 0.2)],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: Row(
+                children: [
+                  if (has)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: IconButton.filledTonal(
+                        tooltip: 'Quitar portada',
+                        onPressed: () {
+                          setState(() => _coverUrl = '');
+                          _onDataChanged();
+                        },
+                        style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.9), foregroundColor: const Color(0xFF1F2A2A)),
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      ),
+                    ),
+                  FilledButton.icon(
+                    onPressed: _uploadCoverImage,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white.withValues(alpha: 0.92),
+                      foregroundColor: const Color(0xFF1F2A2A),
+                      shape: const StadiumBorder(),
+                    ),
+                    icon: const Icon(Icons.photo_camera_back_rounded, size: 17),
+                    label: Text(has ? 'Cambiar portada' : 'Agregar portada', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 22,
+              right: 22,
+              bottom: 16,
+              child: TextFormField(
+                controller: _titleController,
+                maxLines: 2,
+                minLines: 1,
+                onChanged: (_) => _onDataChanged(),
+                cursorColor: Colors.white,
+                style: GoogleFonts.outfit(fontSize: isDesktop ? 36 : 27, fontWeight: FontWeight.bold, height: 1.1, color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Título de tu viaje',
+                  hintStyle: GoogleFonts.outfit(fontSize: isDesktop ? 36 : 27, fontWeight: FontWeight.bold, color: Colors.white.withValues(alpha: 0.55)),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Fila de la línea de tiempo: marcador sobre la línea punteada y el bloque.
+  Widget _buildTimelineRow(int index, TripSection section, bool isDark) {
+    Widget marker;
+    if (section is PlaceSection && section.unplanned) {
+      marker = Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: OhtliColors.cempasuchil,
+          shape: BoxShape.circle,
+          border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
+        ),
+        child: const Icon(Icons.alt_route_rounded, size: 13, color: Colors.white),
+      );
+    } else if (section is PlaceSection) {
+      int n = 0;
+      for (int i = 0; i <= index; i++) {
+        final x = _sections[i];
+        if (x is PlaceSection && !x.unplanned) n++;
+      }
+      marker = Container(
+        width: 26,
+        height: 26,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: OhtliColors.stormyTeal,
+          shape: BoxShape.circle,
+          border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
+        ),
+        child: Text('$n', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+      );
+    } else if (section is TransferSection) {
+      marker = Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+        ),
+        child: Icon(transferModeOf(section.mode).icon, size: 14, color: OhtliColors.stormyTeal),
+      );
+    } else {
+      marker = Container(
+        width: 12,
+        height: 12,
+        margin: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF3A3A3E) : OhtliColors.cantera,
+          shape: BoxShape.circle,
+          border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 2),
+        ),
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: _kSpineIndent,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Align(alignment: const Alignment(-1, -1), child: Padding(padding: const EdgeInsets.only(left: _kSpineX - 13), child: marker)),
+          ),
+        ),
+        Expanded(child: _buildBlockCard(index, section, isDark)),
+      ],
+    );
+  }
+
+  /// Menú de bloques: insertar en [at] o cambiar el tipo del texto vacío [replaceId] ("/").
+  Future<void> _showInsertMenu({int? at, String? replaceId}) async {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    const options = <(String, IconData, String, String)>[
+      ('place', Icons.place_rounded, 'Parada', 'Un lugar del recorrido'),
+      ('transfer', Icons.route_rounded, 'Traslado', 'Cómo van de un lugar a otro'),
+      ('text', Icons.notes_rounded, 'Texto', 'Cuenta algo del viaje'),
+      ('text_image', Icons.image_rounded, 'Imagen', 'Una foto con texto al lado'),
+      ('table', Icons.table_chart_rounded, 'Tabla', 'Cuentas, horarios o listas'),
+      ('notes', Icons.sticky_note_2_rounded, 'Nota', 'Un aviso destacado'),
+    ];
+    final type = await showDialog<String>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        insetPadding: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(replaceId != null ? 'Convertir en…' : 'Agregar bloque',
+                          style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: fg)),
+                    ),
+                    IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close_rounded)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 2.6,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    for (final o in options)
+                      Material(
+                        color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F6F5),
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () => Navigator.pop(ctx, o.$1),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                Icon(o.$2, color: OhtliColors.stormyTeal, size: 22),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(o.$3, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: fg)),
+                                      Text(o.$4, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11.5, color: sub)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (replaceId != null) {
+      final i = _sections.indexWhere((s) => s.id == replaceId);
+      if (i < 0) return;
+      if (type == null || type == 'text') {
+        // Se queda como texto: solo se borra la "/".
+        final c = _blockControllers[replaceId];
+        if (c is MarkdownRichTextController) c.text = '';
+        _updateTextBlock(i, markdown: '');
+        return;
+      }
+      _blockControllers.remove(replaceId)?.dispose();
+      _addBlock(type, replaceId: replaceId);
+      return;
+    }
+    if (type != null) _addBlock(type, at: at);
   }
 
   Widget _buildBlockCard(int index, TripSection section, bool isDark) {
@@ -2784,7 +3124,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withValues(alpha: 0.6)),
       );
     } else if (section is PlaceSection) {
-      typeLabel = "Lugar Visitado";
+      typeLabel = section.unplanned ? "Desvío" : "Parada";
       typeIcon = Icons.location_on_rounded;
       
       final titleController = _blockControllers.putIfAbsent(
@@ -3090,7 +3430,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final tableData = parseTableMarkdown(section.markdownText);
 
       if (alertData != null) {
-        typeLabel = "Nota del Plan / Alerta";
+        typeLabel = "Nota";
         typeIcon = Icons.info_outline_rounded;
         blockContent = OhtliAlertBlockEditor(
           alertData: alertData,
@@ -3106,7 +3446,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           onChanged: (newMarkdown) => _updateTextBlock(_idx(section.id), markdown: newMarkdown),
         );
       } else {
-        typeLabel = "Nota / Historia";
+        typeLabel = "Texto";
         typeIcon = Icons.notes_rounded;
         
         final controller = _blockControllers.putIfAbsent(
@@ -3125,13 +3465,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
         blockContent = OhtliMarkdownEditor(
           controller: controller,
           focusNode: focusNode,
-          hintText: 'Escribe tu anécdota, historia o consejo aquí...',
+          hintText: 'Escribe aquí… o «/» para elegir otro tipo de bloque',
           minLines: 4,
           maxLines: null,
         );
       }
     } else if (section is TextImageSection) {
-      typeLabel = "Nota con Imagen";
+      typeLabel = "Imagen y texto";
       typeIcon = Icons.photo_library_rounded;
 
       final controller = _blockControllers.putIfAbsent(
@@ -3306,103 +3646,86 @@ class _TripEditorPageState extends State<TripEditorPage> {
       );
     }
 
+    final Color fgLabel = isDark ? Colors.white60 : OhtliColors.subtleText;
     return Container(
       key: _blockKeys.putIfAbsent(section.id, () => GlobalKey()),
-      margin: const EdgeInsets.only(bottom: 20),
+      margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? const Color(0xFF2C2C32) : OhtliColors.cantera.withValues(alpha: 0.4),
-          width: 1,
-        ),
+        border: Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder.withValues(alpha: 0.8)),
         boxShadow: [
-          BoxShadow(
-            color: OhtliColors.onyx.withValues(alpha: isDark ? 0.2 : 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05), blurRadius: 18, offset: const Offset(0, 6)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Block header controls
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.15),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
+          // Encabezado discreto: asa para arrastrar, tipo y menú del bloque.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 4, 0),
             child: Row(
               children: [
-                // Asa para arrastrar el bloque (E2)
                 ReorderableDragStartListener(
                   index: index,
                   child: MouseRegion(
                     cursor: SystemMouseCursors.grab,
                     child: Tooltip(
-                      message: 'Arrastra para reordenar',
+                      message: 'Arrastra para mover',
                       child: Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: Icon(Icons.drag_indicator_rounded, size: 18, color: OhtliColors.onyx.withValues(alpha: 0.4)),
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(Icons.drag_indicator_rounded, size: 18, color: fgLabel.withValues(alpha: 0.6)),
                       ),
                     ),
                   ),
                 ),
-                Icon(typeIcon, size: 16, color: OhtliColors.stormyTeal),
-                const SizedBox(width: 8),
-                Text(
-                  typeLabel,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx.withValues(alpha: 0.6),
-                  ),
-                ),
+                const SizedBox(width: 2),
+                Icon(typeIcon, size: 15, color: OhtliColors.stormyTeal),
+                const SizedBox(width: 6),
+                Text(typeLabel, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.2, color: fgLabel)),
                 const Spacer(),
-                // Up Button
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.arrow_upward_rounded, size: 16),
-                  color: index > 0 ? OhtliColors.stormyTeal : OhtliColors.cantera,
-                  onPressed: index > 0 ? () => _moveUp(index) : null,
-                ),
-                const SizedBox(width: 12),
-                // Down Button
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.arrow_downward_rounded, size: 16),
-                  color: index < _sections.length - 1 ? OhtliColors.stormyTeal : OhtliColors.cantera,
-                  onPressed: index < _sections.length - 1 ? () => _moveDown(index) : null,
-                ),
-                const SizedBox(width: 12),
-                // Duplicate Button (E5)
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Duplicar bloque',
-                  icon: const Icon(Icons.copy_all_rounded, size: 16),
-                  color: OhtliColors.stormyTeal,
-                  onPressed: () => _duplicateBlock(index),
-                ),
-                const SizedBox(width: 12),
-                // Delete Button
-                IconButton(
-                  tooltip: 'Eliminar bloque',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                  color: OhtliColors.xoconostle,
-                  onPressed: () => _deleteBlock(index),
+                PopupMenuButton<String>(
+                  tooltip: 'Opciones del bloque',
+                  icon: Icon(Icons.more_horiz_rounded, size: 20, color: fgLabel),
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'up':
+                        _moveUp(index);
+                      case 'down':
+                        _moveDown(index);
+                      case 'dup':
+                        _duplicateBlock(index);
+                      case 'above':
+                        _showInsertMenu(at: index);
+                      case 'below':
+                        _showInsertMenu(at: index + 1);
+                      case 'delete':
+                        _deleteBlock(index);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: 'above', child: ListTile(dense: true, leading: const Icon(Icons.vertical_align_top_rounded), title: Text('Agregar arriba', style: GoogleFonts.inter()))),
+                    PopupMenuItem(value: 'below', child: ListTile(dense: true, leading: const Icon(Icons.vertical_align_bottom_rounded), title: Text('Agregar abajo', style: GoogleFonts.inter()))),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(value: 'up', enabled: index > 0, child: ListTile(dense: true, leading: const Icon(Icons.arrow_upward_rounded), title: Text('Subir', style: GoogleFonts.inter()))),
+                    PopupMenuItem(value: 'down', enabled: index < _sections.length - 1, child: ListTile(dense: true, leading: const Icon(Icons.arrow_downward_rounded), title: Text('Bajar', style: GoogleFonts.inter()))),
+                    PopupMenuItem(value: 'dup', child: ListTile(dense: true, leading: const Icon(Icons.copy_all_rounded), title: Text('Duplicar', style: GoogleFonts.inter()))),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.delete_outline_rounded, color: OhtliColors.xoconostle),
+                        title: Text('Eliminar', style: GoogleFonts.inter(color: OhtliColors.xoconostle)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: blockContent,
           ),
         ],
@@ -3836,7 +4159,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     int placeNumber = 0;
     final numbers = <String, int>{};
     for (final s in _sections) {
-      if (s is PlaceSection) numbers[s.id] = ++placeNumber;
+      if (s is PlaceSection && !s.unplanned) numbers[s.id] = ++placeNumber;
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -5311,6 +5634,106 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+
+/// Línea punteada del lienzo del editor (como la del viaje publicado).
+class _EditorSpinePainter extends CustomPainter {
+  final Color color;
+  const _EditorSpinePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    double y = 0;
+    while (y < size.height) {
+      canvas.drawLine(Offset(size.width / 2, y), Offset(size.width / 2, math.min(y + 5, size.height)), paint);
+      y += 11;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _EditorSpinePainter old) => old.color != color;
+}
+
+/// "+" entre bloques: tenue hasta pasar el cursor; al tocarlo abre el menú de bloques.
+class _InsertLine extends StatefulWidget {
+  final VoidCallback onTap;
+  final double spineX;
+  final bool isDark;
+  const _InsertLine({required this.onTap, required this.spineX, required this.isDark});
+
+  @override
+  State<_InsertLine> createState() => _InsertLineState();
+}
+
+class _InsertLineState extends State<_InsertLine> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = OhtliColors.stormyTeal;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: SizedBox(
+          height: 30,
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              Positioned(
+                left: widget.spineX + 22,
+                right: 0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 150),
+                  opacity: _hover ? 1 : 0,
+                  child: Container(height: 1.5, color: accent.withValues(alpha: 0.5)),
+                ),
+              ),
+              Positioned(
+                left: widget.spineX - 11,
+                child: AnimatedScale(
+                  duration: const Duration(milliseconds: 150),
+                  scale: _hover ? 1.15 : 1,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 150),
+                    opacity: _hover ? 1 : 0.45,
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: _hover ? accent : (widget.isDark ? const Color(0xFF1E1E22) : Colors.white),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: accent, width: 1.5),
+                      ),
+                      child: Icon(Icons.add_rounded, size: 15, color: _hover ? Colors.white : accent),
+                    ),
+                  ),
+                ),
+              ),
+              if (_hover)
+                Positioned(
+                  left: widget.spineX + 22,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    color: widget.isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+                    child: Text('Agregar aquí', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: accent)),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
