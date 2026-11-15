@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -68,7 +68,7 @@ class _SsoBridgePageState extends State<SsoBridgePage> {
     if (result == SwitchAccountResult.switched) {
       // Misma URL (/sso?return=…): al recargar continúa con la cuenta elegida.
       OhtliSso.markContinueAfterSwitch();
-      html.window.location.reload();
+      web.window.location.reload();
       return;
     }
     if (!mounted) return;

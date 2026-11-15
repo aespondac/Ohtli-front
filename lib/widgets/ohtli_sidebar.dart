@@ -2,7 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'dart:ui' show lerpDouble;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -154,7 +154,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     _syncProfilePic();
     if (!_hasLoadedState && kIsWeb) {
       try {
-        _isPinned = html.window.localStorage[_pinnedKey] == 'true';
+        _isPinned = web.window.localStorage.getItem(_pinnedKey) == 'true';
       } catch (e) {
         print("Error reading sidebar pinned state: $e");
       }
@@ -187,7 +187,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
   void _savePinnedLocal() {
     if (!kIsWeb) return;
     try {
-      html.window.localStorage[_pinnedKey] = _isPinned.toString();
+      web.window.localStorage.setItem(_pinnedKey, _isPinned.toString());
     } catch (e) {
       print("Error saving sidebar pinned state: $e");
     }
@@ -216,7 +216,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     final user = FirebaseAuth.instance.currentUser;
     if (user != null && kIsWeb) {
       try {
-        final localPic = html.window.localStorage['ohtli_profile_pic_${user.uid}'];
+        final localPic = web.window.localStorage.getItem('ohtli_profile_pic_${user.uid}');
         if (localPic != null && localPic.isNotEmpty) {
           _localPhotoURL = localPic;
         }
@@ -723,7 +723,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     final result = await SavedAccounts.switchTo(account.uid);
     if (result == SwitchAccountResult.switched) {
       // Arranca la app desde el inicio con la nueva cuenta (sin datos en memoria de la anterior).
-      html.window.location.assign('${html.window.location.origin}/');
+      web.window.location.assign('${web.window.location.origin}/');
       return;
     }
     messenger?.hideCurrentSnackBar();

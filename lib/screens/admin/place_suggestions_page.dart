@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import '../../config/admin.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../theme/colors.dart';
@@ -423,7 +423,7 @@ class _SuggestionCard extends StatelessWidget {
               children: [
                 if (s.hasLocation)
                   TextButton.icon(
-                    onPressed: () => html.window.open('https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}', '_blank'),
+                    onPressed: () => web.window.open('https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}', '_blank'),
                     icon: const Icon(Icons.map_outlined, size: 16),
                     label: const Text('Ver en el mapa'),
                   )

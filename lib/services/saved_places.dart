@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
 import 'dart:async';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -64,11 +64,11 @@ class SavedPlaces {
   static void _migrateLegacy(String uid, List<String> remote) {
     if (!kIsWeb) return;
     try {
-      final raw = html.window.localStorage[_legacyKey];
+      final raw = web.window.localStorage.getItem(_legacyKey);
       if (raw == null) return;
       final legacy = raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
       final merged = [...remote, ...legacy.where((id) => !remote.contains(id))];
-      html.window.localStorage.remove(_legacyKey);
+      web.window.localStorage.removeItem(_legacyKey);
       if (merged.length != remote.length) _write(uid, merged);
     } catch (_) {}
   }

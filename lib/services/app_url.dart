@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -57,7 +57,7 @@ class AppUrl {
   /// rutas fijas.
   static bool get enabled {
     if (!kIsWeb) return false;
-    final host = html.window.location.hostname ?? '';
+    final host = web.window.location.hostname;
     // Canales de vista previa de Firebase Hosting (othli-497404--algo.web.app) para probar
     final isPreview = host.startsWith('othli-497404--') && host.endsWith('.web.app');
     return OhtliSso.isMainHost || isPreview || host == 'localhost' || host == '127.0.0.1';
@@ -70,7 +70,7 @@ class AppUrl {
   /// historial (redirecciones automáticas, como abrir la app ya con sesión).
   void show(String location, {bool replace = false}) {
     if (!enabled) return;
-    final current = '${html.window.location.pathname}${html.window.location.search}';
+    final current = '${web.window.location.pathname}${web.window.location.search}';
     if (current == location) return;
     SystemNavigator.routeInformationUpdated(uri: Uri.parse(location), replace: replace);
   }

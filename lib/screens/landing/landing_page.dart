@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -127,7 +127,7 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   void _openExternal(String url) {
-    if (kIsWeb) html.window.open(url, '_blank');
+    if (kIsWeb) web.window.open(url, '_blank');
   }
 
   // Ocupa todo el ancho de la ventana; el margen lateral crece con la pantalla

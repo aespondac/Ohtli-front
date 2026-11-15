@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
+import 'dart:js_interop';
+import 'package:web/web.dart' as web;
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -277,37 +278,36 @@ Future<Uint8List> _convertImageToJpegWeb(Uint8List bytes) async {
 
   final Completer<Uint8List> completer = Completer<Uint8List>();
   final String mimeType = _getMimeType(bytes);
-  final html.Blob blob = html.Blob([bytes], mimeType);
-  final String blobUrl = html.Url.createObjectUrlFromBlob(blob);
+  final web.Blob blob = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: mimeType));
+  final String blobUrl = web.URL.createObjectURL(blob);
 
-  final html.ImageElement imgElement = html.ImageElement();
-  imgElement.src = blobUrl;
+  final web.HTMLImageElement imgElement = web.HTMLImageElement();
 
-  imgElement.onLoad.listen((_) {
+  imgElement.onload = ((web.Event _) {
     try {
-      final html.CanvasElement canvas = html.CanvasElement(
-        width: imgElement.naturalWidth,
-        height: imgElement.naturalHeight,
-      );
-      final html.CanvasRenderingContext2D ctx = canvas.context2D;
+      final web.HTMLCanvasElement canvas = web.HTMLCanvasElement()
+        ..width = imgElement.naturalWidth
+        ..height = imgElement.naturalHeight;
+      final web.CanvasRenderingContext2D ctx = canvas.context2D;
       ctx.drawImage(imgElement, 0, 0);
 
       // Export to high-quality JPEG (0.85)
-      final String dataUrl = canvas.toDataUrl('image/jpeg', 0.85);
-      html.Url.revokeObjectUrl(blobUrl);
+      final String dataUrl = canvas.toDataURL('image/jpeg', 0.85.toJS);
+      web.URL.revokeObjectURL(blobUrl);
 
       final String base64Data = dataUrl.split(',').last;
       completer.complete(base64Decode(base64Data));
     } catch (e) {
-      html.Url.revokeObjectUrl(blobUrl);
+      web.URL.revokeObjectURL(blobUrl);
       completer.completeError(e);
     }
-  });
+  }).toJS;
 
-  imgElement.onError.listen((err) {
-    html.Url.revokeObjectUrl(blobUrl);
+  imgElement.onerror = ((web.Event _) {
+    web.URL.revokeObjectURL(blobUrl);
     completer.completeError(Exception("Failed to decode image natively in browser. Format may not be supported by this browser."));
-  });
+  }).toJS;
+  imgElement.src = blobUrl;
 
   return completer.future;
 }
@@ -435,26 +435,25 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
         // Convert PNG to JPEG using Web Canvas to optimize size and standard compatibility
         if (kIsWeb) {
           try {
-            final html.CanvasElement canvas = html.CanvasElement(
-              width: image.width,
-              height: image.height,
-            );
-            final html.CanvasRenderingContext2D ctx = canvas.context2D;
-            
-            final html.ImageElement imgElement = html.ImageElement();
+            final web.HTMLCanvasElement canvas = web.HTMLCanvasElement()
+              ..width = image.width
+              ..height = image.height;
+            final web.CanvasRenderingContext2D ctx = canvas.context2D;
+
+            final web.HTMLImageElement imgElement = web.HTMLImageElement();
             final Completer<void> completer = Completer<void>();
-            imgElement.onLoad.listen((_) {
+            imgElement.onload = ((web.Event _) {
               ctx.drawImage(imgElement, 0, 0);
               completer.complete();
-            });
-            imgElement.onError.listen((err) {
-              completer.completeError(err);
-            });
+            }).toJS;
+            imgElement.onerror = ((web.Event _) {
+              completer.completeError(StateError('No se pudo leer la imagen recortada'));
+            }).toJS;
             imgElement.src = base64String;
             await completer.future;
-            
+
             // Export to JPEG with premium compressed quality (0.95)
-            base64String = canvas.toDataUrl('image/jpeg', 0.95);
+            base64String = canvas.toDataURL('image/jpeg', 0.95.toJS);
           } catch (e) {
             print("Error converting cropped image to JPEG: $e");
           }

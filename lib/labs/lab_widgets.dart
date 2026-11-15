@@ -1,11 +1,12 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/colors.dart';
+import '../utils/web_helpers.dart';
 
 String fmtNum(dynamic v, {int digits = 1, String suffix = ''}) {
   if (v == null) return '—';
@@ -25,12 +26,7 @@ String fmtDate(dynamic ts) {
 }
 
 void downloadText(String filename, String content, {String mime = 'text/plain'}) {
-  final blob = html.Blob([utf8.encode(content)], '$mime;charset=utf-8');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  html.AnchorElement(href: url)
-    ..download = filename
-    ..click();
-  html.Url.revokeObjectUrl(url);
+  downloadBytes(utf8.encode(content), filename, '$mime;charset=utf-8');
 }
 
 String toCsv(List<String> header, List<List<dynamic>> rows) {

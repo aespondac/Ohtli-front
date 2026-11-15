@@ -2,12 +2,13 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/web_helpers.dart';
 
 /// Una cuenta recordada en este navegador (solo datos para mostrarla).
 class SavedAccount {
@@ -83,13 +84,13 @@ class SavedAccounts {
     final line = '${DateTime.now().toIso8601String()} $event uid=${_short(uid)}${detail == null ? '' : ' $detail'}';
     print('[ohtli-accounts] $line');
     try {
-      final raw = html.window.localStorage[_logKey];
+      final raw = web.window.localStorage.getItem(_logKey);
       final entries = raw == null ? <dynamic>[] : (jsonDecode(raw) as List);
       entries.add(line);
       while (entries.length > 40) {
         entries.removeAt(0);
       }
-      html.window.localStorage[_logKey] = jsonEncode(entries);
+      web.window.localStorage.setItem(_logKey, jsonEncode(entries));
     } catch (_) {}
   }
 
@@ -100,7 +101,7 @@ class SavedAccounts {
   static List<SavedAccount> list() {
     if (!kIsWeb) return const [];
     try {
-      final raw = html.window.localStorage[_listKey];
+      final raw = web.window.localStorage.getItem(_listKey);
       if (raw == null || raw.isEmpty) return const [];
       final decoded = jsonDecode(raw);
       if (decoded is! List) return const [];
@@ -126,7 +127,7 @@ class SavedAccounts {
 
   static void _writeList(List<SavedAccount> accounts) {
     try {
-      html.window.localStorage[_listKey] = jsonEncode(accounts.map((a) => a.toJson()).toList());
+      web.window.localStorage.setItem(_listKey, jsonEncode(accounts.map((a) => a.toJson()).toList()));
     } catch (e) {
       print('Error writing saved accounts: $e');
     }
@@ -135,7 +136,7 @@ class SavedAccounts {
 
   static String? _readSession(String uid) {
     try {
-      final raw = html.window.localStorage['$_sessionPrefix$uid'];
+      final raw = web.window.localStorage.getItem('$_sessionPrefix$uid');
       return (raw == null || raw.isEmpty) ? null : raw;
     } catch (_) {
       return null;
@@ -145,9 +146,9 @@ class SavedAccounts {
   static void _writeSession(String uid, String? json) {
     try {
       if (json == null) {
-        html.window.localStorage.remove('$_sessionPrefix$uid');
+        web.window.localStorage.removeItem('$_sessionPrefix$uid');
       } else {
-        html.window.localStorage['$_sessionPrefix$uid'] = json;
+        web.window.localStorage.setItem('$_sessionPrefix$uid', json);
       }
     } catch (e) {
       print('Error writing saved session: $e');
@@ -214,9 +215,9 @@ class SavedAccounts {
   /// copias en IndexedDB o sessionStorage se borran para que no compitan.
   static Future<void> _writeDefaultSession(Map<String, dynamic> blob) async {
     final key = _defaultUserKey();
-    html.window.localStorage[key] = jsonEncode(blob);
+    web.window.localStorage.setItem(key, jsonEncode(blob));
     try {
-      html.window.sessionStorage.remove(key);
+      web.window.sessionStorage.removeItem(key);
     } catch (_) {}
     try {
       final db = await _openAuthDb();
@@ -349,7 +350,7 @@ class SavedAccounts {
       blob['appName'] = '[DEFAULT]';
       await _writeDefaultSession(blob);
 
-      html.window.sessionStorage[_pendingSwitchKey] = uid;
+      web.window.sessionStorage.setItem(_pendingSwitchKey, uid);
       final accounts = list();
       _writeList([...accounts.where((a) => a.uid == uid), ...accounts.where((a) => a.uid != uid)]);
       _log('switch-written', uid: uid);
@@ -366,7 +367,7 @@ class SavedAccounts {
   static String? checkPendingSwitch(User? user) {
     if (!kIsWeb) return null;
     try {
-      final target = html.window.sessionStorage.remove(_pendingSwitchKey);
+      final target = web.window.sessionStorage.takeItem(_pendingSwitchKey);
       if (target == null) return null;
       if (user?.uid == target) {
         _log('switch-ok', uid: target);

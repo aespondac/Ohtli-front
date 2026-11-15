@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -178,7 +178,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     final query = Uri.encodeComponent('${poi.name} (${poi.location.lat},${poi.location.lng})');
     final url = 'https://www.google.com/maps/search/?api=1&query=$query';
     if (kIsWeb) {
-      html.window.open(url, '_blank');
+      web.window.open(url, '_blank');
     }
   }
 
@@ -339,7 +339,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
 
   Widget _buildContent(BuildContext context, {required bool isMobile, required double radius}) {
     final poi = widget.poi;
-    final bool isLabsUrl = kIsWeb && html.window.location.hostname != null && html.window.location.hostname!.contains('labs');
+    final bool isLabsUrl = kIsWeb && web.window.location.hostname.contains('labs');
     final double heroHeight = isMobile ? 260 : 300;
     final double hPad = isMobile ? 20 : 28;
 

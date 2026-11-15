@@ -6,7 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:ui' as ui;
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -122,7 +122,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     if (kIsWeb) {
       try {
         // Se guarda la respuesta completa; la lectura acepta tanto el objeto como la lista sola
-        html.window.localStorage['ohtli_cached_pois_v2'] = rawJson;
+        web.window.localStorage.setItem('ohtli_cached_pois_v2', rawJson);
       } catch (_) {}
     }
   }
@@ -325,7 +325,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   void _loadCachedPoisFromLocalStorage() {
     if (kIsWeb) {
       try {
-        final cached = html.window.localStorage['ohtli_cached_pois_v2'];
+        final cached = web.window.localStorage.getItem('ohtli_cached_pois_v2');
         if (cached != null && cached.isNotEmpty) {
           final decoded = jsonDecode(cached);
           // Formato actual: respuesta completa {pois: [...]}; formato anterior: la lista sola
@@ -466,7 +466,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   void _loadViewedPlaces() {
     if (kIsWeb) {
       try {
-        final saved = html.window.localStorage['ohtli_viewed_pois'];
+        final saved = web.window.localStorage.getItem('ohtli_viewed_pois');
         if (saved != null && saved.isNotEmpty) {
           _viewedPoiIds = saved.split(',').where((id) => id.trim().isNotEmpty).toList();
         }
@@ -486,7 +486,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
 
     if (kIsWeb) {
       try {
-        html.window.localStorage['ohtli_viewed_pois'] = _viewedPoiIds.join(',');
+        web.window.localStorage.setItem('ohtli_viewed_pois', _viewedPoiIds.join(','));
       } catch (_) {}
     }
   }

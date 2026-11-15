@@ -1,8 +1,9 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, undefined_function, uri_does_not_exist, deprecated_member_use
+// ignore_for_file: deprecated_member_use
 
 import 'dart:convert';
-import 'dart:html' as html;
-import 'dart:js' as js;
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:math' as math;
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
@@ -122,9 +123,9 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
   void dispose() {
     if (kIsWeb) {
       try {
-        js.context.deleteProperty(_clickCallbackName);
-        if (js.context.hasProperty('destroyOhtliRouteMap')) {
-          js.context.callMethod('destroyOhtliRouteMap', [_containerId]);
+        globalContext.delete((_clickCallbackName).toJS);
+        if (globalContext.has('destroyOhtliRouteMap')) {
+          globalContext.callMethodVarArgs('destroyOhtliRouteMap'.toJS, <JSAny?>[(_containerId).jsify()]);
         }
       } catch (_) {}
     }
@@ -133,7 +134,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
 
   void _registerGoogleMapPlatformView() {
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
-      final element = html.DivElement()
+      final element = web.HTMLDivElement()
         ..id = _containerId
         ..style.width = '100%'
         ..style.height = '100%'
@@ -144,31 +145,32 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
   }
 
   void _registerMarkerClickCallback() {
-    js.context[_clickCallbackName] = js.allowInterop((dynamic idxArg) {
+    globalContext[_clickCallbackName] = (((JSAny? idxArg) {
       if (!mounted) return;
-      final idx = (idxArg is num) ? idxArg.toInt() : int.tryParse(idxArg.toString());
+      final raw = idxArg.dartify();
+      final idx = (raw is num) ? raw.toInt() : int.tryParse('$raw');
       if (idx != null && idx >= 0 && idx < _parsedStops.length) {
         widget.onStopSelected?.call(_parsedStops[idx]);
       }
-    });
+    })).toJS;
   }
 
   void _ensureGoogleMapsScriptAndHelpers() {
     final key = _activeMapsKey;
     if (key.isEmpty) return;
 
-    if (html.document.getElementById('google-maps-places-script') == null) {
-      final script = html.ScriptElement()
+    if (web.document.getElementById('google-maps-places-script') == null) {
+      final script = web.HTMLScriptElement()
         ..id = 'google-maps-places-script'
         ..src = 'https://maps.googleapis.com/maps/api/js?key=$key&libraries=places&language=es&region=MX'
         ..async = true;
-      html.document.head?.append(script);
+      web.document.head?.append(script);
     }
 
-    if (html.document.getElementById('ohtli-route-gmap-helpers') == null ||
-        !js.context.hasProperty('renderOhtliRouteMap')) {
-      html.document.getElementById('ohtli-route-gmap-helpers')?.remove();
-      final helperScript = html.ScriptElement()
+    if (web.document.getElementById('ohtli-route-gmap-helpers') == null ||
+        !globalContext.has('renderOhtliRouteMap')) {
+      web.document.getElementById('ohtli-route-gmap-helpers')?.remove();
+      final helperScript = web.HTMLScriptElement()
         ..id = 'ohtli-route-gmap-helpers'
         ..text = '''
         window.ohtliRouteMaps = window.ohtliRouteMaps || {};
@@ -345,13 +347,13 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
           tryMount(50);
         };
         ''';
-      html.document.head?.append(helperScript);
+      web.document.head?.append(helperScript);
     }
   }
 
   void _renderGoogleMap() {
     if (!mounted || !_useGoogleMaps) return;
-    if (!js.context.hasProperty('renderOhtliRouteMap')) return;
+    if (!globalContext.has('renderOhtliRouteMap')) return;
 
     final config = <String, dynamic>{
       'centerLat': _centerLat,
@@ -371,10 +373,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
     };
 
     try {
-      js.context.callMethod(
-        'renderOhtliRouteMap',
-        [_containerId, json.encode(config), _clickCallbackName],
-      );
+      globalContext.callMethodVarArgs('renderOhtliRouteMap'.toJS, <JSAny?>[(_containerId).jsify(), (json.encode(config)).jsify(), (_clickCallbackName).jsify()]);
     } catch (_) {}
   }
 
@@ -536,7 +535,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
     final url =
         'https://www.openstreetmap.org/directions?engine=fossgis_osrm_foot&route=${first['lat']}%2C${first['lng']}%3B${last['lat']}%2C${last['lng']}';
     if (kIsWeb) {
-      html.window.open(url, '_blank');
+      web.window.open(url, '_blank');
     }
   }
 
@@ -550,7 +549,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
     final url =
         'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination${waypoints.isNotEmpty ? '&waypoints=$waypoints' : ''}&travelmode=walking';
     if (kIsWeb) {
-      html.window.open(url, '_blank');
+      web.window.open(url, '_blank');
     }
   }
 

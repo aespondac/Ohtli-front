@@ -1,10 +1,12 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import '../utils/web_helpers.dart';
 
 /// SSO entre subdominios: una sola sesión de Ohtli para ohtli.quest y lab.ohtli.quest.
 ///
@@ -28,7 +30,7 @@ class OhtliSso {
   static String? _pendingCode;
   static bool _cancelled = false;
 
-  static String get _host => kIsWeb ? (html.window.location.hostname ?? '').toLowerCase() : '';
+  static String get _host => kIsWeb ? web.window.location.hostname.toLowerCase() : '';
 
   /// Estamos en un subdominio que participa del SSO (p. ej. lab.ohtli.quest).
   static bool get isSubdomain => _host.endsWith('.$mainHost') && !_mainHosts.contains(_host);
@@ -44,14 +46,14 @@ class OhtliSso {
   static void captureFromUrl() {
     if (!kIsWeb) return;
     try {
-      final hash = html.window.location.hash;
+      final hash = web.window.location.hash;
       if (!hash.startsWith('#$_fragmentKey')) return;
       final params = Uri.splitQueryString(hash.substring(1));
       final code = params[_fragmentKey];
       if (code != null && code.isNotEmpty) _pendingCode = code;
       if (params.containsKey('${_fragmentKey}_cancel')) _cancelled = true;
-      final loc = html.window.location;
-      html.window.history.replaceState(null, '', '${loc.pathname}${loc.search}');
+      final loc = web.window.location;
+      web.window.history.replaceState(null, '', '${loc.pathname}${loc.search}');
     } catch (e) {
       print('SSO: error reading fragment: $e');
     }
@@ -67,13 +69,13 @@ class OhtliSso {
     _pendingCode = null;
     if (code == null) return false;
     try {
-      final response = await html.HttpRequest.request(
-        '/__sso/redeem',
-        method: 'POST',
-        sendData: jsonEncode({'code': code}),
-        requestHeaders: {'Content-Type': 'application/json'},
+      final response = await http.post(
+        Uri.base.resolve('/__sso/redeem'),
+        body: jsonEncode({'code': code}),
+        headers: {'Content-Type': 'application/json'},
       );
-      final token = (jsonDecode(response.responseText ?? '{}') as Map)['token'];
+      if (response.statusCode != 200) throw StateError('HTTP ${response.statusCode}');
+      final token = (jsonDecode(response.body.isEmpty ? '{}' : response.body) as Map)['token'];
       if (token is! String || token.isEmpty) return false;
       await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
       await FirebaseAuth.instance.signInWithCustomToken(token);
@@ -99,11 +101,11 @@ class OhtliSso {
     if (!kIsWeb) return;
     _setPaused(false);
     try {
-      html.window.sessionStorage[_attemptKey] = DateTime.now().millisecondsSinceEpoch.toString();
+      web.window.sessionStorage.setItem(_attemptKey, DateTime.now().millisecondsSinceEpoch.toString());
     } catch (_) {}
-    final loc = html.window.location;
+    final loc = web.window.location;
     final back = '${loc.origin}${loc.pathname}${loc.search}';
-    html.window.location.assign('$mainOrigin/sso?return=${Uri.encodeComponent(back)}');
+    web.window.location.assign('$mainOrigin/sso?return=${Uri.encodeComponent(back)}');
   }
 
   /// "Cambiar de cuenta" en un subdominio: cierra la sesión local y va al selector
@@ -129,7 +131,7 @@ class OhtliSso {
 
   static bool get _isPaused {
     try {
-      return html.window.localStorage[_pausedKey] == '1';
+      return web.window.localStorage.getItem(_pausedKey) == '1';
     } catch (_) {
       return false;
     }
@@ -138,9 +140,9 @@ class OhtliSso {
   static void _setPaused(bool paused) {
     try {
       if (paused) {
-        html.window.localStorage[_pausedKey] = '1';
+        web.window.localStorage.setItem(_pausedKey, '1');
       } else {
-        html.window.localStorage.remove(_pausedKey);
+        web.window.localStorage.removeItem(_pausedKey);
       }
     } catch (_) {}
   }
@@ -148,7 +150,7 @@ class OhtliSso {
   /// Evita un ciclo de redirecciones si ohtli.quest volvió sin código.
   static bool get _recentlyAttempted {
     try {
-      final raw = html.window.sessionStorage[_attemptKey];
+      final raw = web.window.sessionStorage.getItem(_attemptKey);
       final at = raw == null ? null : int.tryParse(raw);
       if (at == null) return false;
       return DateTime.now().millisecondsSinceEpoch - at < _attemptWindow.inMilliseconds;
@@ -159,7 +161,7 @@ class OhtliSso {
 
   static void _clearAttempt() {
     try {
-      html.window.sessionStorage.remove(_attemptKey);
+      web.window.sessionStorage.removeItem(_attemptKey);
     } catch (_) {}
   }
 
@@ -182,15 +184,15 @@ class OhtliSso {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('Sin sesión');
     final idToken = await user.getIdToken();
-    final response = await html.HttpRequest.request(
-      '/__sso/issue',
-      method: 'POST',
-      sendData: jsonEncode({'target': target.toString()}),
-      requestHeaders: {'Content-Type': 'application/json', 'Authorization': 'Bearer $idToken'},
+    final response = await http.post(
+      Uri.base.resolve('/__sso/issue'),
+      body: jsonEncode({'target': target.toString()}),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $idToken'},
     );
-    final code = (jsonDecode(response.responseText ?? '{}') as Map)['code'];
+    if (response.statusCode != 200) throw StateError('HTTP ${response.statusCode}');
+    final code = (jsonDecode(response.body.isEmpty ? '{}' : response.body) as Map)['code'];
     if (code is! String || code.isEmpty) throw StateError('Respuesta sin código');
-    html.window.location.replace('$target#$_fragmentKey=$code');
+    web.window.location.replace('$target#$_fragmentKey=$code');
   }
 
   /// Tras cambiar de cuenta en el selector de ohtli.quest/sso, la página se recarga;
@@ -199,13 +201,13 @@ class OhtliSso {
 
   static void markContinueAfterSwitch() {
     try {
-      html.window.sessionStorage[_continueAfterSwitchKey] = '1';
+      web.window.sessionStorage.setItem(_continueAfterSwitchKey, '1');
     } catch (_) {}
   }
 
   static bool takeContinueAfterSwitch() {
     try {
-      return html.window.sessionStorage.remove(_continueAfterSwitchKey) != null;
+      return web.window.sessionStorage.takeItem(_continueAfterSwitchKey) != null;
     } catch (_) {
       return false;
     }
@@ -213,6 +215,6 @@ class OhtliSso {
 
   /// "Cancelar" en ohtli.quest: vuelve al subdominio para iniciar sesión ahí.
   static void cancelAndReturn(Uri target) {
-    html.window.location.replace('$target#${_fragmentKey}_cancel=1');
+    web.window.location.replace('$target#${_fragmentKey}_cancel=1');
   }
 }

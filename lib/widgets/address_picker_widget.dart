@@ -1,10 +1,10 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, undefined_function, uri_does_not_exist, deprecated_member_use
+// ignore_for_file: deprecated_member_use
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
-import 'dart:js' as js;
-import 'dart:js_util' show promiseToFuture;
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -138,23 +138,23 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
     // Trigger initial geocoding or center
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (kIsWeb && js.context.hasProperty('mountOhtliAddressMap')) {
-        js.context.callMethod('mountOhtliAddressMap');
+      if (kIsWeb && globalContext.has('mountOhtliAddressMap')) {
+        globalContext.callMethod('mountOhtliAddressMap'.toJS);
         
         final isNew = widget.initialAddress == null;
         if (isNew) {
-          if (js.context.hasProperty('geocodeAndPanOhtliAddressMap')) {
-            js.context.callMethod('geocodeAndPanOhtliAddressMap', ['Ciudad de México, México']);
+          if (globalContext.has('geocodeAndPanOhtliAddressMap')) {
+            globalContext.callMethodVarArgs('geocodeAndPanOhtliAddressMap'.toJS, <JSAny?>['Ciudad de México, México'.toJS]);
           }
         } else {
           final lat = _selectedLat;
           final lng = _selectedLng;
-          if (lat != null && lng != null && js.context.hasProperty('panOhtliAddressMapToLatLng')) {
-            js.context.callMethod('panOhtliAddressMapToLatLng', [lat, lng]);
+          if (lat != null && lng != null && globalContext.has('panOhtliAddressMapToLatLng')) {
+            globalContext.callMethodVarArgs('panOhtliAddressMapToLatLng'.toJS, <JSAny?>[(lat).jsify(), (lng).jsify()]);
           } else {
             final fullAddr = "${_streetController.text}, ${_suburbController.text}, C.P. ${_zipController.text}, ${_cityController.text}, Ciudad de México, México";
-            if (js.context.hasProperty('geocodeAndPanOhtliAddressMap')) {
-              js.context.callMethod('geocodeAndPanOhtliAddressMap', [fullAddr]);
+            if (globalContext.has('geocodeAndPanOhtliAddressMap')) {
+              globalContext.callMethodVarArgs('geocodeAndPanOhtliAddressMap'.toJS, <JSAny?>[(fullAddr).jsify()]);
             }
           }
         }
@@ -178,7 +178,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   void _registerMapPlatformView() {
     if (kIsWeb && !_isOhtliMapPlatformViewRegistered) {
       ui_web.platformViewRegistry.registerViewFactory('ohtli-address-map', (int viewId) {
-        final element = html.DivElement()
+        final element = web.HTMLDivElement()
           ..id = 'ohtli-map-container'
           ..style.width = '100%'
           ..style.height = '100%'
@@ -193,7 +193,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   void _registerMapCallback() {
     if (kIsWeb) {
       // Binds active widget state to maps reverse-geocoding drags
-      js.context['ohtliMapCallback'] = js.allowInterop((String jsonStr) {
+      globalContext['ohtliMapCallback'] = (((String jsonStr) {
         try {
           final data = json.decode(jsonStr);
           if (mounted) {
@@ -251,7 +251,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
         } catch (e) {
           print("Error parsing map callback: $e");
         }
-      });
+      })).toJS;
     }
   }
 
@@ -262,18 +262,18 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     final activeKey = mapsApiKey.isNotEmpty ? mapsApiKey : apiKey;
     if (activeKey.isEmpty) return;
 
-    if (html.document.getElementById('google-maps-places-script') == null) {
-      final script = html.ScriptElement()
+    if (web.document.getElementById('google-maps-places-script') == null) {
+      final script = web.HTMLScriptElement()
         ..id = 'google-maps-places-script'
         ..src = 'https://maps.googleapis.com/maps/api/js?key=$activeKey&libraries=places&language=es&region=MX'
         ..async = true;
-      html.document.head!.append(script);
+      web.document.head!.append(script);
     }
 
-    if (html.document.getElementById('ohtli-places-helpers') == null || !js.context.hasProperty('getOhtliPlacePredictions')) {
-      html.document.getElementById('ohtli-places-helpers')?.remove();
+    if (web.document.getElementById('ohtli-places-helpers') == null || !globalContext.has('getOhtliPlacePredictions')) {
+      web.document.getElementById('ohtli-places-helpers')?.remove();
 
-      final helpersScript = html.ScriptElement()
+      final helpersScript = web.HTMLScriptElement()
         ..id = 'ohtli-places-helpers'
         ..text = '''
         window.getOhtliPlacePredictions = function(input, callback) {
@@ -506,7 +506,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
           });
         };
       ''';
-      html.document.head!.append(helpersScript);
+      web.document.head!.append(helpersScript);
     }
   }
 
@@ -528,12 +528,10 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
         _autocompleteError = null;
       });
       try {
-        if (js.context.hasProperty('getOhtliPlacePredictions')) {
-          js.context.callMethod('getOhtliPlacePredictions', [
-            val,
-            js.allowInterop((result) {
+        if (globalContext.has('getOhtliPlacePredictions')) {
+          globalContext.callMethodVarArgs('getOhtliPlacePredictions'.toJS, <JSAny?>[(val).jsify(), (((JSAny? result) {
               if (result != null && mounted) {
-                final String jsonStr = result as String;
+                final String jsonStr = (result as JSString).toDart;
                 final Map<String, dynamic> decoded = json.decode(jsonStr) as Map<String, dynamic>;
                 
                 if (decoded.containsKey('error')) {
@@ -558,8 +556,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                 }
               }
               setState(() => _isSearchingPredictions = false);
-            })
-          ]);
+            })).toJS]);
         } else {
           setState(() {
             _autocompleteError = "Helpers script not loaded on window context.";
@@ -588,12 +585,10 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     });
 
     try {
-      if (js.context.hasProperty('getOhtliPlaceDetails')) {
-        js.context.callMethod('getOhtliPlaceDetails', [
-          placeId,
-          js.allowInterop((result) {
+      if (globalContext.has('getOhtliPlaceDetails')) {
+        globalContext.callMethodVarArgs('getOhtliPlaceDetails'.toJS, <JSAny?>[(placeId).jsify(), (((JSAny? result) {
             if (result != null && mounted) {
-              final String jsonStr = result as String;
+              final String jsonStr = (result as JSString).toDart;
               final Map<String, dynamic> decoded = json.decode(jsonStr) as Map<String, dynamic>;
 
               if (decoded.containsKey('error')) {
@@ -652,15 +647,14 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                     _autocompleteError = null;
                   });
 
-                  if (lat != null && lng != null && js.context.hasProperty('panOhtliAddressMapToLatLng')) {
-                    js.context.callMethod('panOhtliAddressMapToLatLng', [lat, lng]);
+                  if (lat != null && lng != null && globalContext.has('panOhtliAddressMapToLatLng')) {
+                    globalContext.callMethodVarArgs('panOhtliAddressMapToLatLng'.toJS, <JSAny?>[(lat).jsify(), (lng).jsify()]);
                   }
                 }
               }
             }
             setState(() => _isSearchingPredictions = false);
-          })
-        ]);
+          })).toJS]);
       }
     } catch (e) {
       print("Place details error: $e");

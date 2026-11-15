@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'dart:ui';
 
 enum OhtliThemeMode { light, dark, system }
@@ -84,14 +84,14 @@ class OhtliSettings extends ChangeNotifier with WidgetsBindingObserver {
   void _loadSettings() {
     if (kIsWeb) {
       try {
-        final savedTheme = html.window.localStorage['ohtli_theme_mode'];
+        final savedTheme = web.window.localStorage.getItem('ohtli_theme_mode');
         if (savedTheme != null) {
           _themeMode = OhtliThemeMode.values.firstWhere(
             (e) => e.toString() == savedTheme,
             orElse: () => OhtliThemeMode.system,
           );
         }
-        final savedSize = html.window.localStorage['ohtli_font_size'];
+        final savedSize = web.window.localStorage.getItem('ohtli_font_size');
         if (savedSize != null) {
           _fontSize = OhtliFontSize.values.firstWhere(
             (e) => e.toString() == savedSize,
@@ -107,8 +107,8 @@ class OhtliSettings extends ChangeNotifier with WidgetsBindingObserver {
   void _saveSettings() {
     if (kIsWeb) {
       try {
-        html.window.localStorage['ohtli_theme_mode'] = _themeMode.toString();
-        html.window.localStorage['ohtli_font_size'] = _fontSize.toString();
+        web.window.localStorage.setItem('ohtli_theme_mode', _themeMode.toString());
+        web.window.localStorage.setItem('ohtli_font_size', _fontSize.toString());
       } catch (e) {
         print("Error saving settings to localStorage: $e");
       }

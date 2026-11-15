@@ -2,7 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -22,6 +22,7 @@ import '../admin/place_suggestions_page.dart';
 import '../admin/explore_featured_page.dart';
 import '../../config/admin.dart';
 import '../../services/poi_suggestion_service.dart';
+import '../../utils/web_helpers.dart';
 
 enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
 
@@ -112,7 +113,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     // Load phone from LocalStorage
     String localPhone = '';
     if (user != null) {
-      localPhone = html.window.localStorage['ohtli_phone_${user.uid}'] ?? '';
+      localPhone = web.window.localStorage.getItem('ohtli_phone_${user.uid}') ?? '';
     }
     _phoneController = TextEditingController(text: localPhone);
 
@@ -133,16 +134,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     final activeKey = mapsApiKey.isNotEmpty ? mapsApiKey : apiKey;
     if (activeKey.isEmpty) return;
 
-    if (html.document.getElementById('google-maps-places-script') != null) {
+    if (web.document.getElementById('google-maps-places-script') != null) {
       return;
     }
 
-    final script = html.ScriptElement()
-      ..id = 'google-maps-places-script'
-      ..src =
-          'https://maps.googleapis.com/maps/api/js?key=$activeKey&libraries=places&language=es&region=MX'
-      ..async = true;
-    html.document.head!.append(script);
+    ensureScript(
+      id: 'google-maps-places-script',
+      src: 'https://maps.googleapis.com/maps/api/js?key=$activeKey&libraries=places&language=es&region=MX',
+    );
   }
 
   void _syncUserData() {
@@ -150,7 +149,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     if (user == null) return;
 
     // 1. Load from localStorage synchronously for instant render
-    final localPic = html.window.localStorage['ohtli_profile_pic_${user.uid}'];
+    final localPic = web.window.localStorage.getItem('ohtli_profile_pic_${user.uid}');
     if (localPic != null && localPic.isNotEmpty) {
       _localPhotoURL = localPic;
     } else {
@@ -158,10 +157,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     }
 
     final localPhone =
-        html.window.localStorage['ohtli_phone_${user.uid}'] ?? '';
+        web.window.localStorage.getItem('ohtli_phone_${user.uid}') ?? '';
     _phoneController.text = localPhone;
 
-    final jsonStr = html.window.localStorage['ohtli_addresses_${user.uid}'];
+    final jsonStr = web.window.localStorage.getItem('ohtli_addresses_${user.uid}');
     if (jsonStr != null && jsonStr.isNotEmpty) {
       try {
         final List<dynamic> decoded = json.decode(jsonStr);
@@ -228,8 +227,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     setState(() {
                       _localPhotoURL = remotePhoto;
                     });
-                    html.window.localStorage['ohtli_profile_pic_${user.uid}'] =
-                        remotePhoto;
+                    web.window.localStorage.setItem('ohtli_profile_pic_${user.uid}', remotePhoto);
                   }
                 } else if (localPic != null && localPic.isNotEmpty) {
                   if (localPic.startsWith('data:image') ||
@@ -258,8 +256,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     setState(() {
                       _phoneController.text = remotePhone;
                     });
-                    html.window.localStorage['ohtli_phone_${user.uid}'] =
-                        remotePhone;
+                    web.window.localStorage.setItem('ohtli_phone_${user.uid}', remotePhone);
                   }
                 } else if (localPhone.isNotEmpty) {
                   uploadData['phone'] = localPhone;
@@ -278,10 +275,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     setState(() {
                       _shareTravelData = remoteShare;
                     });
-                    html
-                            .window
-                            .localStorage['ohtli_privacy_share_${user.uid}'] =
-                        remoteShare.toString();
+                    web.window.localStorage.setItem('ohtli_privacy_share_${user.uid}', remoteShare.toString());
                   }
                 }
               } else {
@@ -297,10 +291,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     setState(() {
                       _receiveNotifications = remoteNotifications;
                     });
-                    html
-                            .window
-                            .localStorage['ohtli_privacy_notifications_${user.uid}'] =
-                        remoteNotifications.toString();
+                    web.window.localStorage.setItem('ohtli_privacy_notifications_${user.uid}', remoteNotifications.toString());
                   }
                 }
               } else {
@@ -315,10 +306,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     setState(() {
                       _publicProfile = remotePublic;
                     });
-                    html
-                            .window
-                            .localStorage['ohtli_privacy_public_${user.uid}'] =
-                        remotePublic.toString();
+                    web.window.localStorage.setItem('ohtli_privacy_public_${user.uid}', remotePublic.toString());
                   }
                 }
               } else {
@@ -352,8 +340,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     setState(() {
                       _addresses = reconciled;
                     });
-                    html.window.localStorage['ohtli_addresses_${user.uid}'] =
-                        json.encode(_addresses);
+                    web.window.localStorage.setItem('ohtli_addresses_${user.uid}', json.encode(_addresses));
                   }
                 }
 
@@ -362,10 +349,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   needUpload = true;
                 }
 
-                html
-                    .window
-                    .localStorage['ohtli_deleted_addresses_${user.uid}'] = json
-                    .encode([]);
+                web.window.localStorage.setItem('ohtli_deleted_addresses_${user.uid}', json
+                    .encode([]));
                 _isInitialSyncDone = true;
               } else {
                 // Subsequent stream updates: accept the cloud as the absolute source of truth
@@ -375,8 +360,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     setState(() {
                       _addresses = cloudList;
                     });
-                    html.window.localStorage['ohtli_addresses_${user.uid}'] =
-                        json.encode(_addresses);
+                    web.window.localStorage.setItem('ohtli_addresses_${user.uid}', json.encode(_addresses));
                   }
                 }
               }
@@ -412,7 +396,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F$uid%2Fprofile.jpg?alt=media";
 
       // Update localStorage with the verified bucket URL
-      html.window.localStorage['ohtli_profile_pic_$uid'] = downloadUrl;
+      web.window.localStorage.setItem('ohtli_profile_pic_$uid', downloadUrl);
 
       // Update UI state if still active
       if (mounted) {
@@ -455,9 +439,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     if (user == null) return;
 
     // 1. Write to LocalStorage for instant local persist
-    html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(
+    web.window.localStorage.setItem('ohtli_addresses_${user.uid}', json.encode(
       _addresses,
-    );
+    ));
 
     // 2. Write to Cloud Firestore to sync across all devices — await to detect errors
     try {
@@ -476,9 +460,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           addr.remove('isOffline');
         }
       });
-      html.window.localStorage['ohtli_addresses_${user.uid}'] = json.encode(
+      web.window.localStorage.setItem('ohtli_addresses_${user.uid}', json.encode(
         _addresses,
-      );
+      ));
     } catch (e) {
       print("Error saving addresses to Firestore: $e");
       if (mounted) {
@@ -510,7 +494,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   }
 
   Set<String> _getDeletedAddressIds(String uid) {
-    final jsonStr = html.window.localStorage['ohtli_deleted_addresses_$uid'];
+    final jsonStr = web.window.localStorage.getItem('ohtli_deleted_addresses_$uid');
     if (jsonStr != null && jsonStr.isNotEmpty) {
       try {
         final List<dynamic> decoded = json.decode(jsonStr);
@@ -525,9 +509,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   void _trackAddressDeletion(String uid, String addrId) {
     final deleted = _getDeletedAddressIds(uid);
     deleted.add(addrId);
-    html.window.localStorage['ohtli_deleted_addresses_$uid'] = json.encode(
+    web.window.localStorage.setItem('ohtli_deleted_addresses_$uid', json.encode(
       deleted.toList(),
-    );
+    ));
   }
 
   List<Map<String, dynamic>> _reconcileAddresses(
@@ -635,19 +619,19 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     _shareTravelData =
-        html.window.localStorage['ohtli_privacy_share_${user.uid}'] != 'false';
+        web.window.localStorage.getItem('ohtli_privacy_share_${user.uid}') != 'false';
     _receiveNotifications =
-        html.window.localStorage['ohtli_privacy_notifications_${user.uid}'] !=
+        web.window.localStorage.getItem('ohtli_privacy_notifications_${user.uid}') !=
         'false';
     _publicProfile =
-        html.window.localStorage['ohtli_privacy_public_${user.uid}'] != 'false';
+        web.window.localStorage.getItem('ohtli_privacy_public_${user.uid}') != 'false';
   }
 
   void _savePrivacySetting(String key, bool value) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-    html.window.localStorage['ohtli_privacy_${key}_${user.uid}'] = value
-        .toString();
+    web.window.localStorage.setItem('ohtli_privacy_${key}_${user.uid}', value
+        .toString());
 
     // Also sync to Cloud Firestore!
     UserPrivateData.save(user.uid, {'privacy_$key': value})
@@ -661,24 +645,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     if (!kIsWeb) return;
 
     try {
-      final uploadInput = html.FileUploadInputElement()
-        ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
-      uploadInput.click();
-
-      uploadInput.onChange.listen((e) {
-        final files = uploadInput.files;
-        if (files != null && files.isNotEmpty) {
-          final file = files[0];
-          final reader = html.FileReader();
-
-          // 1. Attach onload listener BEFORE calling readAsDataUrl to prevent race conditions on mobile!
-          reader.onLoadEnd.listen((e) {
-            final dynamic result = reader.result;
-            if (result is String && result.isNotEmpty) {
+      final picked = await pickFile(accept: 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw');
+      if (picked == null) return;
               try {
-                // Extract raw base64 data from the data URL and decode to a true Dart-allocated Uint8List
-                final String base64Data = result.split(',').last;
-                final Uint8List bytes = base64Decode(base64Data);
+                final Uint8List bytes = picked.bytes;
 
                 if (bytes.isNotEmpty) {
                   // Open Crop Dialog with a safe delay to allow iOS to restore viewport focus
@@ -698,10 +668,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               final user = FirebaseAuth.instance.currentUser;
                               if (user != null) {
                                 // Keep base64 in localStorage for instant local display
-                                html
-                                        .window
-                                        .localStorage['ohtli_profile_pic_${user.uid}'] =
-                                    base64String;
+                                web.window.localStorage.setItem('ohtli_profile_pic_${user.uid}', base64String);
 
                                 // Upload to Firebase Storage instead of Firestore to avoid 1MiB document limit
                                 String? downloadUrl;
@@ -815,15 +782,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               } catch (err) {
                 print("Error parsing uploaded image: $err");
               }
-            } else {
-              print("Uploaded file could not be read as Data URL string");
-            }
-          });
-
-          // 3. Initiate read AFTER event listener is fully registered
-          reader.readAsDataUrl(file);
-        }
-      });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -847,7 +805,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 .trim();
         final phoneText = _phoneController.text.trim();
         final currentPhone =
-            html.window.localStorage['ohtli_phone_${user.uid}'] ?? '';
+            web.window.localStorage.getItem('ohtli_phone_${user.uid}') ?? '';
 
         // Check if anything actually changed to avoid unnecessary operations
         final nameChanged =
@@ -859,7 +817,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         }
 
         // Save phone to LocalStorage
-        html.window.localStorage['ohtli_phone_${user.uid}'] = phoneText;
+        web.window.localStorage.setItem('ohtli_phone_${user.uid}', phoneText);
 
         // Also persist name, email, and phone to Cloud Firestore for robust cross-device sync
         try {
@@ -1165,22 +1123,22 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               );
 
                             // Delete local storage keys securely
-                            html.window.localStorage.remove(
+                            web.window.localStorage.removeItem(
                               'ohtli_profile_pic_${user.uid}',
                             );
-                            html.window.localStorage.remove(
+                            web.window.localStorage.removeItem(
                               'ohtli_phone_${user.uid}',
                             );
-                            html.window.localStorage.remove(
+                            web.window.localStorage.removeItem(
                               'ohtli_addresses_${user.uid}',
                             );
-                            html.window.localStorage.remove(
+                            web.window.localStorage.removeItem(
                               'ohtli_privacy_share_${user.uid}',
                             );
-                            html.window.localStorage.remove(
+                            web.window.localStorage.removeItem(
                               'ohtli_privacy_notifications_${user.uid}',
                             );
-                            html.window.localStorage.remove(
+                            web.window.localStorage.removeItem(
                               'ohtli_privacy_public_${user.uid}',
                             );
 
@@ -1416,7 +1374,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         final user = FirebaseAuth.instance.currentUser;
         if (user != null) {
           final localPic =
-              html.window.localStorage['ohtli_profile_pic_${user.uid}'];
+              web.window.localStorage.getItem('ohtli_profile_pic_${user.uid}');
           if (localPic != null && localPic.isNotEmpty) {
             _localPhotoURL = localPic;
           }

@@ -1,5 +1,5 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -49,7 +49,7 @@ class LabsResultsPage extends StatelessWidget {
   }
 }
 
-void _openPost(Map<String, dynamic> m) => html.window.location.href = '/news/${m['slug']}';
+void _openPost(Map<String, dynamic> m) => web.window.location.href = '/news/${m['slug']}';
 
 String _byline(Map<String, dynamic> m) {
   final authors = (m['authors'] ?? '').toString();
@@ -79,7 +79,7 @@ class _Header extends StatelessWidget {
               ? Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
-                    onPressed: () => html.window.location.href = '/news',
+                    onPressed: () => web.window.location.href = '/news',
                     icon: const Icon(Icons.arrow_back_rounded, size: 18),
                     label: const Text('Todas las noticias'),
                     style: TextButton.styleFrom(
@@ -395,7 +395,7 @@ class _ArticleState extends State<_Article> {
                   style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
                 ),
                 const SizedBox(height: 10),
-                TextButton(onPressed: () => html.window.location.href = '/news', child: const Text('Ver todas las noticias')),
+                TextButton(onPressed: () => web.window.location.href = '/news', child: const Text('Ver todas las noticias')),
               ],
             ),
           );

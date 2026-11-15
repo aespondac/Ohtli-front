@@ -4,7 +4,7 @@ import '../../services/social_graph.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -22,6 +22,7 @@ import '../trips/trip_viewer_page.dart';
 import '../trips/trip_editor_page.dart';
 import 'account_management_page.dart';
 import '../friends_page.dart';
+import '../../utils/web_helpers.dart';
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;
@@ -650,21 +651,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     if (!kIsWeb) return;
 
     try {
-      final uploadInput = html.FileUploadInputElement()
-        ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
-      uploadInput.click();
-
-      uploadInput.onChange.listen((e) {
-        final files = uploadInput.files;
-        if (files != null && files.isNotEmpty) {
-          final file = files[0];
-          final reader = html.FileReader();
-
-          reader.onLoadEnd.listen((e) {
-            final dynamic result = reader.result;
-            if (result is String && result.isNotEmpty) {
-              final String base64Data = result.split(',').last;
-              final Uint8List bytes = base64Decode(base64Data);
+      final picked = await pickFile(accept: 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw');
+      if (picked == null || picked.bytes.isEmpty) return;
+              final Uint8List bytes = picked.bytes;
 
               Future.delayed(const Duration(milliseconds: 200), () {
                 if (mounted) {
@@ -683,11 +672,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   );
                 }
               });
-            }
-          });
-          reader.readAsDataUrl(file);
-        }
-      });
     } catch (err) {
       print("File pick error: $err");
     }
@@ -730,7 +714,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         await _currentUser.updatePhotoURL(downloadUrl);
         await _currentUser.reload();
         // Update local cache
-        html.window.localStorage['ohtli_profile_pic_${_currentUser.uid}'] = downloadUrl;
+        web.window.localStorage.setItem('ohtli_profile_pic_${_currentUser.uid}', downloadUrl);
       }
 
       if (mounted) {

@@ -3,7 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import '../../theme/colors.dart';
 import '../../widgets/custom_text_field.dart';
@@ -451,7 +451,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                       recognizer: TapGestureRecognizer()
                                         ..onTap = () {
                                           if (kIsWeb) {
-                                            html.window.open('/tyc', '_blank');
+                                            web.window.open('/tyc', '_blank');
                                           }
                                         },
                                     ),
@@ -466,7 +466,7 @@ class _DesktopRegisterPageState extends State<DesktopRegisterPage> {
                                       recognizer: TapGestureRecognizer()
                                         ..onTap = () {
                                           if (kIsWeb) {
-                                            html.window.open('/privacidad', '_blank');
+                                            web.window.open('/privacidad', '_blank');
                                           }
                                         },
                                     ),

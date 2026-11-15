@@ -1,6 +1,6 @@
 import 'services/user_private_data.dart';
 import 'dart:async';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -188,7 +188,7 @@ class OhtliApp extends StatelessWidget {
         return MaterialApp.router(
           routerDelegate: _routerDelegate,
           routeInformationParser: _routeParser,
-          title: appTitleForHost(kIsWeb ? (html.window.location.hostname ?? '') : ''),
+          title: appTitleForHost(kIsWeb ? web.window.location.hostname : ''),
           debugShowCheckedModeBanner: false,
           theme: lightTheme,
           darkTheme: darkTheme,
@@ -323,7 +323,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     final params = launch.queryParameters;
     // Routing de Subdominios
     if (kIsWeb) {
-      final hostname = html.window.location.hostname ?? '';
+      final hostname = web.window.location.hostname;
       final path = launch.path;
       final fragment = launch.fragment;
       // Por segmentos completos: /news/evaluacion-… no debe abrir /eval (ver app_route.dart).
@@ -423,17 +423,17 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
     // Initialize connection status
     if (kIsWeb) {
-      _isOnline = html.window.navigator.onLine ?? true;
+      _isOnline = web.window.navigator.onLine;
       if (!_isOnline) {
         _showBanner = true;
         _bannerColorIsTeal = false;
         _bannerText =
             "Sin conexión, algunos datos podrían no guardarse o estar desactualizados";
       }
-      _onlineSub = html.window.onOnline.listen(
+      _onlineSub = web.EventStreamProviders.onlineEvent.forTarget(web.window).listen(
         (_) => _onConnectionChanged(true),
       );
-      _offlineSub = html.window.onOffline.listen(
+      _offlineSub = web.EventStreamProviders.offlineEvent.forTarget(web.window).listen(
         (_) => _onConnectionChanged(false),
       );
     }
@@ -752,7 +752,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       return;
     }
     if (_isLabAppHost && kIsWeb) {
-      html.window.location.href = 'https://labs.ohtli.quest/';
+      web.window.location.href = 'https://labs.ohtli.quest/';
       return;
     }
     _navigateTo(OhtliScreen.underConstruction);
@@ -896,9 +896,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         builder: (_) => lab_landing.LabLandingPage(
         onLoginRedirect: () {
           // En producción, "Ingresar a Labs" abre el laboratorio individual en lab.ohtli.quest
-          final host = kIsWeb ? (html.window.location.hostname ?? '') : '';
+          final host = kIsWeb ? web.window.location.hostname : '';
           if (host == 'labs.ohtli.quest') {
-            html.window.location.href = 'https://lab.ohtli.quest/';
+            web.window.location.href = 'https://lab.ohtli.quest/';
             return;
           }
           setState(() {
@@ -908,9 +908,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         },
         onTryExperiment: (id) {
           // "Probar ahora": abre ese experimento dentro de Labs (en producción, en lab.ohtli.quest).
-          final host = kIsWeb ? (html.window.location.hostname ?? '') : '';
+          final host = kIsWeb ? web.window.location.hostname : '';
           if (host == 'labs.ohtli.quest') {
-            html.window.location.href = 'https://lab.ohtli.quest/labs/$id';
+            web.window.location.href = 'https://lab.ohtli.quest/labs/$id';
             return;
           }
           _labSection = 'exp:$id';

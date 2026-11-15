@@ -4,21 +4,19 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import '../services/user_private_data.dart';
 import '../services/social_graph.dart';
+import 'package:http/http.dart' as http;
 
 class UserProfileHelper {
   /// Fetches bytes from a Google photo URL using a native web request
   static Future<Uint8List?> fetchUrlBytes(String url) async {
     if (!kIsWeb) return null;
     try {
-      final response = await html.HttpRequest.request(
-        url,
-        responseType: 'arraybuffer',
-      ).timeout(const Duration(seconds: 3));
-      final responseBuffer = response.response as ByteBuffer;
-      return responseBuffer.asUint8List();
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 3));
+      if (response.statusCode != 200) return null;
+      return response.bodyBytes;
     } catch (e) {
       print("Error fetching URL bytes natively: $e");
       return null;

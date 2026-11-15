@@ -1,9 +1,10 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, undefined_function
+// ignore_for_file: deprecated_member_use
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
-import 'dart:js' as js;
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -77,7 +78,7 @@ class PlaceLocator {
     if (!kIsWeb) return null;
     final storageKey = 'ohtli_geo_${query.toLowerCase()}';
     try {
-      final saved = html.window.localStorage[storageKey];
+      final saved = web.window.localStorage.getItem(storageKey);
       if (saved != null) {
         final parts = saved.split(',');
         if (parts.length == 2) return (double.parse(parts[0]), double.parse(parts[1]));
@@ -91,9 +92,7 @@ class PlaceLocator {
 
     final completer = Completer<(double, double)?>();
     try {
-      js.context.callMethod('ohtliFindPlaceLocation', [
-        query,
-        js.allowInterop((String raw) {
+      globalContext.callMethodVarArgs('ohtliFindPlaceLocation'.toJS, <JSAny?>[(query).jsify(), (((String raw) {
           if (completer.isCompleted) return;
           try {
             final data = jsonDecode(raw) as Map<String, dynamic>;
@@ -103,29 +102,28 @@ class PlaceLocator {
           } catch (_) {
             completer.complete(null);
           }
-        }),
-      ]);
+        })).toJS]);
     } catch (_) {
       return null;
     }
     final result = await completer.future.timeout(const Duration(seconds: 10), onTimeout: () => null);
     if (result != null) {
       try {
-        html.window.localStorage[storageKey] = '${result.$1},${result.$2}';
+        web.window.localStorage.setItem(storageKey, '${result.$1},${result.$2}');
       } catch (_) {}
     }
     return result;
   }
 
   static void _ensureScripts(String key) {
-    if (html.document.getElementById('google-maps-places-script') == null) {
-      html.document.head?.append(html.ScriptElement()
+    if (web.document.getElementById('google-maps-places-script') == null) {
+      web.document.head?.append(web.HTMLScriptElement()
         ..id = 'google-maps-places-script'
         ..src = 'https://maps.googleapis.com/maps/api/js?key=$key&libraries=places&language=es&region=MX'
         ..async = true);
     }
-    if (js.context.hasProperty('ohtliFindPlaceLocation')) return;
-    html.document.head?.append(html.ScriptElement()
+    if (globalContext.has('ohtliFindPlaceLocation')) return;
+    web.document.head?.append(web.HTMLScriptElement()
       ..id = 'ohtli-place-locator'
       ..text = '''
       window.ohtliFindPlaceLocation = function(query, callback) {

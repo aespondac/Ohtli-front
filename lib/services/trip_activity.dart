@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -34,7 +34,7 @@ class TripActivity extends ChangeNotifier {
     tripsWithNews.clear();
     _checks.clear();
     try {
-      final raw = html.window.localStorage[_key];
+      final raw = web.window.localStorage.getItem(_key);
       if (raw != null && raw.isNotEmpty) {
         final data = jsonDecode(raw) as Map<String, dynamic>;
         _tripSeen = (data['trips'] as Map? ?? {}).map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
@@ -53,11 +53,11 @@ class TripActivity extends ChangeNotifier {
 
   void _save() {
     try {
-      html.window.localStorage[_key] = jsonEncode({
+      web.window.localStorage.setItem(_key, jsonEncode({
         'trips': _tripSeen,
         'jobs': _jobsSeen.take(300).toList(),
         'jobsBaselined': _jobsBaselined,
-      });
+      }));
     } catch (_) {}
   }
 

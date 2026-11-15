@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -28,7 +28,7 @@ class LabsTopBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(72);
 
-  static String get _host => kIsWeb ? (html.window.location.hostname ?? '') : '';
+  static String get _host => kIsWeb ? web.window.location.hostname : '';
   static bool get _isProd => _host.endsWith('ohtli.quest');
 
   /// URL de una sección pública. En producción vive en labs.ohtli.quest; en local usa
@@ -49,12 +49,12 @@ class LabsTopBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   static void go(LabsSection s) {
-    if (kIsWeb) html.window.location.href = urlFor(s);
+    if (kIsWeb) web.window.location.href = urlFor(s);
   }
 
   static void openLab() {
     if (!kIsWeb) return;
-    html.window.location.href = _isProd ? 'https://lab.ohtli.quest/' : '/?testLabApp';
+    web.window.location.href = _isProd ? 'https://lab.ohtli.quest/' : '/?testLabApp';
   }
 
   @override

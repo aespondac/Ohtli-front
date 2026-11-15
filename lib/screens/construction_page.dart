@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -268,7 +268,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
             ),
             child: ElevatedButton(
               onPressed: () {
-                html.window.location.href = 'https://ohtli.quest';
+                web.window.location.href = 'https://ohtli.quest';
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: OhtliColors.stormyTeal,

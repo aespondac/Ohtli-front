@@ -2,7 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       // 1. Load from localStorage for instant render
-      final localPic = html.window.localStorage['ohtli_profile_pic_${user.uid}'];
+      final localPic = web.window.localStorage.getItem('ohtli_profile_pic_${user.uid}');
       if (localPic != null && localPic.isNotEmpty) {
         _localPhotoURL = localPic;
       } else {
@@ -111,7 +111,7 @@ class _HomePageState extends State<HomePage> {
                   _localPhotoURL = remotePhoto;
                 });
                 // Keep LocalStorage in sync
-                html.window.localStorage['ohtli_profile_pic_${user.uid}'] = remotePhoto;
+                web.window.localStorage.setItem('ohtli_profile_pic_${user.uid}', remotePhoto);
               }
             }
           }
@@ -269,7 +269,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final localPic = html.window.localStorage['ohtli_profile_pic_${user.uid}'];
+      final localPic = web.window.localStorage.getItem('ohtli_profile_pic_${user.uid}');
       if (localPic != null && localPic.isNotEmpty) {
         _localPhotoURL = localPic;
       }

@@ -1,4 +1,4 @@
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -44,7 +44,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
 
   void _openProductionSite() {
     if (kIsWeb) {
-      html.window.open('https://ohtli.quest', '_blank');
+      web.window.open('https://ohtli.quest', '_blank');
     }
   }
 
@@ -1041,7 +1041,7 @@ class _LabLandingPageState extends State<LabLandingPage> {
               InkWell(
                 onTap: () {
                   if (kIsWeb) {
-                    html.window.open('/#/labs/tyc', '_self');
+                    web.window.open('/#/labs/tyc', '_self');
                   }
                 },
                 child: Text(
