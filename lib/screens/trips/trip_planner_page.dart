@@ -1048,7 +1048,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _buildWizardStepIndicator(),
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 300),
                               child: _buildStepContent(isMobile),
@@ -1077,42 +1076,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       case PlannerStep.routeTriadCarousel:
         return _buildRouteTriadCarouselStep(isMobile);
     }
-  }
-
-  // Indicador "Paso X de 3" del asistente de nueva ruta con IA
-  Widget _buildWizardStepIndicator() {
-    const labels = ['Punto de partida', 'Preferencias', 'Tus rutas'];
-    int step;
-    switch (_currentStep) {
-      case PlannerStep.startingPoint:
-        step = 0;
-        break;
-      case PlannerStep.preferences:
-        step = 1;
-        break;
-      case PlannerStep.blackboardProcessing:
-        step = 2;
-        break;
-      default:
-        return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'PASO ${step + 1} DE 3 · ${labels[step].toUpperCase()}',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-              color: OhtliColors.stormyTeal,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildJobErrorState(bool isMobile) {
