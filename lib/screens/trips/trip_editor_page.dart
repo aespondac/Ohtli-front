@@ -28,6 +28,7 @@ import 'trip_viewer_page.dart';
 import '../places/places_page.dart';
 import '../../models/poi_model.dart';
 import '../../services/trip_transfers.dart';
+import '../../services/section_merge.dart';
 import '../../services/trip_changes.dart';
 import '../../widgets/transfer_mode_picker.dart';
 import '../../theme/cdmx_photos.dart';
@@ -687,6 +688,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
       _isSavingCloud = true;
     });
     final versionAtStart = _editVersion;
+    // Copia de lo que se guarda: lo que se edite mientras tanto no se pisa al terminar.
+    final List<TripSection> sectionsAtStart = List<TripSection>.of(_sections);
+    final String coverAtStart = _coverUrl;
     _failedUploads = 0;
 
     final now = DateTime.now();
@@ -716,7 +720,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final bucket = FirebaseStorage.instance.app.options.storageBucket;
     final int timestamp = now.millisecondsSinceEpoch;
 
-    for (var section in _sections) {
+    for (var section in sectionsAtStart) {
       if (section is PlaceSection) {
         String finalMain = section.mainPhotoUrl;
         if (finalMain.startsWith('data:')) {
@@ -816,14 +820,19 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
       if (mounted) {
         setState(() {
-          _sections = updatedSections;
-          _coverUrl = finalCoverUrl; // Keep local state in sync with network URL
+          // Solo se cambian las fotos recién subidas; los textos editados durante el guardado se quedan.
+          _sections = mergeUploadedPhotos(_sections, sectionsAtStart, updatedSections);
+          if (_coverUrl == coverAtStart) _coverUrl = finalCoverUrl;
           _isSavingCloud = false;
           _lastSavedCloudTime = now;
           _cloudSaveError = null;
           // Si hubo fotos sin subir, el cambio sigue pendiente para reintentarlo
           _savedEditVersion = _failedUploads > 0 ? versionAtStart - 1 : versionAtStart;
         });
+        // Lo que se editó mientras se guardaba se sube enseguida en otro guardado.
+        if (_editVersion != versionAtStart && _debounceTimer?.isActive != true) {
+          _debounceTimer = Timer(const Duration(seconds: 2), _saveToCloudFirestore);
+        }
         if (_failedUploads > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
