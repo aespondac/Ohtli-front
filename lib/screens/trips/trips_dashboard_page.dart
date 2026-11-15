@@ -2,7 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;
+import '../../utils/web_helpers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -409,20 +409,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                               ? null
                               : () {
                                   if (kIsWeb) {
-                                    final uploadInput = html.FileUploadInputElement()
-                                      ..accept = 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw';
-                                    uploadInput.click();
-                                    uploadInput.onChange.listen((e) {
-                                      final files = uploadInput.files;
-                                      if (files != null && files.isNotEmpty) {
-                                        final file = files[0];
-                                        final reader = html.FileReader();
-                                        reader.onLoadEnd.listen((e) {
-                                          final dynamic result = reader.result;
-                                          if (result is String && result.isNotEmpty) {
+                                    pickFile(accept: 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw').then((picked) {
+                                      if (picked == null) return;
                                             try {
-                                              final String base64Data = result.split(',').last;
-                                              final Uint8List bytes = base64Decode(base64Data);
+                                              final Uint8List bytes = picked.bytes;
                                               if (bytes.isNotEmpty) {
                                                 Future.delayed(const Duration(milliseconds: 200), () {
                                                   if (context.mounted) {
@@ -445,10 +435,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                             } catch (err) {
                                               print("Error decoding or cropping image: $err");
                                             }
-                                          }
-                                        });
-                                        reader.readAsDataUrl(file);
-                                      }
                                     });
                                   } else {
                                     _showComingSoonToast(
