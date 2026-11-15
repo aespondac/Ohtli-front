@@ -16,6 +16,7 @@ import '../../theme/colors.dart';
 import '../../utils/friendly_errors.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/trip_card.dart';
+import '../../widgets/ohtli_ui.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../services/trip_service.dart';
 import 'account_management_page.dart';
@@ -91,33 +92,19 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   SocialData? _profileSocial;
 
   Widget _buildPrivateProfileNotice(bool isDark) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.lock_outline_rounded,
-                size: 36, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.35)),
-            const SizedBox(height: 12),
-            Text(
-              'Este perfil es privado',
-              style: GoogleFonts.outfit(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : OhtliColors.onyx,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Sus viajes y amigos solo los ven sus amigos.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
-              ),
-            ),
-          ],
+    final double padding = OhtliUi.pagePadding(MediaQuery.of(context).size.width);
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(padding, 12, padding, 40),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: const OhtliEmptyState(
+            icon: Icons.lock_outline_rounded,
+            color: OhtliColors.xoconostle,
+            title: 'Este perfil es privado',
+            message: 'Sus viajes y amigos solo los ven sus amigos.',
+          ),
         ),
       ),
     );
@@ -509,33 +496,33 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           titleName = data?['name'] ?? 'Viajero';
         }
         
-        final Widget textWidget = Text(
-          titleName,
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: OhtliColors.xoconostle,
+        final Color c = isDark ? const Color(0xFFE7A6C4) : OhtliColors.xoconostle;
+        final Widget pill = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: OhtliColors.xoconostle.withValues(alpha: isDark ? 0.22 : 0.10),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.28), width: 0.8),
           ),
-        );
-        
-        if (!_isSelf) return textWidget;
-        
-        return InkWell(
-          onTap: _showTitleSelectionDialog,
-          borderRadius: BorderRadius.circular(4),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              textWidget,
+              Icon(Icons.workspace_premium_rounded, size: 14, color: c),
               const SizedBox(width: 6),
-              const Icon(
-                Icons.edit_rounded,
-                size: 13,
-                color: OhtliColors.xoconostle,
-              ),
+              Text(titleName, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+              if (_isSelf) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.edit_rounded, size: 12, color: c),
+              ],
             ],
           ),
+        );
+
+        if (!_isSelf) return pill;
+
+        return Tooltip(
+          message: 'Cambiar título',
+          child: InkWell(onTap: _showTitleSelectionDialog, borderRadius: BorderRadius.circular(30), child: pill),
         );
       },
     );
@@ -763,15 +750,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final bool isDark = OhtliSettings.instance.isDarkMode;
     final double width = MediaQuery.of(context).size.width;
     final bool isDesktop = !ohtliIsMobileWidth(width);
+    final double padding = OhtliUi.pagePadding(width);
 
     if (_isLoadingProfile) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(
-            color: OhtliColors.stormyTeal,
-            strokeWidth: 3,
-          ),
-        ),
+      return Scaffold(
+        backgroundColor: OhtliColors.cloudDancer,
+        body: const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal, strokeWidth: 3)),
       );
     }
 
@@ -781,278 +765,283 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final List<dynamic> followingList = _profileSocial?.following ?? const [];
     final dynamic rawCreatedAt = _userProfile?['createdAt'];
 
-    final initials = displayName
-        .split(' ')
-        .where((w) => w.isNotEmpty)
-        .take(2)
-        .map((w) => w[0].toUpperCase())
-        .join();
+    final initials = displayName.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
 
-    // 1. Calculate collapsing banner height and blur amount based on scroll offset
+    // La portada se encoge y se difumina al hacer scroll.
     final double clampedOffset = _scrollOffset.clamp(0.0, double.infinity);
-    final double initialCoverHeight = isDesktop ? 320.0 : 180.0;
-    final double minCoverHeight = isDesktop ? 120.0 : 70.0;
-    
-    // As we scroll, the height of the cover shrinks
+    final double initialCoverHeight = isDesktop ? 300.0 : 190.0;
+    final double minCoverHeight = isDesktop ? 140.0 : 100.0;
     final double coverHeight = (initialCoverHeight - clampedOffset).clamp(minCoverHeight, initialCoverHeight);
-    
-    // Proportional progress and blur
     final double collapseProgress = ((initialCoverHeight - coverHeight) / (initialCoverHeight - minCoverHeight)).clamp(0.0, 1.0);
     final double blurSigma = collapseProgress * 12.0;
+    final double avatarSize = isDesktop ? 132 : 96;
+    final double avatarOverlap = avatarSize * 0.55;
 
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
-      body: NestedScrollView(
-        controller: _scrollController,
-        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-          return <Widget>[
-            SliverToBoxAdapter(
+    Widget glassButton({required IconData icon, String? label, required VoidCallback? onTap, required String tooltip}) {
+      return Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.black.withValues(alpha: 0.38),
+          shape: StadiumBorder(side: BorderSide(color: Colors.white.withValues(alpha: 0.22))),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: label == null ? 10 : 14, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: Colors.white, size: 17),
+                  if (label != null) ...[
+                    const SizedBox(width: 7),
+                    Text(label, style: GoogleFonts.inter(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final Widget avatarFallback = Center(
+      child: Text(initials, style: GoogleFonts.outfit(color: Colors.white, fontSize: isDesktop ? 40 : 28, fontWeight: FontWeight.w800)),
+    );
+
+    final cover = Padding(
+      padding: EdgeInsets.fromLTRB(isDesktop ? padding : 12, isDesktop ? 24 : 12, isDesktop ? padding : 12, 0),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: coverHeight,
+                width: double.infinity,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: OhtliColors.innerCardBg,
+                  borderRadius: BorderRadius.circular(OhtliUi.radiusLarge),
+                  boxShadow: OhtliUi.softShadow(raised: true),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                      child: Image(
+                        image: coverURL != null && coverURL.isNotEmpty
+                            ? _getImageProvider(coverURL)
+                            : NetworkImage(CdmxPhotos.cover(widget.userId.hashCode)),
+                        fit: BoxFit.cover,
+                        errorBuilder: (c, e, s) => Container(color: OhtliColors.stormyTeal.withValues(alpha: 0.4)),
+                      ),
+                    ),
+                    // Velo para que los botones se lean sobre cualquier foto.
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x55000000), Color(0x00000000), Color(0x33000000)],
+                          stops: [0, 0.45, 1],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: avatarOverlap),
+            ],
+          ),
+          if (widget.showBackButton)
+            Positioned(
+              top: 14,
+              left: 14,
+              child: glassButton(icon: Icons.arrow_back_rounded, tooltip: 'Volver', onTap: widget.onBack),
+            ),
+          if (_isSelf)
+            Positioned(
+              top: 14,
+              right: 14,
+              child: IgnorePointer(
+                ignoring: collapseProgress > 0.8,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 150),
+                  opacity: (1.0 - collapseProgress).clamp(0.0, 1.0),
+                  child: glassButton(
+                    icon: Icons.photo_camera_back_rounded,
+                    label: isDesktop ? 'Cambiar portada' : null,
+                    tooltip: 'Cambiar portada',
+                    onTap: () => _handleImageUpload(isCover: true),
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            bottom: 0,
+            left: isDesktop ? 32 : 20,
+            child: SizedBox(
+              width: avatarSize + 6,
+              height: avatarSize + 6,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // Cover Photo Banner with bottom spacing to expand the Stack
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        height: coverHeight,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withOpacity(0.3),
-                        ),
-                        child: ClipRect(
-                          child: ImageFiltered(
-                            imageFilter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                image: DecorationImage(
-                                  image: coverURL != null && coverURL.isNotEmpty
-                                      ? _getImageProvider(coverURL)
-                                      : NetworkImage(CdmxPhotos.cover(widget.userId.hashCode)),
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: isDesktop ? 95 : 75),
-                    ],
+                  Container(
+                    width: avatarSize,
+                    height: avatarSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: OhtliColors.stormyTeal,
+                      border: Border.all(color: _isCloseFriend ? OhtliColors.cempasuchil : OhtliColors.cloudDancer, width: 5),
+                      boxShadow: OhtliUi.softShadow(raised: true),
+                    ),
+                    child: ClipOval(
+                      child: photoURL != null && photoURL.isNotEmpty
+                          ? Image(image: _getImageProvider(photoURL), fit: BoxFit.cover, errorBuilder: (c, e, s) => avatarFallback)
+                          : avatarFallback,
+                    ),
                   ),
-
-                  // Edit Cover Button
                   if (_isSelf)
                     Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Visibility(
-                        visible: collapseProgress < 0.8,
-                        child: Opacity(
-                          opacity: (1.0 - collapseProgress).clamp(0.0, 1.0),
+                      right: 2,
+                      bottom: 6,
+                      child: Tooltip(
+                        message: 'Cambiar foto',
+                        child: Material(
+                          color: OhtliColors.stormyTeal,
+                          shape: CircleBorder(side: BorderSide(color: OhtliColors.cloudDancer, width: 3)),
+                          clipBehavior: Clip.antiAlias,
                           child: InkWell(
-                            onTap: () => _handleImageUpload(isCover: true),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.6),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.edit_rounded, color: Colors.white, size: 15),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Cambiar portada',
-                                    style: GoogleFonts.inter(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
+                            onTap: () => _handleImageUpload(isCover: false),
+                            child: const Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
                             ),
                           ),
                         ),
                       ),
-                    ),
-
-                  // Back Button
-                  if (widget.showBackButton)
+                    )
+                  else if (_isCloseFriend)
                     Positioned(
-                      top: 16,
-                      left: 16,
-                      child: GestureDetector(
-                        onTap: widget.onBack,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withOpacity(0.5),
-                          ),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                      right: 4,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: OhtliColors.cempasuchil,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: OhtliColors.cloudDancer, width: 3),
                         ),
-                      ),
-                    ),
-
-                  // Overlapping Profile Avatar
-                  Positioned(
-                    bottom: isDesktop ? 35 : 30,
-                    left: 24,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: isDesktop ? 130 : 90,
-                          height: isDesktop ? 130 : 90,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
-                              width: 4,
-                            ),
-                            color: OhtliColors.stormyTeal,
-                          ),
-                          child: ClipOval(
-                            child: photoURL != null && photoURL.isNotEmpty
-                                ? Image(
-                                    image: _getImageProvider(photoURL),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) => Center(
-                                      child: Text(
-                                        initials,
-                                        style: GoogleFonts.inter(color: Colors.white, fontSize: isDesktop ? 36 : 24, fontWeight: FontWeight.bold),
-                                      ),
-                                    ),
-                                  )
-                                : Center(
-                                    child: Text(
-                                      initials,
-                                      style: GoogleFonts.inter(color: Colors.white, fontSize: isDesktop ? 36 : 24, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        if (_isSelf)
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: GestureDetector(
-                              onTap: () => _handleImageUpload(isCover: false),
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: OhtliColors.stormyTeal,
-                                ),
-                                child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  if (isDesktop)
-                    Positioned(
-                      bottom: 0,
-                      right: 24,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildStatsRow(isDark, followingList.length),
-                          const SizedBox(height: 12),
-                          _buildActionButtons(isDark),
-                        ],
+                        child: const Icon(Icons.star_rounded, size: 15, color: Colors.white),
                       ),
                     ),
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
 
-            // Spacer for Avatar overlap is handled by the cover banner Column's 95px height expansion
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 10),
+    final identity = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_isSelf ? Icons.person_rounded : Icons.travel_explore_rounded, size: 14, color: OhtliColors.accentText),
+            const SizedBox(width: 6),
+            Text(
+              _isSelf ? 'TU PERFIL' : (_isCloseFriend ? 'MEJOR AMIGO' : (_isFriend ? 'TU AMIGO' : 'PERFIL DE VIAJERO')),
+              style: OhtliUi.eyebrow(OhtliColors.accentText),
             ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(displayName, style: OhtliUi.title(size: isDesktop ? 38 : 28)),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _buildActiveTitleWidget(_userProfile?['activeTitleId'] ?? 'viajero', isDark),
+            OhtliMetaPill(icon: Icons.calendar_today_rounded, label: _formatJoinedDate(rawCreatedAt)),
+            if (_isHiddenForViewer) const OhtliMetaPill(icon: Icons.lock_outline_rounded, label: 'Perfil privado'),
+          ],
+        ),
+      ],
+    );
 
-            // Profile metadata
+    final tabBar = TabBar(
+      controller: _tabController,
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      dividerColor: Colors.transparent,
+      indicatorSize: TabBarIndicatorSize.tab,
+      indicator: BoxDecoration(
+        color: OhtliColors.stormyTeal,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [BoxShadow(color: OhtliColors.stormyTeal.withValues(alpha: 0.3), blurRadius: 14, offset: const Offset(0, 5))],
+      ),
+      splashBorderRadius: BorderRadius.circular(30),
+      overlayColor: WidgetStateProperty.all(Colors.transparent),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 20),
+      labelColor: Colors.white,
+      unselectedLabelColor: OhtliColors.onyx.withValues(alpha: 0.65),
+      labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+      unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
+      tabs: const [
+        Tab(height: 42, text: 'Viajes'),
+        Tab(height: 42, text: 'Planes'),
+      ],
+    );
+
+    return Scaffold(
+      backgroundColor: OhtliColors.cloudDancer,
+      body: NestedScrollView(
+        controller: _scrollController,
+        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+          return <Widget>[
+            SliverToBoxAdapter(child: cover),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          displayName,
-                          style: GoogleFonts.outfit(
-                            fontSize: isDesktop ? 26 : 22,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : OhtliColors.onyx,
+                padding: EdgeInsets.fromLTRB(padding, 18, padding, 0),
+                child: isDesktop
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(child: identity),
+                          const SizedBox(width: 24),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildStatsRow(isDark, followingList.length),
+                              const SizedBox(height: 14),
+                              _buildActionButtons(isDark),
+                            ],
                           ),
-                        ),
-                        if (_isCloseFriend) ...[
-                          const SizedBox(width: 8),
-                          const Icon(Icons.star_rounded, color: OhtliColors.stormyTeal, size: 20),
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    _buildActiveTitleWidget(
-                      _userProfile?['activeTitleId'] ?? 'viajero',
-                      isDark,
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // Stats & Actions now rendered inside Stack Positioned on all widths
-
-                    // Registration Date
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today_rounded, size: 13, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.4)),
-                        const SizedBox(width: 6),
-                        Text(
-                          _formatJoinedDate(rawCreatedAt),
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (!isDesktop) ...[
-                      const SizedBox(height: 16),
-                      _buildStatsRow(isDark, followingList.length),
-                      const SizedBox(height: 14),
-                      SizedBox(width: double.infinity, child: _buildActionButtons(isDark)),
-                    ],
-                  ],
-                ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          identity,
+                          const SizedBox(height: 18),
+                          _buildStatsRow(isDark, followingList.length),
+                          const SizedBox(height: 14),
+                          _buildActionButtons(isDark),
+                        ],
+                      ),
               ),
             ),
-
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 24),
-            ),
-
-            // Pinned TabBar header
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
             SliverPersistentHeader(
               pinned: true,
-              delegate: _SliverAppBarDelegate(
-                TabBar(
-                  controller: _tabController,
-                  indicatorColor: OhtliColors.stormyTeal,
-                  labelColor: OhtliColors.stormyTeal,
-                  unselectedLabelColor: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.5),
-                  labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13.5),
-                  unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13.5),
-                  tabs: const [
-                    Tab(text: 'Viajes'),
-                    Tab(text: 'Planes'),
-                  ],
-                ),
-                isDark: isDark,
-              ),
+              delegate: _SliverAppBarDelegate(tabBar, horizontalPadding: padding),
             ),
           ];
         },
@@ -1073,150 +1062,81 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final int friendsCount = _profileSocial?.friends.length ?? 0;
     final String friendsCountText = _isHiddenForViewer ? '—' : '$friendsCount';
 
-    Widget friendsWidget = RichText(
-      text: TextSpan(
-        children: [
-          TextSpan(
-            text: '$friendsCountText ',
-            style: GoogleFonts.outfit(
-              fontWeight: FontWeight.bold,
-              fontSize: 17,
-              color: isDark ? Colors.white : OhtliColors.onyx,
+    Widget stat(String value, String label, {VoidCallback? onTap}) {
+      return OhtliSurface(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+        radius: 20,
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 22, color: OhtliColors.onyx, height: 1.1)),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+                if (onTap != null) ...[
+                  const SizedBox(width: 2),
+                  Icon(Icons.chevron_right_rounded, size: 15, color: OhtliColors.subtleText),
+                ],
+              ],
             ),
-          ),
-          TextSpan(
-            text: 'Amigos',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (_isSelf) {
-      friendsWidget = GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FriendsPage(showBackButton: true),
-            ),
-          );
-        },
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: friendsWidget,
+          ],
         ),
       );
     }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
       children: [
-        friendsWidget,
-        const SizedBox(width: 20),
-        RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: '$_followersCount ',
-                style: GoogleFonts.outfit(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 17,
-                  color: isDark ? Colors.white : OhtliColors.onyx,
-                ),
-              ),
-              TextSpan(
-                text: 'Seguidores',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
-                ),
-              ),
-            ],
-          ),
+        stat(
+          friendsCountText,
+          friendsCount == 1 ? 'Amigo' : 'Amigos',
+          onTap: _isSelf
+              ? () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FriendsPage(showBackButton: true)))
+              : null,
         ),
-        const SizedBox(width: 20),
-        RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: '$followingCount ',
-                style: GoogleFonts.outfit(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 17,
-                  color: isDark ? Colors.white : OhtliColors.onyx,
-                ),
-              ),
-              TextSpan(
-                text: 'Siguiendo',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
-                ),
-              ),
-            ],
-          ),
-        ),
+        stat('$_followersCount', _followersCount == 1 ? 'Seguidor' : 'Seguidores'),
+        stat('$followingCount', 'Siguiendo'),
       ],
     );
   }
 
   Widget _buildActionButtons(bool isDark) {
     if (!_isSelf) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          ElevatedButton.icon(
-            onPressed: _toggleFollow,
-            icon: Icon(_isFollowing ? Icons.check_rounded : Icons.person_add_rounded, size: 14),
-            label: Text(
-              _isFollowing ? 'Siguiendo' : 'Seguir',
-              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isFollowing ? OhtliColors.cantera : OhtliColors.stormyTeal,
-              foregroundColor: _isFollowing ? OhtliColors.onyx : Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-          ),
-          const SizedBox(width: 8),
+          _isFollowing
+              ? OhtliSecondaryButton(compact: true, label: 'Siguiendo', icon: Icons.check_rounded, onPressed: _toggleFollow)
+              : OhtliPrimaryButton(compact: true, label: 'Seguir', icon: Icons.add_rounded, onPressed: _toggleFollow),
           _buildFriendButton(isDark),
         ],
       );
-    } else {
-      return OutlinedButton.icon(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AccountManagementPage(
-                onBackToHome: (_) => Navigator.pop(context),
-                onLogout: () async {
-                  Navigator.pushReplacementNamed(context, '/login');
-                  await FirebaseAuth.instance.signOut();
-                },
-              ),
-            ),
-          );
-        },
-        icon: const Icon(Icons.edit_rounded, size: 16),
-        label: Text(
-          'Editar perfil',
-          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
-        ),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: OhtliColors.stormyTeal,
-          side: BorderSide(color: OhtliColors.stormyTeal.withOpacity(0.6), width: 1.2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        ),
-      );
     }
+    return OhtliSecondaryButton(
+      compact: true,
+      label: 'Editar perfil',
+      icon: Icons.edit_rounded,
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AccountManagementPage(
+              onBackToHome: (_) => Navigator.pop(context),
+              onLogout: () async {
+                Navigator.pushReplacementNamed(context, '/login');
+                await FirebaseAuth.instance.signOut();
+              },
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildTripsList(bool isDesktop, bool isDark, {required bool isTrip}) {
@@ -1262,230 +1182,109 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   Widget _buildFriendButton(bool isDark) {
     if (_currentUser == null) return const SizedBox.shrink();
 
-    // 1. If already friends
+    // 1. Ya son amigos: menú para cambiar a mejor amigo o eliminar la amistad.
     if (_isFriend) {
-      Color btnBg = Colors.transparent;
-      Color btnText = OhtliColors.onyx;
-      IconData btnIcon = Icons.people_alt_rounded;
-      String btnLabel = 'Amigo';
-      bool isOutline = true;
-
-      if (_isCloseFriend) {
-        btnBg = OhtliColors.stormyTeal;
-        btnText = Colors.white;
-        btnIcon = Icons.people_alt_rounded;
-        btnLabel = 'Mejor Amigo';
-        isOutline = false;
-      } else {
-        btnBg = OhtliColors.cantera.withValues(alpha: 0.8);
-        btnText = OhtliColors.onyx;
-        btnIcon = Icons.people_alt_rounded;
-        btnLabel = 'Amigo';
-        isOutline = false;
-      }
-
-      final Widget buttonChild = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(btnIcon, size: 14, color: isOutline ? OhtliColors.stormyTeal : btnText),
-          const SizedBox(width: 6),
-          Text(
-            btnLabel,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: isOutline ? OhtliColors.stormyTeal : btnText,
+      PopupMenuItem<String> item(String value, IconData icon, String label, Color color, {bool checked = false}) => PopupMenuItem<String>(
+            value: value,
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: color),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(label,
+                      style: GoogleFonts.inter(
+                          fontSize: 14, fontWeight: FontWeight.w600, color: value == 'none' ? OhtliColors.xoconostle : OhtliColors.onyx)),
+                ),
+                if (checked) Icon(Icons.check_rounded, size: 16, color: OhtliColors.accentText),
+              ],
             ),
-          ),
-          const SizedBox(width: 4),
-          Icon(
-            Icons.arrow_drop_down_rounded,
-            size: 16,
-            color: isOutline ? OhtliColors.stormyTeal : btnText,
-          ),
-        ],
-      );
+          );
 
       return PopupMenuButton<String>(
+        tooltip: 'Opciones de amistad',
         onSelected: _setFriendStatus,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        color: isDark ? const Color(0xFF25252A) : Colors.white,
-        offset: const Offset(0, 40),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        color: OhtliColors.cardBg,
+        offset: const Offset(0, 48),
         itemBuilder: (context) => [
-          PopupMenuItem<String>(
-            value: 'friend',
-            child: Row(
-              children: [
-                const Icon(Icons.people_outline_rounded, size: 16, color: OhtliColors.stormyTeal),
-                const SizedBox(width: 10),
-                Text(
-                  'Amigo Normal',
-                  style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white : OhtliColors.onyx),
-                ),
-                if (!_isCloseFriend) ...[
-                  const Spacer(),
-                  const Icon(Icons.check_rounded, size: 14, color: Colors.green),
-                ],
-              ],
-            ),
-          ),
-          PopupMenuItem<String>(
-            value: 'closeFriend',
-            child: Row(
-              children: [
-                const Icon(Icons.people_rounded, size: 16, color: OhtliColors.stormyTeal),
-                const SizedBox(width: 10),
-                Text(
-                  'Mejor Amigo',
-                  style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white : OhtliColors.onyx),
-                ),
-                if (_isCloseFriend) ...[
-                  const Spacer(),
-                  const Icon(Icons.check_rounded, size: 14, color: Colors.green),
-                ],
-              ],
-            ),
-          ),
+          item('friend', Icons.people_outline_rounded, 'Amigo', OhtliColors.accentText, checked: !_isCloseFriend),
+          item('closeFriend', Icons.star_rounded, 'Mejor amigo', OhtliColors.cempasuchil, checked: _isCloseFriend),
           const PopupMenuDivider(height: 1),
-          PopupMenuItem<String>(
-            value: 'none',
-            child: Row(
-              children: [
-                const Icon(Icons.person_remove_rounded, size: 16, color: OhtliColors.xoconostle),
-                const SizedBox(width: 10),
-                Text(
-                  'Eliminar Amistad',
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5,
-                    color: OhtliColors.xoconostle,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          item('none', Icons.person_remove_rounded, 'Eliminar amistad', OhtliColors.xoconostle),
         ],
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: btnBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: buttonChild,
-          ),
-        ),
-      );
-    }
-
-    // 2. If Alice sent a request to Bob
-    if (_hasSentRequest) {
-      return GestureDetector(
-        onTap: () {
-          if (_sentRequestId != null) {
-            _cancelFriendRequest(_sentRequestId!);
-          }
-        },
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.hourglass_empty_rounded,
-                  size: 14,
-                  color: isDark ? Colors.white54 : OhtliColors.onyx,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Pendiente',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white54 : OhtliColors.onyx,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // 3. If Bob sent a request to Alice
-    if (_hasIncomingRequest) {
-      return ElevatedButton.icon(
-        onPressed: () => _acceptFriendRequest(_pendingRequestId!),
-        icon: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
-        label: Text(
-          'Aceptar Solicitud',
-          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: OhtliColors.stormyTeal,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        ),
-      );
-    }
-
-    // 4. Default: Show "Añadir amigo"
-    return GestureDetector(
-      onTap: _sendFriendRequest,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF25252A) : OhtliColors.cantera.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(10),
+            color: _isCloseFriend ? OhtliColors.cempasuchil.withValues(alpha: 0.14) : OhtliColors.cardBg,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: _isCloseFriend ? OhtliColors.cempasuchil.withValues(alpha: 0.45) : OhtliColors.onyx.withValues(alpha: 0.18)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.person_add_alt_1_rounded,
-                size: 14,
-                color: isDark ? Colors.white54 : OhtliColors.onyx,
-              ),
+              Icon(_isCloseFriend ? Icons.star_rounded : Icons.people_alt_rounded,
+                  size: 16, color: _isCloseFriend ? OhtliColors.cempasuchil : OhtliColors.accentText),
               const SizedBox(width: 6),
-              Text(
-                'Añadir amigo',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white54 : OhtliColors.onyx,
-                ),
-              ),
+              Text(_isCloseFriend ? 'Mejor amigo' : 'Amigo',
+                  style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+              const SizedBox(width: 2),
+              Icon(Icons.expand_more_rounded, size: 18, color: OhtliColors.subtleText),
             ],
           ),
         ),
-      ),
+      );
+    }
+
+    // 2. Ya le enviaste solicitud: tocar la cancela.
+    if (_hasSentRequest) {
+      return Tooltip(
+        message: 'Cancelar solicitud',
+        child: OhtliSecondaryButton(
+          compact: true,
+          label: 'Solicitud enviada',
+          icon: Icons.hourglass_top_rounded,
+          onPressed: _sentRequestId == null ? null : () => _cancelFriendRequest(_sentRequestId!),
+        ),
+      );
+    }
+
+    // 3. Te envió solicitud.
+    if (_hasIncomingRequest) {
+      return OhtliPrimaryButton(
+        compact: true,
+        highlight: true,
+        label: 'Aceptar solicitud',
+        icon: Icons.check_rounded,
+        onPressed: () => _acceptFriendRequest(_pendingRequestId!),
+      );
+    }
+
+    // 4. Sin relación.
+    return OhtliSecondaryButton(
+      compact: true,
+      label: 'Añadir amigo',
+      icon: Icons.person_add_alt_1_rounded,
+      onPressed: _sendFriendRequest,
     );
   }
 
   Widget _buildTripsGrid(List<Trip> items, bool isDesktop, bool isDark, {required bool isTrip}) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double padding = OhtliUi.pagePadding(screenWidth);
+
     if (items.isEmpty) {
       final String name = (_userProfile?['displayName'] as String?)?.split(' ').first ?? 'Este viajero';
       String title;
       String subtitle;
       IconData icon;
+      Color? color;
       if (isTrip) {
         icon = Icons.landscape_rounded;
         title = _isSelf ? 'Aún no publicas viajes' : '$name aún no comparte viajes';
-        subtitle = _isSelf
-            ? 'Cuando publiques un viaje aparecerá aquí para que tus amigos lo vean.'
-            : 'Cuando publique uno, lo verás aquí.';
+        subtitle = _isSelf ? 'Cuando publiques un viaje aparecerá aquí para que tus amigos lo vean.' : 'Cuando publique uno, lo verás aquí.';
       } else if (!_isSelf && !_isFriend) {
         icon = Icons.lock_outline_rounded;
+        color = OhtliColors.xoconostle;
         title = 'Planes solo para amigos';
         subtitle = 'Agrega a $name como amigo para ver los planes que está armando.';
       } else {
@@ -1493,60 +1292,28 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         title = _isSelf ? 'No tienes planes en curso' : '$name no tiene planes en curso';
         subtitle = _isSelf ? 'Tus borradores aparecerán aquí mientras los armas.' : 'Cuando empiece uno, lo verás aquí.';
       }
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: OhtliColors.stormyTeal.withValues(alpha: 0.08),
-                ),
-                child: Icon(icon, size: 32, color: OhtliColors.stormyTeal),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx),
-              ),
-              const SizedBox(height: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 320),
-                child: Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: isDark ? Colors.white54 : OhtliColors.onyx.withValues(alpha: 0.55),
-                  ),
-                ),
-              ),
-            ],
+      return SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(padding, 12, padding, 40),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: OhtliEmptyState(icon: icon, color: color, title: title, message: subtitle),
           ),
         ),
       );
     }
 
-    final double screenWidth = MediaQuery.of(context).size.width;
     final double availableWidth = isDesktop ? (screenWidth - 260) : screenWidth;
     final int crossAxisCount = isDesktop ? (availableWidth >= 940 ? 3 : 2) : 1;
-    final double padding = isDesktop ? 24.0 : 16.0;
-    
+
     final double cardWidth = (availableWidth - padding * 2 - (crossAxisCount - 1) * 20) / crossAxisCount;
-    final double cardHeight = crossAxisCount == 1 
-        ? 125.0 
-        : (cardWidth * 9 / 16) + 150.0;
+    final double cardHeight = crossAxisCount == 1 ? 125.0 : (cardWidth * 9 / 16) + 150.0;
     final double computedAspectRatio = cardWidth / cardHeight;
 
     return GridView.builder(
-      padding: EdgeInsets.all(padding),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+      padding: EdgeInsets.fromLTRB(padding, 12, padding, 40),
+    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         mainAxisSpacing: 20,
         crossAxisSpacing: 20,
@@ -1621,25 +1388,27 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final TabBar tabBar;
-  final bool isDark;
+  final double horizontalPadding;
 
-  _SliverAppBarDelegate(this.tabBar, {required this.isDark});
+  _SliverAppBarDelegate(this.tabBar, {required this.horizontalPadding});
+
+  static const double _height = 58;
 
   @override
-  double get minExtent => tabBar.preferredSize.height;
+  double get minExtent => _height;
   @override
-  double get maxExtent => tabBar.preferredSize.height;
+  double get maxExtent => _height;
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
-      color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
+      color: OhtliColors.cloudDancer,
+      alignment: Alignment.centerLeft,
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
       child: tabBar,
     );
   }
 
   @override
-  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return false;
-  }
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => oldDelegate.horizontalPadding != horizontalPadding;
 }
