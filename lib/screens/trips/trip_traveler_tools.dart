@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../services/trip_transfers.dart';
 import '../../theme/colors.dart';
 import '../../widgets/image_cropper_dialog.dart';
+import '../../widgets/transfer_mode_picker.dart';
 import '../../utils/web_helpers.dart';
 
 /// Herramientas del viajero: diálogos para registrar lo que pasa en el viaje
@@ -278,23 +279,10 @@ Future<TransferDraft?> askTransfer(BuildContext context, {required List<BlockOpt
       children: [
         _afterPicker(options, after, (v) => setState(() => after = v), isDark, placesOnly: true),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final m in kTransferModes)
-              ChoiceChip(
-                selected: mode == m.id,
-                onSelected: (_) => setState(() => mode = m.id),
-                showCheckmark: false,
-                avatar: Icon(m.icon, size: 16, color: mode == m.id ? Colors.white : OhtliColors.stormyTeal),
-                label: Text(m.label, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: mode == m.id ? Colors.white : _fg(isDark))),
-                selectedColor: OhtliColors.stormyTeal,
-                backgroundColor: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF4F6F5),
-                side: BorderSide.none,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-          ],
+        // Un solo botón para el modo: abre el selector agrupado.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TransferModeButton(mode: mode, isDark: isDark, onChanged: (v) => setState(() => mode = v)),
         ),
         const SizedBox(height: 12),
         Row(

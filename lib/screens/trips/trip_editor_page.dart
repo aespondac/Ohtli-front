@@ -28,6 +28,7 @@ import '../places/places_page.dart';
 import '../../models/poi_model.dart';
 import '../../services/trip_transfers.dart';
 import '../../services/trip_changes.dart';
+import '../../widgets/transfer_mode_picker.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../config/editorial.dart';
 import '../../services/poi_suggestion_service.dart';
@@ -4146,8 +4147,22 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final (a, b) = i >= 0 ? _placesAround(i) : (null, null);
     final mode = transferModeOf(t.mode);
 
+    // Elegir modo: si el tramo era estimado, se vuelve a estimar con el nuevo modo.
+    void changeMode(String id) {
+      if (t.isEstimated && a != null && b != null) {
+        final est = estimateTransfer(a, b, id, id: sid);
+        if (est != null) {
+          _replaceTransfer(sid, (_) => est.copyWith(notes: t.notes));
+          _resetBlockEditors();
+          return;
+        }
+      }
+      _replaceTransfer(sid, (x) => x.copyWith(mode: id));
+    }
+
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (a != null || b != null)
           Padding(
@@ -4156,56 +4171,52 @@ class _TripEditorPageState extends State<TripEditorPage> {
               '${a?.title.isNotEmpty == true ? a!.title : 'Inicio'}  →  ${b?.title.isNotEmpty == true ? b!.title : 'Siguiente parada'}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx.withValues(alpha: 0.7)),
+              style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: sub),
             ),
           ),
+        // Un solo botón para el modo (abre el selector agrupado) y "Estimar" como acción principal.
         Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: kTransferModes.map((m) {
-            final selected = m.id == t.mode;
-            return ChoiceChip(
-              selected: selected,
-              showCheckmark: false,
-              avatar: Icon(m.icon, size: 16, color: selected ? Colors.white : OhtliColors.stormyTeal),
-              label: Text(m.label,
-                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: selected ? Colors.white : OhtliColors.onyx)),
-              selectedColor: OhtliColors.stormyTeal,
-              backgroundColor: isDark ? const Color(0xFF25252A) : OhtliColors.stormyTeal.withValues(alpha: 0.06),
-              side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: selected ? 1 : 0.2)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              onSelected: (_) {
-                // Si el tramo era estimado, se vuelve a estimar con el nuevo modo.
-                if (t.isEstimated && a != null && b != null) {
-                  final est = estimateTransfer(a, b, m.id, id: sid);
-                  if (est != null) {
-                    _replaceTransfer(sid, (_) => est.copyWith(notes: t.notes));
-                    _resetBlockEditors();
-                    return;
-                  }
-                }
-                _replaceTransfer(sid, (x) => x.copyWith(mode: m.id));
-              },
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            SizedBox(
-              width: 110,
+            TransferModeButton(mode: t.mode, isDark: isDark, onChanged: changeMode),
+            FilledButton.tonalIcon(
+              onPressed: () => _estimateTransfer(sid),
+              style: FilledButton.styleFrom(
+                backgroundColor: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.25 : 0.12),
+                foregroundColor: isDark ? Colors.white : OhtliColors.stormyTeal,
+                shape: const StadiumBorder(),
+              ),
+              icon: const Icon(Icons.auto_fix_high_rounded, size: 17),
+              label: Text('Estimar con el mapa', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            ),
+            if (t.isEstimated)
+              Tooltip(
+                message: 'Calculado por Ohtli a partir de la ubicación de las paradas. Puedes corregirlo.',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: OhtliColors.cempasuchil.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                  child: Text('Estimado por Ohtli', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.cempasuchil)),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Minutos, distancia y costo en una fila.
+        Row(
+          children: [
+            Expanded(
               child: TextField(
                 controller: minsCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 style: GoogleFonts.inter(fontSize: 13),
-                decoration: deco('Duración', suffix: 'min'),
+                decoration: deco('Tiempo', suffix: 'min'),
               ),
             ),
-            SizedBox(
-              width: 110,
+            const SizedBox(width: 8),
+            Expanded(
               child: TextField(
                 controller: kmCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -4214,8 +4225,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 decoration: deco('Distancia', suffix: 'km'),
               ),
             ),
-            SizedBox(
-              width: 120,
+            const SizedBox(width: 8),
+            Expanded(
               child: TextField(
                 controller: costCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -4226,41 +4237,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         TextField(
           controller: notesCtrl,
           minLines: 1,
-          maxLines: 3,
+          maxLines: 2,
           style: GoogleFonts.inter(fontSize: 13),
-          decoration: deco(mode.id == 'walking'
-              ? 'Indicaciones (ej. sube por Madero hasta el Zócalo)'
-              : 'Indicaciones (ej. Línea 2 dirección Taxqueña, baja en Zócalo)'),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            TextButton.icon(
-              onPressed: () => _estimateTransfer(sid),
-              icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
-              label: Text('Estimar con el mapa', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
-            ),
-            if (t.isEstimated)
-              Tooltip(
-                message: 'Calculado por Ohtli a partir de la ubicación de las paradas. Puedes corregirlo.',
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.cempasuchil.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text('Estimado por Ohtli',
-                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.cempasuchil)),
-                ),
-              ),
-          ],
+          decoration: deco(mode.id == 'walking' ? 'Indicaciones (opcional)' : 'Línea, dirección o dónde bajar (opcional)'),
         ),
       ],
     );
