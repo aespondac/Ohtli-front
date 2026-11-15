@@ -477,7 +477,9 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       if (user != null) {
         await _handlePostAuthRedirect(user);
       } else {
-        // Al cerrar sesión la pantalla ya cambió antes de que terminara: actualizar la URL
+        // Al cerrar sesión la pantalla ya cambió antes de que terminara: redibujar (deja de
+        // mostrar la carga) y actualizar la URL
+        if (mounted) setState(() {});
         WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
         WidgetsBinding.instance.scheduleFrame();
         // Sin sesión, un enlace a una pantalla privada (/mis-viajes, /cuenta…) pide iniciarla;
@@ -786,7 +788,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isAuthInitialized) {
+    // Con sesión, la portada pública es solo un paso mientras se abre la pantalla principal (o la
+    // que pedía la URL): se muestra la carga en lugar de "Crear cuenta gratis".
+    final redirectPending = _currentScreen == OhtliScreen.underConstruction &&
+        FirebaseAuth.instance.currentUser != null &&
+        !ConstructionPage.isOldDomain;
+    if (!_isAuthInitialized || redirectPending) {
       return Scaffold(
         backgroundColor: OhtliSettings.instance.isDarkMode ? const Color(0xFF121214) : OhtliColors.cloudDancer,
         body: const Center(
