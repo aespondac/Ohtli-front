@@ -154,6 +154,9 @@ class OhtliPrimaryButton extends StatelessWidget {
   final bool expand;
   final bool loading;
 
+  /// Versión chica para acciones dentro de una tarjeta o fila.
+  final bool compact;
+
   const OhtliPrimaryButton({
     super.key,
     required this.label,
@@ -162,6 +165,7 @@ class OhtliPrimaryButton extends StatelessWidget {
     this.highlight = false,
     this.expand = false,
     this.loading = false,
+    this.compact = false,
   });
 
   @override
@@ -176,19 +180,20 @@ class OhtliPrimaryButton extends StatelessWidget {
         disabledBackgroundColor: bg.withValues(alpha: 0.5),
         disabledForegroundColor: fg.withValues(alpha: 0.8),
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 17),
+        padding: compact ? const EdgeInsets.symmetric(horizontal: 18, vertical: 12) : const EdgeInsets.symmetric(horizontal: 24, vertical: 17),
+        minimumSize: compact ? Size.zero : null,
         shape: const StadiumBorder(),
-        textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 15.5),
+        textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: compact ? 14 : 15.5),
       ),
       child: Row(
         mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (loading)
-            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: fg))
+            SizedBox(width: compact ? 15 : 18, height: compact ? 15 : 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: fg))
           else if (icon != null)
-            Icon(icon, size: 18),
-          if (loading || icon != null) const SizedBox(width: 8),
+            Icon(icon, size: compact ? 16 : 18),
+          if (loading || icon != null) SizedBox(width: compact ? 6 : 8),
           Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
         ],
       ),
@@ -203,7 +208,10 @@ class OhtliSecondaryButton extends StatelessWidget {
   final IconData? icon;
   final VoidCallback? onPressed;
 
-  const OhtliSecondaryButton({super.key, required this.label, this.icon, this.onPressed});
+  /// Versión chica para acciones dentro de una tarjeta o fila.
+  final bool compact;
+
+  const OhtliSecondaryButton({super.key, required this.label, this.icon, this.onPressed, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -211,15 +219,16 @@ class OhtliSecondaryButton extends StatelessWidget {
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         foregroundColor: OhtliColors.onyx,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
+        padding: compact ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : const EdgeInsets.symmetric(horizontal: 22, vertical: 17),
+        minimumSize: compact ? Size.zero : null,
         side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.18)),
         shape: const StadiumBorder(),
-        textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 15),
+        textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: compact ? 14 : 15),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
+          if (icon != null) ...[Icon(icon, size: compact ? 16 : 18), SizedBox(width: compact ? 6 : 8)],
           Text(label),
         ],
       ),

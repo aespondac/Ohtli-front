@@ -526,9 +526,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final actionButtons = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _PillButton(label: 'Rechazar', onPressed: () => _handleFriendRequest(doc.id, senderId, false)),
+        OhtliSecondaryButton(compact: true, label: 'Rechazar', onPressed: () => _handleFriendRequest(doc.id, senderId, false)),
         const SizedBox(width: 8),
-        _PillButton(label: 'Aceptar', icon: Icons.check_rounded, primary: true, onPressed: () => _handleFriendRequest(doc.id, senderId, true)),
+        OhtliPrimaryButton(compact: true, label: 'Aceptar', icon: Icons.check_rounded, onPressed: () => _handleFriendRequest(doc.id, senderId, true)),
       ],
     );
 
@@ -564,45 +564,5 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ],
       ),
     );
-  }
-}
-
-/// Botón compacto tipo píldora para acciones dentro de una tarjeta.
-class _PillButton extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final bool primary;
-  final VoidCallback onPressed;
-
-  const _PillButton({required this.label, required this.onPressed, this.icon, this.primary = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final style = primary
-        ? ElevatedButton.styleFrom(
-            backgroundColor: OhtliColors.stormyTeal,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            shape: const StadiumBorder(),
-            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14),
-          )
-        : OutlinedButton.styleFrom(
-            foregroundColor: OhtliColors.onyx,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.18)),
-            shape: const StadiumBorder(),
-            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
-          );
-    final child = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (icon != null) ...[Icon(icon, size: 16), const SizedBox(width: 6)],
-        Text(label),
-      ],
-    );
-    return primary
-        ? ElevatedButton(onPressed: onPressed, style: style, child: child)
-        : OutlinedButton(onPressed: onPressed, style: style, child: child);
   }
 }
