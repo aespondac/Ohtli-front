@@ -1,10 +1,12 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -325,21 +327,60 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
   }
 
   /// Lugares del catálogo a menos de 1.5 km, del más cercano al más lejano.
+  /// Radio de "a unos pasos": ~10 minutos caminando.
+  static const double _nearbyRadius = 800;
+  static const String _apiUrl = String.fromEnvironment('yollotlApiUrl', defaultValue: 'https://api.ohtli.quest');
+
   Future<void> _findNearby() async {
     final poi = widget.poi;
     if (!poi.location.isValid) return;
+    var list = await _nearbyFromEngine(poi);
+    // Respaldo: la selección del catálogo que ya tiene la app (menos lugares)
+    list ??= await _nearbyFromLocalCatalog(poi);
+    if (mounted && list.isNotEmpty) setState(() => _nearby = list!.take(10).toList());
+  }
+
+  /// Cercanos sobre TODO el catálogo del motor (la app solo descarga una selección).
+  Future<List<(Poi, double)>?> _nearbyFromEngine(Poi poi) async {
+    try {
+      final uri = Uri.parse('$_apiUrl/v1/pois').replace(queryParameters: {
+        'near': '${poi.location.lat},${poi.location.lng}',
+        'radius': _nearbyRadius.toInt().toString(),
+        'limit': '14',
+      });
+      final res = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) return null;
+      final decoded = jsonDecode(res.body);
+      if (decoded is! Map || decoded['pois'] is! List) return null;
+      final list = <(Poi, double)>[];
+      for (final raw in decoded['pois'] as List) {
+        if (raw is! Map) continue;
+        final p = Poi.fromMap(Map<String, dynamic>.from(raw));
+        if (p.poiId == poi.poiId || !p.location.isValid || !p.isValidCulturalPlace) continue;
+        final d = (raw['distance_m'] as num?)?.toDouble() ??
+            _distanceMeters(poi.location.lat, poi.location.lng, p.location.lat, p.location.lng);
+        if (d <= _nearbyRadius) list.add((p, d));
+      }
+      list.sort((a, b) => a.$2.compareTo(b.$2));
+      return list;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<(Poi, double)>> _nearbyFromLocalCatalog(Poi poi) async {
     try {
       final all = await PlacesPage.loadCatalog();
       final list = <(Poi, double)>[];
       for (final p in all) {
         if (p.poiId == poi.poiId || !p.location.isValid) continue;
         final d = _distanceMeters(poi.location.lat, poi.location.lng, p.location.lat, p.location.lng);
-        if (d <= 1500) list.add((p, d));
+        if (d <= _nearbyRadius) list.add((p, d));
       }
       list.sort((a, b) => a.$2.compareTo(b.$2));
-      if (mounted) setState(() => _nearby = list.take(10).toList());
+      return list;
     } catch (_) {
-      // Sin catálogo no se muestra la sección
+      return const [];
     }
   }
 
