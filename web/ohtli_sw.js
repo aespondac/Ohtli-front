@@ -11,7 +11,9 @@
 
 const SHELL_CACHE = 'ohtli-shell-v1';
 const CDN_CACHE = 'ohtli-cdn-v1';
-const PRECACHE = ['/', '/index.html', '/flutter_bootstrap.js', '/main.dart.js', '/manifest.json', '/favicon.png'];
+// main.dart.js no se precarga: los navegadores con WebAssembly usan main.dart.wasm. El código
+// que sí se usa (wasm o js) se guarda solo con "red primero" la primera vez que se carga.
+const PRECACHE = ['/', '/index.html', '/flutter_bootstrap.js', '/manifest.json', '/favicon.png'];
 const CDN_HOSTS = ['www.gstatic.com', 'fonts.gstatic.com', 'fonts.googleapis.com'];
 
 self.addEventListener('install', (event) => {

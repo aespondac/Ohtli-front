@@ -75,7 +75,8 @@ jobs:
       # 6. Build the Web bundle embedding environment keys
       - name: Build Web Application
         run: |
-          flutter build web --release \
+          # --wasm: WebAssembly (skwasm) en navegadores compatibles; el resto recibe main.dart.js
+          flutter build web --release --wasm \
             --dart-define=apiKey="${{ env.APIKEY }}" \
             --dart-define=mapsApiKey="${{ env.MAPSAPIKEY }}" \
             --dart-define=authDomain="${{ env.AUTHDOMAIN }}" \
