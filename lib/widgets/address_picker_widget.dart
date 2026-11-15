@@ -47,6 +47,10 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   late TextEditingController _countryController;
   final TextEditingController _searchController = TextEditingController();
 
+  /// Mantiene el mismo mapa (vista HTML) aunque aparezcan sugerencias o avisos arriba de él:
+  /// sin la llave, Flutter lo recreaba vacío.
+  final GlobalKey _mapKey = GlobalKey();
+
   // Category state
   String _selectedCategory = 'Otro';
 
@@ -63,25 +67,35 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   String? _cdmxBoundaryError;
 
   static const List<String> _blacklistedMunicipalities = [
-    'atizapán', 'atizapan',
+    'atizapán',
+    'atizapan',
     'naucalpan',
     'tlalnepantla',
     'huixquilucan',
     'ecatepec',
-    'nezahualcóyotl', 'nezahualcoyotl', 'neza',
-    'chimalhuacán', 'chimalhuacan',
-    'nicolás romero', 'nicolas romero',
+    'nezahualcóyotl',
+    'nezahualcoyotl',
+    'neza',
+    'chimalhuacán',
+    'chimalhuacan',
+    'nicolás romero',
+    'nicolas romero',
     'coacalco',
-    'tultitlán', 'tultitlan',
-    'cuautitlán', 'cuautitlan',
+    'tultitlán',
+    'tultitlan',
+    'cuautitlán',
+    'cuautitlan',
     'chalco',
     'ixtapaluca',
-    'tecámac', 'tecamac',
+    'tecámac',
+    'tecamac',
     'la paz',
     'valle de chalco',
     'chicoloapan',
-    'lopez mateos', 'lópez mateos',
-    'xonacatlán', 'xonacatlan',
+    'lopez mateos',
+    'lópez mateos',
+    'xonacatlán',
+    'xonacatlan',
     'lerma',
     'toluca',
     'metepec',
@@ -99,10 +113,10 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     if (stateName == null) return false;
     final name = stateName.toLowerCase().trim();
     return name.contains('ciudad de méxico') ||
-           name.contains('cdmx') ||
-           name.contains('distrito federal') ||
-           name == 'df' ||
-           name == 'd.f.';
+        name.contains('cdmx') ||
+        name.contains('distrito federal') ||
+        name == 'df' ||
+        name == 'd.f.';
   }
 
   bool _isValidCDMXZip(String? zip) {
@@ -151,7 +165,8 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
           if (lat != null && lng != null && globalContext.has('panOhtliAddressMapToLatLng')) {
             globalContext.callMethodVarArgs('panOhtliAddressMapToLatLng'.toJS, <JSAny?>[(lat).jsify(), (lng).jsify()]);
           } else {
-            final fullAddr = "${_streetController.text}, ${_suburbController.text}, C.P. ${_zipController.text}, ${_cityController.text}, Ciudad de México, México";
+            final fullAddr =
+                "${_streetController.text}, ${_suburbController.text}, C.P. ${_zipController.text}, ${_cityController.text}, Ciudad de México, México";
             if (globalContext.has('geocodeAndPanOhtliAddressMap')) {
               globalContext.callMethodVarArgs('geocodeAndPanOhtliAddressMap'.toJS, <JSAny?>[(fullAddr).jsify()]);
             }
@@ -224,7 +239,8 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
             if (lat != null && lng != null && (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted)) {
               setState(() {
-                _cdmxBoundaryError = "El pin del mapa está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
+                _cdmxBoundaryError =
+                    "El pin del mapa está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
                 _streetController.text = '';
                 _suburbController.text = '';
                 _zipController.text = '';
@@ -557,11 +573,13 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
       });
       try {
         if (globalContext.has('getOhtliPlacePredictions')) {
-          globalContext.callMethodVarArgs('getOhtliPlacePredictions'.toJS, <JSAny?>[(val).jsify(), (((JSAny? result) {
+          globalContext.callMethodVarArgs('getOhtliPlacePredictions'.toJS, <JSAny?>[
+            (val).jsify(),
+            (((JSAny? result) {
               if (result != null && mounted) {
                 final String jsonStr = (result as JSString).toDart;
                 final Map<String, dynamic> decoded = json.decode(jsonStr) as Map<String, dynamic>;
-                
+
                 if (decoded.containsKey('error')) {
                   setState(() {
                     _autocompleteError = decoded['error'] as String?;
@@ -584,7 +602,8 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                 }
               }
               setState(() => _isSearchingPredictions = false);
-            })).toJS]);
+            })).toJS,
+          ]);
         } else {
           setState(() {
             _autocompleteError = "Helpers script not loaded on window context.";
@@ -615,7 +634,9 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
 
     try {
       if (globalContext.has('getOhtliPlaceDetails')) {
-        globalContext.callMethodVarArgs('getOhtliPlaceDetails'.toJS, <JSAny?>[(placeId).jsify(), (((JSAny? result) {
+        globalContext.callMethodVarArgs('getOhtliPlaceDetails'.toJS, <JSAny?>[
+          (placeId).jsify(),
+          (((JSAny? result) {
             if (result != null && mounted) {
               final String jsonStr = (result as JSString).toDart;
               final Map<String, dynamic> decoded = json.decode(jsonStr) as Map<String, dynamic>;
@@ -650,9 +671,12 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   }
                 }
 
-                if (lat != null && lng != null && (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted)) {
+                if (lat != null &&
+                    lng != null &&
+                    (!isCoordsInCDMX || !isStateCDMX || !isZipCDMX || containsBlacklisted)) {
                   setState(() {
-                    _cdmxBoundaryError = "La dirección seleccionada está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
+                    _cdmxBoundaryError =
+                        "La dirección seleccionada está fuera de la Ciudad de México. Ohtli por ahora solo opera dentro de la CDMX.";
                     _streetController.text = '';
                     _suburbController.text = '';
                     _zipController.text = '';
@@ -677,13 +701,17 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   });
 
                   if (lat != null && lng != null && globalContext.has('panOhtliAddressMapToLatLng')) {
-                    globalContext.callMethodVarArgs('panOhtliAddressMapToLatLng'.toJS, <JSAny?>[(lat).jsify(), (lng).jsify()]);
+                    globalContext.callMethodVarArgs('panOhtliAddressMapToLatLng'.toJS, <JSAny?>[
+                      (lat).jsify(),
+                      (lng).jsify(),
+                    ]);
                   }
                 }
               }
             }
             setState(() => _isSearchingPredictions = false);
-          })).toJS]);
+          })).toJS,
+        ]);
       }
     } catch (e) {
       print("Place details error: $e");
@@ -698,19 +726,13 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     if (!kIsWeb) {
       return const SizedBox.shrink();
     }
-    
+
     return Container(
       height: isMobile ? 260 : 320,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: OhtliColors.cardBorder, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(15),
@@ -718,17 +740,14 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
           alignment: Alignment.center,
           children: [
             const HtmlElementView(viewType: 'ohtli-address-map'),
-            
+
             IgnorePointer(
               child: Transform.translate(
-                offset: const Offset(0, -22), 
-                child: SvgPicture.asset(
-                  'assets/pin.svg',
-                  height: 44,
-                ),
+                offset: const Offset(0, -22),
+                child: SvgPicture.asset('assets/pin.svg', height: 44),
               ),
             ),
-            
+
             Positioned(
               bottom: 12,
               child: Container(
@@ -737,11 +756,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   color: OhtliColors.cloudDancer.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 2)),
                   ],
                 ),
                 child: Row(
@@ -751,11 +766,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                     const SizedBox(width: 6),
                     Text(
                       'Mueve el mapa para poner el pin en la entrada',
-                      style: GoogleFonts.inter(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: OhtliColors.onyx,
-                      ),
+                      style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
                     ),
                   ],
                 ),
@@ -771,11 +782,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     final isSelected = _selectedCategory == categoryName;
     return ChoiceChip(
       showCheckmark: false,
-      avatar: Icon(
-        icon,
-        size: 16,
-        color: isSelected ? Colors.white : OhtliColors.subtleText,
-      ),
+      avatar: Icon(icon, size: 16, color: isSelected ? Colors.white : OhtliColors.subtleText),
       label: Text(
         categoryName,
         style: GoogleFonts.inter(
@@ -792,9 +799,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
       backgroundColor: OhtliColors.cloudDancer,
       elevation: 0,
       pressElevation: 0,
-      shape: StadiumBorder(
-        side: BorderSide(color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder),
-      ),
+      shape: StadiumBorder(side: BorderSide(color: isSelected ? OhtliColors.stormyTeal : OhtliColors.cardBorder)),
     );
   }
 
@@ -809,13 +814,18 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     ValueChanged<String>? onChanged,
     Iterable<String>? autofillHints,
   }) {
-    OutlineInputBorder border(Color c, double w) =>
-        OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c, width: w));
+    OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: c, width: w),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+        Text(
+          label,
+          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+        ),
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
@@ -845,12 +855,12 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   }
 
   Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Text(
-          text,
-          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      text,
+      style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+    ),
+  );
 
   Widget _notice(String text, {IconData icon = Icons.info_outline_rounded}) {
     final color = OhtliSettings.instance.isDarkMode ? const Color(0xFFF2A3A3) : const Color(0xFFB3261E);
@@ -921,7 +931,8 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     final isNew = widget.initialAddress == null;
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 900;
-    final requiredText = (String msg) => (String? v) => v == null || v.trim().isEmpty ? msg : null;
+    final requiredText = (String msg) =>
+        (String? v) => v == null || v.trim().isEmpty ? msg : null;
 
     return Card(
       elevation: 0,
@@ -958,53 +969,61 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   icon: Icons.search_rounded,
                   onChanged: _onAddressInputChanged,
                 ),
-                if (_isSearchingPredictions) ...[
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(minHeight: 2, color: OhtliColors.accentText, backgroundColor: Colors.transparent),
-                ],
-                if (_predictions.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 220),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.cloudDancer,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: OhtliColors.cardBorder),
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      itemCount: _predictions.length,
-                      itemBuilder: (context, idx) {
-                        final pred = _predictions[idx];
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(Icons.location_on_outlined, color: OhtliColors.accentText, size: 18),
-                          title: Text(
-                            pred['description'] ?? '',
-                            style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx),
-                          ),
-                          onTap: () => _selectPrediction(pred),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-                if (_autocompleteError != null) ...[
-                  const SizedBox(height: 8),
-                  _notice(
-                    'No pudimos buscar direcciones en este momento. Mueve el mapa hasta el lugar o escribe los datos abajo.',
-                    icon: Icons.wifi_off_rounded,
-                  ),
-                ],
+                // Sugerencias y avisos en un solo bloque: el mapa no cambia de lugar
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isSearchingPredictions) ...[
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        minHeight: 2,
+                        color: OhtliColors.accentText,
+                        backgroundColor: Colors.transparent,
+                      ),
+                    ],
+                    if (_predictions.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        constraints: const BoxConstraints(maxHeight: 220),
+                        decoration: BoxDecoration(
+                          color: OhtliColors.cloudDancer,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: OhtliColors.cardBorder),
+                        ),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          itemCount: _predictions.length,
+                          itemBuilder: (context, idx) {
+                            final pred = _predictions[idx];
+                            return ListTile(
+                              dense: true,
+                              leading: Icon(Icons.location_on_outlined, color: OhtliColors.accentText, size: 18),
+                              title: Text(
+                                pred['description'] ?? '',
+                                style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx),
+                              ),
+                              onTap: () => _selectPrediction(pred),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                    if (_autocompleteError != null) ...[
+                      const SizedBox(height: 8),
+                      _notice(
+                        'No pudimos buscar direcciones en este momento. Mueve el mapa hasta el lugar o escribe los datos abajo.',
+                        icon: Icons.wifi_off_rounded,
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 14),
 
                 // 2. Mapa
-                _buildMapPickerWidget(isMobile),
-                if (_cdmxBoundaryError != null) ...[
-                  const SizedBox(height: 12),
-                  _notice(_cdmxBoundaryError!),
-                ],
+                KeyedSubtree(key: _mapKey, child: _buildMapPickerWidget(isMobile)),
+                if (_cdmxBoundaryError != null) ...[const SizedBox(height: 12), _notice(_cdmxBoundaryError!)],
                 const SizedBox(height: 24),
 
                 // 3. Datos
@@ -1017,11 +1036,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                   validator: requiredText('Escribe la calle y el número.'),
                 ),
                 const SizedBox(height: 14),
-                _field(
-                  label: 'Colonia',
-                  controller: _suburbController,
-                  validator: requiredText('Escribe la colonia.'),
-                ),
+                _field(label: 'Colonia', controller: _suburbController, validator: requiredText('Escribe la colonia.')),
                 const SizedBox(height: 14),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
