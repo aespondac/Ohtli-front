@@ -10,7 +10,9 @@ Map<String, dynamic> sus(String uid, int at, {List<dynamic>? values}) => {
       'satisfaction': [5, 4, 4, 3, 5],
     };
 
-Map<String, dynamic> rel(String uid, int at, int row, int opt, List<dynamic> grades) => {
+Map<String, dynamic> rel(String uid, int at, int row, int opt, List<dynamic> grades,
+        {String? theme, String? criterion = 'intencion_y_tema'}) =>
+    {
       'studyId': 'relevancia',
       'uid': uid,
       'createdAt': DateTime.fromMillisecondsSinceEpoch(at),
@@ -18,6 +20,8 @@ Map<String, dynamic> rel(String uid, int at, int row, int opt, List<dynamic> gra
       'rowIndex': row,
       'optionIndex': opt,
       'grades': grades,
+      'theme': ?theme,
+      'criterion': ?criterion,
     };
 
 void main() {
@@ -72,6 +76,21 @@ void main() {
       expect(agg['judgments'], 3);
       expect(agg['judges'], 2);
     });
+  });
+
+  test('relevancia: P@5 por enfoque, mejor alternativa y consigna anterior excluida', () {
+    final agg = aggregateRelevance([
+      rel('a', 1, 0, 0, [5, 5, 4, 4, 5], theme: 'Patrimonio'), // P@5 = 1.0
+      rel('a', 2, 0, 1, [1, 2, 4, 1, 1], theme: 'Gastronomía'), // P@5 = 0.2
+      rel('a', 3, 1, 0, [4, 1], theme: 'Patrimonio'), // P@5 = 0.5, solicitud con 1 sola alternativa
+      rel('b', 4, 0, 0, [1, 1], criterion: null), // consigna anterior: no cuenta
+    ]);
+    expect(agg['judgments'], 3);
+    expect(agg['legacy_excluded'], 1);
+    expect(agg['precision_at_5_best'], 1.0);
+    expect(agg['requests_compared'], 1);
+    expect((agg['precision_at_5_by_theme'] as Map)['Patrimonio'], closeTo(0.75, 1e-9));
+    expect((agg['precision_at_5_by_theme'] as Map)['Gastronomía'], closeTo(0.2, 1e-9));
   });
 
   test('anonymizeResponses quita el uid y numera participantes por orden de llegada', () {

@@ -122,17 +122,32 @@ Map<String, dynamic> aggregateRelevance(List<Map<String, dynamic>> docs) {
   final p5 = <double>[];
   final ndcgs = <double>[];
   final byTheme = <String, List<double>>{};
+  final p5ByTheme = <String, List<double>>{};
+  // P@5 de cada alternativa por persona y solicitud, para tomar la mejor de las tres.
+  final perRequest = <String, List<double>>{};
   final judges = <String>{};
+  var legacy = 0;
   for (final d in docs) {
+    // Solo cuentan los juicios con la consigna "intención + enfoque de la alternativa"; los
+    // anteriores calificaban solo contra la intención y no son comparables.
+    if (d['criterion'] != 'intencion_y_tema') {
+      legacy++;
+      continue;
+    }
     final g = likertList(d['grades']) ?? const <int>[];
     if (g.isEmpty) continue;
     if (d['uid'] != null) judges.add('${d['uid']}');
     grades.addAll(g.map((x) => x.toDouble()));
     final k = math.min(5, g.length);
-    p5.add(g.take(k).where((x) => x >= 4).length / k);
+    final p = g.take(k).where((x) => x >= 4).length / k;
+    p5.add(p);
     ndcgs.add(ndcg(g, 5));
-    byTheme.putIfAbsent('${d['theme'] ?? 'sin tema'}', () => []).addAll(g.map((x) => x.toDouble()));
+    final theme = '${d['theme'] ?? 'sin tema'}';
+    byTheme.putIfAbsent(theme, () => []).addAll(g.map((x) => x.toDouble()));
+    p5ByTheme.putIfAbsent(theme, () => []).add(p);
+    perRequest.putIfAbsent('${d['uid']}|${d['runId']}|${d['rowIndex']}', () => []).add(p);
   }
+  final best = [for (final l in perRequest.values) if (l.length >= 2) l.reduce(math.max)];
   return {
     'kind': 'relevance',
     'judgments': p5.length,
@@ -143,6 +158,10 @@ Map<String, dynamic> aggregateRelevance(List<Map<String, dynamic>> docs) {
     'ndcg_at_5': _mean(ndcgs),
     'relevant_pct': grades.isEmpty ? null : 100.0 * grades.where((x) => x >= 4).length / grades.length,
     'grade_mean_by_theme': {for (final e in byTheme.entries) e.key: _mean(e.value)},
+    'precision_at_5_by_theme': {for (final e in p5ByTheme.entries) e.key: _mean(e.value)},
+    'precision_at_5_best': _mean(best),
+    'requests_compared': best.length,
+    'legacy_excluded': legacy,
   };
 }
 
@@ -166,13 +185,13 @@ String responsesCsv(LabStudyKind kind, List<Map<String, dynamic>> docs) {
     );
   }
   return toCsv(
-    ['respuesta', 'corrida', 'escenario', 'alternativa', 'tema', 'intencion', 'calificaciones', 'p@5', 'ndcg@5'],
+    ['respuesta', 'corrida', 'escenario', 'alternativa', 'tema', 'intencion', 'criterio', 'calificaciones', 'p@5', 'ndcg@5'],
     docs.asMap().entries.map((e) {
       final d = e.value;
       final g = likertList(d['grades']) ?? const <int>[];
       final k = math.min(5, g.length);
       return [
-        e.key + 1, d['runId'], d['scenarioId'], d['optionIndex'], d['theme'], d['mood'], g.join(' '),
+        e.key + 1, d['runId'], d['scenarioId'], d['optionIndex'], d['theme'], d['mood'], d['criterion'] ?? 'intencion', g.join(' '),
         k == 0 ? null : g.take(k).where((x) => x >= 4).length / k, g.isEmpty ? null : ndcg(g, 5),
       ];
     }).toList(),
@@ -217,17 +236,36 @@ class AggregateView extends StatelessWidget {
       ]);
     }
     final byTheme = (agg['grade_mean_by_theme'] as Map?) ?? {};
+    final p5ByTheme = (agg['precision_at_5_by_theme'] as Map?) ?? {};
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: 10, runSpacing: 10, children: [
         MetricTile(label: 'Juicios', value: '${agg['judgments'] ?? 0}', hint: '${agg['judges'] ?? 0} evaluadores · ${agg['stops_rated'] ?? 0} paradas'),
         MetricTile(label: 'Precision@5', value: fmtNum(agg['precision_at_5'], digits: 2), hint: 'relevante = calificación ≥ 4'),
+        MetricTile(
+            label: 'P@5 mejor alternativa',
+            value: fmtNum(agg['precision_at_5_best'], digits: 2),
+            hint: '${agg['requests_compared'] ?? 0} solicitudes con ≥ 2 alternativas'),
         MetricTile(label: 'nDCG@5', value: fmtNum(agg['ndcg_at_5'], digits: 2)),
         MetricTile(label: 'Calificación media', value: fmtNum(agg['grade_mean'], digits: 2), hint: 'escala 1–5'),
       ]),
       if (byTheme.isNotEmpty) ...[
         const SizedBox(height: 14),
+        Text('Calificación media por enfoque', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: OhtliColors.subtleText)),
+        const SizedBox(height: 6),
         LabBars(maxValue: 5, data: byTheme.entries.where((e) => e.value != null).map((e) => MapEntry('${e.key}', (e.value as num).toDouble())).toList()),
       ],
+      if (p5ByTheme.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Text('Precision@5 por enfoque', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: OhtliColors.subtleText)),
+        const SizedBox(height: 6),
+        LabBars(maxValue: 1, data: p5ByTheme.entries.where((e) => e.value != null).map((e) => MapEntry('${e.key}', (e.value as num).toDouble())).toList()),
+      ],
+      if ((agg['legacy_excluded'] ?? 0) > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text('${agg['legacy_excluded']} juicios con la consigna anterior (solo intención) no se incluyen.',
+              style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText)),
+        ),
     ]);
   }
 }

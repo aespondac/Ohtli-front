@@ -504,22 +504,33 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
     if (mounted) setState(() => _loading = false);
   }
 
+  int? _firstUnseen(Map<String, dynamic> row) {
+    final opts = (row['options'] as List);
+    for (var j = 0; j < opts.length; j++) {
+      if (((opts[j] as Map)['route'] as List? ?? []).isNotEmpty && !_seen.contains('${row['index']}/$j')) return j;
+    }
+    return null;
+  }
+
+  /// Las alternativas de una misma solicitud se califican seguidas: así cada solicitud tiene sus
+  /// alternativas juzgadas por la misma persona y se puede comparar la mejor de las tres.
   void _next() {
-    final pool = <List<int>>[];
-    for (var i = 0; i < _rows.length; i++) {
-      final opts = (_rows[i]['options'] as List);
-      for (var j = 0; j < opts.length; j++) {
-        if (((opts[j] as Map)['route'] as List? ?? []).isNotEmpty && !_seen.contains('${_rows[i]['index']}/$j')) pool.add([i, j]);
+    final same = _row == null ? null : _firstUnseen(_row!);
+    if (same != null) {
+      _opt = same;
+    } else {
+      final pool = <int>[];
+      for (var i = 0; i < _rows.length; i++) {
+        if (_firstUnseen(_rows[i]) != null) pool.add(i);
       }
+      if (pool.isEmpty) {
+        _row = null;
+        return;
+      }
+      _row = _rows[pool[_rng.nextInt(pool.length)]];
+      _opt = _firstUnseen(_row!)!;
     }
-    if (pool.isEmpty) {
-      _row = null;
-      return;
-    }
-    final pick = pool[_rng.nextInt(pool.length)];
-    _row = _rows[pick[0]];
-    _opt = pick[1];
-    _seen.add('${_row!['index']}/${pick[1]}');
+    _seen.add('${_row!['index']}/$_opt');
     _grades = List.filled(((_row!['options'] as List)[_opt]['route'] as List).length, null);
   }
 
@@ -540,6 +551,7 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
         'mood': sc['mood'],
         'poiIds': (opt['route'] as List).map((s) => (s as Map)['poi_id']).toList(),
         'grades': _grades,
+        'criterion': 'intencion_y_tema',
       });
       if (mounted) setState(() => _count++);
     } catch (e) {
@@ -586,11 +598,25 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
           const SizedBox(height: 6),
           Text('“${sc['mood']}”', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
           const SizedBox(height: 4),
-          Text('Saliendo de ${(sc['origin'] as Map?)?['name']} · presupuesto \$${(sc['budget'] as num?)?.toStringAsFixed(0)} MXN · ${opt['theme'] ?? ''}',
+          Text('Saliendo de ${(sc['origin'] as Map?)?['name']} · presupuesto \$${(sc['budget'] as num?)?.toStringAsFixed(0)} MXN',
               style: labCell()),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: OhtliColors.stormyTeal.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Alternativa ${_opt + 1} de ${(_row!['options'] as List).length} · ${opt['theme'] ?? ''}',
+              style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('Califica qué tan bien encaja cada lugar con lo que busca esta persona.',
-              style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+          Text(
+              'Ohtli propone tres alternativas con enfoques distintos para la misma intención. '
+              'Califica qué tan bien encaja cada lugar con lo que busca esta persona dentro del enfoque de esta alternativa.',
+              style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, height: 1.4)),
         ]),
       ),
       const SizedBox(height: 12),
