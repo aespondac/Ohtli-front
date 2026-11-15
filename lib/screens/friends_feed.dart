@@ -85,6 +85,9 @@ class FriendsActivityFeed extends StatefulWidget {
   /// Fila de fotos de amigos arriba del feed (en escritorio ya está en la columna izquierda).
   final bool showFriendsRing;
 
+  /// Algo que va antes de la actividad, con su mismo ancho (p. ej. las solicitudes).
+  final Widget? header;
+
   /// Margen izquierdo de la lista (0 cuando va en la columna derecha).
   final double? leftPadding;
 
@@ -96,6 +99,7 @@ class FriendsActivityFeed extends StatefulWidget {
     required this.onShowSuggestions,
     required this.padding,
     this.showFriendsRing = true,
+    this.header,
     this.leftPadding,
   });
 
@@ -222,6 +226,7 @@ class _FriendsActivityFeedState extends State<FriendsActivityFeed> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.header != null) widget.header!,
                 if (_loading && activities.isEmpty)
                   for (var i = 0; i < 3; i++)
                     Container(

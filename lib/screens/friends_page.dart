@@ -560,6 +560,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                     onOpenProfile: _openProfile,
                     onShowSuggestions: () => _tabController.animateTo(1),
                     showFriendsRing: false,
+                    header: _buildRequestsSection(people, users),
                   );
 
                   return LayoutBuilder(
@@ -591,16 +592,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Padding(
-                                    padding: EdgeInsets.fromLTRB(0, 46, padding, 14),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.dynamic_feed_rounded, size: 14, color: OhtliColors.accentText),
-                                        const SizedBox(width: 6),
-                                        Text('ACTIVIDAD', style: OhtliUi.eyebrow(OhtliColors.accentText)),
-                                      ],
-                                    ),
-                                  ),
+                                  const SizedBox(height: 46),
                                   Expanded(
                                     child: social == null
                                         ? _buildSkeleton(0)
@@ -612,6 +604,22 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                                             onOpenProfile: _openProfile,
                                             onShowSuggestions: () {},
                                             showFriendsRing: false,
+                                            header: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                                              children: [
+                                                ?_buildRequestsSection(people, users),
+                                                Padding(
+                                                  padding: const EdgeInsets.only(bottom: 14),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.dynamic_feed_rounded, size: 14, color: OhtliColors.accentText),
+                                                      const SizedBox(width: 6),
+                                                      Text('ACTIVIDAD', style: OhtliUi.eyebrow(OhtliColors.accentText)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                   ),
                                 ],
@@ -768,47 +776,6 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
       padding: padding,
       children: [
         // Mejores amigos: fotos grandes, como historias.
-        // Solicitudes: las que te mandaron (Aceptar / Rechazar) y las que enviaste (Cancelar).
-        if (people.incomingPending.isNotEmpty || people.sentPending.isNotEmpty) ...[
-          sectionTitle(
-            'Solicitudes',
-            trailing: people.incomingPending.isEmpty
-                ? null
-                : Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: OhtliColors.xoconostle, borderRadius: BorderRadius.circular(30)),
-                    child: Text('${people.incomingPending.length}', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white)),
-                  ),
-          ),
-          for (final e in people.incomingPending.entries)
-            _personRow(
-              e.key,
-              users[e.key],
-              highlight: true,
-              subtitle: 'Te envió una solicitud',
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Rechazar',
-                    onPressed: () => _declineFriendRequest(e.value, e.key),
-                    icon: Icon(Icons.close_rounded, color: OhtliColors.subtleText),
-                  ),
-                  OhtliPrimaryButton(compact: true, label: 'Aceptar', icon: Icons.check_rounded, onPressed: () => _acceptFriendRequestFromSuggested(e.value, e.key)),
-                ],
-              ),
-            ),
-          for (final e in people.sentPending.entries)
-            _personRow(
-              e.key,
-              users[e.key],
-              subtitle: 'Solicitud enviada',
-              trailing: OhtliSecondaryButton(compact: true, label: 'Cancelar', onPressed: () => _cancelFriendRequest(e.value, e.key)),
-            ),
-          const SizedBox(height: 22),
-          Divider(color: OhtliColors.cardBorder, height: 1),
-          const SizedBox(height: 22),
-        ],
         sectionTitle('Mejores amigos'),
         if (people.closeFriends.isEmpty)
           Text(
@@ -898,6 +865,67 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     );
   }
 
+  /// Solicitudes recibidas (Aceptar / Rechazar) y enviadas (Cancelar); van arriba de la actividad.
+  Widget? _buildRequestsSection(_PeopleData people, Map<String, DocumentSnapshot> users) {
+    if (people.incomingPending.isEmpty && people.sentPending.isEmpty) return null;
+    Widget sectionTitle(String text, {Widget? trailing}) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Expanded(child: Text(text.toUpperCase(), style: OhtliUi.eyebrow(OhtliColors.accentText))),
+              ?trailing,
+            ],
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: OhtliSurface(
+        padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+          sectionTitle(
+            'Solicitudes',
+            trailing: people.incomingPending.isEmpty
+                ? null
+                : Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: OhtliColors.xoconostle, borderRadius: BorderRadius.circular(30)),
+                    child: Text('${people.incomingPending.length}', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ),
+          ),
+          for (final e in people.incomingPending.entries)
+            _personRow(
+              e.key,
+              users[e.key],
+              highlight: true,
+              subtitle: 'Te envió una solicitud',
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Rechazar',
+                    onPressed: () => _declineFriendRequest(e.value, e.key),
+                    icon: Icon(Icons.close_rounded, color: OhtliColors.subtleText),
+                  ),
+                  OhtliPrimaryButton(compact: true, label: 'Aceptar', onPressed: () => _acceptFriendRequestFromSuggested(e.value, e.key)),
+                ],
+              ),
+            ),
+          for (final e in people.sentPending.entries)
+            _personRow(
+              e.key,
+              users[e.key],
+              subtitle: 'Solicitud enviada',
+              trailing: OhtliSecondaryButton(compact: true, label: 'Cancelar', onPressed: () => _cancelFriendRequest(e.value, e.key)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Renglón de una persona: foto, nombre, título (o un aviso) y una acción a la derecha.
   Widget _personRow(String id, DocumentSnapshot? doc, {Widget? trailing, String? subtitle, bool highlight = false}) {
     final data = doc?.data() as Map<String, dynamic>?;
@@ -924,7 +952,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                       Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(color: OhtliColors.onyx, fontWeight: FontWeight.w800, fontSize: 15.5)),
                       const SizedBox(height: 2),
                       if (subtitle != null)
-                        Text(subtitle, style: GoogleFonts.inter(color: OhtliColors.accentText, fontSize: 12.5, fontWeight: FontWeight.w700))
+                        Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: OhtliColors.accentText, fontSize: 12.5, fontWeight: FontWeight.w700))
                       else
                         StreamBuilder<DocumentSnapshot>(
                           stream: _titleStream(activeTitleId),
