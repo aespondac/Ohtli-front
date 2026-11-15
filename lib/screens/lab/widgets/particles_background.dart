@@ -2,6 +2,14 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../theme/colors.dart';
 
+/// Fondo de partículas conectadas de la portada de Labs.
+///
+/// - Usa el fondo del tema (antes forzaba un blanco claro aun en modo oscuro y el texto del hero
+///   quedaba sobre gris).
+/// - Solo repinta el lienzo en cada cuadro (CustomPainter con `repaint`), sin reconstruir widgets.
+/// - Menos partículas en pantallas chicas, y quietas si la persona pidió reducir el movimiento.
+/// - Al cambiar el tamaño de la ventana las partículas vuelven al área visible (antes podían
+///   quedar atrapadas fuera, rebotando en cada cuadro).
 class ParticlesBackground extends StatefulWidget {
   const ParticlesBackground({super.key});
 
@@ -9,66 +17,67 @@ class ParticlesBackground extends StatefulWidget {
   State<ParticlesBackground> createState() => _ParticlesBackgroundState();
 }
 
-class _ParticlesBackgroundState extends State<ParticlesBackground>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  List<Particle> _particles = [];
-  final int _particleCount = 100;
+class _ParticlesBackgroundState extends State<ParticlesBackground> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  final List<Particle> _particles = [];
   final Random _random = Random();
+  Size _size = Size.zero;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 10),
-    )..addListener(() {
-        _updateParticles();
-        setState(() {});
-      })..repeat();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 10))..addListener(_step);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_particles.isEmpty) {
-      final size = MediaQuery.of(context).size;
-      _initParticles(size);
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (reduceMotion) {
+      _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
     }
   }
 
-  void _initParticles(Size size) {
-    _particles = List.generate(_particleCount, (index) {
-      return Particle(
+  void _ensureParticles(Size size) {
+    if (size.isEmpty) return;
+    final target = size.width < 600 ? 40 : 90;
+    if (_particles.length != target) {
+      _particles
+        ..clear()
+        ..addAll(List.generate(target, (_) => _newParticle(size)));
+    } else if (size != _size) {
+      for (final p in _particles) {
+        p.x = p.x.clamp(0, size.width);
+        p.y = p.y.clamp(0, size.height);
+      }
+    }
+    _size = size;
+  }
+
+  Particle _newParticle(Size size) => Particle(
         x: _random.nextDouble() * size.width,
         y: _random.nextDouble() * size.height,
         vx: (_random.nextDouble() - 0.5) * 1.5,
         vy: (_random.nextDouble() - 0.5) * 1.5,
-        color: _getRandomOhtliColor(),
+        color: const [OhtliColors.stormyTeal, OhtliColors.xoconostle, OhtliColors.cempasuchil, OhtliColors.cantera][_random.nextInt(4)],
         radius: _random.nextDouble() * 3 + 2,
       );
-    });
-  }
 
-  Color _getRandomOhtliColor() {
-    final colors = [
-      OhtliColors.stormyTeal,
-      OhtliColors.xoconostle,
-      OhtliColors.cempasuchil,
-      OhtliColors.cantera,
-    ];
-    return colors[_random.nextInt(colors.length)];
-  }
-
-  void _updateParticles() {
-    if (!mounted) return;
-    final size = MediaQuery.of(context).size;
-    for (var particle in _particles) {
-      particle.x += particle.vx;
-      particle.y += particle.vy;
-
-      if (particle.x < 0 || particle.x > size.width) particle.vx *= -1;
-      if (particle.y < 0 || particle.y > size.height) particle.vy *= -1;
+  void _step() {
+    if (_size.isEmpty) return;
+    for (final p in _particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0 || p.x > _size.width) {
+        p.vx = -p.vx;
+        p.x = p.x.clamp(0, _size.width);
+      }
+      if (p.y < 0 || p.y > _size.height) {
+        p.vy = -p.vy;
+        p.y = p.y.clamp(0, _size.height);
+      }
     }
   }
 
@@ -80,12 +89,17 @@ class _ParticlesBackgroundState extends State<ParticlesBackground>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF0EEE9), // Blanco Ohtli forzado
-      child: CustomPaint(
-        painter: ParticlesPainter(particles: _particles),
-        size: Size.infinite,
-      ),
+    return ColoredBox(
+      color: OhtliColors.cloudDancer,
+      child: LayoutBuilder(builder: (context, constraints) {
+        _ensureParticles(constraints.biggest);
+        return RepaintBoundary(
+          child: CustomPaint(
+            painter: ParticlesPainter(particles: _particles, repaint: _controller),
+            size: Size.infinite,
+          ),
+        );
+      }),
     );
   }
 }
@@ -110,43 +124,40 @@ class Particle {
 
 class ParticlesPainter extends CustomPainter {
   final List<Particle> particles;
-  final double connectionDistance = 150.0;
+  static const double connectionDistance = 150.0;
 
-  ParticlesPainter({required this.particles});
+  ParticlesPainter({required this.particles, super.repaint});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.fill;
-
+    final paint = Paint()..style = PaintingStyle.fill;
     final linePaint = Paint()
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
+    const maxD2 = connectionDistance * connectionDistance;
 
-    // Draw lines
     for (int i = 0; i < particles.length; i++) {
+      final p1 = particles[i];
       for (int j = i + 1; j < particles.length; j++) {
-        final p1 = particles[i];
         final p2 = particles[j];
         final dx = p1.x - p2.x;
+        if (dx.abs() > connectionDistance) continue;
         final dy = p1.y - p2.y;
-        final distance = sqrt(dx * dx + dy * dy);
-
-        if (distance < connectionDistance) {
-          final opacity = 1.0 - (distance / connectionDistance);
+        final d2 = dx * dx + dy * dy;
+        if (d2 < maxD2) {
+          final opacity = 1.0 - (sqrt(d2) / connectionDistance);
           linePaint.color = p1.color.withValues(alpha: opacity * 0.4);
           canvas.drawLine(Offset(p1.x, p1.y), Offset(p2.x, p2.y), linePaint);
         }
       }
     }
 
-    // Draw particles
-    for (var particle in particles) {
+    for (final particle in particles) {
       paint.color = particle.color.withValues(alpha: 0.8);
       canvas.drawCircle(Offset(particle.x, particle.y), particle.radius, paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant ParticlesPainter oldDelegate) => true;
+  bool shouldRepaint(covariant ParticlesPainter oldDelegate) => oldDelegate.particles != particles;
 }

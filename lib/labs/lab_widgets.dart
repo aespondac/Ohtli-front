@@ -2,11 +2,28 @@
 import 'dart:convert';
 import 'package:web/web.dart' as web;
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/colors.dart';
 import '../utils/web_helpers.dart';
+
+/// Mensaje de error en español para la interfaz (antes se mostraba el texto crudo de Firebase,
+/// en inglés, p. ej. "[cloud_firestore/permission-denied] Missing or insufficient permissions").
+String labErrorText(Object? e) {
+  if (e is FirebaseException) {
+    return switch (e.code) {
+      'permission-denied' => 'no tienes permiso para esta acción',
+      'unavailable' || 'deadline-exceeded' => 'no hay conexión con el servidor; inténtalo de nuevo',
+      'failed-precondition' => 'el servidor aún está preparando esta consulta; inténtalo en unos minutos',
+      'not-found' => 'no se encontró el documento',
+      'unauthenticated' => 'tu sesión expiró; vuelve a iniciar sesión',
+      _ => 'error del servidor (${e.code})',
+    };
+  }
+  return '$e'.replaceFirst('Exception: ', '');
+}
 
 String fmtNum(dynamic v, {int digits = 1, String suffix = ''}) {
   if (v == null) return '—';
@@ -14,15 +31,20 @@ String fmtNum(dynamic v, {int digits = 1, String suffix = ''}) {
   return '$v$suffix';
 }
 
+const _kMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/// Fecha y hora en la Ciudad de México (UTC−6, sin horario de verano desde 2022), con zona. Antes
+/// se mostraba en la hora local de quien leía, sin decir cuál, y la fecha congelada en un
+/// artículo quedaba en la zona de quien lo redactó.
 String fmtDate(dynamic ts) {
   DateTime? d;
   try {
-    d = (ts as dynamic)?.toDate() as DateTime?;
+    d = ts is DateTime ? ts : (ts as dynamic)?.toDate() as DateTime?;
   } catch (_) {}
   if (d == null) return '—';
-  d = d.toLocal();
+  final cdmx = d.toUtc().subtract(const Duration(hours: 6));
   String two(int x) => x.toString().padLeft(2, '0');
-  return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+  return '${cdmx.day} ${_kMonths[cdmx.month - 1]} ${cdmx.year}, ${two(cdmx.hour)}:${two(cdmx.minute)} (CDMX)';
 }
 
 void downloadText(String filename, String content, {String mime = 'text/plain'}) {
@@ -184,6 +206,18 @@ class LabBars extends StatelessWidget {
   }
 }
 
+/// Estado de una corrida o escenario en español (antes se mostraban los valores internos).
+String statusLabel(String status) => switch (status) {
+      'completed' => 'completada',
+      'running' => 'en curso',
+      'cancelled' => 'cancelada',
+      'error' || 'failed' => 'con error',
+      'timeout' => 'tiempo agotado',
+      'pending' => 'pendiente',
+      'processing' => 'procesando',
+      _ => status,
+    };
+
 class StatusDot extends StatelessWidget {
   final String status;
   const StatusDot(this.status, {super.key});
@@ -199,7 +233,7 @@ class StatusDot extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
       const SizedBox(width: 6),
-      Text(status, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: c)),
+      Text(statusLabel(status), style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: c)),
     ]);
   }
 }

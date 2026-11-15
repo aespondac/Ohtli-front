@@ -92,7 +92,7 @@ class _LabPostsPanelState extends State<LabPostsPanel> {
       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: LabRepository.instance.watchAllPosts(),
         builder: (context, snap) {
-          if (snap.hasError) return LabCard(child: Text('Error: ${snap.error}', style: labCell()));
+          if (snap.hasError) return LabCard(child: Text('No pudimos cargar los artículos: ${labErrorText(snap.error)}.', style: labCell()));
           final docs = snap.data?.docs ?? [];
           if (docs.isEmpty) return LabCard(child: Text('Aún no hay artículos.', style: labCell()));
           return Column(
@@ -286,7 +286,7 @@ class _PostEditorState extends State<_PostEditor> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Artículo guardado')));
       if (widget.postId == null) widget.onClose();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: ${labErrorText(e)}.')));
     }
     if (mounted) setState(() => _saving = false);
   }

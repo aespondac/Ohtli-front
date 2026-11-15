@@ -184,7 +184,7 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
   @override
   Widget build(BuildContext context) {
     return LabExperimentShell(
-      title: 'Caza Lugares (Motor Recolector Geospacial)',
+      title: 'Descubridor de lugares (Recolector geoespacial)',
       subtitle: 'Extracción multi-fuente de puntos de interés (POIs), normalización semántica y replicación selectiva a la base de producción de Ohtli.quest.',
       category: 'Geointeligencia',
       status: 'CANDIDATO A PROD v1.0',
@@ -293,11 +293,14 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               Text(
-                'Parámetros de Prueba Geospacial',
+                'Parámetros de exploración geoespacial',
                 style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
               ),
               Container(
@@ -341,7 +344,7 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
           const SizedBox(height: 20),
 
           // Campos de texto
-          Row(
+          LabFieldRow(
             children: [
               Expanded(
                 child: TextField(
