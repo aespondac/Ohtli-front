@@ -616,7 +616,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       return;
     }
 
-    final coords = _selectedOriginCoords ?? {'lat': 19.4326, 'lng': -99.1332};
+    final coords = (!_fixesOrigin ? _destinationCoords : null) ??
+        _selectedOriginCoords ?? {'lat': 19.4326, 'lng': -99.1332};
     // Forma de la ruta para el motor (core/topology.py): anillo, radio (solo inicio),
     // fin (solo final) o elipse (inicio y final).
     final bool needsDestination = _selectedTopology == 'radio' && _openEnds != 'inicio';
@@ -644,9 +645,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     });
 
     try {
-      final originTitle = _originSearchController.text.trim().isNotEmpty
-          ? _originSearchController.text.trim()
-          : (widget.originName ?? 'Ciudad de México');
+      final originTitle = !_fixesOrigin && _destinationName.isNotEmpty
+          ? _destinationName
+          : (_originSearchController.text.trim().isNotEmpty
+              ? _originSearchController.text.trim()
+              : (widget.originName ?? 'Ciudad de México'));
 
       final jobId = await _blackboardService.requestItineraryJob(
         userId: user.uid,
@@ -1392,17 +1395,87 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   // ==========================================
   // PASO 1: PUNTO DE PARTIDA Y DIRECCIONES
   // ==========================================
+  bool get _fixesOrigin => !(_selectedTopology == 'radio' && _openEnds == 'fin');
+  bool get _fixesDestination => _selectedTopology == 'radio' && _openEnds != 'inicio';
+
+  /// Tipo de ruta (ida y vuelta o abierta) y, en la abierta, qué extremos fija la persona.
+  Widget _buildRouteShapeSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('TIPO DE RUTA', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildTopologyOption(
+                key: 'anillo',
+                title: 'Ida y vuelta',
+                desc: 'Empiezas y terminas en el mismo punto',
+                icon: Icons.loop_rounded,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: _buildTopologyOption(
+                key: 'radio',
+                title: 'Abierta',
+                desc: 'No vuelves al inicio; tú eliges qué puntos fijar',
+                icon: Icons.trending_flat_rounded,
+              ),
+            ),
+          ],
+        ),
+        if (_selectedTopology == 'radio') ...[
+          const SizedBox(height: 18),
+          Text('¿QUÉ PUNTOS QUIERES FIJAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final o in const [
+                ('inicio', 'Solo el inicio', Icons.trip_origin_rounded),
+                ('fin', 'Solo el final', Icons.flag_rounded),
+                ('ambos', 'Inicio y final', Icons.route_rounded),
+              ])
+                OhtliChoiceChip(
+                  label: o.$2,
+                  icon: o.$3,
+                  selected: _openEnds == o.$1,
+                  onTap: () => setState(() => _openEnds = o.$1),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _openEnds == 'inicio'
+                ? 'Empiezas en tu punto de partida y terminas en la última parada.'
+                : (_openEnds == 'fin'
+                    ? 'Empiezas en la primera parada y terminas en el punto que elijas.'
+                    : 'Empiezas en tu punto de partida y terminas en el punto que elijas.'),
+            style: OhtliUi.body(size: 12.5),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildStartingPointStep(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // El indicador de pasos ya muestra la etiqueta; aquí solo título y descripción
         Text('¿Desde dónde inicia tu recorrido?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
         const SizedBox(height: 6),
-        Text('Elige tu hotel, tu casa o cualquier punto de partida en la Ciudad de México para calcular traslados realistas.',
+        Text('Elige si vuelves al inicio o terminas en otro lugar, y los puntos de tu recorrido en la Ciudad de México.',
             style: OhtliUi.body(size: 14)),
         const SizedBox(height: 24),
+        _buildRouteShapeSection(),
+        const SizedBox(height: 28),
 
+        if (_fixesOrigin) ...[
+        Text('¿DÓNDE EMPIEZAS?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+        const SizedBox(height: 12),
         // Campo de búsqueda libre (píldora, como el buscador de Lugares)
         Container(
           height: 56,
@@ -1462,6 +1535,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
         const SizedBox(height: 12),
         _buildOriginGrid(isMobile, _startPointCards()),
+        ],
+        if (_fixesDestination) ...[
+          if (_fixesOrigin) const SizedBox(height: 28),
+          Text('¿DÓNDE QUIERES TERMINAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+          const SizedBox(height: 12),
+          _buildOriginGrid(isMobile, _startPointCards(forDestination: true)),
+        ],
         const SizedBox(height: 36),
 
         // Botón Continuar
@@ -1470,7 +1550,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           child: OhtliPrimaryButton(
             label: 'Continuar a preferencias',
             icon: Icons.arrow_forward_rounded,
-            onPressed: _selectedOriginName.trim().isEmpty ? null : () => setState(() => _currentStep = PlannerStep.preferences),
+            onPressed: (_fixesOrigin && _selectedOriginName.trim().isEmpty) ||
+                    (_fixesDestination && _destinationCoords == null)
+                ? null
+                : () => setState(() => _currentStep = PlannerStep.preferences),
           ),
         ),
       ],
@@ -1698,68 +1781,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             ],
           ),
         ),
-        const SizedBox(height: 28),
-
-        // Tipo de recorrido
-        label('TIPO DE RUTA'),
-        Row(
-          children: [
-            Expanded(
-              child: _buildTopologyOption(
-                key: 'anillo',
-                title: 'Ida y vuelta',
-                desc: 'Empiezas y terminas cerca del mismo punto',
-                icon: Icons.loop_rounded,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _buildTopologyOption(
-                key: 'radio',
-                title: 'Abierta',
-                desc: 'No vuelves al inicio; tú eliges qué puntos fijar',
-                icon: Icons.trending_flat_rounded,
-              ),
-            ),
-          ],
-        ),
-        if (_selectedTopology == 'radio') ...[
-          const SizedBox(height: 18),
-          Text('¿QUÉ PUNTOS QUIERES FIJAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final o in const [
-                ('inicio', 'Solo el inicio', Icons.trip_origin_rounded),
-                ('fin', 'Solo el final', Icons.flag_rounded),
-                ('ambos', 'Inicio y final', Icons.route_rounded),
-              ])
-                OhtliChoiceChip(
-                  label: o.$2,
-                  icon: o.$3,
-                  selected: _openEnds == o.$1,
-                  onTap: () => setState(() => _openEnds = o.$1),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _openEnds == 'inicio'
-                ? 'Empiezas en ${_selectedOriginName.isEmpty ? 'tu punto de partida' : _selectedOriginName} y terminas en la última parada.'
-                : (_openEnds == 'fin'
-                    ? 'Empiezas en la primera parada y terminas en el punto que elijas.'
-                    : 'Empiezas en ${_selectedOriginName.isEmpty ? 'tu punto de partida' : _selectedOriginName} y terminas en el punto que elijas.'),
-            style: OhtliUi.body(size: 12.5),
-          ),
-          if (_openEnds != 'inicio') ...[
-            const SizedBox(height: 18),
-            Text('¿DÓNDE QUIERES TERMINAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
-            const SizedBox(height: 12),
-            _buildOriginGrid(isMobile, _startPointCards(forDestination: true)),
-          ],
-        ],
         const SizedBox(height: 28),
 
         // Medio de traslado entre paradas
