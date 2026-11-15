@@ -1542,6 +1542,30 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           const SizedBox(height: 12),
           _buildOriginGrid(isMobile, _startPointCards(forDestination: true)),
         ],
+        const SizedBox(height: 28),
+
+        // Medio de traslado entre paradas
+        Text('¿CÓMO TE MUEVES?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final m in kPlannerModes)
+              OhtliChoiceChip(
+                label: m.label,
+                icon: m.icon,
+                selected: _selectedTransportMode == m.id,
+                onTap: () => setState(() {
+                  _selectedTransportMode = m.id;
+                  _transportModeTouched = true;
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(_transportModeHint(_selectedTransportMode), style: OhtliUi.body(size: 12.5)),
+
         const SizedBox(height: 36),
 
         // Botón Continuar
@@ -1782,28 +1806,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           ),
         ),
         const SizedBox(height: 28),
-
-        // Medio de traslado entre paradas
-        label('¿CÓMO TE MUEVES?'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final m in kPlannerModes)
-              OhtliChoiceChip(
-                label: m.label,
-                icon: m.icon,
-                selected: _selectedTransportMode == m.id,
-                onTap: () => setState(() {
-                  _selectedTransportMode = m.id;
-                  _transportModeTouched = true;
-                }),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(_transportModeHint(_selectedTransportMode), style: OhtliUi.body(size: 12.5)),
-        const SizedBox(height: 36),
 
         // Lanzar generación con IA
         Align(
