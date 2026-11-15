@@ -14,13 +14,10 @@ import 'theme/colors.dart';
 import 'screens/construction_page.dart';
 import 'screens/landing/landing_page.dart';
 import 'screens/home_page.dart';
-import 'screens/login/desktop_login_page.dart';
-import 'screens/login/mobile_login_page.dart';
-import 'screens/login/mobile_welcome_page.dart';
 import 'screens/login/forgot_password_page.dart';
+import 'screens/login/login_page.dart';
+import 'screens/register/register_page.dart';
 import 'screens/login/auth_action_page.dart';
-import 'screens/register/desktop_register_page.dart';
-import 'screens/register/mobile_register_page.dart';
 import 'screens/account/account_management_page.dart';
 import 'screens/trips/trip_sample.dart';
 import 'screens/error_404_page.dart';
@@ -1040,67 +1037,21 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           _navigateTo(isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register);
         },
       );
-    } else if (isMobile) {
-      switch (_currentScreen) {
-        case OhtliScreen.mobileWelcome:
-          activeView = MobileWelcomePage(
-            onBack: _goPublicHome,
-            onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
-            onJoinClick: () => _navigateTo(OhtliScreen.mobileRegister),
-          );
-          break;
-        case OhtliScreen.mobileLogin:
-          activeView = MobileLoginPage(
-            onBack: () => _navigateTo(OhtliScreen.mobileWelcome),
-            onRegisterClick: () => _navigateTo(OhtliScreen.mobileRegister),
-            onLoginSuccess: _onAuthSuccess,
-            onForgotPasswordClick: () =>
-                _navigateTo(OhtliScreen.forgotPassword),
-          );
-          break;
-        case OhtliScreen.mobileRegister:
-          activeView = MobileRegisterPage(
-            onBack: () => _navigateTo(OhtliScreen.mobileLogin),
-            onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
-            onRegisterSuccess: _onAuthSuccess,
-          );
-          break;
-        default:
-          activeView = MobileLoginPage(
-            onBack: () => _navigateTo(OhtliScreen.mobileWelcome),
-            onRegisterClick: () => _navigateTo(OhtliScreen.mobileRegister),
-            onLoginSuccess: _onAuthSuccess,
-            onForgotPasswordClick: () =>
-                _navigateTo(OhtliScreen.forgotPassword),
-          );
-      }
+    } else if (_currentScreen == OhtliScreen.register || _currentScreen == OhtliScreen.mobileRegister) {
+      // Una sola pantalla de registro para escritorio y teléfono
+      activeView = RegisterPage(
+        onBack: _goPublicHome,
+        onLoginClick: () => _navigateTo(_loginScreen),
+        onRegisterSuccess: _onAuthSuccess,
+      );
     } else {
-      switch (_currentScreen) {
-        case OhtliScreen.login:
-          activeView = DesktopLoginPage(
-            onBack: _goPublicHome,
-            onRegisterClick: () => _navigateTo(OhtliScreen.register),
-            onLoginSuccess: _onAuthSuccess,
-            onForgotPasswordClick: () =>
-                _navigateTo(OhtliScreen.forgotPassword),
-          );
-          break;
-        case OhtliScreen.register:
-          activeView = DesktopRegisterPage(
-            onBack: () => _navigateTo(OhtliScreen.login),
-            onLoginClick: () => _navigateTo(OhtliScreen.login),
-            onRegisterSuccess: _onAuthSuccess,
-          );
-          break;
-        default:
-          activeView = DesktopLoginPage(
-            onBack: _goPublicHome,
-            onRegisterClick: () => _navigateTo(OhtliScreen.register),
-            onLoginSuccess: _onAuthSuccess,
-            onForgotPasswordClick: () =>
-                _navigateTo(OhtliScreen.forgotPassword),
-          );
-      }
+      // Entrar: login, mobileLogin y mobileWelcome muestran la misma pantalla
+      activeView = LoginPage(
+        onBack: _goPublicHome,
+        onRegisterClick: () => _navigateTo(_registerScreen),
+        onLoginSuccess: _onAuthSuccess,
+        onForgotPasswordClick: () => _navigateTo(OhtliScreen.forgotPassword),
+      );
     }
 
     // En lab.ohtli.quest, en el inicio de sesión: entrar con la sesión de ohtli.quest.

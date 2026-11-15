@@ -1,15 +1,16 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../theme/colors.dart';
-import '../../widgets/custom_text_field.dart';
-import '../../utils/friendly_errors.dart';
-import '../construction_page.dart'; // To reuse RouteBackgroundPainter
 
+import '../../theme/colors.dart';
+import '../../utils/friendly_errors.dart';
+import 'auth_shell.dart';
+
+/// Recuperar la contraseña: envía el enlace y confirma en la misma pantalla a qué correo.
 class ForgotPasswordPage extends StatefulWidget {
-  final VoidCallback onBack;
   const ForgotPasswordPage({super.key, required this.onBack});
+
+  final VoidCallback onBack;
 
   @override
   State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
@@ -18,8 +19,9 @@ class ForgotPasswordPage extends StatefulWidget {
 class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final _emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
-  bool _isSubmitHovering = false;
+  bool _loading = false;
+  String? _error;
+  String? _sentTo;
 
   @override
   void dispose() {
@@ -27,243 +29,115 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     super.dispose();
   }
 
-  Future<void> _handleResetPassword() async {
+  Future<void> _send() async {
+    if (_loading) return;
+    setState(() => _error = null);
     if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-
+    setState(() => _loading = true);
+    final email = _emailController.text.trim();
     try {
-      final actionCodeSettings = ActionCodeSettings(
-        url: '${Uri.base.origin}/?mode=resetPassword',
-        handleCodeInApp: true,
-      );
       await FirebaseAuth.instance.sendPasswordResetEmail(
-        email: _emailController.text.trim(),
-        actionCodeSettings: actionCodeSettings,
+        email: email,
+        actionCodeSettings: ActionCodeSettings(
+          url: '${Uri.base.origin}/?mode=resetPassword',
+          handleCodeInApp: true,
+        ),
       );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '¡Correo de recuperación enviado! Revisa la bandeja de entrada de ${_emailController.text.trim()}.',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w500),
-            ),
-            backgroundColor: OhtliColors.stormyTeal,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-        widget.onBack();
-      }
+      if (mounted) setState(() => _sentTo = email);
     } on FirebaseAuthException catch (e) {
-      String errorMessage = 'Ocurrió un error al enviar el correo.';
-      if (e.code == 'user-not-found') {
-        errorMessage = 'No se encontró ninguna cuenta con este correo.';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = 'El formato del correo electrónico no es válido.';
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              errorMessage,
-              style: GoogleFonts.inter(fontWeight: FontWeight.w500),
-            ),
-            backgroundColor: OhtliColors.xoconostle,
-          ),
-        );
-      }
+      final message = switch (e.code) {
+        'user-not-found' => 'No encontramos una cuenta con este correo. Revisa que esté bien escrito.',
+        'invalid-email' => 'Revisa el correo: parece incompleto.',
+        'too-many-requests' => 'Pediste varios enlaces seguidos. Espera unos minutos e intenta de nuevo.',
+        _ => friendlyError(e, fallback: 'No pudimos enviar el correo. Intenta de nuevo.'),
+      };
+      if (mounted) setState(() => _error = message);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(friendlyError(e)),
-            backgroundColor: OhtliColors.xoconostle,
-          ),
-        );
-      }
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: OhtliColors.cloudDancer,
-      body: Stack(
+    final sent = _sentTo;
+    if (sent != null) {
+      return AuthShell(
+        onBack: widget.onBack,
+        backTooltip: 'Volver a iniciar sesión',
+        photo: 3,
+        title: 'Revisa tu correo',
+        subtitle: 'Si hay una cuenta con ese correo, te llegará un enlace para elegir una contraseña nueva.',
         children: [
-          // Líneas de mapa decorativas de fondo
-          Positioned.fill(
-            child: CustomPaint(
-              painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: OhtliColors.cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: OhtliColors.cardBorder),
             ),
-          ),
-
-          // Botón de regreso superior izquierdo
-          Positioned(
-            top: 24,
-            left: 16,
-            child: IconButton(
-              icon: Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
-              onPressed: widget.onBack,
-              tooltip: 'Volver al Inicio',
-            ),
-          ),
-
-          // Formulario central
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 80),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 400),
-                child: Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: OhtliColors.cloudDancer, // Solid color to mask background lines
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                    border: Border.all(color: OhtliColors.cantera.withValues(alpha: 0.5)),
-                  ),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // LOGOTIPO OHTLI
-                        SvgPicture.asset(
-                          'assets/logo.svg',
-                          width: 200,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => Text(
-                            'Ohtli',
-                            style: GoogleFonts.inter(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: OhtliColors.stormyTeal,
-                              letterSpacing: 1.5,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        Text(
-                          'Recuperar Cuenta',
-                          style: GoogleFonts.inter(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w400,
-                            color: OhtliColors.onyx.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        Text(
-                          'Ingresa tu correo electrónico registrado y te enviaremos un enlace para restablecer tu contraseña.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w300,
-                            color: OhtliColors.onyx.withValues(alpha: 0.6),
-                            height: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-
-                        if (_isLoading)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 20),
-                            child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
-                          )
-                        else ...[
-                          // INPUT CORREO
-                          buildCustomTextField(
-                            controller: _emailController,
-                            hintText: 'Correo electrónico',
-                            keyboardType: TextInputType.emailAddress,
-                            validator: (val) {
-                              if (val == null || val.isEmpty) return 'Ingresa tu correo';
-                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val)) {
-                                return 'Correo no válido';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 24),
-
-                          // BOTÓN ENVIAR
-                          MouseRegion(
-                            onEnter: (_) => setState(() => _isSubmitHovering = true),
-                            onExit: (_) => setState(() => _isSubmitHovering = false),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              width: double.infinity,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(30),
-                                boxShadow: _isSubmitHovering
-                                    ? [
-                                        BoxShadow(
-                                          color: OhtliColors.stormyTeal.withValues(alpha: 0.2),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ]
-                                    : [],
-                              ),
-                              child: ElevatedButton(
-                                onPressed: _handleResetPassword,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: OhtliColors.stormyTeal,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                ),
-                                child: Text(
-                                  'Enviar enlace',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 24),
-
-                        // BOTÓN DE REGRESO EXPLICÍTCO
-                        TextButton(
-                          onPressed: widget.onBack,
-                          child: Text(
-                            'Volver al inicio de sesión',
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: OhtliColors.stormyTeal,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+            child: Row(
+              children: [
+                Icon(Icons.mark_email_read_outlined, color: OhtliColors.accentText),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    sent,
+                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
                   ),
                 ),
-              ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Puede tardar un par de minutos. Si no lo ves, busca en la carpeta de spam o promociones.',
+            style: GoogleFonts.inter(fontSize: 13.5, height: 1.5, color: OhtliColors.subtleText),
+          ),
+          const SizedBox(height: 24),
+          AuthPrimaryButton(label: 'Volver a iniciar sesión', onPressed: widget.onBack),
+          const SizedBox(height: 10),
+          Center(
+            child: AuthLink(
+              'Usar otro correo',
+              onTap: () => setState(() => _sentTo = null),
             ),
           ),
         ],
-      ),
+      );
+    }
+
+    return AuthShell(
+      onBack: widget.onBack,
+      backTooltip: 'Volver a iniciar sesión',
+      photo: 3,
+      title: '¿Olvidaste tu contraseña?',
+      subtitle: 'Escribe el correo de tu cuenta y te enviamos un enlace para elegir una nueva.',
+      children: [
+        Form(
+          key: _formKey,
+          child: AuthField(
+            controller: _emailController,
+            label: 'Correo electrónico',
+            hint: 'nombre@correo.com',
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => _send(),
+            onChanged: (_) => _error == null ? null : setState(() => _error = null),
+            validator: validateEmail,
+          ),
+        ),
+        const SizedBox(height: 20),
+        if (_error != null) ...[
+          AuthErrorBox(_error!),
+          const SizedBox(height: 16),
+        ],
+        AuthPrimaryButton(label: 'Enviar enlace', loading: _loading, onPressed: _send),
+        const SizedBox(height: 14),
+        Center(child: AuthLink('Volver a iniciar sesión', onTap: widget.onBack)),
+      ],
     );
   }
 }
