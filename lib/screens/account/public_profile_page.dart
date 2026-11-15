@@ -514,19 +514,19 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         final Widget pill = Container(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.38),
+            color: OhtliColors.innerCardBg,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
+            border: Border.all(color: OhtliColors.cardBorder, width: 0.8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.workspace_premium_rounded, size: 14, color: OhtliColors.cempasuchil),
               const SizedBox(width: 6),
-              Text(titleName, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+              Text(titleName, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
               if (_isSelf) ...[
                 const SizedBox(width: 6),
-                Icon(Icons.edit_rounded, size: 12, color: Colors.white.withValues(alpha: 0.8)),
+                Icon(Icons.edit_rounded, size: 12, color: OhtliColors.subtleText),
               ],
             ],
           ),
@@ -734,8 +734,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     }
   }
 
-  String _formatJoinedDate(dynamic rawDate) {
-    if (rawDate == null) return 'registrado recientemente';
+  /// [short]: «Desde oct 2025» para que quepa en celular.
+  String _formatJoinedDate(dynamic rawDate, {bool short = false}) {
+    if (rawDate == null) return short ? 'Recién llegado' : 'registrado recientemente';
     DateTime? date;
     if (rawDate is Timestamp) {
       date = rawDate.toDate();
@@ -743,7 +744,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       date = DateTime.tryParse(rawDate);
     }
 
-    if (date == null) return 'registrado recientemente';
+    if (date == null) return short ? 'Recién llegado' : 'registrado recientemente';
+    if (short) {
+      const abbr = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+      return 'Desde ${abbr[date.month - 1]} ${date.year}';
+    }
     final months = [
       'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
       'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
@@ -964,16 +969,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     shadows: [Shadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 16)],
                   ),
                 ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildActiveTitleWidget(_userProfile?['activeTitleId'] ?? 'viajero', isDark),
-                    OhtliMetaPill(icon: Icons.calendar_today_rounded, label: _formatJoinedDate(rawCreatedAt), onDark: true),
-                    if (_isHiddenForViewer) const OhtliMetaPill(icon: Icons.lock_outline_rounded, label: 'Perfil privado', onDark: true),
-                  ],
-                ),
               ],
             ),
           ),
@@ -1072,6 +1067,34 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       clipBehavior: Clip.none,
       children: [
         Positioned(left: 0, right: 0, top: 0, bottom: overlap, child: cover),
+        // Título y fecha de registro: debajo de la portada, a la derecha de la foto.
+        if (fullOpacity > 0 && overlap > 8)
+          Positioned(
+            left: avatarLeft + avatarSize + (isDesktop ? 24 : 14),
+            right: margin,
+            bottom: 0,
+            height: overlap,
+            child: Opacity(
+              opacity: fullOpacity,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildActiveTitleWidget(_userProfile?['activeTitleId'] ?? 'viajero', isDark),
+                      const SizedBox(width: 8),
+                      OhtliMetaPill(icon: Icons.calendar_today_rounded, label: _formatJoinedDate(rawCreatedAt, short: !isDesktop)),
+                      if (_isHiddenForViewer) ...[
+                        const SizedBox(width: 8),
+                        const OhtliMetaPill(icon: Icons.lock_outline_rounded, label: 'Perfil privado'),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         if (fullOpacity > 0)
           Positioned(
             left: avatarLeft,
