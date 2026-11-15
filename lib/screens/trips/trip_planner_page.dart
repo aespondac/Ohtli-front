@@ -15,6 +15,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../services/itinerary_blackboard_service.dart';
+import '../../services/trip_transfers.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_ui.dart';
@@ -95,6 +96,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   double _budgetMxn = 450.0;
   String _selectedMood = 'Bohemio y Cafés';
   String _selectedTopology = 'anillo'; // anillo, radio, elipse
+  // Medio de traslado para el motor (kPlannerModes). Arranca con la preferencia del perfil.
+  String _selectedTransportMode = 'walking';
+  bool _transportModeTouched = false;
   DateTime _selectedTravelDate = DateTime.now().add(const Duration(days: 1));
 
   String _formatDate(DateTime d) {
@@ -417,6 +421,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       // Las direcciones viven en el documento privado (users/{uid}/private/account)
       final data = await UserPrivateData.get(user.uid);
       if (data.isNotEmpty) {
+        final profile = data['cultural_profile'];
+        if (profile is Map && !_transportModeTouched && mounted) {
+          setState(() => _selectedTransportMode =
+              plannerModeFromPreference(profile['transport_preference']?.toString()));
+        }
         final list = data['addresses'];
         if (list is List) {
           setState(() {
@@ -618,6 +627,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         topology: _selectedTopology,
         moodText: effectiveMood,
         travelDate: _selectedTravelDate,
+        transportMode: _selectedTransportMode,
       );
 
       _activeJobId = jobId;
@@ -1702,6 +1712,28 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             ),
           ],
         ),
+        const SizedBox(height: 28),
+
+        // Medio de traslado entre paradas
+        label('¿CÓMO TE MUEVES?'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final m in kPlannerModes)
+              OhtliChoiceChip(
+                label: m.label,
+                icon: m.icon,
+                selected: _selectedTransportMode == m.id,
+                onTap: () => setState(() {
+                  _selectedTransportMode = m.id;
+                  _transportModeTouched = true;
+                }),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(_transportModeHint(_selectedTransportMode), style: OhtliUi.body(size: 12.5)),
         const SizedBox(height: 36),
 
         // Lanzar generación con IA
@@ -1716,6 +1748,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
       ],
     );
+  }
+
+  String _transportModeHint(String id) {
+    switch (id) {
+      case 'bike':
+        return 'Rutas más amplias pedaleando; los tramos cortos se hacen a pie.';
+      case 'transit':
+        return 'Metro, Metrobús y otros: llegas más lejos por unos pesos; lo cercano, a pie.';
+      case 'mixto':
+        return 'Caminas hasta unos 2 km y tomas transporte público para lo más lejano.';
+      case 'taxi':
+        return 'Traslados rápidos; el costo estimado del taxi se suma aparte.';
+      case 'car':
+        return 'Contamos tiempo para estacionar en cada parada.';
+      default:
+        return 'Todo el recorrido a pie, en un radio cercano a tu punto de partida.';
+    }
   }
 
   // Ideas de ejemplo por estilo para "Dame una idea"
@@ -2876,6 +2925,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         totalWalkMins += (s['travel_time_from_prev_mins'] as num?)?.toInt() ?? 0;
       }
     }
+    final optionMode = plannerModeOf(option['transport_mode']?.toString());
+    final bool onFoot = optionMode.id == 'walking';
+    final travelMins = (option['total_travel_mins'] as num?)?.toInt() ?? totalWalkMins;
+    final travelKm = (option['total_travel_km'] as num?)?.toDouble();
+    final transportCost = (option['total_transport_cost_mxn'] as num?)?.toDouble() ?? 0.0;
     final walkingKm = (option['total_walking_km'] as num?)?.toDouble() ??
         (option['osm_route'] is Map ? (option['osm_route']['total_distance_km'] as num?)?.toDouble() : null) ??
         rawStops.fold<double>(0.0, (acc, s) => acc + (s is Map ? ((s['travel_distance_from_prev_km'] as num?)?.toDouble() ?? 0.0) : 0.0));
@@ -2905,7 +2959,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     if (waypointNames.isNotEmpty) {
       final waypoints = waypointNames.length > 2 ? waypointNames.sublist(1, waypointNames.length - 1).join('|') : '';
       googleMapsDirectionsUrl = 'https://www.google.com/maps/dir/?api=1&origin=${waypointNames.first}'
-          '&destination=${waypointNames.last}${waypoints.isNotEmpty ? '&waypoints=$waypoints' : ''}&travelmode=walking';
+          '&destination=${waypointNames.last}${waypoints.isNotEmpty ? '&waypoints=$waypoints' : ''}'
+          '&travelmode=${optionMode.googleTravelMode}';
     }
 
     final textPrimary = isDark ? Colors.white : OhtliColors.onyx;
@@ -2982,9 +3037,14 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
     final stats = [
       statTile(Icons.schedule_rounded, fmtMins(timeMins), 'Duración total', OhtliColors.stormyTeal),
-      statTile(Icons.payments_outlined, '\$${cost.toStringAsFixed(0)}', 'Costo (MXN)', OhtliColors.cempasuchil),
+      statTile(Icons.payments_outlined, '\$${(cost + transportCost).toStringAsFixed(0)}',
+          transportCost > 0 ? 'Costo (incl. \$${transportCost.toStringAsFixed(0)} traslados)' : 'Costo (MXN)',
+          OhtliColors.cempasuchil),
       statTile(Icons.place_rounded, '${rawStops.length} paradas', '${fmtMins(totalStayMins)} en sitio', OhtliColors.xoconostle),
-      statTile(Icons.directions_walk_rounded, '${walkingKm.toStringAsFixed(1)} km', '${fmtMins(totalWalkMins)} caminando', const Color(0xFF3F8F5B)),
+      onFoot
+          ? statTile(Icons.directions_walk_rounded, '${walkingKm.toStringAsFixed(1)} km', '${fmtMins(totalWalkMins)} caminando', const Color(0xFF3F8F5B))
+          : statTile(optionMode.icon, '${(travelKm ?? walkingKm).toStringAsFixed(1)} km',
+              '${fmtMins(travelMins)} de traslado', const Color(0xFF3F8F5B)),
     ];
 
     Widget stopCard(int idx) {

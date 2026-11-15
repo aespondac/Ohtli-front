@@ -35,6 +35,44 @@ const List<TransferMode> kTransferModes = [
   TransferMode('other', 'Otro', '', Icons.alt_route_rounded, 15, 0, 0, 'transit'),
 ];
 
+/// Medios de traslado que acepta el planificador con IA (motor: core/mobility.py).
+/// Los tramos cortos el motor los marca a pie aunque el medio elegido sea otro.
+class PlannerMode {
+  final String id;
+  final String label;
+  final IconData icon;
+  final String googleTravelMode;
+  const PlannerMode(this.id, this.label, this.icon, this.googleTravelMode);
+}
+
+const List<PlannerMode> kPlannerModes = [
+  PlannerMode('walking', 'A pie', Icons.directions_walk_rounded, 'walking'),
+  PlannerMode('bike', 'Bici / Ecobici', Icons.pedal_bike_rounded, 'bicycling'),
+  PlannerMode('transit', 'Metro / Metrobús', Icons.subway_rounded, 'transit'),
+  PlannerMode('mixto', 'Mixto', Icons.alt_route_rounded, 'transit'),
+  PlannerMode('taxi', 'Taxi / app', Icons.local_taxi_rounded, 'driving'),
+  PlannerMode('car', 'Auto propio', Icons.directions_car_rounded, 'driving'),
+];
+
+PlannerMode plannerModeOf(String? id) =>
+    kPlannerModes.firstWhere((m) => m.id == id, orElse: () => kPlannerModes.first);
+
+/// Medio del planificador a partir de la preferencia del perfil cultural (onboarding).
+String plannerModeFromPreference(String? pref) {
+  switch (pref) {
+    case 'bicicleta':
+      return 'bike';
+    case 'transporte_publico':
+      return 'transit';
+    case 'mixto':
+      return 'mixto';
+    case 'auto':
+      return 'taxi';
+    default:
+      return 'walking';
+  }
+}
+
 TransferMode transferModeOf(String id) =>
     kTransferModes.firstWhere((m) => m.id == id, orElse: () => kTransferModes.first);
 
@@ -42,6 +80,7 @@ TransferMode transferModeOf(String id) =>
 String normalizeTransferMode(String? raw) {
   final r = (raw ?? '').toLowerCase();
   if (r.contains('walk') || r.contains('foot') || r.contains('pie')) return 'walking';
+  if (r == 'transit' || r.contains('publico') || r.contains('público')) return 'metro';
   if (r.contains('cable')) return 'cablebus';
   if (r.contains('trole')) return 'trolebus';
   if (r.contains('ligero')) return 'tren_ligero';

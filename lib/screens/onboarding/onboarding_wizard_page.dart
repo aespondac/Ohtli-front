@@ -1118,8 +1118,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           onChanged: (v) => _transportPref = v,
           options: const [
             {"value": "caminata", "label": "Caminata Peatonal", "icon": Icons.directions_walk},
-            {"value": "transporte_publico", "label": "Metro / Ecobici", "icon": Icons.directions_subway},
+            {"value": "bicicleta", "label": "Bici / Ecobici", "icon": Icons.pedal_bike},
+            {"value": "transporte_publico", "label": "Metro / Metrobús", "icon": Icons.directions_subway},
             {"value": "mixto", "label": "Mixto", "icon": Icons.alt_route},
+            {"value": "auto", "label": "Taxi / Auto", "icon": Icons.local_taxi},
           ],
         ),
         const SizedBox(height: 26),

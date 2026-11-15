@@ -30,6 +30,7 @@ class ItineraryBlackboardService {
     String topology = 'radio',
     required String moodText,
     String? originName,
+    String? transportMode,
     List<double>? customTasteVector,
     DateTime? travelDate,
   }) async {
@@ -77,6 +78,9 @@ class ItineraryBlackboardService {
       'vibe_vector': tasteVec,
       'mood_text': moodText,
       'travel_date': travelDate?.toIso8601String(),
+      // Medio de traslado (walking, bike, transit, mixto, taxi, car); sin él el motor usa el
+      // del perfil cultural.
+      'transport_mode': ?transportMode,
       'created_at': nowUtc.toIso8601String(),
     };
 
@@ -297,6 +301,7 @@ class ItineraryBlackboardService {
                 (stop['transport_mode'] ?? chosenOption['transport_mode'])?.toString()),
             durationMins: mins,
             distanceKm: km,
+            cost: (stop['transport_cost_mxn'] as num?)?.toDouble() ?? 0.0,
             isEstimated: true,
           ));
         }
