@@ -23,6 +23,7 @@ import '../../theme/colors.dart';
 import '../../widgets/ohtli_ui.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../widgets/osrm_map_widget.dart';
+import '../../widgets/place_search_field.dart';
 import '../../utils/friendly_errors.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
@@ -82,6 +83,7 @@ class TripPlannerPage extends StatefulWidget {
 class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProviderStateMixin {
   final ItineraryBlackboardService _blackboardService = ItineraryBlackboardService();
   final TextEditingController _originSearchController = TextEditingController();
+  final TextEditingController _destinationSearchController = TextEditingController();
   final TextEditingController _customMoodController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController(text: '450');
   int _ideaIndex = 0;
@@ -414,6 +416,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     }
     SavedPlaces.ids.removeListener(_loadSavedPlaces);
     _originSearchController.dispose();
+    _destinationSearchController.dispose();
     _customMoodController.dispose();
     _budgetController.dispose();
     super.dispose();
@@ -476,13 +479,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }) {
     return OhtliSurface(
       selected: selected,
-      radius: 20,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      radius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       onTap: onTap,
       child: Row(
         children: [
-          leading,
-          const SizedBox(width: 14),
+          SizedBox(width: 38, height: 38, child: FittedBox(child: leading)),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -491,10 +494,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                 Text(title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                    style: GoogleFonts.outfit(fontSize: 14.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
                 if (subtitle != null && subtitle.trim().isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12.5)),
+                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12)),
                 ],
               ],
             ),
@@ -529,12 +532,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   List<Widget> _startPointCards({bool forDestination = false}) {
     const total = 6;
     final cards = <Widget>[];
-    final verb = forDestination ? 'Termina en' : 'Inicia en';
     final current = forDestination ? _destinationName : _selectedOriginName;
     void select(String name, double lat, double lng) => setState(() {
           if (forDestination) {
             _destinationName = name;
             _destinationCoords = {'lat': lat, 'lng': lng};
+            _destinationSearchController.text = name;
             return;
           }
           _selectedOriginName = name;
@@ -555,7 +558,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final isSelected = current == label || current == addressStr;
       cards.add(_buildOriginCard(
         leading: OhtliServiceIcon(icon: icon, color: OhtliColors.stormyTeal, size: 44, soft: !isSelected),
-        title: '$verb $label',
+        title: label,
         subtitle: addressStr.isEmpty ? 'Tu dirección guardada' : addressStr,
         selected: isSelected,
         onTap: () => select(label, lat, lng),
@@ -567,7 +570,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final isSelected = current == poi.name;
       cards.add(_buildOriginCard(
         leading: _thumb(poi.imageUrl, poi.categoryIcon, poi.categoryColor, isSelected),
-        title: '$verb ${poi.name}',
+        title: poi.name,
         subtitle: 'Guardado · ${poi.coloniaAlcaldiaDisplay}',
         selected: isSelected,
         onTap: () => select(poi.name, poi.location.lat, poi.location.lng),
@@ -583,7 +586,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final isSelected = current == name;
       cards.add(_buildOriginCard(
         leading: OhtliServiceIcon(icon: point['icon'] as IconData, color: OhtliColors.stormyTeal, size: 44, soft: !isSelected),
-        title: '$verb $name',
+        title: name,
         subtitle: point['area'] as String,
         selected: isSelected,
         onTap: () => select(name, coords['lat']!, coords['lng']!),
@@ -593,14 +596,26 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   Widget _buildOriginGrid(bool isMobile, List<Widget> cards) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: isMobile ? 1 : 2,
-      mainAxisSpacing: 14,
-      crossAxisSpacing: 14,
-      childAspectRatio: isMobile ? 4.6 : 4.4,
-      children: cards,
+    final cols = isMobile ? 1 : 3;
+    const gap = 12.0;
+    return Column(
+      children: [
+        for (int r = 0; r * cols < cards.length; r++) ...[
+          if (r > 0) const SizedBox(height: gap),
+          SizedBox(
+            height: 62,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (int c = 0; c < cols; c++) ...[
+                  if (c > 0) const SizedBox(width: gap),
+                  Expanded(child: r * cols + c < cards.length ? cards[r * cols + c] : const SizedBox.shrink()),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1099,7 +1114,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             child: Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: _currentStep == PlannerStep.routeTriadCarousel ? double.infinity : 780,
+                  maxWidth: _currentStep == PlannerStep.routeTriadCarousel
+                      ? double.infinity
+                      : (_currentStep == PlannerStep.startingPoint ? 1080 : 780),
                 ),
                 child: _currentStep == PlannerStep.routeTriadCarousel
                     // El selector de rutas ocupa todo el alto disponible (sin scroll externo)
@@ -1461,6 +1478,136 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     );
   }
 
+  /// Inicio y final del recorrido. Cada punto se puede escribir (con sugerencias) o
+  /// elegir entre las tarjetas; con ambos, una línea lateral une el punto 1 con el 2.
+  Widget _buildEndpointsSection(bool isMobile) {
+    final both = _fixesOrigin && _fixesDestination;
+    final hasSaved = _userSavedAddresses.isNotEmpty || _savedPlaces.isNotEmpty;
+
+    Widget marker(IconData icon, bool done) => Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: done ? OhtliColors.stormyTeal : OhtliColors.cardBg,
+            shape: BoxShape.circle,
+            border: Border.all(color: OhtliColors.stormyTeal, width: 2),
+          ),
+          child: Icon(icon, size: 15, color: done ? Colors.white : OhtliColors.stormyTeal),
+        );
+
+    Widget rail({required Widget mark, bool lineBelow = false}) => SizedBox(
+          width: 30,
+          child: Column(
+            children: [
+              mark,
+              if (lineBelow)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [OhtliColors.stormyTeal, OhtliColors.stormyTeal.withValues(alpha: 0.45)],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+
+    Widget point({
+      required String title,
+      required IconData icon,
+      required bool done,
+      required bool lineBelow,
+      required TextEditingController controller,
+      required String hint,
+      required void Function(String name, double lat, double lng) onSelected,
+      required VoidCallback onCleared,
+      required List<Widget> cards,
+    }) {
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            rail(mark: marker(icon, done), lineBelow: lineBelow),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: lineBelow ? 28 : 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 7, bottom: 12),
+                      child: Text(title, style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+                    ),
+                    PlaceSearchField(
+                      controller: controller,
+                      hintText: hint,
+                      onSelected: onSelected,
+                      onCleared: onCleared,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(hasSaved ? 'O elige uno de tus puntos o de los más populares' : 'O elige un punto popular',
+                        style: OhtliUi.body(size: 12.5)),
+                    const SizedBox(height: 10),
+                    _buildOriginGrid(isMobile, cards),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_fixesOrigin)
+          point(
+            title: both ? '1 · ¿DÓNDE EMPIEZAS?' : '¿DÓNDE EMPIEZAS?',
+            icon: Icons.trip_origin_rounded,
+            done: _selectedOriginCoords != null && _selectedOriginName.trim().isNotEmpty,
+            lineBelow: both,
+            controller: _originSearchController,
+            hint: 'Escribe dónde empiezas: dirección, colonia o lugar…',
+            onSelected: (name, lat, lng) => setState(() {
+              _selectedOriginName = name;
+              _selectedOriginCoords = {'lat': lat, 'lng': lng};
+            }),
+            onCleared: () => setState(() {
+              _selectedOriginName = '';
+              _selectedOriginCoords = null;
+            }),
+            cards: _startPointCards(),
+          ),
+        if (_fixesDestination)
+          point(
+            title: both ? '2 · ¿DÓNDE QUIERES TERMINAR?' : '¿DÓNDE QUIERES TERMINAR?',
+            icon: Icons.flag_rounded,
+            done: _destinationCoords != null,
+            lineBelow: false,
+            controller: _destinationSearchController,
+            hint: 'Escribe dónde terminas: dirección, colonia o lugar…',
+            onSelected: (name, lat, lng) => setState(() {
+              _destinationName = name;
+              _destinationCoords = {'lat': lat, 'lng': lng};
+            }),
+            onCleared: () => setState(() {
+              _destinationName = '';
+              _destinationCoords = null;
+            }),
+            cards: _startPointCards(forDestination: true),
+          ),
+      ],
+    );
+  }
+
   Widget _buildStartingPointStep(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1473,75 +1620,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         _buildRouteShapeSection(),
         const SizedBox(height: 28),
 
-        if (_fixesOrigin) ...[
-        Text('¿DÓNDE EMPIEZAS?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
-        const SizedBox(height: 12),
-        // Campo de búsqueda libre (píldora, como el buscador de Lugares)
-        Container(
-          height: 56,
-          padding: const EdgeInsets.only(left: 18, right: 6),
-          decoration: BoxDecoration(
-            color: OhtliColors.cardBg,
-            borderRadius: BorderRadius.circular(40),
-            border: Border.all(color: OhtliColors.cardBorder),
-            boxShadow: OhtliUi.softShadow(),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.search_rounded, color: OhtliColors.accentText, size: 22),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _originSearchController,
-                  style: GoogleFonts.inter(fontSize: 14.5, color: OhtliColors.onyx, fontWeight: FontWeight.w500),
-                  cursorColor: OhtliColors.stormyTeal,
-                  decoration: InputDecoration(
-                    hintText: 'Ingresa una dirección, colonia o lugar…',
-                    hintStyle: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText),
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
-                  onSubmitted: (val) {
-                    if (val.trim().isNotEmpty) {
-                      setState(() {
-                        _selectedOriginName = val.trim();
-                        _selectedOriginCoords = {'lat': 19.4326, 'lng': -99.1332};
-                      });
-                    }
-                  },
-                ),
-              ),
-              if (_originSearchController.text.isNotEmpty)
-                IconButton(
-                  tooltip: 'Borrar',
-                  icon: Icon(Icons.close_rounded, size: 18, color: OhtliColors.subtleText),
-                  onPressed: () {
-                    setState(() {
-                      _originSearchController.clear();
-                      _selectedOriginName = '';
-                      _selectedOriginCoords = null;
-                    });
-                  },
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 28),
-
-        // Seis puntos de partida: lo guardado en la cuenta primero, luego los populares
-        Text(
-          _userSavedAddresses.isNotEmpty || _savedPlaces.isNotEmpty ? 'TUS PUNTOS Y LOS MÁS POPULARES' : 'PUNTOS POPULARES PARA EMPEZAR',
-          style: OhtliUi.eyebrow(OhtliColors.subtleText),
-        ),
-        const SizedBox(height: 12),
-        _buildOriginGrid(isMobile, _startPointCards()),
-        ],
-        if (_fixesDestination) ...[
-          if (_fixesOrigin) const SizedBox(height: 28),
-          Text('¿DÓNDE QUIERES TERMINAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
-          const SizedBox(height: 12),
-          _buildOriginGrid(isMobile, _startPointCards(forDestination: true)),
-        ],
+        _buildEndpointsSection(isMobile),
         const SizedBox(height: 28),
 
         // Medio de traslado entre paradas
@@ -1889,27 +1968,29 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final isSelected = _selectedTopology == key;
     return OhtliSurface(
       selected: isSelected,
-      radius: 22,
-      padding: const EdgeInsets.all(18),
+      radius: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       onTap: () => setState(() => _selectedTopology = key),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              OhtliServiceIcon(icon: icon, color: OhtliColors.stormyTeal, size: 42, soft: !isSelected),
-              const Spacer(),
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: isSelected ? 1 : 0,
-                child: const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20),
-              ),
-            ],
+          OhtliServiceIcon(icon: icon, color: OhtliColors.stormyTeal, size: 40, soft: !isSelected),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                const SizedBox(height: 2),
+                Text(desc, maxLines: 2, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12.5)),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
-          Text(title, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-          const SizedBox(height: 4),
-          Text(desc, style: OhtliUi.body(size: 12.5)),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: isSelected ? 1 : 0,
+            child: const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20),
+          ),
         ],
       ),
     );
