@@ -22,6 +22,7 @@ import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/surprise_polaroid_card.dart';
 import '../../widgets/trip_polaroid.dart';
 import '../../services/trip_activity.dart';
+import '../../services/hidden_trips.dart';
 import '../../services/itinerary_blackboard_service.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import 'trip_editor_page.dart';
@@ -83,6 +84,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       _subscribeToStreams(initialUser.uid);
     }
     TripActivity.instance.addListener(_onActivity);
+    HiddenTrips.instance.addListener(_onActivity);
   }
 
   void _onActivity() {
@@ -123,6 +125,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
     // Novedades: comentarios en viajes publicados y planes con IA recién terminados
     TripActivity.instance.start(uid);
+    HiddenTrips.instance.start(uid);
     _jobsSub = FirebaseFirestore.instance
         .collection('itinerary_jobs')
         .where('user_id', isEqualTo: uid)
@@ -195,6 +198,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   @override
   void dispose() {
     TripActivity.instance.removeListener(_onActivity);
+    HiddenTrips.instance.removeListener(_onActivity);
     _authSub?.cancel();
     _cancelStreams();
     super.dispose();
@@ -894,9 +898,46 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     );
   }
 
+  /// Quita de tus viajes uno que es de otra persona (sorpresa o coautoría), con opción
+  /// de deshacer. El viaje sigue siendo de su dueño.
+  Future<void> _hideTrip(Trip trip) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await HiddenTrips.instance.hide(trip.id);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            trip.isSurprise ? 'Quitamos la sorpresa de tus planes.' : 'Quitamos "${trip.title}" de tus viajes.',
+            style: GoogleFonts.inter(color: Colors.white),
+          ),
+          backgroundColor: OhtliColors.stormyTeal,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          action: SnackBarAction(
+            label: 'Deshacer',
+            textColor: Colors.white,
+            onPressed: () => HiddenTrips.instance.unhide(trip.id).catchError((_) {}),
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(friendlyError(e, fallback: 'No pudimos quitar el viaje. Intenta de nuevo.'),
+              style: GoogleFonts.inter(color: Colors.white)),
+          backgroundColor: OhtliColors.xoconostle,
+        ),
+      );
+    }
+  }
+
   void _deleteTrip(Trip trip) async {
     final uid = _userId;
     if (uid == null) return;
+    if (trip.userId != uid) {
+      await _hideTrip(trip);
+      return;
+    }
     try {
       await _tripService.deleteTrip(uid, trip.id);
       if (mounted) {
@@ -954,10 +995,13 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         for (var trip in _ownedTrips) {
           combinedMap[trip.id] = trip;
         }
+        final hidden = HiddenTrips.instance;
         for (var trip in _coAuthorTrips) {
+          if (hidden.contains(trip.id)) continue;
           combinedMap[trip.id] = trip;
         }
         for (var trip in _surpriseTrips) {
+          if (hidden.contains(trip.id)) continue;
           final bool isOpened = trip.surpriseOpenedBy.contains(_userId);
           if (isOpened) {
             combinedMap[trip.id] = trip;
@@ -974,6 +1018,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         final mySurpriseDrafts = allTrips.where((t) => t.status == 'draft' && t.isSurprise && t.userId == _userId).toList();
 
         final unopenedSurprises = _surpriseTrips.where((t) {
+          if (hidden.contains(t.id)) return false;
           final bool isOpened = t.surpriseOpenedBy.contains(_userId);
           return !isOpened;
         }).toList();
@@ -1902,6 +1947,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           fromName: authorName,
           fromPhotoUrl: authorProfile?['photo'],
           isHorizontal: crossAxisCount == 1,
+          onRemove: () => _hideTrip(trip),
           onOpen: () async {
             final uid = _userId;
             if (uid != null && !isOpened) {

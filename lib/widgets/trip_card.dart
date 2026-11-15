@@ -288,14 +288,16 @@ class _TripCardState extends State<TripCard> {
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
-            '¿Eliminar viaje?',
+            _isOthers ? (_isSurprise ? '¿Quitar la sorpresa de tus planes?' : '¿Quitar el viaje de tus viajes?') : '¿Eliminar viaje?',
             style: GoogleFonts.inter(
               fontWeight: FontWeight.w600,
               color: OhtliColors.onyx,
             ),
           ),
           content: Text(
-            'Esta acción no se puede deshacer. Se eliminarán permanentemente el viaje "${widget.trip.title}", todos sus planes y las fotos asociadas.',
+            _isOthers
+                ? 'Dejarás de verlo aquí. El viaje es de quien lo creó, así que no se borra para nadie más.'
+                : 'Esta acción no se puede deshacer. Se eliminarán permanentemente el viaje "${widget.trip.title}", todos sus planes y las fotos asociadas.',
             style: GoogleFonts.inter(
               color: OhtliColors.onyx.withValues(alpha: 0.8),
             ),
@@ -326,7 +328,7 @@ class _TripCardState extends State<TripCard> {
                 elevation: 0,
               ),
               child: Text(
-                'Eliminar',
+                _isOthers ? 'Quitar' : 'Eliminar',
                 style: GoogleFonts.inter(
                   fontWeight: FontWeight.w500,
                 ),
@@ -363,6 +365,9 @@ class _TripCardState extends State<TripCard> {
   // ───────────── Sorpresas ─────────────
 
   bool get _isSurprise => widget.trip.isSurprise;
+  /// El viaje es de otra persona (sorpresa recibida o coautoría): solo se quita de tus viajes.
+  bool get _isOthers => widget.trip.userId != FirebaseAuth.instance.currentUser?.uid;
+
   bool get _isOwnSurprise => _isSurprise && widget.trip.userId == FirebaseAuth.instance.currentUser?.uid;
 
   String get _surpriseFor {
@@ -564,7 +569,9 @@ class _TripCardState extends State<TripCard> {
         if (published && widget.onFeDeErratas != null) item('errata', Icons.history_edu_rounded, 'Fe de erratas'),
         item('share', Icons.ios_share_rounded, 'Compartir'),
         const PopupMenuDivider(height: 1),
-        item('delete', Icons.delete_outline_rounded, 'Eliminar', color: OhtliColors.xoconostle),
+        _isOthers
+            ? item('delete', Icons.remove_circle_outline_rounded, _isSurprise ? 'Quitar de mis planes' : 'Quitar de mis viajes', color: OhtliColors.xoconostle)
+            : item('delete', Icons.delete_outline_rounded, 'Eliminar', color: OhtliColors.xoconostle),
       ],
     );
   }

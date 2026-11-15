@@ -19,6 +19,9 @@ class SurprisePolaroidCard extends StatefulWidget {
   final bool isHorizontal;
   final VoidCallback onOpen;
 
+  /// Quitar la sorpresa de tus planes (solo para ti).
+  final VoidCallback? onRemove;
+
   const SurprisePolaroidCard({
     super.key,
     required this.trip,
@@ -28,6 +31,7 @@ class SurprisePolaroidCard extends StatefulWidget {
     this.fromPhotoUrl,
     this.isHorizontal = false,
     required this.onOpen,
+    this.onRemove,
   });
 
   @override
@@ -169,11 +173,65 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
                       ),
                     ),
                   if (!compact) Positioned(bottom: 10, left: 10, child: _tag()),
+                  if (widget.onRemove != null && t == 0)
+                    Positioned(top: compact ? 4 : 8, right: compact ? 4 : 8, child: _removeButton(compact)),
                 ],
               );
             },
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _confirmRemove() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OhtliColors.cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Text('¿Quitar la sorpresa de tus planes?',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 20, color: OhtliColors.onyx)),
+        content: Text(
+          'Dejarás de verla aquí. Es de ${widget.fromName}, así que no se borra para nadie más.',
+          style: GoogleFonts.inter(color: OhtliColors.subtleText, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancelar', style: GoogleFonts.inter(color: OhtliColors.subtleText, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: OhtliColors.xoconostle,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('Quitar', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) widget.onRemove?.call();
+  }
+
+  Widget _removeButton(bool compact) {
+    return Tooltip(
+      message: 'Quitar de mis planes',
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.38),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _confirmRemove,
+          child: SizedBox(
+            width: compact ? 24 : 30,
+            height: compact ? 24 : 30,
+            child: Icon(Icons.close_rounded, size: compact ? 14 : 17, color: Colors.white),
+          ),
+        ),
       ),
     );
   }
