@@ -774,7 +774,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     }
 
     final List<dynamic> followingList = _profileSocial?.following ?? const [];
-    final double heroMax = isDesktop ? 400 : 330;
+    final double heroMax = (isDesktop ? 400 : 330) + (isDesktop ? 132 : 96) * 0.55;
     final double heroMin = isDesktop ? 84 : 76;
 
     final tabBar = TabBar(
@@ -911,7 +911,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final double radius = OhtliUi.radiusLarge * (1 - t);
     final double fullOpacity = (1 - t * 1.8).clamp(0.0, 1.0);
     final double compactOpacity = ((t - 0.55) / 0.45).clamp(0.0, 1.0);
-    final double avatarSize = isDesktop ? 124 : 84;
+    // La foto de perfil va montada sobre el borde inferior de la portada (medio afuera).
+    final double avatarSize = isDesktop ? 132 : 96;
+    final double overlap = avatarSize * 0.55 * (1 - t);
+    final double avatarLeft = margin + (isDesktop ? 32 : 20);
 
     Widget avatar(double size, {double border = 4}) {
       final fallback = Center(
@@ -923,7 +926,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: OhtliColors.stormyTeal,
-          border: Border.all(color: _isCloseFriend ? OhtliColors.cempasuchil : Colors.white, width: border),
+          border: Border.all(color: _isCloseFriend ? OhtliColors.cempasuchil : (border >= 4 ? OhtliColors.cloudDancer : Colors.white), width: border),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 18, offset: const Offset(0, 6))],
         ),
         child: ClipOval(
@@ -937,48 +940,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final String eyebrow = _isSelf ? 'TU PERFIL' : (_isCloseFriend ? 'MEJOR AMIGO' : (_isFriend ? 'TU AMIGO' : 'PERFIL DE VIAJERO'));
 
     final expanded = Padding(
-      padding: EdgeInsets.fromLTRB(isDesktop ? 36 : 20, 0, isDesktop ? 36 : 20, isDesktop ? 32 : 22),
+      padding: EdgeInsets.fromLTRB((isDesktop ? 32 : 20) + avatarSize + (isDesktop ? 24 : 14), 0, isDesktop ? 36 : 20, isDesktop ? 26 : 18),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              avatar(avatarSize),
-              if (_isSelf)
-                Positioned(
-                  right: -2,
-                  bottom: 2,
-                  child: Tooltip(
-                    message: 'Cambiar foto',
-                    child: Material(
-                      color: OhtliColors.cempasuchil,
-                      shape: const CircleBorder(side: BorderSide(color: Colors.white, width: 3)),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () => _handleImageUpload(isCover: false),
-                        child: const Padding(padding: EdgeInsets.all(7), child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 15)),
-                      ),
-                    ),
-                  ),
-                )
-              else if (_isCloseFriend)
-                Positioned(
-                  right: 0,
-                  bottom: 4,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: OhtliColors.cempasuchil,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 3),
-                    ),
-                    child: const Icon(Icons.star_rounded, size: 14, color: Colors.white),
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(width: isDesktop ? 24 : 16),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1033,7 +998,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       ),
     );
 
-    return Padding(
+    final cover = Padding(
       padding: EdgeInsets.fromLTRB(margin, margin, margin, 0),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
@@ -1101,6 +1066,58 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           ],
         ),
       ),
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(left: 0, right: 0, top: 0, bottom: overlap, child: cover),
+        if (fullOpacity > 0)
+          Positioned(
+            left: avatarLeft,
+            bottom: 0,
+            child: Opacity(
+              opacity: fullOpacity,
+              child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              avatar(avatarSize, border: 5),
+              if (_isSelf)
+                Positioned(
+                  right: -2,
+                  bottom: 2,
+                  child: Tooltip(
+                    message: 'Cambiar foto',
+                    child: Material(
+                      color: OhtliColors.cempasuchil,
+                      shape: CircleBorder(side: BorderSide(color: OhtliColors.cloudDancer, width: 3)),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => _handleImageUpload(isCover: false),
+                        child: const Padding(padding: EdgeInsets.all(7), child: Icon(Icons.camera_alt_rounded, color: Colors.white, size: 15)),
+                      ),
+                    ),
+                  ),
+                )
+              else if (_isCloseFriend)
+                Positioned(
+                  right: 0,
+                  bottom: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: OhtliColors.cempasuchil,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: OhtliColors.cloudDancer, width: 3),
+                    ),
+                    child: const Icon(Icons.star_rounded, size: 14, color: Colors.white),
+                  ),
+                ),
+            ],
+          ),
+            ),
+          ),
+      ],
     );
   }
 
