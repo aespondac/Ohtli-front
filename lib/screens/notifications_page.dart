@@ -4,11 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/colors.dart';
-import 'construction_page.dart'; // To reuse RouteBackgroundPainter
-import 'account/public_profile_page.dart';
-import '../utils/friendly_errors.dart';
+import '../widgets/ohtli_ui.dart';
 import 'trips/trip_screens.dart' deferred as trips;
 import '../widgets/deferred_view.dart';
+import 'account/public_profile_page.dart';
+import '../utils/friendly_errors.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -44,7 +44,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         await batch.commit();
       }
     } catch (e) {
-      print("Error marking notifications as read: $e");
+      debugPrint("Error marking notifications as read: $e");
     }
   }
 
@@ -200,391 +200,409 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
+  /// Filtro activo: null = todas.
+  String? _filter;
+
+  static const _filters = <({String? key, String label, IconData icon})>[
+    (key: null, label: 'Todas', icon: Icons.inbox_rounded),
+    (key: 'friends', label: 'Amistades', icon: Icons.people_alt_rounded),
+    (key: 'trips', label: 'Viajes', icon: Icons.map_rounded),
+    (key: 'surprises', label: 'Sorpresas', icon: Icons.card_giftcard_rounded),
+  ];
+
+  bool _matchesFilter(String type) {
+    switch (_filter) {
+      case 'friends':
+        return type == 'friend_request';
+      case 'trips':
+        return type == 'new_publication' || type == 'co_author_added';
+      case 'surprises':
+        return type == 'surprise_plan';
+      default:
+        return true;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isDark = OhtliSettings.instance.isDarkMode;
-    final Color bgColor = isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer;
-    final Color cardColor = isDark ? const Color(0xFF1E1E22) : Colors.white;
-    final Color textColor = isDark ? Colors.white : OhtliColors.onyx;
-
     if (_currentUser == null) {
       return Scaffold(
-        backgroundColor: bgColor,
+        backgroundColor: OhtliColors.cloudDancer,
         body: Center(
-          child: Text(
-            'Inicia sesión para ver tus notificaciones.',
-            style: GoogleFonts.inter(color: textColor),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: const OhtliEmptyState(
+                icon: Icons.notifications_none_rounded,
+                title: 'Inicia sesión',
+                message: 'Inicia sesión para ver tus notificaciones.',
+              ),
+            ),
           ),
         ),
       );
     }
 
     final double width = MediaQuery.of(context).size.width;
-    final double padding = width > 800 ? 32.0 : 16.0;
+    final double padding = OhtliUi.pagePadding(width);
+    final bool isMobile = width < 700;
+    // En el panel junto al menú hay botones arriba a la derecha (pantalla completa y cerrar).
+    final double headerRight = width <= 460 ? 84 : 0;
 
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        centerTitle: false,
-        titleSpacing: 0,
-        toolbarHeight: 80,
-        title: Padding(
-          padding: EdgeInsets.symmetric(horizontal: padding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Notificaciones',
-                style: GoogleFonts.inter(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: textColor,
+      backgroundColor: OhtliColors.cloudDancer,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUser.uid)
+            .collection('notifications')
+            .orderBy('timestamp', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final bool loading = snapshot.connectionState == ConnectionState.waiting;
+          final allDocs = snapshot.data?.docs ?? [];
+          final now = DateTime.now();
+          final visible = allDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final String? type = data['type'] as String?;
+            final Timestamp? ts = data['timestamp'] as Timestamp?;
+            if (ts == null) return true;
+            if (type == 'surprise_plan') return !now.isBefore(ts.toDate());
+            return true;
+          }).toList();
+          final docs = visible.where((d) => _matchesFilter(((d.data() as Map<String, dynamic>)['type'] as String?) ?? 'friend_request')).toList();
+          final int pending = visible.where((d) {
+            final data = d.data() as Map<String, dynamic>;
+            return (data['type'] ?? 'friend_request') == 'friend_request' && (data['status'] ?? 'pending') == 'pending';
+          }).length;
+
+          final String summary = loading
+              ? 'Cargando tu actividad…'
+              : pending > 0
+                  ? (pending == 1 ? 'Tienes 1 solicitud de amistad por responder.' : 'Tienes $pending solicitudes de amistad por responder.')
+                  : visible.isEmpty
+                      ? 'Aquí aparece lo que pasa con tus amigos y tus viajes.'
+                      : 'Estás al día con tu actividad.';
+
+          // Encabezados por día (Hoy / Ayer / Esta semana / Antes)
+          final entries = <Object>[];
+          String? lastGroup;
+          for (final doc in docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final group = _groupFor((data['timestamp'] as Timestamp?)?.toDate());
+            if (group != lastGroup) {
+              entries.add(group);
+              lastGroup = group;
+            }
+            entries.add(doc);
+          }
+
+          final header = Padding(
+            padding: EdgeInsets.fromLTRB(padding, isMobile ? 24 : 40, padding + headerRight, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                OhtliSectionHeader(
+                  eyebrow: 'Tu actividad',
+                  icon: Icons.notifications_rounded,
+                  title: 'Notificaciones',
+                  subtitle: summary,
+                  large: true,
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          );
+
+          final chips = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.fromLTRB(padding, 0, padding, 8),
+            child: Row(
+              children: [
+                for (final f in _filters) ...[
+                  OhtliChoiceChip(
+                    label: f.label,
+                    icon: f.icon,
+                    selected: _filter == f.key,
+                    onTap: () => setState(() => _filter = f.key),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          );
+
+          Widget body;
+          if (loading) {
+            body = SliverList.builder(
+              itemCount: 4,
+              itemBuilder: (_, i) => Container(
+                height: 78,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: OhtliColors.cardBg,
+                  borderRadius: BorderRadius.circular(OhtliUi.radiusCard),
+                  border: Border.all(color: OhtliColors.cardBorder),
                 ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Mantente al día con tu actividad',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: textColor.withOpacity(0.5),
-                  fontWeight: FontWeight.w400,
-                ),
+            );
+          } else if (docs.isEmpty) {
+            body = SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: visible.isEmpty
+                    ? const OhtliEmptyState(
+                        icon: Icons.notifications_none_rounded,
+                        title: 'Todo al día',
+                        message: 'Aquí verás solicitudes de amistad, viajes nuevos de tus amigos, invitaciones como coautor y planes sorpresa.',
+                      )
+                    : OhtliEmptyState(
+                        icon: _filters.firstWhere((f) => f.key == _filter).icon,
+                        title: 'Nada por aquí',
+                        message: 'No tienes notificaciones de este tipo.',
+                        action: OhtliSecondaryButton(label: 'Ver todas', onPressed: () => setState(() => _filter = null)),
+                      ),
+              ),
+            );
+          } else {
+            body = SliverList.builder(
+              itemCount: entries.length,
+              itemBuilder: (context, index) {
+                final entry = entries[index];
+                if (entry is String) {
+                  return Padding(
+                    padding: EdgeInsets.only(top: index == 0 ? 8 : 22, bottom: 12, left: 4),
+                    child: Text(entry.toUpperCase(), style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+                  );
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildNotification(entry as QueryDocumentSnapshot, width),
+                );
+              },
+            );
+          }
+
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(child: header),
+              SliverToBoxAdapter(child: chips),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(padding, 8, padding, 48),
+                sliver: SliverConstrainedCrossAxis(maxExtent: 820, sliver: body),
               ),
             ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildNotification(QueryDocumentSnapshot doc, double width) {
+    final data = doc.data() as Map<String, dynamic>;
+    final String type = data['type'] ?? 'friend_request';
+    final String senderName = data['senderName'] ?? 'Viajero Ohtli';
+    final String senderId = data['senderId'] ?? '';
+    final String status = data['status'] ?? 'pending';
+    final String? senderPhoto = data['senderPhoto'];
+    final DateTime? ts = (data['timestamp'] as Timestamp?)?.toDate();
+    final String tripTitle = data['tripTitle'] ?? 'su itinerario';
+    final bool isPlan = data['isPlan'] ?? false;
+
+    String messageText = '';
+    if (type == 'friend_request') {
+      messageText = status == 'pending'
+          ? 'te envió una solicitud de amistad.'
+          : status == 'accepted'
+              ? 'y tú ahora son amigos.'
+              : 'te envió una solicitud (rechazada).';
+    } else if (type == 'new_publication') {
+      messageText = 'publicó un nuevo ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
+    } else if (type == 'surprise_plan') {
+      messageText = 'te preparó un plan sorpresa: "$tripTitle".';
+    } else if (type == 'co_author_added') {
+      messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
+    }
+
+    final initials = senderName.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
+    final bool isClickable = (type == 'new_publication' || type == 'surprise_plan' || type == 'co_author_added') && data['tripId'] != null;
+    final bool isPendingRequest = type == 'friend_request' && status == 'pending';
+    final badge = _typeBadge(type);
+    final bool isDesktop = width > 600;
+
+    void openTrip() {
+      // En co_author_added el dueño del viaje es tripOwnerId (senderId es quien te agregó)
+      final String navAuthorId = (type == 'co_author_added' && data['tripOwnerId'] != null) ? data['tripOwnerId'] : senderId;
+      Navigator.push(context, MaterialPageRoute(builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(tripId: data['tripId'], authorId: navAuthorId))));
+    }
+
+    void openProfile() {
+      if (senderId.isEmpty) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (ctx) => PublicProfilePage(userId: senderId, showBackButton: true, onBack: () => Navigator.pop(ctx))),
+      );
+    }
+
+    Widget initialsText() => Center(
+          child: Text(initials, style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+        );
+
+    final avatar = Semantics(
+      button: senderId.isNotEmpty,
+      label: 'Perfil de $senderName',
+      child: GestureDetector(
+        onTap: openProfile,
+        child: MouseRegion(
+          cursor: senderId.isEmpty ? MouseCursor.defer : SystemMouseCursors.click,
+          child: SizedBox(
+            width: 52,
+            height: 52,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: OhtliColors.stormyTeal,
+                    border: Border.all(color: OhtliColors.cardBg, width: 2),
+                    boxShadow: OhtliUi.softShadow(),
+                  ),
+                  child: ClipOval(
+                    child: senderPhoto != null && senderPhoto.isNotEmpty
+                        ? Image.network(senderPhoto, fit: BoxFit.cover, errorBuilder: (c, e, st) => initialsText())
+                        : initialsText(),
+                  ),
+                ),
+                Positioned(
+                  right: -3,
+                  bottom: -3,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: badge.color,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: OhtliColors.cardBg, width: 2.5),
+                    ),
+                    child: Icon(badge.icon, size: 11, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-      body: Stack(
+    );
+
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RichText(
+          text: TextSpan(
+            style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14.5, height: 1.45),
+            children: [
+              TextSpan(text: '$senderName ', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 15.5)),
+              TextSpan(text: messageText, style: TextStyle(color: OhtliColors.onyx.withValues(alpha: 0.8))),
+            ],
+          ),
+        ),
+        if (ts != null) ...[
+          const SizedBox(height: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.schedule_rounded, size: 13, color: OhtliColors.subtleText),
+              const SizedBox(width: 4),
+              Text(_relativeTime(ts), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+            ],
+          ),
+        ],
+      ],
+    );
+
+    final actionButtons = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PillButton(label: 'Rechazar', onPressed: () => _handleFriendRequest(doc.id, senderId, false)),
+        const SizedBox(width: 8),
+        _PillButton(label: 'Aceptar', icon: Icons.check_rounded, primary: true, onPressed: () => _handleFriendRequest(doc.id, senderId, true)),
+      ],
+    );
+
+    return OhtliSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 18, 16),
+      onTap: isClickable ? openTrip : null,
+      accent: badge.color,
+      selected: isPendingRequest,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.3)),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              avatar,
+              const SizedBox(width: 14),
+              Expanded(child: text),
+              if (isPendingRequest && isDesktop) ...[const SizedBox(width: 12), actionButtons],
+              if (isClickable)
+                Container(
+                  margin: const EdgeInsets.only(left: 10),
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(color: OhtliColors.innerCardBg, shape: BoxShape.circle),
+                  child: Icon(Icons.arrow_forward_rounded, size: 17, color: OhtliColors.accentText),
+                ),
+            ],
           ),
-          Positioned.fill(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(_currentUser.uid)
-                  .collection('notifications')
-                  .orderBy('timestamp', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: OhtliColors.stormyTeal),
-                  );
-                }
-
-                final allDocs = snapshot.data?.docs ?? [];
-                final now = DateTime.now();
-                final docs = allDocs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final String? type = data['type'] as String?;
-                  final Timestamp? ts = data['timestamp'] as Timestamp?;
-                  if (ts == null) return true;
-                  if (type == 'surprise_plan') {
-                    return !now.isBefore(ts.toDate());
-                  }
-                  return true;
-                }).toList();
-
-                if (docs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.notifications_none,
-                          size: 64,
-                          color: isDark ? Colors.white24 : OhtliColors.cantera,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Todo al día',
-                          style: GoogleFonts.outfit(
-                            color: textColor,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 320),
-                          child: Text(
-                            'Aquí verás solicitudes de amistad, viajes nuevos de tus amigos y planes sorpresa.',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.inter(
-                              color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.55),
-                              fontSize: 13,
-                              height: 1.45,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                // Encabezados por día (Hoy / Ayer / Esta semana / Antes)
-                final entries = <Object>[];
-                String? lastGroup;
-                for (final doc in docs) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final ts = (data['timestamp'] as Timestamp?)?.toDate();
-                  final group = _groupFor(ts);
-                  if (group != lastGroup) {
-                    entries.add(group);
-                    lastGroup = group;
-                  }
-                  entries.add(doc);
-                }
-
-                return Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: ListView.builder(
-                      padding: EdgeInsets.fromLTRB(padding, 4, padding, 32),
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = entries[index];
-                        if (entry is String) {
-                          return Padding(
-                            padding: EdgeInsets.only(top: index == 0 ? 4 : 18, bottom: 10, left: 4),
-                            child: Text(
-                              entry.toUpperCase(),
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.2,
-                                color: isDark ? Colors.white54 : OhtliColors.onyx.withOpacity(0.5),
-                              ),
-                            ),
-                          );
-                        }
-                        final doc = entry as QueryDocumentSnapshot;
-                        final data = doc.data() as Map<String, dynamic>;
-
-                        final String type = data['type'] ?? 'friend_request';
-                        final String senderName = data['senderName'] ?? 'Viajero Ohtli';
-                        final String senderId = data['senderId'] ?? '';
-                        final String status = data['status'] ?? 'pending';
-                        final String? senderPhoto = data['senderPhoto'];
-                        final DateTime? ts = (data['timestamp'] as Timestamp?)?.toDate();
-
-                        String messageText = '';
-                        if (type == 'friend_request') {
-                          if (status == 'pending') {
-                            messageText = 'te envió una solicitud de amistad.';
-                          } else if (status == 'accepted') {
-                            messageText = 'y tú ahora son amigos.';
-                          } else {
-                            messageText = 'te envió una solicitud (rechazada).';
-                          }
-                        } else if (type == 'new_publication') {
-                          final isPlan = data['isPlan'] ?? false;
-                          final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                          messageText = 'publicó un nuevo ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
-                        } else if (type == 'surprise_plan') {
-                          final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                          messageText = 'te preparó un plan sorpresa: "$tripTitle".';
-                        } else if (type == 'co_author_added') {
-                          final isPlan = data['isPlan'] ?? false;
-                          final tripTitle = data['tripTitle'] ?? 'su itinerario';
-                          messageText = 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle".';
-                        }
-
-                        final initials = senderName
-                            .split(' ')
-                            .where((w) => w.isNotEmpty)
-                            .take(2)
-                            .map((w) => w[0].toUpperCase())
-                            .join();
-
-                        final bool isClickable = (type == 'new_publication' || type == 'surprise_plan' || type == 'co_author_added') && data['tripId'] != null;
-                        final bool isPendingRequest = type == 'friend_request' && status == 'pending';
-                        final badge = _typeBadge(type);
-                        final bool isDesktop = width > 600;
-
-                        void openTrip() {
-                          // En co_author_added el dueño del viaje es tripOwnerId (senderId es quien te agregó)
-                          final String navAuthorId = (type == 'co_author_added' && data['tripOwnerId'] != null) ? data['tripOwnerId'] : senderId;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripViewerPage(tripId: data['tripId'], authorId: navAuthorId)),
-                            ),
-                          );
-                        }
-
-                        void openProfile() {
-                          if (senderId.isEmpty) return;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (ctx) => PublicProfilePage(userId: senderId, showBackButton: true, onBack: () => Navigator.pop(ctx)),
-                            ),
-                          );
-                        }
-
-                        final avatar = GestureDetector(
-                          onTap: openProfile,
-                          child: MouseRegion(
-                            cursor: senderId.isEmpty ? MouseCursor.defer : SystemMouseCursors.click,
-                            child: SizedBox(
-                              width: 46,
-                              height: 46,
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: const BoxDecoration(shape: BoxShape.circle, color: OhtliColors.stormyTeal),
-                                    child: ClipOval(
-                                      child: senderPhoto != null && senderPhoto.isNotEmpty
-                                          ? Image.network(
-                                              senderPhoto,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (c, e, st) => Center(
-                                                child: Text(initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                              ),
-                                            )
-                                          : Center(
-                                              child: Text(initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                                            ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    right: -2,
-                                    bottom: -2,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(3),
-                                      decoration: BoxDecoration(
-                                        color: badge.color,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: cardColor, width: 2),
-                                      ),
-                                      child: Icon(badge.icon, size: 11, color: Colors.white),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-
-                        final text = Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            RichText(
-                              text: TextSpan(
-                                style: GoogleFonts.inter(color: textColor, fontSize: 14, height: 1.4),
-                                children: [
-                                  TextSpan(text: '$senderName ', style: const TextStyle(fontWeight: FontWeight.w700)),
-                                  TextSpan(
-                                    text: messageText,
-                                    style: TextStyle(color: isDark ? Colors.white70 : OhtliColors.onyx.withOpacity(0.85)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (ts != null) ...[
-                              const SizedBox(height: 3),
-                              Text(
-                                _relativeTime(ts),
-                                style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.45)),
-                              ),
-                            ],
-                          ],
-                        );
-
-                        final actionButtons = Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextButton(
-                              onPressed: () => _handleFriendRequest(doc.id, senderId, false),
-                              style: TextButton.styleFrom(
-                                foregroundColor: isDark ? Colors.white70 : OhtliColors.onyx.withOpacity(0.7),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              ),
-                              child: Text('Rechazar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
-                            ),
-                            const SizedBox(width: 6),
-                            ElevatedButton(
-                              onPressed: () => _handleFriendRequest(doc.id, senderId, true),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: OhtliColors.stormyTeal,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              ),
-                              child: Text('Aceptar', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
-                            ),
-                          ],
-                        );
-
-                        final card = Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: cardColor,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: isPendingRequest
-                                  ? OhtliColors.stormyTeal.withOpacity(0.35)
-                                  : (isDark ? Colors.white.withOpacity(0.06) : OhtliColors.cardBorder.withOpacity(0.6)),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  avatar,
-                                  const SizedBox(width: 12),
-                                  Expanded(child: text),
-                                  if (isPendingRequest && isDesktop) ...[const SizedBox(width: 12), actionButtons],
-                                  if (isClickable)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 8, top: 10),
-                                      child: Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.35)),
-                                    ),
-                                ],
-                              ),
-                              if (isPendingRequest && !isDesktop) ...[
-                                const SizedBox(height: 10),
-                                Align(alignment: Alignment.centerRight, child: actionButtons),
-                              ],
-                            ],
-                          ),
-                        );
-
-                        if (!isClickable) return card;
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: openTrip,
-                            borderRadius: BorderRadius.circular(18),
-                            child: card,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
+          if (isPendingRequest && !isDesktop) ...[
+            const SizedBox(height: 12),
+            Align(alignment: Alignment.centerRight, child: actionButtons),
+          ],
         ],
       ),
     );
+  }
+}
+
+/// Botón compacto tipo píldora para acciones dentro de una tarjeta.
+class _PillButton extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool primary;
+  final VoidCallback onPressed;
+
+  const _PillButton({required this.label, required this.onPressed, this.icon, this.primary = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = primary
+        ? ElevatedButton.styleFrom(
+            backgroundColor: OhtliColors.stormyTeal,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            shape: const StadiumBorder(),
+            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14),
+          )
+        : OutlinedButton.styleFrom(
+            foregroundColor: OhtliColors.onyx,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.18)),
+            shape: const StadiumBorder(),
+            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
+          );
+    final child = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[Icon(icon, size: 16), const SizedBox(width: 6)],
+        Text(label),
+      ],
+    );
+    return primary
+        ? ElevatedButton(onPressed: onPressed, style: style, child: child)
+        : OutlinedButton(onPressed: onPressed, style: style, child: child);
   }
 }
