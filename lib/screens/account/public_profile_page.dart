@@ -2,6 +2,7 @@
 
 import '../../services/social_graph.dart';
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'dart:convert';
 import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
@@ -16,8 +17,9 @@ import '../../utils/friendly_errors.dart';
 import '../../models/trip_model.dart';
 import '../../widgets/trip_card.dart';
 import '../../widgets/ohtli_ui.dart';
+import '../../models/profile_moment.dart';
+import '../../widgets/moment_picker_dialog.dart';
 import '../../widgets/trip_polaroid.dart';
-import '../../widgets/ohtli_service_icon.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../services/trip_service.dart';
 import 'account_management_page.dart';
@@ -799,7 +801,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       ],
     );
 
-    final memories = _isHiddenForViewer ? const <Trip>[] : _visibleTrips(isTrip: true).take(8).toList();
+    final moments = _moments;
+    final bool showMoments = !_isHiddenForViewer && (moments.isNotEmpty || _isSelf);
+    final String firstName = ((_userProfile?['displayName'] as String?) ?? '').split(' ').first;
 
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
@@ -835,21 +839,24 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                       const SizedBox(height: 16),
                       _buildStatsRow(isDark, followingList.length),
                     ],
-                    if (memories.isNotEmpty) ...[
+                    if (showMoments) ...[
                       const SizedBox(height: 34),
                       OhtliSectionHeader(
-                        eyebrow: 'Recuerdos',
-                        icon: Icons.photo_library_rounded,
+                        eyebrow: 'Momentos',
+                        icon: Icons.favorite_rounded,
                         color: OhtliColors.cempasuchil,
-                        title: _isSelf ? 'Tus últimos caminos' : 'Sus últimos caminos',
-                        subtitle: 'Toca una foto para abrir el viaje.',
+                        title: _isSelf ? 'Momentos que atesoras' : (firstName.isEmpty ? 'Sus momentos' : 'Momentos de $firstName'),
+                        subtitle: _isSelf ? 'Fotos de tus viajes que eliges para tu perfil.' : null,
+                        trailing: _isSelf && moments.isNotEmpty
+                            ? OhtliSecondaryButton(compact: true, label: 'Editar', icon: Icons.edit_rounded, onPressed: _editMoments)
+                            : null,
                       ),
                     ],
                   ],
                 ),
               ),
             ),
-            if (memories.isNotEmpty) SliverToBoxAdapter(child: _buildMemoriesStrip(memories, padding)),
+            if (showMoments) SliverToBoxAdapter(child: _buildMomentsStrip(moments, padding)),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
             SliverPersistentHeader(
               pinned: true,
@@ -1033,11 +1040,16 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image(
-              image: coverURL != null && coverURL.isNotEmpty ? _getImageProvider(coverURL) : NetworkImage(CdmxPhotos.cover(widget.userId.hashCode)),
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              errorBuilder: (c, e, s) => Container(color: OhtliColors.stormyTeal),
+            // Se desenfoca al bajar; la barra compacta queda sobre la foto borrosa.
+            ImageFiltered(
+              enabled: t > 0.01,
+              imageFilter: ImageFilter.blur(sigmaX: 14 * t, sigmaY: 14 * t, tileMode: TileMode.decal),
+              child: Image(
+                image: coverURL != null && coverURL.isNotEmpty ? _getImageProvider(coverURL) : NetworkImage(CdmxPhotos.cover(widget.userId.hashCode)),
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (c, e, s) => Container(color: OhtliColors.stormyTeal),
+              ),
             ),
             // Velo: deja ver la foto arriba y oscurece donde va el texto; al compactar oscurece toda la barra.
             DecoratedBox(
@@ -1119,9 +1131,54 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     );
   }
 
-  /// Tira de polaroids inclinadas con los últimos viajes publicados.
-  Widget _buildMemoriesStrip(List<Trip> items, double padding) {
+  List<ProfileMoment> get _moments => ProfileMoment.listFrom(_userProfile?['moments']);
+
+  /// Elegir o cambiar los momentos del perfil (solo tu propio perfil).
+  Future<void> _editMoments() async {
+    final picked = await MomentPickerDialog.show(context, trips: _trips ?? const [], current: _moments);
+    if (picked == null || !mounted) return;
+    setState(() => _userProfile = {...?_userProfile, 'moments': picked.map((m) => m.toMap()).toList()});
+    if (_currentUser == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).update({'moments': picked.map((m) => m.toMap()).toList()});
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(friendlyError(e, fallback: 'No pudimos guardar tus momentos. Intenta de nuevo.'), style: GoogleFonts.inter()),
+          backgroundColor: OhtliColors.xoconostle,
+        ));
+      }
+    }
+  }
+
+  /// El viaje del momento, si quien mira puede abrirlo (tuyo, o publicado y público).
+  Trip? _momentTrip(ProfileMoment m) {
+    for (final t in _trips ?? const <Trip>[]) {
+      if (t.id != m.tripId) continue;
+      if (_isSelf || (t.status == 'published' && t.visibility == 'public')) return t;
+    }
+    return null;
+  }
+
+  /// Tira de polaroids inclinadas con los momentos elegidos.
+  Widget _buildMomentsStrip(List<ProfileMoment> items, double padding) {
     const angles = [-0.05, 0.035, -0.02, 0.045, -0.04, 0.025, -0.03, 0.04];
+    if (items.isEmpty) {
+      // Solo en tu perfil: invitación a elegir los primeros.
+      return Padding(
+        padding: EdgeInsets.fromLTRB(padding, 18, padding, 8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: OhtliEmptyState(
+            icon: Icons.photo_library_rounded,
+            color: OhtliColors.cempasuchil,
+            title: 'Fija tus momentos favoritos',
+            message: 'Elige fotos de tus viajes para que todos las vean en tu perfil. Si el viaje es privado, solo se verá la foto.',
+            action: OhtliPrimaryButton(compact: true, highlight: true, label: 'Elegir momentos', icon: Icons.add_photo_alternate_rounded, onPressed: _editMoments),
+          ),
+        ),
+      );
+    }
     return SizedBox(
       height: 262,
       child: ListView.separated(
@@ -1131,14 +1188,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(width: 22),
         itemBuilder: (context, i) {
-          final trip = items[i];
-          final cover = trip.coverUrl.isNotEmpty ? trip.coverUrl : CdmxPhotos.cover(trip.id.hashCode);
+          final m = items[i];
+          final trip = _momentTrip(m);
           return _MemoryPolaroid(
-            url: cover,
-            caption: trip.title.isEmpty ? 'Sin título' : trip.title,
-            date: trip.travelDate ?? trip.createdAt,
+            url: m.url,
+            // Si no puedes ver el viaje, no se muestra de qué viaje es.
+            caption: trip == null ? null : (m.caption.isNotEmpty ? m.caption : (m.tripTitle.isEmpty ? 'Sin título' : m.tripTitle)),
+            date: m.date,
             angle: angles[i % angles.length],
-            onTap: () => _openTrip(trip),
+            onTap: trip == null ? null : () => _openTrip(trip),
           );
         },
       ),
@@ -1151,57 +1209,48 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final int tripsCount = _visibleTrips(isTrip: true).length;
     final int plansCount = _visibleTrips(isTrip: false).length;
 
-    Widget stat(IconData icon, Color color, String value, String label, {VoidCallback? onTap}) {
-      return OhtliSurface(
-        padding: const EdgeInsets.fromLTRB(12, 12, 18, 12),
-        radius: 20,
-        onTap: onTap,
-        accent: color,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            OhtliServiceIcon(icon: icon, color: color, size: 40),
-            const SizedBox(width: 12),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 21, color: OhtliColors.onyx, height: 1.1)),
-                Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
-              ],
-            ),
-          ],
-        ),
+    Widget stat(String value, String label, {VoidCallback? onTap}) {
+      final child = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 26, color: OhtliColors.onyx, height: 1.05)),
+          const SizedBox(height: 2),
+          Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+        ],
+      );
+      if (onTap == null) return child;
+      return Semantics(
+        button: true,
+        child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10), child: Padding(padding: const EdgeInsets.all(2), child: child)),
       );
     }
 
     final tiles = <Widget>[
-        stat(Icons.landscape_rounded, OhtliColors.stormyTeal, hidden ? '—' : '$tripsCount', tripsCount == 1 ? 'Viaje' : 'Viajes',
+        stat(hidden ? '—' : '$tripsCount', tripsCount == 1 ? 'Viaje' : 'Viajes',
             onTap: hidden ? null : () => _tabController.animateTo(0)),
         if (_isSelf)
-          stat(Icons.edit_note_rounded, OhtliColors.cempasuchil, '$plansCount', plansCount == 1 ? 'Plan' : 'Planes',
+          stat('$plansCount', plansCount == 1 ? 'Plan' : 'Planes',
               onTap: () => _tabController.animateTo(1)),
         stat(
-          Icons.people_alt_rounded,
-          OhtliColors.xoconostle,
           hidden ? '—' : '$friendsCount',
           friendsCount == 1 ? 'Amigo' : 'Amigos',
           onTap: _isSelf
               ? () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FriendsPage(showBackButton: true)))
               : null,
         ),
-        stat(Icons.favorite_rounded, const Color(0xFFD64545), '$_followersCount', _followersCount == 1 ? 'Seguidor' : 'Seguidores'),
-        stat(Icons.explore_rounded, const Color(0xFF3F7CAC), '$followingCount', 'Siguiendo'),
+        stat('$_followersCount', _followersCount == 1 ? 'Seguidor' : 'Seguidores'),
+        stat('$followingCount', 'Siguiendo'),
     ];
     // En celular, una sola fila que se desliza; en escritorio, en renglones.
     if (ohtliIsMobileWidth(MediaQuery.of(context).size.width)) {
       return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         clipBehavior: Clip.none,
-        child: Row(children: [for (final t in tiles) Padding(padding: const EdgeInsets.only(right: 10), child: t)]),
+        child: Row(children: [for (final t in tiles) Padding(padding: const EdgeInsets.only(right: 28), child: t)]),
       );
     }
-    return Wrap(spacing: 10, runSpacing: 10, children: tiles);
+    return Wrap(spacing: 36, runSpacing: 14, children: tiles);
   }
 
   Widget _buildActionButtons(bool isDark) {
@@ -1507,10 +1556,11 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
 /// Polaroid de un viaje: papel blanco, foto, título a mano y una leve inclinación.
 class _MemoryPolaroid extends StatefulWidget {
   final String url;
-  final String caption;
-  final DateTime date;
+  /// null: viaje que quien mira no puede ver; solo se muestra la foto.
+  final String? caption;
+  final DateTime? date;
   final double angle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _MemoryPolaroid({required this.url, required this.caption, required this.date, required this.angle, required this.onTap});
 
@@ -1526,11 +1576,12 @@ class _MemoryPolaroidState extends State<_MemoryPolaroid> {
   @override
   Widget build(BuildContext context) {
     final d = widget.date;
+    final bool open = widget.onTap != null && widget.caption != null;
     return Semantics(
-      button: true,
-      label: 'Abrir viaje ${widget.caption}',
+      button: open,
+      label: open ? 'Abrir viaje ${widget.caption}' : 'Momento de un viaje privado',
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+        cursor: open ? SystemMouseCursors.click : SystemMouseCursors.basic,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
@@ -1562,19 +1613,32 @@ class _MemoryPolaroidState extends State<_MemoryPolaroid> {
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(2, 8, 2, 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.caption,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.fraunces(fontSize: 14, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600, color: const Color(0xFF2A2522)),
-                          ),
-                          const SizedBox(height: 2),
-                          Text('${d.day} ${_months[d.month - 1]} ${d.year}',
-                              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF8A817A))),
-                        ],
+                      child: SizedBox(
+                        height: 34,
+                        child: widget.caption == null
+                            ? Align(
+                                alignment: Alignment.centerLeft,
+                                child: Tooltip(
+                                  message: 'Viaje privado: solo se comparte esta foto',
+                                  child: Icon(Icons.lock_outline_rounded, size: 15, color: const Color(0xFF8A817A).withValues(alpha: 0.8)),
+                                ),
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.caption!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.fraunces(fontSize: 14, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600, color: const Color(0xFF2A2522)),
+                                  ),
+                                  if (d != null) ...[
+                                    const SizedBox(height: 2),
+                                    Text('${d.day} ${_months[d.month - 1]} ${d.year}',
+                                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF8A817A))),
+                                  ],
+                                ],
+                              ),
                       ),
                     ),
                   ],
