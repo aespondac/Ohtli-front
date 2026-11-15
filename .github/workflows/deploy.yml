@@ -5,6 +5,14 @@ on:
     branches:
       - main
 
+# Un despliegue a la vez y siempre el más reciente: sin esto, si dos pushes llegan seguidos, el que
+# termina al último gana aunque su build sea más vieja (pasó el 14-nov-2026 y dejó publicada una
+# versión sin el último cambio). En fila (sin cancelar a la mitad un firebase deploy); GitHub deja
+# en espera solo el run más nuevo, así que el último en correr es el último commit de main.
+concurrency:
+  group: deploy-front-produccion
+  cancel-in-progress: false
+
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
