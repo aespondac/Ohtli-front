@@ -1401,50 +1401,57 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             .join();
 
         final screenSize = MediaQuery.of(context).size;
-        final isMobile = screenSize.width < 800;
-    // Sin las líneas de mapa de fondo: cruzaban la foto, el nombre y los botones
-    Widget mainBody = Stack(
-      children: [
-        SafeArea(
-          child: Column(
-            children: [
-              _buildAppBar(isMobile),
-              Expanded(
-                child: Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 800),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
+        final isMobile = ohtliIsMobileWidth(screenSize.width);
+    // Escritorio: navegación de ajustes a la izquierda y la sección elegida a la derecha.
+    // Teléfono: la lista de ajustes y, al abrir una sección, su encabezado con flecha atrás.
+    final Widget content = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+      child: KeyedSubtree(
+        key: ValueKey('${_currentSection.name}-$_isEditingAddress'),
+        child: _currentSection == AccountSection.dashboard
+            ? (isMobile
+                ? _buildDashboard(user, displayName, initials, isMobile)
+                : _buildOverview(user, displayName, initials))
+            : _sectionFrame(_currentSection, _buildActiveContent(user, displayName, initials, isMobile), isMobile),
+      ),
+    );
+
+    Widget mainBody = Theme(
+      data: _formTheme(Theme.of(context)),
+      child: SafeArea(
+        child: isMobile
+            ? Column(
+                children: [
+                  _buildAppBar(isMobile),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: content,
                     ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      transitionBuilder: (child, anim) {
-                        return FadeTransition(
-                          opacity: anim,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0.0, 0.05),
-                              end: Offset.zero,
-                            ).animate(anim),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: _buildActiveContent(
-                        user,
-                        displayName,
-                        initials,
-                        isMobile,
+                  ),
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(width: 300, child: _buildDesktopNav(user, displayName, initials)),
+                  Container(width: 1, color: OhtliColors.cardBorder),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(40, 36, 40, 24),
+                          child: content,
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
 
     if (isMobile) {
@@ -1631,41 +1638,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSettingsGroup('Tu cuenta', [
-                  _SettingsItem(
-                    icon: Icons.person_outline_rounded,
-                    title: 'Información personal',
-                    subtitle: 'Tu nombre y datos de contacto',
-                    onTap: () => setState(() => _currentSection = AccountSection.personalInfo),
-                  ),
-                  _SettingsItem(
-                    icon: Icons.lock_outline_rounded,
-                    title: 'Seguridad',
-                    subtitle: 'Contraseña y cuentas vinculadas',
-                    onTap: () => setState(() => _currentSection = AccountSection.security),
-                  ),
-                  _SettingsItem(
-                    icon: Icons.location_on_outlined,
-                    title: 'Direcciones',
-                    subtitle: 'Puntos de partida guardados para planear rutas',
-                    onTap: () => setState(() => _currentSection = AccountSection.addresses),
-                  ),
-                ]),
+                _buildSettingsGroup('Tu cuenta', _accountItems()),
                 const SizedBox(height: 22),
-                _buildSettingsGroup('Tu experiencia', [
-                  _SettingsItem(
-                    icon: Icons.privacy_tip_outlined,
-                    title: 'Privacidad',
-                    subtitle: 'Quién ve tu perfil, tus viajes y tus datos',
-                    onTap: () => setState(() => _currentSection = AccountSection.privacy),
-                  ),
-                  _SettingsItem(
-                    icon: Icons.accessibility_new_rounded,
-                    title: 'Preferencias y accesibilidad',
-                    subtitle: 'Tema, colores y tamaño de letra',
-                    onTap: () => setState(() => _currentSection = AccountSection.preferences),
-                  ),
-                ]),
+                _buildSettingsGroup('Tu experiencia', _experienceItems()),
                 // Solo para el superusuario
                 if (isSuperUser(user)) ...[
                   Builder(builder: (_) {
@@ -1676,37 +1651,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     stream: PoiSuggestionService.watchPendingCount(),
                     builder: (context, snap) {
                       final pending = snap.data ?? 0;
-                      return _buildSettingsGroup('Administración', [
-                        _SettingsItem(
-                          icon: Icons.add_location_alt_outlined,
-                          title: pending > 0 ? 'Lugares sugeridos · $pending por revisar' : 'Lugares sugeridos',
-                          subtitle: 'Revisa, genera el perfil y aprueba los lugares nuevos que proponen los viajeros',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const PlaceSuggestionsPage()),
-                          ),
-                        ),
-                        _SettingsItem(
-                          icon: Icons.push_pin_outlined,
-                          title: 'Destacados de Explorar',
-                          subtitle: 'Elige los viajes del bloque principal y si se muestra la nota de versión',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const ExploreFeaturedPage()),
-                          ),
-                        ),
-                        _SettingsItem(
-                          icon: Icons.new_releases_outlined,
-                          title: 'Notas de versión',
-                          subtitle: 'Crea, edita y revisa la crónica de cada versión de Ohtli',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.ReleaseNotesAdminPage()),
-                            ),
-                          ),
-                        ),
-                      ]);
+                      return _buildSettingsGroup('Administración', _adminItems(pending));
                     },
                   ),
                 ],
@@ -1750,6 +1695,373 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             ),
             const SizedBox(height: 20),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// Título y descripción de cada sección (en el encabezado del panel).
+  static const Map<AccountSection, (String, String)> _sectionInfo = {
+    AccountSection.dashboard: ('Tu cuenta', 'Tu foto, tu nombre y cómo te ven los demás.'),
+    AccountSection.personalInfo: ('Información personal', 'Tu nombre y cómo te podemos contactar.'),
+    AccountSection.security: ('Seguridad', 'Tu contraseña y las cuentas con las que entras.'),
+    AccountSection.addresses: ('Direcciones', 'Puntos de partida guardados para planear tus rutas.'),
+    AccountSection.privacy: ('Privacidad', 'Quién ve tu perfil, tus viajes y tus datos.'),
+    AccountSection.preferences: ('Preferencias y accesibilidad', 'Tema, colores y tamaño de letra.'),
+  };
+
+  void _openSection(AccountSection section) => setState(() {
+        _currentSection = section;
+        _isEditingAddress = false;
+      });
+
+  /// Campos con borde visible y contorno de enfoque, y botones redondeados, en todas las
+  /// secciones sin repetir el estilo en cada campo.
+  ThemeData _formTheme(ThemeData base) {
+    OutlineInputBorder border(Color c, double w) =>
+        OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: c, width: w));
+    return base.copyWith(
+      inputDecorationTheme: base.inputDecorationTheme.copyWith(
+        enabledBorder: border(OhtliColors.cardBorder, 1),
+        focusedBorder: border(OhtliColors.accentText, 1.6),
+        errorBorder: border(const Color(0xFFD9534F), 1.2),
+        focusedErrorBorder: border(const Color(0xFFD9534F), 1.6),
+        floatingLabelStyle: GoogleFonts.inter(color: OhtliColors.accentText, fontWeight: FontWeight.w600),
+      ),
+      textSelectionTheme: TextSelectionThemeData(cursorColor: OhtliColors.accentText),
+    );
+  }
+
+  /// Encabezado de una sección: en teléfono con flecha para volver a la lista.
+  Widget _sectionFrame(AccountSection section, Widget child, bool isMobile) {
+    final (title, subtitle) = _sectionInfo[section]!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isMobile) ...[
+              IconButton(
+                tooltip: 'Volver a Cuenta',
+                onPressed: () => _openSection(AccountSection.dashboard),
+                icon: Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
+              ),
+              const SizedBox(width: 4),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      title,
+                      style: GoogleFonts.outfit(
+                        fontSize: isMobile ? 24 : 30,
+                        fontWeight: FontWeight.w800,
+                        color: OhtliColors.onyx,
+                        letterSpacing: -0.6,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: isMobile ? 16 : 24),
+        // Arriba y a la medida de su contenido (con scroll si no cabe), no estirada
+        Expanded(child: Align(alignment: Alignment.topCenter, child: child)),
+      ],
+    );
+  }
+
+  List<_SettingsItem> _accountItems() => [
+        _SettingsItem(
+          icon: Icons.person_outline_rounded,
+          title: 'Información personal',
+          subtitle: 'Tu nombre y datos de contacto',
+          section: AccountSection.personalInfo,
+          onTap: () => _openSection(AccountSection.personalInfo),
+        ),
+        _SettingsItem(
+          icon: Icons.lock_outline_rounded,
+          title: 'Seguridad',
+          subtitle: 'Contraseña y cuentas vinculadas',
+          section: AccountSection.security,
+          onTap: () => _openSection(AccountSection.security),
+        ),
+        _SettingsItem(
+          icon: Icons.location_on_outlined,
+          title: 'Direcciones',
+          subtitle: 'Puntos de partida para tus rutas',
+          section: AccountSection.addresses,
+          onTap: () => _openSection(AccountSection.addresses),
+        ),
+      ];
+
+  List<_SettingsItem> _experienceItems() => [
+        _SettingsItem(
+          icon: Icons.privacy_tip_outlined,
+          title: 'Privacidad',
+          subtitle: 'Quién ve tu perfil y tus viajes',
+          section: AccountSection.privacy,
+          onTap: () => _openSection(AccountSection.privacy),
+        ),
+        _SettingsItem(
+          icon: Icons.accessibility_new_rounded,
+          title: 'Preferencias y accesibilidad',
+          subtitle: 'Tema, colores y tamaño de letra',
+          section: AccountSection.preferences,
+          onTap: () => _openSection(AccountSection.preferences),
+        ),
+      ];
+
+  List<_SettingsItem> _adminItems(int pending) => [
+        _SettingsItem(
+          icon: Icons.add_location_alt_outlined,
+          title: pending > 0 ? 'Lugares sugeridos · $pending' : 'Lugares sugeridos',
+          subtitle: 'Revisa y aprueba lugares nuevos',
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceSuggestionsPage())),
+        ),
+        _SettingsItem(
+          icon: Icons.push_pin_outlined,
+          title: 'Destacados de Explorar',
+          subtitle: 'Viajes del bloque principal',
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExploreFeaturedPage())),
+        ),
+        _SettingsItem(
+          icon: Icons.new_releases_outlined,
+          title: 'Notas de versión',
+          subtitle: 'La crónica de cada versión',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.ReleaseNotesAdminPage()),
+            ),
+          ),
+        ),
+      ];
+
+  /// Columna izquierda en escritorio: tu perfil arriba y las secciones agrupadas.
+  Widget _buildDesktopNav(User? user, String displayName, String initials) {
+    final onDashboard = _currentSection == AccountSection.dashboard;
+    Widget groupLabel(String text) => Padding(
+          padding: const EdgeInsets.fromLTRB(12, 22, 12, 8),
+          child: Text(
+            text.toUpperCase(),
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
+              color: OhtliColors.subtleText,
+            ),
+          ),
+        );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 32, 16, 24),
+      children: [
+        Material(
+          color: onDashboard ? OhtliColors.stormyTeal.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => _openSection(AccountSection.dashboard),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  _buildAvatarWidget(radius: 22, initials: initials, photoURL: _localPhotoURL),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                        ),
+                        Text(
+                          user?.email ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        groupLabel('Tu cuenta'),
+        for (final item in _accountItems()) _navTile(item),
+        groupLabel('Tu experiencia'),
+        for (final item in _experienceItems()) _navTile(item),
+        if (isSuperUser(user))
+          StreamBuilder<int>(
+            stream: PoiSuggestionService.watchPendingCount(),
+            builder: (context, snap) {
+              SuperUserDirectory.registerCurrentSuperUser();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  groupLabel('Administración'),
+                  for (final item in _adminItems(snap.data ?? 0)) _navTile(item),
+                ],
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _navTile(_SettingsItem item) {
+    final selected = item.section != null && item.section == _currentSection;
+    final fg = selected ? OhtliColors.accentText : OhtliColors.onyx;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: selected ? OhtliColors.stormyTeal.withValues(alpha: 0.12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: item.onTap,
+          child: Semantics(
+            selected: selected,
+            button: true,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              child: Row(
+                children: [
+                  Icon(item.icon, size: 20, color: selected ? OhtliColors.accentText : OhtliColors.subtleText),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                        color: fg,
+                      ),
+                    ),
+                  ),
+                  if (item.section == null)
+                    Icon(Icons.open_in_new_rounded, size: 15, color: OhtliColors.subtleText),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Resumen en escritorio cuando no hay sección abierta: tu foto, nombre y perfil público.
+  Widget _buildOverview(User? user, String displayName, String initials) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Tu cuenta',
+            style: GoogleFonts.outfit(fontSize: 30, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -0.6),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tu foto, tu nombre y cómo te ven los demás.',
+            style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: OhtliColors.cardBg,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: OhtliColors.cardBorder),
+            ),
+            child: Row(
+              children: [
+                _buildAvatarWidget(
+                  radius: 56,
+                  initials: initials,
+                  photoURL: _localPhotoURL,
+                  onTap: _handlePhotoUpload,
+                  showEditIcon: true,
+                ),
+                const SizedBox(width: 28),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w800, color: OhtliColors.onyx, height: 1.1),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(user?.email ?? '', style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.subtleText)),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: _handlePhotoUpload,
+                            icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                            label: const Text('Cambiar foto'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: OhtliColors.stormyTeal,
+                              foregroundColor: Colors.white,
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          if (user != null)
+                            OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (ctx) => PublicProfilePage(
+                                    userId: user.uid,
+                                    showBackButton: true,
+                                    onBack: () => Navigator.pop(ctx),
+                                  ),
+                                ),
+                              ),
+                              icon: const Icon(Icons.badge_outlined, size: 18),
+                              label: const Text('Ver mi perfil público'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: OhtliColors.onyx,
+                                side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.18)),
+                                shape: const StadiumBorder(),
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                                textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Elige una sección a la izquierda para cambiar tus datos, tu contraseña, tus direcciones o tus preferencias.',
+            style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText, height: 1.5),
+          ),
         ],
       ),
     );
@@ -1842,8 +2154,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   Widget _buildPersonalInfoForm(User? user) {
     return Card(
       elevation: 0,
-      color: OhtliColors.inputBg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Form(
@@ -1852,15 +2167,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Edita tu información personal',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
-                  ),
-                ),
-                const SizedBox(height: 20),
 
                 // Correo (Inmodificable)
                 TextFormField(
@@ -2057,8 +2363,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
     return Card(
       elevation: 0,
-      color: OhtliColors.inputBg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Form(
@@ -2067,15 +2376,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  hasPassword ? 'Cambiar contraseña' : 'Crear contraseña',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
-                  ),
-                ),
-                const SizedBox(height: 8),
                 Text(
                   hasPassword
                       ? 'Por seguridad, requerimos verificar tu contraseña actual antes de actualizarla.'
@@ -2384,9 +2684,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         }
         return Card(
           elevation: 0,
-          color: OhtliColors.inputBg,
+          color: OhtliColors.cardBg,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(color: OhtliColors.cardBorder),
           ),
           child: const Padding(
             padding: EdgeInsets.all(40),
@@ -2454,8 +2755,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
     return Card(
       elevation: 0,
-      color: OhtliColors.inputBg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -2465,11 +2769,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Mis direcciones',
+                  _activeAddresses.isEmpty
+                      ? 'Aún no tienes direcciones'
+                      : '${_activeAddresses.length} ${_activeAddresses.length == 1 ? 'dirección guardada' : 'direcciones guardadas'}',
                   style: GoogleFonts.inter(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
+                    color: OhtliColors.subtleText,
                   ),
                 ),
                 ElevatedButton.icon(
@@ -2481,8 +2787,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   },
                   icon: const Icon(Icons.add, size: 16),
                   label: Text(
-                    'Agregar',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+                    'Agregar dirección',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w700),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: OhtliColors.stormyTeal,
@@ -2699,30 +3005,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       },
                     ),
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => setState(
-                  () => _currentSection = AccountSection.dashboard,
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: OhtliColors.stormyTeal,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: Text(
-                  'Volver',
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -2735,31 +3017,17 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   Widget _buildPrivacyView() {
     return Card(
       elevation: 0,
-      color: OhtliColors.inputBg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Preferencias de Privacidad',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: OhtliColors.onyx,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Configura cómo Ohtli interactúa y comparte tus datos de viaje.',
-                style: GoogleFonts.inter(
-                  fontSize: 12.5,
-                  color: OhtliColors.onyx.withValues(alpha: 0.55),
-                ),
-              ),
-              const SizedBox(height: 24),
 
               // Switch 1: Compartir datos
               SwitchListTile(
@@ -2931,7 +3199,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         });
                       },
                       child: Text(
-                        'Volver',
+                        'Cancelar',
                         style: GoogleFonts.inter(
                           color: OhtliColors.onyx.withValues(alpha: 0.6),
                           fontWeight: FontWeight.w600,
@@ -2999,23 +3267,17 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
         return Card(
           elevation: 0,
-          color: OhtliColors.inputBg,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          color: OhtliColors.cardBg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(color: OhtliColors.cardBorder),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Preferencias y Accesibilidad',
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: OhtliColors.onyx,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
 
                   // Card for Visual Theme
                   Text(
@@ -3133,7 +3395,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                             });
                           },
                           child: Text(
-                            'Volver',
+                            'Cancelar',
                             style: GoogleFonts.inter(
                               color: OhtliColors.onyx.withValues(alpha: 0.6),
                               fontWeight: FontWeight.w600,
@@ -3321,10 +3583,14 @@ class _SettingsItem {
   final String subtitle;
   final VoidCallback onTap;
 
+  /// Sección que abre (null si abre otra pantalla, como las de administración).
+  final AccountSection? section;
+
   const _SettingsItem({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.section,
   });
 }
