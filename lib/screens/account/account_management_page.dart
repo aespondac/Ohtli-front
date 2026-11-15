@@ -20,6 +20,8 @@ import '../construction_page.dart'; // Reuse RouteBackgroundPainter
 import 'public_profile_page.dart';
 import '../admin/place_suggestions_page.dart';
 import '../admin/explore_featured_page.dart';
+import '../trips/trip_screens.dart' deferred as trips;
+import '../../widgets/deferred_view.dart';
 import '../../config/admin.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../utils/web_helpers.dart';
@@ -1684,6 +1686,17 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => const ExploreFeaturedPage()),
+                          ),
+                        ),
+                        _SettingsItem(
+                          icon: Icons.new_releases_outlined,
+                          title: 'Notas de versión',
+                          subtitle: 'Crea, edita y revisa la crónica de cada versión de Ohtli',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.ReleaseNotesAdminPage()),
+                            ),
                           ),
                         ),
                       ]);

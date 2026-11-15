@@ -113,6 +113,87 @@ class TripSample {
     'p6': ('16:55', '19:20'),
   };
 
+  // ---------------------------------------------------------------------------
+  // Notas de versión de muestra
+  // ---------------------------------------------------------------------------
+  static Trip releaseNotes() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return Trip(
+      id: kSampleTripId,
+      userId: kSampleOwnerId,
+      title: 'Ohtli 1.0: el viaje empieza aquí',
+      description: 'Notas de versión de muestra: así se ve una versión contada como crónica, '
+          'con su portada, un texto de bienvenida y cada novedad como un tramo del recorrido.',
+      coverUrl: CdmxPhotos.covers[4],
+      status: 'published',
+      visibility: 'public',
+      createdAt: today.subtract(const Duration(days: 5)),
+      updatedAt: today,
+      travelDate: today,
+      coAuthorIds: const ['muestra-luis'],
+      coAuthorNames: const ['Luis Ramírez'],
+      kind: kTripKindReleaseNotes,
+      version: '1.0.0',
+    );
+  }
+
+  static List<TripSection> releaseNotesSections() => [
+        TextSection(
+          id: 'rn_t0',
+          markdownText: 'Esta versión reúne lo que aprendimos viajando con ustedes: **planear**, **vivir** y **contar** un viaje '
+              'ahora tienen su propio momento dentro de Ohtli.',
+        ),
+        PlaceSection(
+          id: 'rn_1',
+          title: 'Herramientas para cada etapa del viaje',
+          description: 'Antes: horarios, presupuesto e invitaciones. Durante: modo viaje con *Llegué* y *Ya me voy*, fotos, '
+              'precios y desvíos. Después: califica, completa precios y conviértelo en crónica.',
+          rating: 0,
+          mainPhotoUrl: _photo('park', 0),
+          secondaryPhotoUrls: const [],
+          changeTag: 'nuevo',
+        ),
+        PlaceSection(
+          id: 'rn_2',
+          title: 'Fe de erratas con nombre y fecha',
+          description: 'Después del viaje se puede corregir todo, y cada cambio queda registrado con quién lo hizo y cuándo.',
+          rating: 0,
+          mainPhotoUrl: '',
+          secondaryPhotoUrls: const [],
+          changeTag: 'nuevo',
+        ),
+        TextImageSection(
+          id: 'rn_ti',
+          markdownText: '**Un editor más ligero.** Las paradas ocupan menos, los traslados caben en una línea y la barra de formato '
+              'solo aparece cuando escribes.',
+          imageUrl: _photo('museum', 0),
+          layout: 'left',
+        ),
+        PlaceSection(
+          id: 'rn_3',
+          title: 'Traslados con un solo botón',
+          description: 'Elige cómo se mueven desde un selector agrupado (a pie, transporte público, en auto) y Ohtli estima el tiempo.',
+          rating: 0,
+          mainPhotoUrl: _photo('market', 0),
+          secondaryPhotoUrls: [_photo('cafe', 0)],
+          changeTag: 'mejora',
+        ),
+        TextSection(
+          id: 'rn_note',
+          markdownText: '> [!TIP]\n> Las notas de versión ahora se escriben desde **Mi cuenta → Administración → Notas de versión**.',
+        ),
+        PlaceSection(
+          id: 'rn_4',
+          title: 'El corazón vuelve a ser rojo',
+          description: 'La reacción de corazón se veía negra en algunos equipos; ahora usa el rojo clásico.',
+          rating: 0,
+          mainPhotoUrl: '',
+          secondaryPhotoUrls: const [],
+          changeTag: 'correccion',
+        ),
+      ];
+
   static List<TripSection> sections(SampleStage stage) {
     final done = visited(stage);
     final bool after = stage == SampleStage.despues;

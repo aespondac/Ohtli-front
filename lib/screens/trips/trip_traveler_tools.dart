@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../services/trip_transfers.dart';
 import '../../theme/colors.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/transfer_mode_picker.dart';

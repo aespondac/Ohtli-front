@@ -142,7 +142,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     _ownedSub = _tripService.getTripsStream(uid).listen((trips) {
       if (mounted) {
         setState(() {
-          _ownedTrips = trips;
+          // Las notas de versión se gestionan en Administración, no en Mis viajes.
+          _ownedTrips = trips.where((t) => !t.isReleaseNotes).toList();
           _isLoading = false;
         });
       }
@@ -162,6 +163,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         .listen((snapshot) {
       final trips = snapshot.docs
           .map((doc) => Trip.fromMap(doc.data(), doc.id))
+          .where((t) => !t.isReleaseNotes)
           .toList();
       if (mounted) {
         setState(() {

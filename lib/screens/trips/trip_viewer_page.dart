@@ -36,6 +36,7 @@ import '../../widgets/trip_social/block_social.dart';
 import '../../widgets/trip_mini_map.dart';
 import '../../widgets/reveal_on_scroll.dart';
 import '../../theme/cdmx_photos.dart';
+import '../../theme/release_tags.dart';
 import '../../services/place_locator.dart';
 import '../../services/trip_changes.dart';
 import 'trip_sample.dart';
@@ -111,6 +112,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
   // Viaje de muestra (/muestra): etapa y papel simulados, mensajes en memoria.
   SampleStage _sampleStage = SampleStage.durante;
   bool _sampleAsMember = true;
+  // Muestra de notas de versión (en lugar del viaje).
+  bool _sampleNotes = false;
   SampleTripSocialService? _sampleSocial;
   bool get _isSample => widget.tripId == kSampleTripId || widget.trip?.id == kSampleTripId;
 
@@ -815,6 +818,18 @@ class _TripViewerPageState extends State<TripViewerPage> {
   void _loadSample() {
     final stage = _sampleStage;
     if (_trip == null && stage == SampleStage.durante) _tripMode = true;
+    if (_sampleNotes) {
+      setState(() {
+        _tripMode = false;
+        _trip = TripSample.releaseNotes();
+        _sections = TripSample.releaseNotesSections();
+        _authorProfile = TripSample.author;
+        _coAuthorsProfiles = TripSample.coAuthors;
+        _visited = {};
+        _isLoading = false;
+      });
+      return;
+    }
     setState(() {
       _trip = TripSample.trip(stage);
       _sections = TripSample.sections(stage);
@@ -827,8 +842,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   void _setSampleStage(SampleStage stage) {
-    if (stage == _sampleStage) return;
+    if (stage == _sampleStage && !_sampleNotes) return;
     _sampleStage = stage;
+    _sampleNotes = false;
     // El modo viaje solo existe durante el viaje.
     _tripMode = stage == SampleStage.durante;
     _loadSample();
@@ -1035,7 +1051,17 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ],
           ),
         );
-    final stageSeg = seg<SampleStage>([for (final st in SampleStage.values) (st, st.label)], _sampleStage, _setSampleStage);
+    // "Notas" muestra unas notas de versión en lugar del viaje.
+    final stageSeg = seg<SampleStage?>(
+      [for (final st in SampleStage.values) (st, st.label), (null, 'Notas')],
+      _sampleNotes ? null : _sampleStage,
+      (st) {
+        if (st != null) return _setSampleStage(st);
+        if (_sampleNotes) return;
+        _sampleNotes = true;
+        _loadSample();
+      },
+    );
     final roleSeg = seg<bool>(const [(true, 'Miembro'), (false, 'Visitante')], _sampleAsMember, _setSampleRole);
     final badge = Row(
       mainAxisSize: MainAxisSize.min,
@@ -1064,7 +1090,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   const SizedBox(width: 8),
                   roleSeg,
                   // Solo para la cuenta de pruebas de Ohtli: guardar la muestra como viaje real.
-                  if (isSuperUser()) ...[
+                  if (isSuperUser() && !_sampleNotes) ...[
                     const SizedBox(width: 8),
                     FilledButton.icon(
                       onPressed: _bringSampleToAccount,
@@ -2241,9 +2267,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     // En el panel "Tu viaje" del teléfono sí queda el botón para activarlo.
     if (phase == TripPhase.durante && places.isNotEmpty && onDone != null) {
       cards.add(_panelCard(isDark: isDark, icon: Icons.near_me_rounded, title: 'MODO VIAJE', children: [
-        if (_tripMode && onDone == null)
-          _buildTripModePanel(isDark, embedded: true)
-        else ...[
           Text(
             _tripMode
                 ? 'El modo viaje está activo.'
@@ -2255,7 +2278,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: () {
-                onDone?.call();
+                onDone();
                 _setTripMode(!_tripMode);
               },
               style: FilledButton.styleFrom(
@@ -2267,7 +2290,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
               label: Text(_tripMode ? 'Salir del modo viaje' : 'Estoy en el viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
             ),
           ),
-        ],
       ]));
     }
     if (phase == TripPhase.despues) cards.add(_buildAfterCard(isDark, canEdit, onDone: onDone));
@@ -2458,47 +2480,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
   // ---------------------------------------------------------------------------
   // Reseña después del viaje (T5)
   // ---------------------------------------------------------------------------
-  /// Encabezado de las notas de versión: versión, fecha y compartir.
-  Widget _buildReleaseNotesHeader(bool isDark) {
-    final t = _trip!;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 28),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(color: OhtliColors.stormyTeal, borderRadius: BorderRadius.circular(10)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.new_releases_rounded, size: 16, color: Colors.white),
-                const SizedBox(width: 6),
-                Text(
-                  'Notas de versión${t.version != null ? ' · v${t.version}' : ''}',
-                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            'Actualizado el ${_formatSpanishDate(t.updatedAt)}',
-            style: GoogleFonts.inter(fontSize: 12.5, color: isDark ? Colors.white60 : OhtliColors.subtleText),
-          ),
-          if (!_isPreview)
-            TextButton.icon(
-              onPressed: () => _showShareDialog(isDark),
-              style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
-              icon: const Icon(Icons.ios_share_rounded, size: 16),
-              label: Text('Compartir', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-            ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showReviewDialog(bool isDark) async {
     final places = _sections.whereType<PlaceSection>().toList();
     final ratings = {for (final p in places) p.id: p.rating};
@@ -3193,7 +3174,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final bool wideAside = !isLocked &&
         !_isPreview &&
         _trip != null &&
-        !_trip!.isReleaseNotes &&
         _sections.isNotEmpty &&
         screenW >= (sidebarShown ? 1280 : 1100);
     // El panel flota sobre el contenido; el texto deja libre su ancho a la derecha.
@@ -3232,9 +3212,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (_trip?.isReleaseNotes == true)
-                        _buildReleaseNotesHeader(isDark)
-                      else if (!wideAside && _sections.any((s) => s is PlaceSection))
+                      if (!_isNotes && !wideAside && _sections.any((s) => s is PlaceSection))
                         Padding(
                           padding: const EdgeInsets.only(bottom: 32),
                           child: KeyedSubtree(key: _mapKey, child: _buildMiniMap(isDark)),
@@ -3452,7 +3430,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   ),
                 ),
               // Durante el viaje, si el modo viaje no está activo, el botón para activarlo va abajo.
-              if (!isLocked && !_tripMode && _isMember && _phase == TripPhase.durante && _sections.any((s) => s is PlaceSection))
+              if (!isLocked && !_isNotes && !_tripMode && _isMember && _phase == TripPhase.durante && _sections.any((s) => s is PlaceSection))
                 Positioned(
                   left: 16,
                   right: 16 + asideInset,
@@ -4098,6 +4076,23 @@ class _TripViewerPageState extends State<TripViewerPage> {
     return facts;
   }
 
+  /// Datos de la portada de unas notas de versión: fecha y cuántas novedades de cada tipo.
+  List<(IconData, String)> _releaseFacts() {
+    final t = _trip!;
+    final items = _sections.whereType<PlaceSection>().toList();
+    final facts = <(IconData, String)>[(Icons.event_rounded, _formatSpanishDate(t.travelDate ?? t.updatedAt).replaceFirst(RegExp(r'^el '), ''))];
+    String count(String tag, int c) => switch (tag) {
+          'mejora' => c == 1 ? '1 mejora' : '$c mejoras',
+          'correccion' => c == 1 ? '1 corrección' : '$c correcciones',
+          _ => c == 1 ? '1 función nueva' : '$c funciones nuevas',
+        };
+    for (final tag in kReleaseTags.keys) {
+      final c = items.where((p) => (p.changeTag ?? 'nuevo') == tag).length;
+      if (c > 0) facts.add((releaseTagIcon(tag), count(tag, c)));
+    }
+    return facts;
+  }
+
   Widget _buildCoverHeader(bool isDark, bool isDesktop) {
     final t = _trip;
     final String cover = t?.coverUrl ?? '';
@@ -4106,7 +4101,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final String desc = t?.description ?? '';
     final Color fg = onImage ? Colors.white : (isDark ? Colors.white : OhtliColors.onyx);
     final Color sub = onImage ? Colors.white.withValues(alpha: 0.88) : (isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.72));
-    final facts = t?.isReleaseNotes == true ? const <(IconData, String)>[] : _coverFacts();
+    final facts = _isNotes ? _releaseFacts() : _coverFacts();
 
     Widget chip((IconData, String) f) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
@@ -4189,6 +4184,22 @@ class _TripViewerPageState extends State<TripViewerPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_isNotes) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(color: OhtliColors.stormyTeal, borderRadius: BorderRadius.circular(20)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.new_releases_rounded, size: 15, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Text('Notas de versión${t?.version != null ? ' · v${t!.version}' : ''}',
+                        style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 0.2, color: Colors.white)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
             Text(title, style: GoogleFonts.outfit(fontSize: isDesktop ? 46 : 32, fontWeight: FontWeight.bold, color: fg, height: 1.06)),
             if (desc.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -4274,7 +4285,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
 
     if (section is PlaceSection) {
-      blockContent = _buildPlaceBlockViewer(section, isDark, isDesktop);
+      blockContent = _isNotes ? _buildNoveltyViewer(section, isDark) : _buildPlaceBlockViewer(section, isDark, isDesktop);
     } else if (section is TextSection) {
       final alertData = parseAlertMarkdown(section.markdownText);
       final tableData = parseTableMarkdown(section.markdownText);
@@ -4368,7 +4379,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
   static const double _spineX = 22; // centro de la línea punteada (coincide con el ícono del traslado)
   static const double _spineIndent = 56; // sangría de los bloques respecto a la línea
 
-  bool get _useTimeline => _trip?.isReleaseNotes != true && _sections.any((s) => s is PlaceSection);
+  bool get _useTimeline => _sections.any((s) => s is PlaceSection);
+
+  /// Notas de versión: se leen como una crónica; las "paradas" son novedades.
+  bool get _isNotes => _trip?.isReleaseNotes == true;
 
   Widget _buildTimeline(bool isDark, bool isDesktop) {
     final list = ListView.builder(
@@ -4480,6 +4494,71 @@ class _TripViewerPageState extends State<TripViewerPage> {
               ),
             ),
           ),
+        ],
+      );
+    } else if (_useTimeline && section is PlaceSection && _isNotes) {
+      final items = _sections.whereType<PlaceSection>().toList();
+      final n = items.indexOf(section) + 1;
+      final Color tag = releaseTagColor(section.changeTag);
+      block = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      'NOVEDAD $n DE ${items.length}',
+                      style: GoogleFonts.inter(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.6,
+                        color: isDark ? Colors.white54 : OhtliColors.subtleText,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: tag.withValues(alpha: isDark ? 0.22 : 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: tag.withValues(alpha: 0.35)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(releaseTagIcon(section.changeTag), size: 12, color: isDark ? Color.lerp(tag, Colors.white, 0.4) : tag),
+                          const SizedBox(width: 4),
+                          Text(releaseTagLabel(section.changeTag),
+                              style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: isDark ? Color.lerp(tag, Colors.white, 0.4) : tag)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                left: -(_spineIndent - _spineX) - 12,
+                top: -4,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: tag,
+                    border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
+                  ),
+                  child: Icon(releaseTagIcon(section.changeTag), size: 11, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          block,
         ],
       );
     } else if (_useTimeline && section is PlaceSection) {
@@ -4637,15 +4716,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final Color bg = isDark ? const Color(0xFF161618) : Colors.white;
     final Color fg = isDark ? Colors.white : OhtliColors.onyx;
     final bool member = _canInteract;
-    BoxDecoration floating(double radius) => BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(radius),
-          border: Border.all(color: border),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.12), blurRadius: 28, offset: const Offset(0, 10)),
-            BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05), blurRadius: 4, offset: const Offset(0, 1)),
-          ],
-        );
 
     if (_asideCollapsed) {
       // Plegado: cada acceso es un botón flotante independiente (como los bloques del panel).
@@ -4673,7 +4743,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           );
       final bubbles = <Widget>[
         bubble(Icons.keyboard_double_arrow_left_rounded, 'Abrir panel', () => _setAsideCollapsed(false), accent: true),
-        if (_sections.any((s) => s is PlaceSection)) bubble(Icons.map_rounded, 'Ruta completa', () => _showRouteModal(isDark)),
+        if (!_isNotes && _sections.any((s) => s is PlaceSection)) bubble(Icons.map_rounded, 'Ruta completa', () => _showRouteModal(isDark)),
         bubble(Icons.toc_rounded, 'Índice', () => _setAsideCollapsed(false)),
         if (member) bubble(Icons.handyman_rounded, 'Herramientas del viaje', () => _setAsideCollapsed(false)),
         if (showEditAction)
@@ -4700,7 +4770,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       child: Row(
         children: [
           Expanded(
-            child: Text(member ? 'Tu viaje' : 'Recorrido', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: fg)),
+            child: Text(_isNotes ? 'En esta versión' : (member ? 'Tu viaje' : 'Recorrido'), style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.bold, color: fg)),
           ),
           if (showEditAction)
             FilledButton.icon(
@@ -4725,7 +4795,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
     final blocks = <Widget>[
       Padding(padding: const EdgeInsets.only(bottom: 14), child: header),
-      if (_sections.any((s) => s is PlaceSection))
+      if (!_isNotes && _sections.any((s) => s is PlaceSection))
         Padding(
           padding: const EdgeInsets.only(bottom: 14),
           child: DecoratedBox(
@@ -4854,7 +4924,14 @@ class _TripViewerPageState extends State<TripViewerPage> {
           ),
           child: Row(
             children: [
-              if (isPlace) ...[
+              if (isPlace && _isNotes) ...[
+                CircleAvatar(
+                  radius: 11,
+                  backgroundColor: releaseTagColor(s.changeTag),
+                  child: Icon(releaseTagIcon(s.changeTag), size: 12, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+              ] else if (isPlace) ...[
                 CircleAvatar(
                   radius: 11,
                   backgroundColor: detour
@@ -5052,6 +5129,73 @@ class _TripViewerPageState extends State<TripViewerPage> {
         ),
       );
     }
+  }
+
+  /// Novedad de unas notas de versión: tarjeta con una franja del color de su etiqueta,
+  /// título, texto y capturas.
+  Widget _buildNoveltyViewer(PlaceSection item, bool isDark) {
+    final Color tag = releaseTagColor(item.changeTag);
+    final photos = [item.mainPhotoUrl, ...item.secondaryPhotoUrls].where((u) => u.isNotEmpty).toList();
+    Widget shot(String url, double ratio) => ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: ratio,
+            child: Image(
+              image: _getImageProvider(url),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => ColoredBox(color: isDark ? const Color(0xFF26343A) : OhtliColors.cantera.withValues(alpha: 0.4)),
+            ),
+          ),
+        );
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05), blurRadius: 18, offset: const Offset(0, 6))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(height: 5, color: tag),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title.trim().isNotEmpty ? item.title.trim() : 'Novedad',
+                  style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.bold, height: 1.15, color: isDark ? Colors.white : OhtliColors.onyx),
+                ),
+                if (item.description.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  OhtliMarkdownText(
+                    text: item.description,
+                    style: GoogleFonts.inter(fontSize: 14, height: 1.55, color: isDark ? Colors.white70 : OhtliColors.onyx.withValues(alpha: 0.82)),
+                  ),
+                ],
+                if (photos.length == 1) ...[
+                  const SizedBox(height: 16),
+                  shot(photos.first, 16 / 9),
+                ] else if (photos.length > 1) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final (i, u) in photos.indexed) ...[
+                        if (i > 0) const SizedBox(width: 10),
+                        Expanded(child: shot(u, 4 / 3)),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPlaceBlockViewer(PlaceSection place, bool isDark, bool isDesktop) {
@@ -5851,33 +5995,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
     );
   }
 
-  Widget _buildFallbackMapVisual(List<PlaceSection> places, bool isDark) {
-    return Container(
-      width: double.infinity,
-      height: 200,
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF141416) : OhtliColors.innerCardBg,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.route_rounded, color: OhtliColors.stormyTeal, size: 36),
-            const SizedBox(height: 8),
-            Text(
-              'Ruta secuencial con ${places.length} paradas programadas',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : OhtliColors.onyx,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Línea punteada vertical de la línea de tiempo.

@@ -49,6 +49,13 @@ class ErrataEntry {
 const String kTripKindTrip = 'trip';
 const String kTripKindReleaseNotes = 'release_notes';
 
+/// Tipos de novedad en las notas de versión (id → nombre visible).
+const Map<String, String> kReleaseTags = {
+  'nuevo': 'Nuevo',
+  'mejora': 'Mejora',
+  'correccion': 'Corrección',
+};
+
 class Trip {
   final String id;
   final String userId;
@@ -283,6 +290,10 @@ class PlaceSection extends TripSection {
   /// Portada elegida por los viajeros. Si no hay, se usa la del catálogo o una de referencia.
   final String? coverUrl;
 
+  /// Solo en notas de versión: la parada es una "novedad" y esto dice de qué tipo es
+  /// ('nuevo', 'mejora' o 'correccion', ver [kReleaseTags]).
+  final String? changeTag;
+
   bool get isLinkedToCatalog => poiId != null && poiSource == kPlaceSourceCatalog;
   bool get isSuggestion => poiId != null && poiSource == kPlaceSourceSuggestion;
   bool get isGeneric => !isLinkedToCatalog && !isSuggestion;
@@ -307,6 +318,7 @@ class PlaceSection extends TripSection {
     this.leftAt,
     this.realCost,
     this.coverUrl,
+    this.changeTag,
   }) : super(type: 'place');
 
   /// Copia la parada conservando todos los campos que no se pasen
@@ -338,6 +350,7 @@ class PlaceSection extends TripSection {
     bool clearRealCost = false,
     String? coverUrl,
     bool clearCoverUrl = false,
+    String? changeTag,
   }) {
     return PlaceSection(
       id: id,
@@ -359,6 +372,7 @@ class PlaceSection extends TripSection {
       leftAt: clearLeftAt ? null : (leftAt ?? this.leftAt),
       realCost: clearRealCost ? null : (realCost ?? this.realCost),
       coverUrl: clearCoverUrl ? null : (coverUrl ?? this.coverUrl),
+      changeTag: changeTag ?? this.changeTag,
     );
   }
 
@@ -391,6 +405,7 @@ class PlaceSection extends TripSection {
       leftAt: data['leftAt']?.toString(),
       realCost: (data['realCost'] as num?)?.toDouble(),
       coverUrl: (data['coverUrl'] as String?)?.trim().isEmpty == true ? null : data['coverUrl'] as String?,
+      changeTag: kReleaseTags.containsKey(data['changeTag']) ? data['changeTag'] as String : null,
     );
   }
 
@@ -418,6 +433,7 @@ class PlaceSection extends TripSection {
       if (leftAt != null) 'leftAt': leftAt,
       if (realCost != null) 'realCost': realCost,
       if (coverUrl != null) 'coverUrl': coverUrl,
+      if (changeTag != null) 'changeTag': changeTag,
     };
   }
 }

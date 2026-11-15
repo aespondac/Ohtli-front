@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
 import '../../theme/colors.dart';
+import '../../theme/release_tags.dart';
 import '../../utils/friendly_errors.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/ohtli_markdown_editor.dart';
@@ -84,11 +85,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
   static const int _maxUndoSteps = 40;
 
   // Tipo de publicación: viaje o notas de versión (solo equipo editorial).
-  late String _kind = widget.trip.kind;
+  late final String _kind = widget.trip.kind;
   late final TextEditingController _versionController =
       TextEditingController(text: widget.trip.version ?? (widget.trip.isReleaseNotes ? kAppVersion : ''));
-  // Solo el superusuario publica notas de versión (las reglas de Firestore lo exigen también)
-  bool get _canPublishReleaseNotes => isSuperUser();
+
+  /// Editor de notas de versión: se crean desde Administración, no desde aquí. Las "paradas"
+  /// son novedades (sin horario, costo ni traslados) y no hay fe de erratas.
+  bool get _isNotes => _kind == kTripKindReleaseNotes;
 
   // Generación de los editores de bloque: al deshacer se recrean desde los datos.
   int _editorGeneration = 0;
@@ -115,6 +118,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   Trip? _errataBaselineTrip;
 
   bool get _isPostTrip {
+    if (_isNotes) return false;
     if (widget.trip.finishedAt != null) return true;
     final d = _travelDate;
     if (d == null) return false;
@@ -930,6 +934,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           rating: 0,
           mainPhotoUrl: '',
           secondaryPhotoUrls: [],
+          changeTag: _isNotes ? 'nuevo' : null,
         ));
       } else if (type == 'text') {
         add(TextSection(
@@ -1042,6 +1047,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (s is UnknownSection) return ('Bloque no compatible', Icons.help_outline_rounded);
     if (s is PlaceSection) {
       final t = s.title.trim();
+      if (_isNotes) return (t.isEmpty ? 'Novedad sin título' : t, Icons.new_releases_rounded);
       return (t.isEmpty ? 'Lugar sin nombre' : t, Icons.location_on_rounded);
     }
     final String md = s is TextSection ? s.markdownText : (s as TextImageSection).markdownText;
@@ -1264,9 +1270,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
     if (_sections.isEmpty) errors.add('La bitácora está vacía: añade al menos un bloque.');
     final unnamed = places.where((p) => p.title.trim().isEmpty).length;
-    if (unnamed > 0) errors.add(unnamed == 1 ? 'Hay 1 lugar sin nombre.' : 'Hay $unnamed lugares sin nombre.');
+    if (_isNotes) {
+      if (unnamed > 0) errors.add(unnamed == 1 ? 'Hay 1 novedad sin título.' : 'Hay $unnamed novedades sin título.');
+    } else if (unnamed > 0) {
+      errors.add(unnamed == 1 ? 'Hay 1 lugar sin nombre.' : 'Hay $unnamed lugares sin nombre.');
+    }
     if (_coverUrl.isEmpty) warnings.add('No tiene imagen de portada.');
     if (_descriptionController.markdownText.trim().isEmpty) warnings.add('No tiene descripción.');
+    if (_isNotes) places.clear(); // Las novedades no llevan ubicación ni foto obligatoria
     final noLocation = places.where((p) => p.lat == null || p.lng == null).length;
     if (noLocation > 0) {
       warnings.add(noLocation == 1
@@ -2502,6 +2513,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (_coverUrl.isEmpty) out.add(('Agrega una portada', null));
     if (_descriptionController.markdownText.trim().isEmpty) out.add(('Escribe una descripción', null));
     if (_sections.isEmpty) out.add(('Agrega al menos un bloque', null));
+    if (_isNotes) {
+      for (final s in _sections.whereType<PlaceSection>()) {
+        if (s.title.trim().isEmpty) out.add(('Una novedad no tiene título', s.id));
+      }
+      return out;
+    }
     bool seenPlace = false;
     for (int i = 0; i < _sections.length; i++) {
       final s = _sections[i];
@@ -2551,7 +2568,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          title(Icons.tune_rounded, 'DATOS DEL VIAJE'),
+          title(Icons.tune_rounded, _isNotes ? 'DATOS DE LA VERSIÓN' : 'DATOS DEL VIAJE'),
+          if (_isNotes)
+            row(
+              Icons.new_releases_outlined,
+              'Versión',
+              Text('v${_versionController.text.trim().isEmpty ? kAppVersion : _versionController.text.trim()}',
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: fg)),
+            ),
           row(
             Icons.flag_outlined,
             'Estado',
@@ -2610,10 +2634,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 ],
               ),
             ),
-          if (_canPublishReleaseNotes || _kind == kTripKindReleaseNotes) ...[
-            const SizedBox(height: 6),
-            _buildKindSelector(isDark),
-          ],
         ],
       ),
     );
@@ -2662,7 +2682,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 child: Text('y ${issues.length - 6} más', style: GoogleFonts.inter(fontSize: 12, color: sub)),
               ),
           ],
-          if (places > 0) ...[
+          if (places > 0 && !_isNotes) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 6,
@@ -2762,7 +2782,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         OhtliMarkdownEditor(
           controller: _descriptionController,
           focusNode: _getFocusNode('trip_description'),
-          hintText: 'Cuenta de qué va el viaje…',
+          hintText: _isNotes ? 'Cuenta qué trae esta versión…' : 'Cuenta de qué va el viaje…',
           minLines: 2,
           maxLines: null,
           onChanged: _onDataChanged,
@@ -2773,9 +2793,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
           runSpacing: 8,
           children: [
             fact(Icons.event_rounded, _travelDate == null ? 'Sin fecha' : _fmtDate(_travelDate!), onTap: _pickTravelDate),
-            fact(Icons.place_rounded, '${places.length} ${places.length == 1 ? 'parada' : 'paradas'}'),
-            if (starts.isNotEmpty) fact(Icons.schedule_rounded, '${hhmm(starts.reduce(math.min))}–${hhmm(ends.reduce(math.max))}'),
-            if (budget > 0) fact(Icons.account_balance_wallet_rounded, '\$${budget.toStringAsFixed(0)} MXN'),
+            if (_isNotes) ...[
+              fact(Icons.new_releases_outlined, 'v${_versionController.text.trim().isEmpty ? kAppVersion : _versionController.text.trim()}'),
+              fact(Icons.auto_awesome_rounded, '${places.length} ${places.length == 1 ? 'novedad' : 'novedades'}'),
+            ] else
+              fact(Icons.place_rounded, '${places.length} ${places.length == 1 ? 'parada' : 'paradas'}'),
+            if (starts.isNotEmpty && !_isNotes) fact(Icons.schedule_rounded, '${hhmm(starts.reduce(math.min))}–${hhmm(ends.reduce(math.max))}'),
+            if (budget > 0 && !_isNotes) fact(Icons.account_balance_wallet_rounded, '\$${budget.toStringAsFixed(0)} MXN'),
           ],
         ),
         const SizedBox(height: 26),
@@ -2793,7 +2817,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 children: [
                   const Icon(Icons.add_circle_outline_rounded, size: 34, color: OhtliColors.stormyTeal),
                   const SizedBox(height: 10),
-                  Text('Agrega la primera parada o un texto', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
+                  Text(_isNotes ? 'Agrega la primera novedad o un texto' : 'Agrega la primera parada o un texto', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
                   const SizedBox(height: 4),
                   Text('También puedes escribir «/» en un texto vacío para elegir el tipo de bloque.',
                       textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 12.5, color: sub)),
@@ -2825,7 +2849,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 ),
                 itemBuilder: (context, index) {
                   final section = _sections[index];
-                  final bool needsTransfer = section is PlaceSection &&
+                  final bool needsTransfer = !_isNotes &&
+                      section is PlaceSection &&
                       !section.unplanned &&
                       _sections.take(index).any((s) => s is PlaceSection) &&
                       transferBefore(_sections, index) == null;
@@ -2944,7 +2969,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 cursorColor: Colors.white,
                 style: GoogleFonts.outfit(fontSize: isDesktop ? 36 : 27, fontWeight: FontWeight.bold, height: 1.1, color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Título de tu viaje',
+                  hintText: _isNotes ? 'Título de la versión' : 'Título de tu viaje',
                   hintStyle: GoogleFonts.outfit(fontSize: isDesktop ? 36 : 27, fontWeight: FontWeight.bold, color: Colors.white.withValues(alpha: 0.55)),
                   border: InputBorder.none,
                   isDense: true,
@@ -2971,6 +2996,17 @@ class _TripEditorPageState extends State<TripEditorPage> {
           border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
         ),
         child: const Icon(Icons.alt_route_rounded, size: 13, color: Colors.white),
+      );
+    } else if (section is PlaceSection && _isNotes) {
+      marker = Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: releaseTagColor(section.changeTag),
+          shape: BoxShape.circle,
+          border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
+        ),
+        child: Icon(releaseTagIcon(section.changeTag), size: 12, color: Colors.white),
       );
     } else if (section is PlaceSection) {
       int n = 0;
@@ -3177,10 +3213,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final bool isDark = OhtliSettings.instance.isDarkMode;
     final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
     final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
-    const options = <(String, IconData, String, String)>[
-      ('place', Icons.place_rounded, 'Parada', 'Un lugar del recorrido'),
-      ('transfer', Icons.route_rounded, 'Traslado', 'Cómo van de un lugar a otro'),
-      ('text', Icons.notes_rounded, 'Texto', 'Cuenta algo del viaje'),
+    final options = <(String, IconData, String, String)>[
+      if (_isNotes)
+        ('place', Icons.new_releases_rounded, 'Novedad', 'Algo nuevo, una mejora o un arreglo')
+      else ...[
+        ('place', Icons.place_rounded, 'Parada', 'Un lugar del recorrido'),
+        ('transfer', Icons.route_rounded, 'Traslado', 'Cómo van de un lugar a otro'),
+      ],
+      ('text', Icons.notes_rounded, 'Texto', _isNotes ? 'Cuenta algo de la versión' : 'Cuenta algo del viaje'),
       ('text_image', Icons.image_rounded, 'Imagen', 'Una foto con texto al lado'),
       ('table', Icons.table_chart_rounded, 'Tabla', 'Cuentas, horarios o listas'),
       ('notes', Icons.sticky_note_2_rounded, 'Nota', 'Un aviso destacado'),
@@ -3288,8 +3328,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
         style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withValues(alpha: 0.6)),
       );
     } else if (section is PlaceSection) {
-      typeLabel = section.unplanned ? "Desvío" : "Parada";
-      typeIcon = Icons.location_on_rounded;
+      typeLabel = _isNotes ? "Novedad" : (section.unplanned ? "Desvío" : "Parada");
+      typeIcon = _isNotes ? Icons.new_releases_rounded : Icons.location_on_rounded;
       
       final titleController = _blockControllers.putIfAbsent(
         '${section.id}_title',
@@ -3356,7 +3396,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final nextEmptySlot = slots.firstWhere((s) => (s['url'] as String).isEmpty, orElse: () => {});
       final VoidCallback? nextEmptySlotOnTap = nextEmptySlot.isNotEmpty ? nextEmptySlot['onTap'] as VoidCallback? : null;
       // Calificación, gasto real, hora real y desvío son de después del viaje.
-      final bool post = _isPostTrip || section.rating > 0 || section.realCost != null || section.arrivedAt != null || section.unplanned;
+      final bool post = !_isNotes && (_isPostTrip || section.rating > 0 || section.realCost != null || section.arrivedAt != null || section.unplanned);
       final Color fgP = isDark ? Colors.white : const Color(0xFF1F2A2A);
       final Color subP = isDark ? Colors.white60 : OhtliColors.subtleText;
 
@@ -3394,7 +3434,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             controller: titleController,
             style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 19, color: fgP),
             decoration: InputDecoration(
-              hintText: 'Nombre del lugar',
+              hintText: _isNotes ? '¿Qué hay de nuevo?' : 'Nombre del lugar',
               hintStyle: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: subP.withValues(alpha: 0.6)),
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 6),
@@ -3422,7 +3462,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           OhtliMarkdownEditor(
             controller: controller,
             focusNode: focusNode,
-            hintText: 'Qué hay aquí, qué pedir, qué no perderse…',
+            hintText: _isNotes ? 'Qué cambia y por qué importa, en pocas palabras…' : 'Qué hay aquí, qué pedir, qué no perderse…',
             minLines: 2,
             maxLines: null,
           ),
@@ -3449,7 +3489,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
             ),
           );
 
-      final Widget chips = Wrap(
+      final Widget chips = _isNotes
+          ? _buildReleaseTagPicker(section, isDark)
+          : Wrap(
         spacing: 6,
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -3495,8 +3537,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildPlaceCoverStrip(section, isDark),
-              const SizedBox(height: 12),
+              if (!_isNotes) ...[
+                _buildPlaceCoverStrip(section, isDark),
+                const SizedBox(height: 12),
+              ],
               if (roomy)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3822,89 +3866,31 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
 
-  static const double _outlinePanelMinWidth = 1240;
 
-  /// Selector "Viaje / Notas de versión" (solo cuentas del equipo editorial).
-  Widget _buildKindSelector(bool isDark) {
-    final bool isNotes = _kind == kTripKindReleaseNotes;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isNotes
-            ? OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.18 : 0.06)
-            : (isDark ? const Color(0xFF1E1E22) : OhtliColors.cantera.withValues(alpha: 0.12)),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: isNotes ? 0.35 : 0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('Tipo de publicación',
-                  style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx.withValues(alpha: 0.7))),
-              SegmentedButton<String>(
-                showSelectedIcon: false,
-                style: SegmentedButton.styleFrom(
-                  selectedBackgroundColor: OhtliColors.stormyTeal,
-                  selectedForegroundColor: Colors.white,
-                  textStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600),
-                  visualDensity: VisualDensity.compact,
-                ),
-                segments: const [
-                  ButtonSegment(value: kTripKindTrip, icon: Icon(Icons.map_outlined, size: 16), label: Text('Viaje')),
-                  ButtonSegment(value: kTripKindReleaseNotes, icon: Icon(Icons.new_releases_outlined, size: 16), label: Text('Notas de versión')),
-                ],
-                selected: {_kind},
-                onSelectionChanged: _canPublishReleaseNotes
-                    ? (v) {
-                        setState(() {
-                          _kind = v.first;
-                          // Una nota nueva siempre es de la versión actual de la app
-                          if (_kind == kTripKindReleaseNotes && !widget.trip.isReleaseNotes) {
-                            _versionController.text = kAppVersion;
-                          }
-                        });
-                        _forceNewUndoStep = true;
-                        _onDataChanged();
-                      }
-                    : null,
-              ),
-              if (isNotes)
-                SizedBox(
-                  width: 140,
-                  child: TextField(
-                    controller: _versionController,
-                    // Fija: solo se crean notas de la versión actual (config/app_version.dart)
-                    readOnly: true,
-                    enabled: false,
-                    onChanged: (_) => _onDataChanged(),
-                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
-                    decoration: InputDecoration(
-                      labelText: 'Versión',
-                      hintText: '1.4.0',
-                      prefixText: 'v',
-                      isDense: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-            ],
+  /// Tipo de novedad: Nuevo, Mejora o Corrección.
+  Widget _buildReleaseTagPicker(PlaceSection section, bool isDark) {
+    final String current = section.changeTag ?? 'nuevo';
+    // Sin elegir, el color se aclara en modo oscuro para que se lea.
+    Color soft(String tag) => isDark ? Color.lerp(releaseTagColor(tag), Colors.white, 0.45)! : releaseTagColor(tag);
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final e in kReleaseTags.entries)
+          ChoiceChip(
+            selected: current == e.key,
+            showCheckmark: false,
+            avatar: Icon(releaseTagIcon(e.key), size: 15, color: current == e.key ? Colors.white : soft(e.key)),
+            label: Text(e.value,
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: current == e.key ? Colors.white : soft(e.key))),
+            selectedColor: releaseTagColor(e.key),
+            backgroundColor: releaseTagColor(e.key).withValues(alpha: isDark ? 0.14 : 0.07),
+            side: BorderSide(color: releaseTagColor(e.key).withValues(alpha: 0.35)),
+            shape: const StadiumBorder(),
+            visualDensity: VisualDensity.compact,
+            onSelected: (_) => _replacePlace(section.id, (p) => p.copyWith(changeTag: e.key)),
           ),
-          if (isNotes) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Solo puedes crear las notas de la versión actual de Ohtli (v$kAppVersion), una por versión. '
-              'Al publicarlas (públicas) aparecen como historia destacada en Explorar y no en el feed de la comunidad. '
-              'Usa bloques de texto, notas, tablas e imágenes para contar qué hay de nuevo.',
-              style: GoogleFonts.inter(fontSize: 12, height: 1.4, color: OhtliColors.onyx.withValues(alpha: 0.6)),
-            ),
-          ],
-        ],
-      ),
+      ],
     );
   }
 
@@ -4376,27 +4362,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
     );
   }
 
-  void _showOutlineSheet(bool isDark) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (sheetCtx) => StatefulBuilder(
-        builder: (sheetCtx, setSheet) => ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
-          child: SafeArea(
-            child: _buildOutline(
-              isDark,
-              onNavigate: () => Navigator.of(sheetCtx).pop(),
-              onReordered: () => setSheet(() {}),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildTimeChip(PlaceSection place, {required bool arrival, required bool isDark}) {
     final String? value = arrival ? place.arrivalTime : place.departureTime;
     final bool hasValue = value != null && value.trim().isNotEmpty;
@@ -4864,48 +4829,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ),
         );
       },
-    );
-  }
-
-
-
-  Widget _buildAddBlockButton({required String label, required IconData icon, required VoidCallback onTap, double? width}) {
-    final bool isDark = OhtliSettings.instance.isDarkMode;
-    return SizedBox(
-      width: width,
-      child: Material(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: OhtliColors.stormyTeal.withValues(alpha: 0.3),
-                width: 1.2,
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: OhtliColors.stormyTeal, size: 20),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.stormyTeal,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

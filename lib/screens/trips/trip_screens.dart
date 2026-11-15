@@ -3,6 +3,7 @@
 /// descarga la primera vez que se abre una de ellas (o en la precarga tras el arranque).
 library;
 
+export 'release_notes_admin_page.dart' show ReleaseNotesAdminPage;
 export 'trip_editor_page.dart' show TripEditorPage;
 export 'trip_planner_page.dart' show TripPlannerPage;
 export 'trip_viewer_page.dart' show TripViewerPage;
