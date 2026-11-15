@@ -97,7 +97,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
   double _budgetMxn = 450.0;
   String _selectedMood = 'Bohemio y Cafés';
-  String _selectedTopology = 'anillo'; // anillo, radio, elipse
+  String _selectedTopology = 'anillo'; // anillo (ida y vuelta) o radio (abierta)
+  // Ruta abierta: qué extremos fija la persona (inicio, fin o ambos).
+  String _openEnds = 'inicio';
+  String _destinationName = '';
+  Map<String, double>? _destinationCoords;
   // Medio de traslado para el motor (kPlannerModes). Arranca con la preferencia del perfil.
   String _selectedTransportMode = 'walking';
   bool _transportModeTouched = false;
@@ -520,11 +524,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   /// Hasta 6 tarjetas: direcciones guardadas, lugares guardados (máx. 3) y,
-  /// para completar, los puntos populares de la CDMX.
-  List<Widget> _startPointCards() {
+  /// para completar, los puntos populares de la CDMX. Con [forDestination] eligen
+  /// el punto final de una ruta abierta.
+  List<Widget> _startPointCards({bool forDestination = false}) {
     const total = 6;
     final cards = <Widget>[];
+    final verb = forDestination ? 'Termina en' : 'Inicia en';
+    final current = forDestination ? _destinationName : _selectedOriginName;
     void select(String name, double lat, double lng) => setState(() {
+          if (forDestination) {
+            _destinationName = name;
+            _destinationCoords = {'lat': lat, 'lng': lng};
+            return;
+          }
           _selectedOriginName = name;
           _selectedOriginCoords = {'lat': lat, 'lng': lng};
           _originSearchController.text = name;
@@ -540,10 +552,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final icon = lower.contains('casa') || lower.contains('home')
           ? Icons.home_rounded
           : (lower.contains('trabajo') || lower.contains('oficina') ? Icons.work_rounded : Icons.bookmark_rounded);
-      final isSelected = _selectedOriginName == label || _selectedOriginName == addressStr;
+      final isSelected = current == label || current == addressStr;
       cards.add(_buildOriginCard(
         leading: OhtliServiceIcon(icon: icon, color: OhtliColors.stormyTeal, size: 44, soft: !isSelected),
-        title: 'Inicia en $label',
+        title: '$verb $label',
         subtitle: addressStr.isEmpty ? 'Tu dirección guardada' : addressStr,
         selected: isSelected,
         onTap: () => select(label, lat, lng),
@@ -552,10 +564,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
     for (final poi in _savedPlaces.take(3)) {
       if (cards.length == total) break;
-      final isSelected = _selectedOriginName == poi.name;
+      final isSelected = current == poi.name;
       cards.add(_buildOriginCard(
         leading: _thumb(poi.imageUrl, poi.categoryIcon, poi.categoryColor, isSelected),
-        title: 'Inicia en ${poi.name}',
+        title: '$verb ${poi.name}',
         subtitle: 'Guardado · ${poi.coloniaAlcaldiaDisplay}',
         selected: isSelected,
         onTap: () => select(poi.name, poi.location.lat, poi.location.lng),
@@ -568,10 +580,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final name = point['name'] as String;
       if (taken.any((t) => t.contains((point['match'] as String)))) continue;
       final coords = point['coords'] as Map<String, double>;
-      final isSelected = _selectedOriginName == name;
+      final isSelected = current == name;
       cards.add(_buildOriginCard(
         leading: OhtliServiceIcon(icon: point['icon'] as IconData, color: OhtliColors.stormyTeal, size: 44, soft: !isSelected),
-        title: 'Inicia en $name',
+        title: '$verb $name',
         subtitle: point['area'] as String,
         selected: isSelected,
         onTap: () => select(name, coords['lat']!, coords['lng']!),
@@ -605,6 +617,21 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     }
 
     final coords = _selectedOriginCoords ?? {'lat': 19.4326, 'lng': -99.1332};
+    // Forma de la ruta para el motor (core/topology.py): anillo, radio (solo inicio),
+    // fin (solo final) o elipse (inicio y final).
+    final bool needsDestination = _selectedTopology == 'radio' && _openEnds != 'inicio';
+    if (needsDestination && _destinationCoords == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Elige dónde quieres terminar tu recorrido.', style: GoogleFonts.inter()),
+          backgroundColor: OhtliColors.xoconostle,
+        ),
+      );
+      return;
+    }
+    final String engineTopology = _selectedTopology == 'anillo'
+        ? 'anillo'
+        : (_openEnds == 'fin' ? 'fin' : (_openEnds == 'ambos' ? 'elipse' : 'radio'));
     final effectiveMood = _customMoodController.text.trim().isNotEmpty
         ? _customMoodController.text.trim()
         : _selectedMood;
@@ -626,7 +653,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         budget: _budgetMxn,
         origin: coords,
         originName: originTitle,
-        topology: _selectedTopology,
+        topology: engineTopology,
+        destination: needsDestination ? _destinationCoords : null,
         moodText: effectiveMood,
         travelDate: _selectedTravelDate,
         transportMode: _selectedTransportMode,
@@ -1689,12 +1717,49 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               child: _buildTopologyOption(
                 key: 'radio',
                 title: 'Abierta',
-                desc: 'Terminas en otro lugar, sin volver al inicio',
+                desc: 'No vuelves al inicio; tú eliges qué puntos fijar',
                 icon: Icons.trending_flat_rounded,
               ),
             ),
           ],
         ),
+        if (_selectedTopology == 'radio') ...[
+          const SizedBox(height: 18),
+          Text('¿QUÉ PUNTOS QUIERES FIJAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final o in const [
+                ('inicio', 'Solo el inicio', Icons.trip_origin_rounded),
+                ('fin', 'Solo el final', Icons.flag_rounded),
+                ('ambos', 'Inicio y final', Icons.route_rounded),
+              ])
+                OhtliChoiceChip(
+                  label: o.$2,
+                  icon: o.$3,
+                  selected: _openEnds == o.$1,
+                  onTap: () => setState(() => _openEnds = o.$1),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _openEnds == 'inicio'
+                ? 'Empiezas en ${_selectedOriginName.isEmpty ? 'tu punto de partida' : _selectedOriginName} y terminas en la última parada.'
+                : (_openEnds == 'fin'
+                    ? 'Empiezas en la primera parada y terminas en el punto que elijas.'
+                    : 'Empiezas en ${_selectedOriginName.isEmpty ? 'tu punto de partida' : _selectedOriginName} y terminas en el punto que elijas.'),
+            style: OhtliUi.body(size: 12.5),
+          ),
+          if (_openEnds != 'inicio') ...[
+            const SizedBox(height: 18),
+            Text('¿DÓNDE QUIERES TERMINAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+            const SizedBox(height: 12),
+            _buildOriginGrid(isMobile, _startPointCards(forDestination: true)),
+          ],
+        ],
         const SizedBox(height: 28),
 
         // Medio de traslado entre paradas
@@ -3222,6 +3287,36 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       );
     }
 
+    Widget? finalConnector() {
+      final leg = option['final_leg'];
+      if (leg is! Map) return null;
+      final mins = (leg['mins'] as num?)?.toInt() ?? 0;
+      final km = (leg['km'] as num?)?.toDouble() ?? 0.0;
+      final legMode = plannerModeOf(leg['transport_mode']?.toString() ?? 'walking');
+      final cost = (leg['transport_cost_mxn'] as num?)?.toDouble() ?? 0.0;
+      final toOrigin = leg['to'] == 'origin';
+      final where = toOrigin ? 'Regreso al punto de partida' : 'Llegada al punto final';
+      final how = km <= 0.05
+          ? 'ya estás ahí'
+          : '$mins min · ${km.toStringAsFixed(1)} km ${legMode.id == 'walking' ? 'a pie' : legMode.label.toLowerCase()}'
+              '${cost > 0 ? ' · ~\$${cost.toStringAsFixed(0)}' : ''}';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(toOrigin ? Icons.u_turn_left_rounded : Icons.flag_rounded, size: 15, color: OhtliColors.stormyTeal),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                '$where · $how',
+                style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: textSecondary),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final timeline = Column(
       children: List.generate(rawStops.length, (idx) {
         final isLast = idx == rawStops.length - 1;
@@ -3270,7 +3365,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     stopCard(idx),
-                    if (!isLast) walkConnector(idx) else const SizedBox(height: 4),
+                    if (!isLast) walkConnector(idx) else (finalConnector() ?? const SizedBox(height: 4)),
                   ],
                 ),
               ),

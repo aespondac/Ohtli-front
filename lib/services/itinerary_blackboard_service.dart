@@ -328,6 +328,20 @@ class ItineraryBlackboardService {
       );
     }
 
+    // Último tramo: regreso al punto de partida (ida y vuelta) o llegada al punto final.
+    final finalLeg = chosenOption['final_leg'];
+    if (finalLeg is Map && rawStops.isNotEmpty && ((finalLeg['km'] as num?)?.toDouble() ?? 0) > 0.05) {
+      sections.add(TransferSection(
+        id: 'sec_${const Uuid().v4()}',
+        mode: normalizeTransferMode(finalLeg['transport_mode']?.toString()),
+        durationMins: (finalLeg['mins'] as num?)?.toInt(),
+        distanceKm: (finalLeg['km'] as num?)?.toDouble(),
+        cost: (finalLeg['transport_cost_mxn'] as num?)?.toDouble() ?? 0.0,
+        notes: finalLeg['to'] == 'origin' ? 'Regreso al punto de partida' : 'Llegada al punto final',
+        isEstimated: true,
+      ));
+    }
+
     // Agregar sección narrativa general de la ruta si existe
     if (description.isNotEmpty) {
       sections.insert(
