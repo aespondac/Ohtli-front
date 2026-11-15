@@ -234,11 +234,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               Text(
-                'Consola de Invocación de API',
+                'Consola de invocación de API',
                 style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
               ),
               if (_latencyMs != null)
@@ -251,7 +254,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                   ),
                   child: Text(
                     'Latencia: ${_latencyMs}ms',
-                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF00CEC9)),
+                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF00796B)),
                   ),
                 ),
             ],
@@ -261,6 +264,8 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
           // Selector de Modo
           DropdownButtonFormField<String>(
             value: _selectedMode,
+            // El texto largo se encimaba con la flecha en un teléfono.
+            isExpanded: true,
             dropdownColor: OhtliColors.cardBg,
             style: GoogleFonts.inter(color: OhtliColors.onyx),
             decoration: InputDecoration(
@@ -271,9 +276,10 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
               fillColor: OhtliColors.innerCardBg,
             ),
             items: [
-              if (_canExplore) const DropdownMenuItem(value: 'oep', child: Text('OEP (exploración geoespacial multifuente)')),
-              const DropdownMenuItem(value: 'vibe', child: Text('Vibe API (vectorización del estilo de viaje)')),
-              const DropdownMenuItem(value: 'mood', child: Text('Mood API (vectorización del estado de ánimo)')),
+              if (_canExplore)
+                const DropdownMenuItem(value: 'oep', child: Text('OEP (exploración geoespacial multifuente)', overflow: TextOverflow.ellipsis)),
+              const DropdownMenuItem(value: 'vibe', child: Text('Vibe API (vectorización del estilo de viaje)', overflow: TextOverflow.ellipsis)),
+              const DropdownMenuItem(value: 'mood', child: Text('Mood API (vectorización del estado de ánimo)', overflow: TextOverflow.ellipsis)),
             ],
             onChanged: _onModeChanged,
           ),
@@ -293,7 +299,8 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                   : const Icon(Icons.rocket_launch_rounded, size: 20),
               label: Text(_isLoading ? 'Ejecutando en Cloud Run...' : 'Ejecutar Solicitud en Staging'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00CEC9),
+                // Blanco sobre turquesa claro no se leía (≈2:1): turquesa oscuro.
+                backgroundColor: const Color(0xFF00796B),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 elevation: 0,
@@ -329,7 +336,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        LabFieldRow(
           children: [
             Expanded(
               child: TextField(
@@ -591,17 +598,9 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
             ],
           ),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: OhtliColors.innerCardBg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: OhtliColors.cardBorder),
-            ),
-            child: SelectableText(
-              '${_vectorResult!.take(40).toList()}${_vectorResult!.length > 40 ? " ... [+${_vectorResult!.length - 40} dimensiones]" : ""}',
-              style: GoogleFonts.firaCode(fontSize: 12, color: const Color(0xFF00CEC9)),
-            ),
+          LabCodeBlock(
+            text: '${_vectorResult!.take(40).toList()}${_vectorResult!.length > 40 ? " ... [+${_vectorResult!.length - 40} dimensiones]" : ""}',
+            color: const Color(0xFF00CEC9),
           ),
         ],
       ),

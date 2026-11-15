@@ -66,7 +66,7 @@ class LabExperimentShell extends StatelessWidget {
         leading: IconButton(
           icon: Icon(Icons.arrow_back_rounded, color: OhtliColors.onyx),
           onPressed: onBack,
-          tooltip: 'Volver al Workbench de Labs',
+          tooltip: 'Volver a Labs',
         ),
         titleSpacing: 0,
         title: Row(
@@ -311,4 +311,51 @@ class LabExperimentShell extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Campos en una fila que se acomodan al ancho: en un teléfono se apilan en lugar de aplastarse
+/// (antes latitud, longitud y radio quedaban con la etiqueta y el valor cortados a 375 px).
+/// Acepta los hijos tal como estaban en un Row: ignora los Expanded y los SizedBox de separación.
+class LabFieldRow extends StatelessWidget {
+  final List<Widget> children;
+  final double minFieldWidth;
+  final double gap;
+  const LabFieldRow({super.key, required this.children, this.minFieldWidth = 150, this.gap = 12});
+
+  @override
+  Widget build(BuildContext context) {
+    final fields = <Widget>[
+      for (final c in children)
+        if (c is Expanded)
+          c.child
+        else if (!(c is SizedBox && c.child == null))
+          c,
+    ];
+    return LayoutBuilder(builder: (context, constraints) {
+      final cols = ((constraints.maxWidth + gap) / (minFieldWidth + gap)).floor().clamp(1, fields.length);
+      final width = (constraints.maxWidth - gap * (cols - 1)) / cols;
+      return Wrap(
+        spacing: gap,
+        runSpacing: 12,
+        children: [for (final f in fields) SizedBox(width: width, child: f)],
+      );
+    });
+  }
+}
+
+/// Bloque de código (JSON, vectores) con fondo oscuro fijo: el texto de color sobre el fondo
+/// claro del tema claro era ilegible (contraste < 3:1).
+class LabCodeBlock extends StatelessWidget {
+  final String text;
+  final Color color;
+  const LabCodeBlock({super.key, required this.text, this.color = const Color(0xFF55EFC4)});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: const Color(0xFF1E1E24), borderRadius: BorderRadius.circular(14)),
+        child: SelectableText(text, style: GoogleFonts.firaCode(fontSize: 12, color: color, height: 1.4)),
+      );
 }

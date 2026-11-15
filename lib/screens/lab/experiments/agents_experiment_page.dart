@@ -205,11 +205,14 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               Text(
-                'Configuración del Agente a Evaluar',
+                'Configuración del agente',
                 style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
               ),
               Container(
@@ -270,7 +273,8 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
             runSpacing: 8,
             children: _presets.map((preset) {
               return ActionChip(
-                label: Text(preset),
+                // En un teléfono los ejemplos largos se cortaban sin aviso: hasta dos líneas y "…".
+                label: Text(preset, maxLines: 2, overflow: TextOverflow.ellipsis),
                 avatar: const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFF6C5CE7)),
                 onPressed: () => setState(() => _promptController.text = preset),
                 backgroundColor: OhtliColors.innerCardBg,

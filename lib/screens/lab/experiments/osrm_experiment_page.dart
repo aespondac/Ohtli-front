@@ -485,19 +485,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
             ],
           ),
           const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: OhtliColors.innerCardBg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: OhtliColors.cardBorder),
-            ),
-            child: SelectableText(
-              _resultText!,
-              style: GoogleFonts.firaCode(fontSize: 12, color: const Color(0xFFE2711D), height: 1.4),
-            ),
-          ),
+          LabCodeBlock(text: _resultText!, color: const Color(0xFFFFB074)),
         ],
       ),
     );

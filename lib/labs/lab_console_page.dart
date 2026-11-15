@@ -515,7 +515,7 @@ class _ChecklistRunnerState extends State<_ChecklistRunner> {
     try {
       await _saveRun();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar la verificación: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar la verificación: ${labErrorText(e)}.')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -585,18 +585,32 @@ class _ChecklistRunnerState extends State<_ChecklistRunner> {
           ),
         ),
         const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _field(_notes, 'Observaciones (versión de navegador, dispositivo, incidencias)', maxLines: 2)),
-          const SizedBox(width: 12),
-          SizedBox(width: 200, child: _field(_label, 'Etiqueta')),
-          const SizedBox(width: 12),
-          ElevatedButton.icon(
+        // En pantallas angostas las observaciones, la etiqueta y el botón se apilan (antes la fila
+        // se desbordaba y el campo de observaciones quedaba sin ancho).
+        LayoutBuilder(builder: (context, c) {
+          final save = ElevatedButton.icon(
             onPressed: _saving ? null : _save,
             icon: const Icon(Icons.save_rounded),
             label: const Text('Guardar corrida'),
             style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
-          ),
-        ]),
+          );
+          if (c.maxWidth < 640) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _field(_notes, 'Observaciones (versión de navegador, dispositivo, incidencias)', maxLines: 2),
+              const SizedBox(height: 10),
+              _field(_label, 'Etiqueta'),
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerLeft, child: save),
+            ]);
+          }
+          return Row(children: [
+            Expanded(child: _field(_notes, 'Observaciones (versión de navegador, dispositivo, incidencias)', maxLines: 2)),
+            const SizedBox(width: 12),
+            SizedBox(width: 200, child: _field(_label, 'Etiqueta')),
+            const SizedBox(width: 12),
+            save,
+          ]);
+        }),
       ]),
     );
   }
@@ -734,7 +748,7 @@ class _RunHistory extends StatelessWidget {
         StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: repo.watchRuns(study.id),
           builder: (context, snap) {
-            if (snap.hasError) return Text('No pudimos cargar el historial: ${snap.error}', style: labCell());
+            if (snap.hasError) return Text('No pudimos cargar el historial: ${labErrorText(snap.error)}.', style: labCell());
             if (!snap.hasData) {
               return const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
             }

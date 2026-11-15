@@ -984,10 +984,15 @@ class _LabLandingPageState extends State<LabLandingPage> {
       ),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Wrap: en un teléfono el botón baja de línea en vez de desbordarse.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 16,
             children: [
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   SvgPicture.asset(
                     'assets/logo.svg',
@@ -1028,8 +1033,10 @@ class _LabLandingPageState extends State<LabLandingPage> {
           const SizedBox(height: 24),
           const Divider(color: Color(0x22FFFFFF), height: 1),
           const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 16,
+            runSpacing: 10,
             children: [
               Text(
                 '© ${DateTime.now().year} Ohtli Labs · Laboratorio de innovación',
