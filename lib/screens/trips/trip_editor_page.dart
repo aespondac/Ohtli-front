@@ -2087,7 +2087,6 @@ class _TripEditorPageState extends State<TripEditorPage> {
           child: Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.5),
             ),
             child: CircleAvatar(
               radius: 12,

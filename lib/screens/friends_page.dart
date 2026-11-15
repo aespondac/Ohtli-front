@@ -870,7 +870,6 @@ class _Avatar extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: OhtliColors.stormyTeal,
-              border: Border.all(color: closeFriend ? OhtliColors.cempasuchil : OhtliColors.cardBg, width: 2.5),
               boxShadow: OhtliUi.softShadow(),
             ),
             child: ClipOval(

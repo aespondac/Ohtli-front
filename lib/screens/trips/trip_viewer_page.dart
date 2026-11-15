@@ -3772,7 +3772,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: isDark ? const Color(0xFF1E1E22) : Colors.white, width: 2),
               ),
               child: CircleAvatar(
                 radius: 18,
@@ -3803,7 +3802,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
           child: Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: isDark ? const Color(0xFF1E1E22) : Colors.white, width: 2),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.08),
@@ -3874,7 +3872,6 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   leading: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: OhtliColors.stormyTeal.withOpacity(0.2), width: 1),
                     ),
                     child: CircleAvatar(
                       radius: 20,

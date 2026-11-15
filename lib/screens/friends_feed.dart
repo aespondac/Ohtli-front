@@ -280,20 +280,7 @@ class _FriendsRing extends StatelessWidget {
                   width: 72,
                   child: Column(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: SweepGradient(
-                            colors: [OhtliColors.cempasuchil, OhtliColors.xoconostle, OhtliColors.stormyTeal, OhtliColors.cempasuchil],
-                          ),
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.all(2.5),
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: OhtliColors.cloudDancer),
-                          child: FeedAvatar(name: name, photoURL: data?['photoURL'] as String?, size: 60),
-                        ),
-                      ),
+                      FeedAvatar(name: name, photoURL: data?['photoURL'] as String?, size: 66),
                       const SizedBox(height: 6),
                       Text(
                         name.split(' ').first,

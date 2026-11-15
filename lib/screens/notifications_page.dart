@@ -461,7 +461,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: OhtliColors.stormyTeal,
-                          border: Border.all(color: OhtliColors.cardBg, width: 2),
                           boxShadow: OhtliUi.softShadow(),
                         ),
                         child: ClipOval(

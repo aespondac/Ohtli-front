@@ -956,7 +956,6 @@ class _Bubble extends StatelessWidget {
               height: avatarSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: isDark ? const Color(0xFF121214) : Colors.white, width: 1.5),
                 boxShadow: compact ? [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 4, offset: const Offset(0, 1))] : null,
               ),
               child: CircleAvatar(

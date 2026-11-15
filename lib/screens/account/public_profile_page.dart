@@ -921,7 +921,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final double overlap = avatarSize * 0.55 * (1 - t);
     final double avatarLeft = margin + (isDesktop ? 32 : 20);
 
-    Widget avatar(double size, {double border = 4}) {
+    Widget avatar(double size) {
       final fallback = Center(
         child: Text(initials, style: GoogleFonts.outfit(color: Colors.white, fontSize: size * 0.32, fontWeight: FontWeight.w800)),
       );
@@ -931,7 +931,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: OhtliColors.stormyTeal,
-          border: Border.all(color: border >= 4 ? OhtliColors.cloudDancer : Colors.white, width: border),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 18, offset: const Offset(0, 6))],
         ),
         child: ClipOval(
@@ -981,7 +980,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       child: Row(
         children: [
           if (widget.showBackButton) const SizedBox(width: 48),
-          avatar(42, border: 2),
+          avatar(42),
           const SizedBox(width: 12),
           Expanded(
             child: Text(displayName,
@@ -1104,7 +1103,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
               child: Stack(
             clipBehavior: Clip.none,
             children: [
-              avatar(avatarSize, border: 5),
+              avatar(avatarSize),
               if (_isSelf)
                 Positioned(
                   right: -2,
