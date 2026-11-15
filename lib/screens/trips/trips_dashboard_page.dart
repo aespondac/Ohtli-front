@@ -1318,10 +1318,27 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             trailing: _countBadge(completedJobs.length, OhtliColors.stormyTeal, filled: true),
           ),
 
-          // Tarjetas de opciones listas: una polaroid por ruta propuesta
-          Column(
-            children: completedJobs.map((doc) => _buildReadyJobCard(doc, isDark)).toList(),
-          ),
+          // Tarjetas de opciones listas: mismo ancho y rejilla que los viajes
+          Builder(builder: (context) {
+            final int crossAxisCount = width > 1500 ? 5 : (width > 1100 ? 4 : (width > 760 ? 3 : (width > 520 ? 2 : 1)));
+            final double cardWidth = (width - padding * 2 - (crossAxisCount - 1) * 18) / crossAxisCount;
+            final double cardHeight = crossAxisCount == 1 ? 300.0 : (cardWidth * 0.6) + 112.0;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              // Las fotos sobresalen por arriba de cada tarjeta: espacio y sin recorte
+              clipBehavior: Clip.none,
+              padding: const EdgeInsets.only(top: 30),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: 40,
+                crossAxisSpacing: 18,
+                childAspectRatio: cardWidth / cardHeight,
+              ),
+              itemCount: completedJobs.length,
+              itemBuilder: (context, i) => _buildReadyJobCard(completedJobs[i], isDark),
+            );
+          }),
           const SizedBox(height: 20),
         ],
       ],
@@ -1362,103 +1379,77 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     return _HoverCard(
       onTap: open,
       highlight: isNew,
-      builder: (hover) => LayoutBuilder(builder: (context, c) {
-        final narrow = c.maxWidth < 560;
-        final desk = SizedBox(
-          width: narrow ? double.infinity : 168,
-          height: narrow ? 128 : 104,
-          child: PolaroidDesk(
-            borderRadius: BorderRadius.circular(22),
+      inGrid: true,
+      builder: (hover) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Fotos apiladas (una por ruta), igual que en el visor
+          Expanded(
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                Positioned.fill(child: PolaroidStack(photos: photos, spread: hover, scale: 0.74)),
-                if (isNew)
-                  Positioned(
-                    top: 10,
+                Positioned.fill(child: PolaroidDesk(borderRadius: BorderRadius.circular(20), child: const SizedBox.expand())),
+                // Las tres fotos (una por ruta) se salen por la parte de arriba del recuadro
+                Positioned(left: 0, right: 0, top: -30, bottom: 8, child: PolaroidStack(photos: photos, spread: hover, scale: 1.0, align: 1, fillWidthFraction: 0.68)),
+                Positioned(
+                    bottom: 10,
                     left: 10,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(color: OhtliColors.xoconostle, borderRadius: BorderRadius.circular(30)),
-                      child: Text('Nuevo', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                      decoration: BoxDecoration(
+                        color: isNew ? OhtliColors.xoconostle : Colors.white.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.auto_awesome_rounded, size: 12, color: isNew ? Colors.white : OhtliColors.accentText),
+                          const SizedBox(width: 5),
+                          Text(isNew ? 'Nuevo · IA' : 'Plan con IA',
+                              style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w800, color: isNew ? Colors.white : OhtliColors.accentText)),
+                        ],
+                      ),
                     ),
                   ),
               ],
             ),
           ),
-        );
-        final info = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 10, 0, 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.auto_awesome_rounded, size: 13, color: OhtliColors.accentText),
-                const SizedBox(width: 6),
-                Text('${options.length} ${options.length == 1 ? 'RUTA LISTA' : 'RUTAS LISTAS'}', style: OhtliUi.eyebrow(OhtliColors.accentText)),
+                Text('Rutas desde $originName',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w800, color: OhtliColors.onyx, letterSpacing: -0.2, height: 1.15)),
+                const SizedBox(height: 2),
+                Text(options.take(3).map((o) => (o['theme'] ?? o['editorial_headline'] ?? 'Ruta').toString()).join(' · '),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: OhtliColors.subtleText)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          OhtliMetaPill(icon: Icons.payments_outlined, label: '\$${budget.toStringAsFixed(0)} MXN por persona'),
+                        ]),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline_rounded, size: 19, color: OhtliColors.onyx.withValues(alpha: 0.45)),
+                      tooltip: 'Descartar rutas',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _discardJobWithUndo(doc, message: 'Rutas descartadas'),
+                    ),
+                  ],
+                ),
               ],
             ),
-            const SizedBox(height: 3),
-            Text('Rutas desde $originName',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.w800, color: OhtliColors.onyx, height: 1.15)),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                OhtliMetaPill(icon: Icons.payments_outlined, label: '\$${budget.toStringAsFixed(0)} MXN'),
-                ...options.take(3).map((opt) {
-                  final theme = (opt['theme'] ?? opt['editorial_headline'] ?? 'Ruta').toString();
-                  return ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 230),
-                    child: OhtliMetaPill(icon: Icons.alt_route_rounded, label: theme),
-                  );
-                }),
-              ],
-            ),
-          ],
-        );
-        final actions = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ElevatedButton.icon(
-              onPressed: open,
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-              label: const Text('Elegir ruta'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                shape: const StadiumBorder(),
-                textStyle: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w800),
-              ),
-            ),
-            const SizedBox(width: 6),
-            IconButton(
-              icon: Icon(Icons.delete_outline_rounded, size: 20, color: OhtliColors.onyx.withValues(alpha: 0.45)),
-              tooltip: 'Descartar rutas',
-              onPressed: () => _discardJobWithUndo(doc, message: 'Rutas descartadas'),
-            ),
-          ],
-        );
-        if (narrow) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [desk, Padding(padding: const EdgeInsets.fromLTRB(10, 14, 6, 4), child: info), Align(alignment: Alignment.centerRight, child: actions)],
-          );
-        }
-        return Row(
-          children: [
-            desk,
-            const SizedBox(width: 22),
-            Expanded(child: info),
-            const SizedBox(width: 12),
-            actions,
-            const SizedBox(width: 8),
-          ],
-        );
-      }),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1955,7 +1946,8 @@ class _HoverCard extends StatefulWidget {
   final Widget Function(bool hover) builder;
   final VoidCallback onTap;
   final bool highlight;
-  const _HoverCard({required this.builder, required this.onTap, this.highlight = false});
+  final bool inGrid;
+  const _HoverCard({required this.builder, required this.onTap, this.highlight = false, this.inGrid = false});
 
   @override
   State<_HoverCard> createState() => _HoverCardState();
@@ -1975,7 +1967,7 @@ class _HoverCardState extends State<_HoverCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 240),
           curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: EdgeInsets.only(bottom: widget.inGrid ? 0 : 12),
           padding: const EdgeInsets.all(6),
           transform: Matrix4.translationValues(0, _hover ? -3 : 0, 0),
           decoration: BoxDecoration(

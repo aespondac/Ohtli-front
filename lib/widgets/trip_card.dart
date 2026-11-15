@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -402,6 +403,37 @@ class _TripCardState extends State<TripCard> {
     );
   }
 
+  String get _bowAsset {
+    var hash = 0;
+    for (final c in widget.trip.id.codeUnits) {
+      hash += c;
+    }
+    return 'assets/ribbons/Ribbon_0_${const ['gold', 'rosegold', 'gold', 'silver'][hash % 4]}.svg';
+  }
+
+  Widget _bow() => AnimatedScale(
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOutBack,
+        scale: _hover ? 1.04 : 1.0,
+        alignment: Alignment.topLeft,
+        child: SvgPicture.asset(_bowAsset, fit: BoxFit.fitWidth),
+      );
+
+  /// Velo cálido y destellos sobre la foto de una sorpresa.
+  Widget _giftWrapTint() {
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [OhtliColors.xoconostle.withValues(alpha: 0.10), Colors.transparent, const Color(0xFF7A1F3D).withValues(alpha: 0.45)],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Listón diagonal en la esquina de la foto de una sorpresa.
   Widget _ribbonCorner() {
     return IgnorePointer(
@@ -579,6 +611,10 @@ class _TripCardState extends State<TripCard> {
 
   BoxDecoration _cardDecoration(bool isDark) => BoxDecoration(
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+        // Las sorpresas llevan papel cálido de regalo
+        gradient: _isSurprise && !isDark
+            ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFF1EC), Color(0xFFFFF8EE)])
+            : null,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: widget.hasNews || _isSurprise
@@ -613,16 +649,32 @@ class _TripCardState extends State<TripCard> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Stack(
-                  children: [
-                    Positioned.fill(child: _photosArea(compact: false)),
-                    if (_isSurprise) Positioned.fill(child: _ribbonCorner()),
-                    Positioned(top: 10, left: 10, child: _buildStatusChipOnPhoto()),
-                    Positioned(top: 10, right: 10, child: widget.hasNews ? _newsBadge() : _visibilityBadge(compact: true)),
-                  ],
-                ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(child: _photosArea(compact: false)),
+                          if (_isSurprise) Positioned.fill(child: _giftWrapTint()),
+                          Positioned(
+                            top: _isSurprise ? null : 10,
+                            bottom: _isSurprise ? 10 : null,
+                            left: 10,
+                            child: _buildStatusChipOnPhoto(),
+                          ),
+                          if (!_isSurprise)
+                            Positioned(top: 10, right: 10, child: widget.hasNews ? _newsBadge() : _visibilityBadge(compact: true)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Moño de regalo que envuelve la esquina de la foto
+                  if (_isSurprise) Positioned(top: -16, left: -14, right: -10, child: IgnorePointer(child: _bow())),
+                  if (_isSurprise && widget.hasNews) Positioned(bottom: 10, right: 10, child: _newsBadge()),
+                ],
               ),
             ),
           ),

@@ -138,6 +138,12 @@ class PolaroidStack extends StatelessWidget {
   /// Proporción de la foto frontal respecto al espacio disponible.
   final double scale;
   final Widget? frontOverlay;
+  /// Posición vertical de la pila: -1 arriba, 0 centrada, 1 apoyada abajo.
+  final double align;
+  /// Ancho máximo de cada foto respecto al ancho disponible.
+  final double maxWidthFraction;
+  /// Si se indica, cada foto mide este ancho (fracción) y toda la altura disponible.
+  final double? fillWidthFraction;
 
   const PolaroidStack({
     super.key,
@@ -146,6 +152,9 @@ class PolaroidStack extends StatelessWidget {
     this.faceDown = false,
     this.scale = 0.78,
     this.frontOverlay,
+    this.align = 0,
+    this.maxWidthFraction = 0.4,
+    this.fillWidthFraction,
   });
 
   @override
@@ -153,15 +162,16 @@ class PolaroidStack extends StatelessWidget {
     return LayoutBuilder(builder: (context, c) {
       // Tamaño que cabe completo (incluido el giro) dentro del recuadro
       final h = c.maxHeight * scale;
-      final w = (h * 0.75).clamp(0.0, c.maxWidth * 0.4);
-      final ph = w / 0.75;
+      final fill = fillWidthFraction;
+      final w = fill != null ? c.maxWidth * fill : (h * 0.75).clamp(0.0, c.maxWidth * maxWidthFraction);
+      final ph = fill != null ? h : w / 0.75;
       // Siempre se ven 3 hojas: si faltan fotos, las de atrás son papel en blanco
       final list = photos.isEmpty ? <String>[''] : photos.take(3).toList();
       final count = faceDown ? 3 : (list.length == 1 ? 2 : list.length);
       const back = [
         // (giro en vueltas, desplazamiento x relativo) cerrado / abierto
-        [-0.018, -0.16, -0.03, -0.4],
-        [0.016, 0.14, 0.028, 0.4],
+        [-0.018, -0.13, -0.028, -0.3],
+        [0.016, 0.12, 0.026, 0.3],
       ];
       final children = <Widget>[];
       for (var i = count - 1; i >= 1; i--) {
@@ -173,7 +183,7 @@ class PolaroidStack extends StatelessWidget {
           duration: const Duration(milliseconds: 380),
           curve: Curves.easeOutBack,
           left: (c.maxWidth - w) / 2 + dx,
-          top: (c.maxHeight - ph) / 2,
+          top: (c.maxHeight - ph) * (align + 1) / 2,
           child: AnimatedRotation(
             duration: const Duration(milliseconds: 380),
             curve: Curves.easeOutBack,
@@ -186,7 +196,7 @@ class PolaroidStack extends StatelessWidget {
         duration: const Duration(milliseconds: 380),
         curve: Curves.easeOutBack,
         left: (c.maxWidth - w) / 2,
-        top: (c.maxHeight - ph) / 2,
+        top: (c.maxHeight - ph) * (align + 1) / 2,
         child: AnimatedScale(
           duration: const Duration(milliseconds: 380),
           curve: Curves.easeOutBack,
