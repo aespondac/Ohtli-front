@@ -82,6 +82,12 @@ class FriendsActivityFeed extends StatefulWidget {
   final VoidCallback onShowSuggestions;
   final double padding;
 
+  /// Fila de fotos de amigos arriba del feed (en escritorio ya está en la columna izquierda).
+  final bool showFriendsRing;
+
+  /// Margen izquierdo de la lista (0 cuando va en la columna derecha).
+  final double? leftPadding;
+
   const FriendsActivityFeed({
     super.key,
     required this.friendIds,
@@ -89,6 +95,8 @@ class FriendsActivityFeed extends StatefulWidget {
     required this.onOpenProfile,
     required this.onShowSuggestions,
     required this.padding,
+    this.showFriendsRing = true,
+    this.leftPadding,
   });
 
   @override
@@ -199,13 +207,18 @@ class _FriendsActivityFeedState extends State<FriendsActivityFeed> {
     );
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(padding, 4, padding, 48),
+      padding: EdgeInsets.fromLTRB(widget.leftPadding ?? padding, 4, padding, 48),
       children: [
-        _FriendsRing(friendIds: widget.friendIds, users: widget.users, onOpenProfile: widget.onOpenProfile),
-        const SizedBox(height: 22),
-        Center(
+        if (widget.showFriendsRing) ...[
+          _FriendsRing(friendIds: widget.friendIds, users: widget.users, onOpenProfile: widget.onOpenProfile),
+          const SizedBox(height: 22),
+        ],
+        Align(
+          // En la columna derecha se alinea con su título; sola, va al centro.
+          alignment: widget.leftPadding == 0 ? Alignment.topLeft : Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
+            // En su columna ocupa todo el ancho (hasta 900); sola, una columna legible.
+            constraints: BoxConstraints(maxWidth: widget.leftPadding == 0 ? 900 : 680),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
