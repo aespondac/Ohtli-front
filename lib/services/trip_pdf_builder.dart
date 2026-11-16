@@ -990,12 +990,14 @@ class TripPdfBuilder {
 
   String _title(PlaceSection p) => p.title.trim().isNotEmpty ? p.title.trim() : 'Parada';
 
+  /// Píldora: el radio (6) es menor que la mitad de su alto (~15). Un radio mayor hace que el
+  /// PDF dibuje las curvas con picos ("rebabas").
   pw.Widget _chip(String text, {PdfColor? color, PdfColor? fill, pw.Font? font}) => pw.Container(
         margin: const pw.EdgeInsets.only(right: 5, bottom: 4),
-        padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+        padding: const pw.EdgeInsets.fromLTRB(7, 3, 7, 3),
         decoration: pw.BoxDecoration(
           color: fill ?? cream,
-          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10)),
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
         ),
         child: pw.Text(text, style: _t(7.5, font: font ?? fonts.bodySemiBold, color: color ?? onyx)),
       );
