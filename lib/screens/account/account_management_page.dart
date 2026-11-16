@@ -18,6 +18,7 @@ import '../../services/user_private_data.dart';
 import '../../services/feedback_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_sidebar.dart';
+import '../../widgets/ohtli_account_switcher.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../../utils/friendly_errors.dart';
@@ -1668,12 +1669,17 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
           const SizedBox(height: 40),
 
-          // Bottom Logout (only displayed on Mobile dashboard now since Desktop has it in persistent sidebar!)
+          // En móvil no hay menú lateral: aquí se cambia de cuenta y se cierra sesión.
           if (isMobile) ...[
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: OhtliAccountSwitcherSection(onLogout: widget.onLogout),
+            ),
+            const SizedBox(height: 32),
             SizedBox(
               width: 200,
               child: OutlinedButton.icon(
-                onPressed: widget.onLogout,
+                onPressed: () => AccountSwitchActions.logoutKeepingRemembered(widget.onLogout),
                 icon: const Icon(
                   Icons.logout_rounded,
                   size: 18,

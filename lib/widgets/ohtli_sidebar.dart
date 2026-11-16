@@ -15,6 +15,7 @@ import '../services/saved_accounts.dart';
 import '../theme/colors.dart';
 import '../screens/notifications_page.dart';
 import 'ohtli_accessibility_panel.dart';
+import 'ohtli_account_switcher.dart';
 import 'trip_planner_dialog.dart';
 
 Color get _accent => ohtliAccent;
@@ -681,30 +682,17 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     if (choice.startsWith('switch:')) {
       final target = others.firstWhere((a) => 'switch:${a.uid}' == choice);
       if (SavedAccounts.needsLogin(target.uid)) {
-        await _addAccount(currentSaved: currentSaved);
+        await AccountSwitchActions.addAccount(context, currentSaved: currentSaved, onLogout: widget.onLogout);
       } else {
-        await _switchAccount(target);
+        await AccountSwitchActions.switchTo(context, target);
       }
       return;
     }
     switch (choice) {
       case 'remember':
-        await SavedAccounts.remember(user!);
-        if (mounted) {
-          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-            SnackBar(
-              backgroundColor: OhtliColors.stormyTeal,
-              content: Text(
-                SavedAccounts.isSaved(user.uid)
-                    ? 'Listo: podrás volver a esta cuenta desde el menú.'
-                    : 'No pudimos recordar esta cuenta. Intenta de nuevo.',
-                style: GoogleFonts.inter(color: Colors.white),
-              ),
-            ),
-          );
-        }
+        await AccountSwitchActions.rememberCurrent(context, user!);
       case 'add':
-        await _addAccount(currentSaved: currentSaved);
+        await AccountSwitchActions.addAccount(context, currentSaved: currentSaved, onLogout: widget.onLogout);
       case 'account':
         _goToAccount();
       case 'a11y':
@@ -714,76 +702,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
       case 'logout':
         // Si la cuenta se recordó en este dispositivo, se guarda su sesión más reciente para
         // el inicio rápido; se olvida con la × en la pantalla de inicio de sesión.
-        if (user != null && SavedAccounts.isSaved(user.uid)) await SavedAccounts.remember(user);
-        widget.onLogout();
+        await AccountSwitchActions.logoutKeepingRemembered(widget.onLogout);
     }
-  }
-
-  Future<void> _switchAccount(SavedAccount account) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    final label = account.name.isNotEmpty ? account.name : account.email;
-    messenger?.showSnackBar(
-      SnackBar(
-        content: Text('Cambiando a $label…', style: GoogleFonts.inter()),
-        duration: const Duration(seconds: 6),
-      ),
-    );
-    final result = await SavedAccounts.switchTo(account.uid);
-    if (result == SwitchAccountResult.switched) {
-      // Arranca la app desde el inicio con la nueva cuenta (sin datos en memoria de la anterior).
-      web.window.location.assign('${web.window.location.origin}/');
-      return;
-    }
-    messenger?.hideCurrentSnackBar();
-    messenger?.showSnackBar(
-      SnackBar(
-        backgroundColor: OhtliColors.xoconostle,
-        content: Text(
-          result == SwitchAccountResult.expired
-              ? 'La sesión de $label caducó. Inicia sesión de nuevo con esa cuenta para recordarla.'
-              : 'No pudimos cambiar a $label. Intenta de nuevo.',
-          style: GoogleFonts.inter(color: Colors.white),
-        ),
-      ),
-    );
-  }
-
-  /// Lleva al inicio de sesión sin olvidar las cuentas recordadas.
-  Future<void> _addAccount({required bool currentSaved}) async {
-    if (!currentSaved) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: OhtliColors.cloudDancer,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: Text(
-            'Agregar otra cuenta',
-            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: OhtliColors.onyx),
-          ),
-          content: Text(
-            'Tu cuenta actual no está recordada en este navegador, así que para volver a ella '
-            'tendrás que iniciar sesión otra vez. Para poder cambiar con un clic, inicia sesión '
-            'con "Recordarme en este dispositivo" marcado.',
-            style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx.withOpacity(0.8)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('Cancelar', style: GoogleFonts.inter(color: OhtliColors.onyx.withOpacity(0.7))),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text(
-                'Continuar',
-                style: GoogleFonts.inter(color: _accent, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      );
-      if (ok != true || !mounted) return;
-    }
-    widget.onLogout();
   }
 
   /// Panel rápido de accesibilidad: tema y tamaño de letra, junto al menú.
