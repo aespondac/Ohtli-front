@@ -422,6 +422,10 @@ class Poi {
     return isValidPoiNameAndId(name, poiId, category);
   }
 
+  /// El lugar tiene foto propia. Si no, [imageUrl] es una foto de referencia de su categoría
+  /// (de otro lugar de la ciudad): hay que decirlo para no confundir.
+  bool get hasOwnPhoto => photoUrl.isNotEmpty;
+
   String get imageUrl {
     if (photoUrl.isNotEmpty) return photoUrl;
     return CdmxPhotos.forCategory(category, poiId.hashCode);

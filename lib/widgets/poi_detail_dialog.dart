@@ -512,6 +512,25 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
             ),
           ),
         ),
+        // Sin foto propia se muestra una de otro lugar de la ciudad: decirlo para no confundir
+        if (!poi.hasOwnPhoto && _photoIndex == 0)
+          Positioned(
+            top: 14,
+            left: 14,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Foto de referencia',
+                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
         if (photos.length > 1 && !isMobile) ...[
           Positioned(
             left: 14,

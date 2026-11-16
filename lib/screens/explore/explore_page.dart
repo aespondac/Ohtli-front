@@ -572,7 +572,10 @@ class _ExplorePageState extends State<ExplorePage> {
           return _buildInlineMessage(
             gutter: gutter,
             icon: Icons.auto_stories_outlined,
-            message: 'Todavía no hay crónicas públicas. ¡Publica la tuya y sé el primero!',
+            // Las destacadas no se repiten aquí: si las hay, no es que no exista ninguna
+            message: (_configuredPinned ?? kPinnedStories).isNotEmpty
+                ? 'Aún no hay más crónicas públicas. Publica la tuya para que aparezca aquí.'
+                : 'Todavía no hay crónicas públicas. ¡Publica la tuya y sé el primero!',
             actionLabel: 'Ir a Mis viajes',
             onAction: () => widget.onOpenTab(1),
           );

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -45,6 +46,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  /// Botón flotante de planear (teléfono): se esconde al desplazarse hacia abajo.
+  bool _fabVisible = true;
+
   // Preservar iconos contra tree-shaking en la web
   // ignore: unused_field
   static const List<Icon> _preservedIcons = [
@@ -417,8 +421,23 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        body: _buildBody(isMobile),
-        floatingActionButton: FloatingActionButton(
+        // Al bajar se esconde el botón de planear (tapaba el final de cada lista); al subir vuelve
+        body: NotificationListener<UserScrollNotification>(
+          onNotification: (n) {
+            if (n.metrics.axis == Axis.vertical) {
+              final show = n.direction != ScrollDirection.reverse;
+              if (n.direction != ScrollDirection.idle && show != _fabVisible) setState(() => _fabVisible = show);
+            }
+            return false;
+          },
+          child: _buildBody(isMobile),
+        ),
+        floatingActionButton: AnimatedSlide(
+          offset: _fabVisible ? Offset.zero : const Offset(0, 2),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          child: FloatingActionButton(
+          tooltip: 'Planear un viaje',
           heroTag: 'fab_plan_trip_mobile',
           onPressed: () {
             TripPlannerDialog.show(context);
@@ -431,6 +450,7 @@ class _HomePageState extends State<HomePage> {
             height: 22,
             colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           ),
+        ),
         ),
         bottomNavigationBar: BottomNavigationBar(
           // En pantallas fuera de la barra (p. ej. Notificaciones) se mantiene la última pestaña

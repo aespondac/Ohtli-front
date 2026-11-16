@@ -161,6 +161,25 @@ class _PoiCardState extends State<PoiCard> {
             errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
           )),
         ),
+        // Abajo a la izquierda: a la derecha va el botón de crear ruta
+        if (!poi.hasOwnPhoto)
+          Positioned(
+            left: 10,
+            bottom: 10,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Foto de referencia',
+                  style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w600, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
