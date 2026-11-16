@@ -322,13 +322,9 @@ class _GroupInviteSheetState extends State<GroupInviteSheet> {
                         OhtliMetaPill(icon: Icons.groups_rounded, label: '${accepted.length + 1} de ${g.invitedIds.length + 1} van'),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      g.isManual
-                          ? 'Al aceptar te sumas como coautor: podrás agregar paradas, notas y fotos con el grupo.'
-                          : 'Las rutas saldrán de los gustos de quienes acepten (sin mostrárselos a nadie) y luego votan por la que más les guste.',
-                      style: OhtliUi.body(size: 13.5),
-                    ),
+                    const SizedBox(height: 14),
+                    // Quiénes ya van: el organizador y quienes aceptaron
+                    _GoingAvatars(group: g, uids: [g.hostId, ...accepted]),
                     if (answer != 'pending') ...[
                       const SizedBox(height: 18),
                       Row(
@@ -418,6 +414,100 @@ class _GroupInviteSheetState extends State<GroupInviteSheet> {
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+
+/// Fotos encimadas de quienes ya van al plan, con sus nombres al lado.
+class _GoingAvatars extends StatelessWidget {
+  final GroupTrip group;
+  final List<String> uids;
+
+  const _GoingAvatars({required this.group, required this.uids});
+
+  static const int _maxShown = 6;
+  static const double _radius = 18;
+  static const double _overlap = 12;
+
+  String _firstName(String uid) {
+    final name = group.nameOf(uid).trim();
+    return name.isEmpty ? 'Viajero Ohtli' : name.split(RegExp(r'\s+')).first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = uids.take(_maxShown).toList();
+    final extra = uids.length - shown.length;
+    final names = uids.map(_firstName).toList();
+    final caption = switch (names.length) {
+      1 => 'Va ${names[0]}',
+      2 => 'Van ${names[0]} y ${names[1]}',
+      _ => 'Van ${names[0]}, ${names[1]} y ${names.length - 2} más',
+    };
+    final count = shown.length + (extra > 0 ? 1 : 0);
+    final step = _radius * 2 - _overlap;
+    return Semantics(
+      label: caption,
+      child: Row(
+        children: [
+          SizedBox(
+            width: _radius * 2 + step * (count - 1),
+            height: _radius * 2,
+            child: Stack(
+              children: [
+                for (int i = 0; i < shown.length; i++)
+                  Positioned(left: step * i, child: _avatar(shown[i])),
+                if (extra > 0)
+                  Positioned(
+                    left: step * shown.length,
+                    child: _ring(
+                      CircleAvatar(
+                        radius: _radius - 2,
+                        backgroundColor: OhtliColors.cardBorder,
+                        child: Text('+$extra',
+                            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ExcludeSemantics(
+              child: Text(
+                caption,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.subtleText),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ring(Widget child) => Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(color: OhtliColors.cardBg, shape: BoxShape.circle),
+        child: child,
+      );
+
+  Widget _avatar(String uid) {
+    final photo = uid == group.hostId ? group.hostPhoto : group.members[uid]?.photo;
+    final name = group.nameOf(uid);
+    return _ring(
+      CircleAvatar(
+        radius: _radius - 2,
+        backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.15),
+        backgroundImage: photo != null ? NetworkImage(photo) : null,
+        child: photo == null
+            ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal))
+            : null,
       ),
     );
   }
