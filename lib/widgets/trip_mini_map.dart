@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/trip_endpoints.dart';
 import '../theme/colors.dart';
+import 'route_endpoint_pin.dart';
 
 /// Parada que se dibuja en el mini mapa.
 class MiniMapStop {
@@ -53,7 +55,29 @@ class TripMiniMap extends StatelessWidget {
   /// lleva su línea de su color.
   final List<MiniMapSegment>? segments;
 
-  const TripMiniMap({super.key, required this.stops, this.isDark = false, this.segments});
+  /// Inicio y fin del recorrido ({name, lat, lng}): se marcan con el pin de Ohtli, aparte de
+  /// las paradas (uno solo si es el mismo lugar).
+  final Map<String, dynamic>? startPoint;
+  final Map<String, dynamic>? endPoint;
+
+  const TripMiniMap({super.key, required this.stops, this.isDark = false, this.segments, this.startPoint, this.endPoint});
+
+  /// Pines del inicio y el fin: (tipo, lat, lng).
+  List<(EndpointKind, double, double)> get _endpoints {
+    (double, double)? c(Map<String, dynamic>? p) {
+      final lat = p?['lat'], lng = p?['lng'];
+      return lat is num && lng is num ? (lat.toDouble(), lng.toDouble()) : null;
+    }
+
+    final a = c(startPoint), b = c(endPoint);
+    if (a != null && b != null && metersBetween(a.$1, a.$2, b.$1, b.$2) < kSameEndpointMeters) {
+      return [(EndpointKind.both, a.$1, a.$2)];
+    }
+    return [
+      if (a != null) (EndpointKind.start, a.$1, a.$2),
+      if (b != null) (EndpointKind.end, b.$1, b.$2),
+    ];
+  }
 
   static const double _tile = 256;
 
@@ -87,18 +111,22 @@ class TripMiniMap extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
       final size = Size(box.maxWidth, box.maxHeight);
-      final double fit = stops.isEmpty ? 12 : fitZoom(stops, size);
+      final ends = _endpoints;
+      // El encuadre incluye el inicio y el fin aunque no sean paradas.
+      final frame = [...stops, for (final e in ends) MiniMapStop(lat: e.$2, lng: e.$3, number: 0)];
+      // Con pines, más margen: el pin sobresale hacia arriba del punto.
+      final double fit = frame.isEmpty ? 12 : fitZoom(frame, size, pad: ends.isEmpty ? 30 : 40);
       final int zoom = fit.floor();
       // Escala entre el nivel entero de teselas y el encuadre exacto (1 ≤ k < 2).
       final double k = math.pow(2, fit - zoom).toDouble();
 
       // Centro: punto medio del encuadre (en píxeles del mundo).
       Offset center;
-      if (stops.isEmpty) {
+      if (frame.isEmpty) {
         center = _world(_defaultLat, _defaultLng, zoom);
       } else {
         double minX = double.infinity, minY = double.infinity, maxX = -double.infinity, maxY = -double.infinity;
-        for (final s in stops) {
+        for (final s in frame) {
           final p = _world(s.lat, s.lng, zoom);
           minX = math.min(minX, p.dx);
           maxX = math.max(maxX, p.dx);
@@ -107,7 +135,9 @@ class TripMiniMap extends StatelessWidget {
         }
         center = Offset((minX + maxX) / 2, (minY + maxY) / 2);
       }
-      Offset toView(Offset world) => (world - center) * k + Offset(size.width / 2, size.height / 2);
+      // Con pines se baja un poco el dibujo para que el de más arriba no se corte.
+      final double lift = ends.isEmpty ? 0 : 12;
+      Offset toView(Offset world) => (world - center) * k + Offset(size.width / 2, size.height / 2 + lift);
 
       // En pantallas densas se piden teselas de un nivel más y se dibujan a la mitad: el mapa se ve nítido.
       final double dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1;
@@ -115,7 +145,7 @@ class TripMiniMap extends StatelessWidget {
       final double factor = math.pow(2, tileZoom - zoom).toDouble();
       final double shown = _tile / factor * k;
       final double left = (center.dx - size.width / 2 / k) * factor;
-      final double top = (center.dy - size.height / 2 / k) * factor;
+      final double top = (center.dy - (size.height / 2 + lift) / k) * factor;
       final int maxIndex = (1 << tileZoom) - 1;
 
       final tiles = <Widget>[];
@@ -165,6 +195,17 @@ class TripMiniMap extends StatelessWidget {
             Positioned.fill(
               child: CustomPaint(painter: _RoutePainter(points: points, stops: stops, isDark: isDark, segments: segments)),
             ),
+            for (final e in ends)
+              Builder(builder: (_) {
+                const pin = RouteEndpointPin(kind: EndpointKind.start, height: 34);
+                final p = toView(_world(e.$2, e.$3, zoom));
+                // La punta del pin (abajo a la derecha) queda sobre el punto.
+                return Positioned(
+                  left: p.dx - pin.width + 1,
+                  top: p.dy - pin.height,
+                  child: RouteEndpointPin(kind: e.$1, height: pin.height),
+                );
+              }),
             Positioned(
               left: 6,
               bottom: 4,

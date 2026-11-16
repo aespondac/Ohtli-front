@@ -45,6 +45,10 @@ import 'package:http/http.dart' as http;
 import '../../utils/web_helpers.dart';
 import '../../services/feedback_service.dart';
 import '../../utils/current_location.dart';
+import '../../services/trip_endpoints.dart';
+import '../../widgets/route_endpoint_pin.dart';
+import '../../widgets/trip_mini_map.dart';
+import '../../widgets/place_search_field.dart';
 
 class TripEditorPage extends StatefulWidget {
   final Trip trip;
@@ -67,6 +71,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
   late String _coverUrl;
   DateTime? _travelDate;
   List<ErrataEntry> _errataHistory = [];
+
+  // Inicio y fin del recorrido ({name, lat, lng}); null = se deducen de las paradas.
+  late Map<String, dynamic>? _startPoint = widget.trip.startPoint;
+  late Map<String, dynamic>? _endPoint = widget.trip.endPoint;
+  late String? _routeShape = widget.trip.routeShape;
   
   List<TripSection> _sections = [];
 
@@ -691,6 +700,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
         if (_isNotes && (t.version ?? '').isNotEmpty) _setControllerText(_versionController, t.version!);
         _coverUrl = t.coverUrl;
         _travelDate = t.travelDate;
+        _startPoint = t.startPoint;
+        _endPoint = t.endPoint;
+        _routeShape = t.routeShape;
         _status = t.status;
         _visibility = t.visibility;
         _errataHistory = List.of(t.errataHistory);
@@ -1076,6 +1088,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
       version: _kind == kTripKindReleaseNotes && _versionController.text.trim().isNotEmpty
           ? _versionController.text.trim()
           : null,
+      recommendedPoiIds: _liveTrip.recommendedPoiIds,
+      recommendationJobId: _liveTrip.recommendationJobId,
+      routeShape: _routeShape,
+      startPoint: _startPoint,
+      endPoint: _endPoint,
+      groupTripId: _liveTrip.groupTripId,
     );
   }
 
@@ -3356,7 +3374,258 @@ class _TripEditorPageState extends State<TripEditorPage> {
       controller: controller,
       clipBehavior: Clip.none,
       padding: EdgeInsets.fromLTRB(controller != null ? 16 : 0, controller != null ? 20 : 0, controller != null ? 16 : 0, 28),
-      children: [datos, revision, indice],
+      children: [datos, if (!_isNotes) _buildRouteCard(isDark), revision, indice],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inicio y fin del recorrido
+  // ---------------------------------------------------------------------------
+  /// Inicio y fin: los del viaje o, si no los guarda, los que se deducen de las paradas.
+  RouteEndpoints get _routeEnds => _isNotes
+      ? const RouteEndpoints(null, null)
+      : routeEndpointsOf(startPoint: _startPoint, endPoint: _endPoint, sections: _sections);
+
+  /// Pide el lugar del inicio o el fin (buscador de lugar o dirección, o la ubicación actual)
+  /// y lo guarda en el viaje.
+  Future<void> _editEndpoint({required bool start}) async {
+    final ends = _routeEnds;
+    final current = start ? ends.start : ends.end;
+    final res = await showDialog<_EndpointChoice>(
+      context: context,
+      builder: (_) => _EndpointDialog(
+        start: start,
+        current: current,
+        startPoint: ends.start,
+        roundTrip: ends.roundTrip || ends.end == null,
+      ),
+    );
+    if (res == null || !mounted) return;
+    final point = {'name': res.name, 'lat': res.lat, 'lng': res.lng};
+    Map<String, dynamic>? newStart = start ? point : (ends.start?.toPoint());
+    Map<String, dynamic>? newEnd = start ? (res.sameForEnd ? point : ends.end?.toPoint()) : (res.sameForEnd ? ends.start?.toPoint() : point);
+    // Si no hay inicio, el fin "en el mismo lugar" también lo fija.
+    newStart ??= newEnd;
+    newEnd ??= newStart;
+    final bool same = newStart != null &&
+        newEnd != null &&
+        metersBetween(newStart['lat'] as double, newStart['lng'] as double, newEnd['lat'] as double, newEnd['lng'] as double) < kSameEndpointMeters;
+
+    // Las paradas de punto de partida / llegada de un plan hecho a mano se mueven con él.
+    final changed = <String>[];
+    final sections = List<TripSection>.of(_sections);
+    void moveTagged(String tag, Map<String, dynamic>? to, String description) {
+      if (to == null) return;
+      final i = sections.indexWhere((x) => x is PlaceSection && x.id.endsWith('_$tag') && x.isGeneric);
+      if (i < 0) return;
+      final p = sections[i] as PlaceSection;
+      final title = (to['name'] as String).trim();
+      final keepDescription = p.description.trim().isNotEmpty &&
+          !const ['Punto de partida', 'Punto de llegada', 'Regreso al punto de partida'].contains(p.description.trim());
+      sections[i] = p.copyWith(
+        title: title.isEmpty ? p.title : title,
+        lat: to['lat'] as double,
+        lng: to['lng'] as double,
+        description: keepDescription ? null : description,
+      );
+      changed.add(p.id);
+    }
+
+    moveTagged('start', newStart, 'Punto de partida');
+    moveTagged('end', newEnd, same ? 'Regreso al punto de partida' : 'Punto de llegada');
+
+    _forceNewUndoStep = true;
+    setState(() {
+      _startPoint = newStart;
+      _endPoint = newEnd;
+      _routeShape = same ? 'anillo' : 'ambos';
+      _sections = sections;
+    });
+    for (final id in changed) {
+      _refreshBlockEditors(id);
+    }
+    _onDataChanged();
+  }
+
+  /// Ficha del inicio o el fin para la cabecera del editor: toca para cambiarlo.
+  Widget _endpointFact(EndpointKind kind, RouteEndpoint? e, bool isDark, {required VoidCallback onTap}) {
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final String label = e == null ? 'Marcar ${kind == EndpointKind.end ? 'fin' : 'inicio'}' : '${endpointLabel(kind)}: ${e.name}';
+    return Tooltip(
+      message: e == null ? 'Elige dónde ${kind == EndpointKind.end ? 'termina' : 'empieza'} el recorrido' : 'Cambiar',
+      child: Material(
+        color: endpointColor(kind).withValues(alpha: isDark ? 0.16 : 0.07),
+        shape: StadiumBorder(side: BorderSide(color: endpointColor(kind).withValues(alpha: 0.35))),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 11, 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RouteEndpointPin(kind: kind, height: 20),
+                const SizedBox(width: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 260),
+                  child: Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: e == null ? endpointInk(kind, isDark) : fg)),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.edit_rounded, size: 13, color: endpointInk(kind, isDark)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Fila del inicio o el fin en la línea de tiempo cuando no coincide con una parada.
+  Widget _buildEndpointRow(RouteEndpoint e, {required bool start, required bool roundTrip, required bool isDark}) {
+    final kind = start ? EndpointKind.start : EndpointKind.end;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final caption = start ? (roundTrip ? 'INICIO · IDA Y VUELTA' : 'INICIO') : (roundTrip ? 'FIN · REGRESO AL INICIO' : 'FIN');
+    return Padding(
+      padding: EdgeInsets.only(top: start ? 4 : 10, bottom: start ? 6 : 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: _kSpineIndent,
+            child: Padding(padding: const EdgeInsets.only(top: 8), child: Align(alignment: Alignment.topLeft, child: _endpointSpinePin(kind))),
+          ),
+          Expanded(
+            child: Material(
+              color: endpointColor(kind).withValues(alpha: isDark ? 0.14 : 0.06),
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => _editEndpoint(start: start),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(caption,
+                                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: endpointInk(kind, isDark))),
+                            const SizedBox(height: 2),
+                            Text(e.name, style: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.w700, color: fg)),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _editEndpoint(start: start),
+                        style: TextButton.styleFrom(foregroundColor: endpointInk(kind, isDark), visualDensity: VisualDensity.compact),
+                        child: Text('Cambiar', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Pin del inicio o el fin sobre la línea de tiempo (se dibuja encima de la línea).
+  Widget _endpointSpinePin(EndpointKind kind) {
+    const double pinH = 30;
+    return Padding(
+      padding: const EdgeInsets.only(left: _kSpineX - pinH * RouteEndpointPin.aspect / 2),
+      child: RouteEndpointPin(kind: kind, height: pinH),
+    );
+  }
+
+  /// Tarjeta del panel: mini mapa del recorrido con el inicio y el fin, para cambiarlos.
+  Widget _buildRouteCard(bool isDark) {
+    final ends = _routeEnds;
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final places = [
+      for (final p in _sections.whereType<PlaceSection>())
+        if (p.lat != null && p.lng != null) p,
+    ];
+    final planned = _sections.whereType<PlaceSection>().where((x) => !x.unplanned).toList();
+    Widget line(EndpointKind kind, RouteEndpoint? e, VoidCallback onTap) => InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                SizedBox(width: 18, child: Center(child: RouteEndpointPin(kind: kind, height: 24))),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(endpointLabel(kind), style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: endpointInk(kind, isDark))),
+                      Text(e?.name ?? 'Sin marcar', maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: e == null ? sub : fg)),
+                    ],
+                  ),
+                ),
+                Text(e == null ? 'Elegir' : 'Cambiar',
+                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal)),
+              ],
+            ),
+          ),
+        );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      decoration: _floatBlock(isDark),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            child: Row(
+              children: [
+                const Icon(Icons.route_rounded, size: 16, color: OhtliColors.stormyTeal),
+                const SizedBox(width: 7),
+                Text('RECORRIDO', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.4, color: sub)),
+              ],
+            ),
+          ),
+          if (places.isNotEmpty || !ends.isEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: 150,
+                child: TripMiniMap(
+                  isDark: isDark,
+                  startPoint: ends.start?.toPoint(),
+                  endPoint: ends.end?.toPoint(),
+                  stops: [
+                    for (final p in places)
+                      MiniMapStop(
+                        lat: p.lat!,
+                        lng: p.lng!,
+                        number: p.unplanned ? 0 : planned.indexOf(p) + 1,
+                        unplanned: p.unplanned,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 6),
+          if (ends.roundTrip)
+            line(EndpointKind.both, ends.start, () => _editEndpoint(start: true))
+          else ...[
+            line(EndpointKind.start, ends.start, () => _editEndpoint(start: true)),
+            line(EndpointKind.end, ends.end, () => _editEndpoint(start: false)),
+          ],
+        ],
+      ),
     );
   }
 
@@ -3369,6 +3638,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final ends = places.map((p) => _hm(p.departureTime) ?? _hm(p.arrivalTime)).whereType<int>().toList();
     String hhmm(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
     final double budget = places.fold<double>(0, (a, p) => a + p.cost) + _sections.whereType<TransferSection>().fold<double>(0, (a, t) => a + t.cost);
+    final route = _routeEnds;
+    final bool startRow = route.start != null && route.start!.sectionId == null;
+    final bool endRow = route.end != null && route.end!.sectionId == null;
 
     Widget fact(IconData icon, String text, {VoidCallback? onTap}) => Material(
           color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
@@ -3425,6 +3697,14 @@ class _TripEditorPageState extends State<TripEditorPage> {
           runSpacing: 8,
           children: [
             fact(Icons.event_rounded, _travelDate == null ? 'Sin fecha' : _fmtDate(_travelDate!), onTap: _pickTravelDate),
+            if (!_isNotes) ...[
+              if (route.roundTrip)
+                _endpointFact(EndpointKind.both, route.start, isDark, onTap: () => _editEndpoint(start: true))
+              else ...[
+                _endpointFact(EndpointKind.start, route.start, isDark, onTap: () => _editEndpoint(start: true)),
+                _endpointFact(EndpointKind.end, route.end, isDark, onTap: () => _editEndpoint(start: false)),
+              ],
+            ],
             if (_isNotes) ...[
               fact(Icons.new_releases_outlined, 'v${_versionController.text.trim().isEmpty ? kAppVersion : _versionController.text.trim()}'),
               fact(Icons.auto_awesome_rounded, () {
@@ -3471,6 +3751,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 bottom: 24,
                 child: CustomPaint(size: const Size(2, double.infinity), painter: _EditorSpinePainter(isDark ? Colors.white24 : OhtliColors.onyx.withValues(alpha: 0.22))),
               ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+              if (startRow) _buildEndpointRow(route.start!, start: true, roundTrip: route.roundTrip, isDark: isDark),
               ReorderableListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -3505,10 +3789,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   );
                 },
               ),
+                ],
+              ),
             ],
           ),
         if (_sections.isNotEmpty) ...[
           _InsertLine(spineX: _kSpineX, isDark: isDark, onTap: () => _showInsertMenu(at: _sections.length)),
+          if (endRow) _buildEndpointRow(route.end!, start: false, roundTrip: route.roundTrip, isDark: isDark),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.only(left: _kSpineIndent),
@@ -3644,6 +3931,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
           border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
         ),
         child: Icon(releaseTagIcon(section.changeTag), size: 12, color: Colors.white),
+      );
+    } else if (section is PlaceSection && endpointKindOf(_routeEnds.labelFor(section.id)) != null) {
+      // La parada donde empieza o termina el recorrido lleva el pin de Ohtli.
+      marker = SizedBox(
+        width: 26,
+        height: 30,
+        child: Center(child: RouteEndpointPin(kind: endpointKindOf(_routeEnds.labelFor(section.id))!, height: 30)),
       );
     } else if (section is PlaceSection) {
       int n = 0;
@@ -4314,6 +4608,15 @@ class _TripEditorPageState extends State<TripEditorPage> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          if (endpointKindOf(_routeEnds.labelFor(section.id)) case final EndpointKind k)
+            Tooltip(
+              message: k == EndpointKind.end ? 'Aquí termina el recorrido' : 'Aquí empieza el recorrido',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => _editEndpoint(start: k != EndpointKind.end),
+                child: EndpointTag(kind: k, isDark: isDark),
+              ),
+            ),
           _buildTimeChip(section, arrival: true, isDark: isDark),
           _buildTimeChip(section, arrival: false, isDark: isDark),
           pill(
@@ -7440,6 +7743,200 @@ class _InsertLineState extends State<_InsertLine> {
                     child: Text('Agregar aquí', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: accent)),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Lugar elegido para el inicio o el fin del recorrido.
+class _EndpointChoice {
+  final String name;
+  final double lat;
+  final double lng;
+
+  /// Al cambiar el inicio: el fin queda en el mismo lugar (ida y vuelta). Al cambiar el fin:
+  /// termina donde empieza (y [name]/[lat]/[lng] son los del inicio).
+  final bool sameForEnd;
+
+  const _EndpointChoice(this.name, this.lat, this.lng, {this.sameForEnd = false});
+}
+
+/// Diálogo para elegir dónde empieza o termina el recorrido: buscador de lugar o dirección
+/// (el mismo del planificador) o la ubicación actual.
+class _EndpointDialog extends StatefulWidget {
+  final bool start;
+  final RouteEndpoint? current;
+  final RouteEndpoint? startPoint;
+  final bool roundTrip;
+
+  const _EndpointDialog({required this.start, required this.current, required this.startPoint, required this.roundTrip});
+
+  @override
+  State<_EndpointDialog> createState() => _EndpointDialogState();
+}
+
+class _EndpointDialogState extends State<_EndpointDialog> {
+  final _search = TextEditingController();
+  String? _name;
+  double? _lat, _lng;
+  late bool _same = widget.start && widget.roundTrip;
+  bool _locating = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _useCurrentLocation() async {
+    setState(() {
+      _locating = true;
+      _error = null;
+    });
+    try {
+      final here = await getCurrentLocation();
+      if (!mounted) return;
+      if (!here.inCdmx) {
+        setState(() => _error = 'Tu ubicación actual queda fuera de la Ciudad de México. Busca la dirección.');
+        return;
+      }
+      final name = here.address.isNotEmpty ? here.address.split(',').first.trim() : 'Mi ubicación';
+      setState(() {
+        _name = name;
+        _lat = here.lat;
+        _lng = here.lng;
+        _search.text = name;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e is CurrentLocationException ? e.message : 'No pudimos obtener tu ubicación. Busca la dirección.');
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final Color fg = isDark ? Colors.white : OhtliColors.onyx;
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final kind = widget.start ? (widget.roundTrip ? EndpointKind.both : EndpointKind.start) : EndpointKind.end;
+    final title = switch (kind) {
+      EndpointKind.start => '¿Dónde empieza el recorrido?',
+      EndpointKind.end => '¿Dónde termina el recorrido?',
+      EndpointKind.both => '¿Dónde empieza y termina?',
+    };
+    final bool picked = _lat != null && _lng != null;
+    final RouteEndpoint? home = widget.startPoint;
+    return Dialog(
+      backgroundColor: isDark ? const Color(0xFF1E1E22) : OhtliColors.cloudDancer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  RouteEndpointPin(kind: kind, height: 34),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(title, style: GoogleFonts.outfit(fontSize: 21, fontWeight: FontWeight.w700, color: fg))),
+                ],
+              ),
+              if (widget.current != null) ...[
+                const SizedBox(height: 8),
+                Text('Ahora: ${widget.current!.name}${widget.current!.derived ? ' (la ${widget.start ? 'primera' : 'última'} parada)' : ''}',
+                    style: GoogleFonts.inter(fontSize: 13, color: sub)),
+              ],
+              const SizedBox(height: 16),
+              PlaceSearchField(
+                controller: _search,
+                hintText: 'Busca un lugar o una dirección…',
+                onSelected: (name, lat, lng) => setState(() {
+                  _name = name;
+                  _lat = lat;
+                  _lng = lng;
+                  _error = null;
+                }),
+                onCleared: () => setState(() {
+                  _name = null;
+                  _lat = null;
+                  _lng = null;
+                }),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _locating ? null : _useCurrentLocation,
+                  style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
+                  icon: _locating
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.my_location_rounded, size: 18),
+                  label: Text(_locating ? 'Buscando tu ubicación…' : 'Usar mi ubicación actual',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                ),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(_error!, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.warningText)),
+                ),
+              if (widget.start)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: _same,
+                  activeThumbColor: OhtliColors.stormyTeal,
+                  onChanged: (v) => setState(() => _same = v),
+                  title: Text('Termina en el mismo lugar', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: fg)),
+                  subtitle: Text('Ida y vuelta', style: GoogleFonts.inter(fontSize: 12.5, color: sub)),
+                )
+              else if (home != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pop(context, _EndpointChoice(home.name, home.lat, home.lng, sameForEnd: true)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: OhtliColors.stormyTeal,
+                      side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+                      shape: const StadiumBorder(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                    icon: const RouteEndpointPin(kind: EndpointKind.both, height: 20),
+                    label: Text('Terminar donde empieza (${home.name})',
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(foregroundColor: sub),
+                    child: Text('Cancelar', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: picked
+                        ? () => Navigator.pop(
+                            context,
+                            _EndpointChoice((_name ?? '').trim().isEmpty ? 'Punto elegido' : _name!.trim(), _lat!, _lng!,
+                                sameForEnd: widget.start && _same))
+                        : null,
+                    style: FilledButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, shape: const StadiumBorder()),
+                    child: Text('Guardar', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

@@ -35,6 +35,8 @@ import '../../widgets/place_details_form.dart';
 import '../../services/trip_social_service.dart';
 import '../../widgets/trip_social/block_social.dart';
 import '../../widgets/trip_mini_map.dart';
+import '../../widgets/route_endpoint_pin.dart';
+import '../../services/trip_endpoints.dart';
 import '../../widgets/reveal_on_scroll.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/release_tags.dart';
@@ -5144,6 +5146,44 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   bool get _useTimeline => _isNotes ? _sections.isNotEmpty : _sections.any((s) => s is PlaceSection);
 
+  /// Inicio y fin del recorrido: los del viaje o, en viajes que no los guardan, los que se
+  /// deducen de las paradas. Las notas de versión no tienen.
+  RouteEndpoints get _routeEnds => _isNotes || _trip == null
+      ? const RouteEndpoints(null, null)
+      : routeEndpointsOf(startPoint: _trip!.startPoint, endPoint: _trip!.endPoint, sections: _sections, coordsOf: _coordsOf);
+
+  /// Fila del inicio o el fin en la línea de tiempo, cuando no coincide con una parada.
+  Widget _buildEndpointRow(RouteEndpoint e, {required bool isStart, required bool roundTrip, required bool isDark}) {
+    final kind = isStart ? EndpointKind.start : EndpointKind.end;
+    const pinH = 30.0;
+    final caption = isStart
+        ? (roundTrip ? 'INICIO · IDA Y VUELTA' : 'INICIO')
+        : (roundTrip ? 'FIN · REGRESO AL INICIO' : 'FIN');
+    return Padding(
+      padding: EdgeInsets.only(left: _spineIndent, top: isStart ? 4 : 0, bottom: isStart ? 26 : 30),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(caption,
+                  style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: endpointInk(kind, isDark))),
+              const SizedBox(height: 3),
+              Text(e.name,
+                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx)),
+            ],
+          ),
+          Positioned(
+            left: -(_spineIndent - _spineX) - pinH * RouteEndpointPin.aspect / 2,
+            top: -2,
+            child: RouteEndpointPin(kind: kind, height: pinH),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Notas de versión: se leen como una crónica; las "paradas" son novedades.
   bool get _isNotes => _trip?.isReleaseNotes == true;
 
@@ -5170,18 +5210,32 @@ class _TripViewerPageState extends State<TripViewerPage> {
       },
     );
     if (!_useTimeline) return list;
+    final ends = _routeEnds;
+    final start = ends.start, end = ends.end;
+    final bool startRow = start != null && start.sectionId == null;
+    final bool endRow = end != null && end.sectionId == null;
     return Stack(
       children: [
         Positioned(
           left: _spineX - 1,
           top: 8,
-          bottom: 40,
+          bottom: endRow ? 60 : 40,
           child: CustomPaint(
             size: const Size(2, double.infinity),
             painter: _DashedLinePainter(color: isDark ? Colors.white24 : OhtliColors.onyx.withValues(alpha: 0.22)),
           ),
         ),
-        list,
+        if (!startRow && !endRow)
+          list
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (startRow) _buildEndpointRow(start, isStart: true, roundTrip: ends.roundTrip, isDark: isDark),
+              list,
+              if (endRow) _buildEndpointRow(end, isStart: false, roundTrip: ends.roundTrip, isDark: isDark),
+            ],
+          ),
       ],
     );
   }
@@ -5386,6 +5440,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     } else if (_useTimeline && section is PlaceSection) {
       final places = _sections.whereType<PlaceSection>().where((p) => !p.unplanned).toList();
       final n = places.indexOf(section) + 1;
+      // La parada donde empieza o termina el recorrido lleva el pin y su etiqueta.
+      final EndpointKind? endKind = endpointKindOf(_routeEnds.labelFor(section.id));
       final visited = _visited.contains(section.id);
       final time = section.arrivalTime != null && section.arrivalTime!.trim().isNotEmpty ? '${section.arrivalTime!.trim()} · ' : '';
       // Si el grupo se separa: de qué rama es, dónde se reencuentran y dónde termina cada quien.
@@ -5414,10 +5470,18 @@ class _TripViewerPageState extends State<TripViewerPage> {
                         color: isDark ? Colors.white54 : OhtliColors.subtleText,
                       ),
                     ),
+                    if (endKind != null) EndpointTag(kind: endKind, isDark: isDark),
                     ..._placeBranchTags(section, bv, isDark),
                   ],
                 ),
               ),
+              if (endKind != null)
+                Positioned(
+                  left: -(_spineIndent - _spineX) - 13 * RouteEndpointPin.aspect,
+                  top: -10,
+                  child: RouteEndpointPin(kind: endKind, height: 26),
+                )
+              else
               Positioned(
                 left: -(_spineIndent - _spineX) - 9,
                 top: -2,
@@ -5674,6 +5738,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       final b = bv.branchOf(id);
       return b == null ? null : branchColor(bv.indexOf(b.id));
     }
+    final ends = _routeEnds;
 
     List<MiniMapSegment>? segments;
     if (bv.active) {
@@ -5698,6 +5763,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 child: TripMiniMap(
                   isDark: isDark,
                   segments: segments,
+                  startPoint: ends.start?.toPoint(),
+                  endPoint: ends.end?.toPoint(),
                   stops: [
                     for (final p in withCoords)
                       MiniMapStop(
@@ -5843,6 +5910,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   void _showRouteModal(bool isDark) {
     final places = _sections.whereType<PlaceSection>().toList();
     if (places.isEmpty) return;
+    final ends = _routeEnds;
     final size = MediaQuery.of(context).size;
     showDialog<void>(
       context: context,
@@ -5893,6 +5961,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                           'price_mxn': p.cost,
                         })
                     .toList(),
+                startPoint: ends.start?.toPoint(),
+                endPoint: ends.end?.toPoint(),
                 height: math.min(620, size.height * 0.68),
                 isDark: isDark,
               ),
