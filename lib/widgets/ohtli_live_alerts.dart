@@ -376,8 +376,7 @@ class _ToastState extends State<_Toast> with SingleTickerProviderStateMixin {
                           ),
                         ),
                         IconButton(
-                          tooltip: 'Cerrar',
-                          visualDensity: VisualDensity.compact,
+                          tooltip: 'Cerrar aviso',
                           icon: Icon(Icons.close_rounded, size: 18, color: OhtliColors.subtleText),
                           onPressed: widget.onClose,
                         ),

@@ -797,7 +797,12 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                 return Semantics(
                   button: true,
                   label: 'Perfil de $name',
-                  child: InkWell(
+                  hint: 'Mantén presionado para más opciones',
+                  child: GestureDetector(
+                    // Mantener presionado (o clic derecho): quitar de mejores amigos o eliminar.
+                    onLongPressStart: (d) => _closeFriendMenu(id, name, d.globalPosition),
+                    onSecondaryTapDown: (d) => _closeFriendMenu(id, name, d.globalPosition),
+                    child: InkWell(
                     onTap: () => _openProfile(id),
                     borderRadius: BorderRadius.circular(16),
                     child: SizedBox(
@@ -813,6 +818,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                         ],
                       ),
                     ),
+                  ),
                   ),
                 );
               },
@@ -904,7 +910,6 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    visualDensity: VisualDensity.compact,
                     tooltip: 'Rechazar',
                     onPressed: () => _declineFriendRequest(e.value, e.key),
                     icon: Icon(Icons.close_rounded, color: OhtliColors.subtleText),
@@ -978,6 +983,27 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
   final Map<String, Stream<DocumentSnapshot>> _titleStreams = {};
   Stream<DocumentSnapshot> _titleStream(String id) =>
       _titleStreams[id] ??= FirebaseFirestore.instance.collection('titles').doc(id).snapshots().asBroadcastStream();
+
+  Future<void> _closeFriendMenu(String id, String name, Offset at) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(at & const Size(1, 1), Offset.zero & overlay.size),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      color: OhtliColors.cardBg,
+      items: [
+        PopupMenuItem(value: 'profile', child: _menuRow(Icons.person_rounded, 'Ver perfil de ${name.split(' ').first}', OhtliColors.accentText)),
+        PopupMenuItem(value: 'friend', child: _menuRow(Icons.star_outline_rounded, 'Quitar de mejores amigos', OhtliColors.cempasuchil)),
+        PopupMenuItem(value: 'none', child: _menuRow(Icons.person_remove_rounded, 'Eliminar amigo', OhtliColors.xoconostle)),
+      ],
+    );
+    if (action == null || !mounted) return;
+    if (action == 'profile') {
+      _openProfile(id);
+    } else {
+      _toggleFriendStatus(id, action);
+    }
+  }
 
   Widget _friendMenu(String friendId, bool isCloseFriend) {
     return PopupMenuButton<String>(

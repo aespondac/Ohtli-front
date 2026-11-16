@@ -210,7 +210,16 @@ class _FriendsActivityFeedState extends State<FriendsActivityFeed> {
       {for (final id in widget.friendIds) id: _joined(id)},
     );
 
-    return ListView(
+    return RefreshIndicator(
+      color: OhtliColors.stormyTeal,
+      // Jalar hacia abajo vuelve a pedir los viajes de tus amigos.
+      onRefresh: () async {
+        _loaded.clear();
+        _tripsByFriend.clear();
+        await _load();
+      },
+      child: ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(widget.leftPadding ?? padding, 4, padding, 48),
       children: [
         if (widget.showFriendsRing) ...[
@@ -262,6 +271,7 @@ class _FriendsActivityFeedState extends State<FriendsActivityFeed> {
           ),
         ),
       ],
+    ),
     );
   }
 }
@@ -460,12 +470,17 @@ class _ActivityCard extends StatelessWidget {
                 style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
               ),
             )
-          : OhtliPrimaryButton(
+          : Semantics(
               key: const ValueKey('cheer'),
+              label: activity.type == 'joined' ? 'Saludar a $firstName' : 'Felicitar a $firstName',
+              excludeSemantics: true,
+              button: true,
+              child: OhtliPrimaryButton(
               compact: true,
               highlight: true,
               label: activity.type == 'joined' ? '👋  Saludar' : '🎉  Felicitar',
               onPressed: onCheer,
+            ),
             ),
     );
 
