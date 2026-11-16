@@ -34,6 +34,7 @@ class ItineraryBlackboardService {
     String topology = 'radio',
     required String moodText,
     String? originName,
+    String? destinationName,
     String? transportMode,
     // 'presupuesto' (usar entre 80 % y 100 %) o 'ahorro' (gastar lo menos posible).
     String? budgetStrategy,
@@ -83,6 +84,7 @@ class ItineraryBlackboardService {
       'origin': origin,
       'origin_name': effectiveOriginName,
       'destination': destination ?? origin,
+      'destination_name': ?destinationName,
       'topology': topology,
       // mood_vector vacío: el motor vectoriza mood_text para representar la intención de la
       // jornada (antes se enviaba el mismo vector de gusto y la fusión 0.65/0.35 no tenía efecto).
@@ -289,6 +291,8 @@ class ItineraryBlackboardService {
     String? surpriseTargetId,
     String? surpriseTargetName,
     String? routeShape,
+    Map<String, dynamic>? startPoint,
+    Map<String, dynamic>? endPoint,
   }) async {
     final tripId = const Uuid().v4();
     final now = DateTime.now();
@@ -450,6 +454,8 @@ class ItineraryBlackboardService {
       surpriseTargetNames: surpriseTargetId != null ? [surpriseTargetName ?? 'Viajero Ohtli'] : const [],
       unlockOnPublish: surpriseTargetId != null,
       routeShape: routeShape,
+      startPoint: startPoint,
+      endPoint: endPoint,
     );
 
     // 1. Crear documento principal del viaje

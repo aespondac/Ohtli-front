@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/group_trip_service.dart';
+import '../../services/trip_transfers.dart';
 import '../../theme/colors.dart';
 import '../../widgets/group_trip_sheet.dart';
+import '../../widgets/osrm_map_widget.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../widgets/ohtli_ui.dart';
 import 'trip_planner_page.dart';
@@ -297,6 +299,104 @@ class _GroupTripPageState extends State<GroupTripPage> {
     );
   }
 
+  static Map<String, dynamic>? _point(Object? raw, String name) {
+    if (raw is! Map) return null;
+    final lat = raw['lat'] ?? raw['latitude'];
+    final lng = raw['lng'] ?? raw['longitude'];
+    if (lat is! num || lng is! num) return null;
+    return {'name': name, 'lat': lat.toDouble(), 'lng': lng.toDouble()};
+  }
+
+  /// Lo que pidió el organizador: de dónde a dónde, cómo se mueven, presupuesto o lugares y la
+  /// idea del día, con un minimapa del inicio y el fin.
+  Widget _planDetails(GroupTrip g) {
+    final p = g.params;
+    final originName = (p['origin_name'] ?? '').toString().trim();
+    final start = _point(p['origin'], originName.isEmpty ? 'Punto de partida' : originName);
+    final topology = (p['topology'] ?? '').toString();
+    final destName = (p['destination_name'] ?? '').toString().trim();
+    var end = topology == 'anillo' ? start : _point(p['destination'], destName.isEmpty ? 'Punto final' : destName);
+    if (end != null && start != null && end['lat'] == start['lat'] && end['lng'] == start['lng'] && topology != 'anillo') {
+      end = null; // ruta abierta sin final fijo: termina en la última parada
+    }
+    final mode = plannerModeOf(p['transport_mode']?.toString());
+    final limitByPlaces = p['limit_by'] == 'places';
+    final budget = (p['budget'] as num?)?.round();
+    final places = (p['max_places'] as num?)?.toInt();
+    final saving = p['budget_strategy'] == 'ahorro';
+    final mood = (p['mood_text'] ?? '').toString().trim();
+
+    Widget fact(IconData icon, String title, String value) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 18, color: OhtliColors.stormyTeal),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 92,
+                child: Text(title, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+              ),
+              Expanded(child: Text(value, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx))),
+            ],
+          ),
+        );
+
+    final facts = Column(
+      children: [
+        fact(Icons.trip_origin_rounded, 'Inicio', start?['name'] as String? ?? 'Por definir'),
+        fact(
+          Icons.flag_rounded,
+          'Fin',
+          topology == 'anillo'
+              ? 'Regresan al punto de inicio'
+              : (end != null ? end['name'] as String : 'En la última parada'),
+        ),
+        fact(mode.icon, 'Cómo se mueven', mode.label),
+        if (limitByPlaces && places != null)
+          fact(Icons.place_outlined, 'Lugares', '$places paradas')
+        else if (budget != null)
+          fact(Icons.payments_outlined, 'Presupuesto', '\$$budget MXN por persona${saving ? ' · modo ahorro' : ''}'),
+        if (mood.isNotEmpty) fact(Icons.edit_note_rounded, 'La idea', mood.replaceAll('\nIntereses:', ' · Intereses:')),
+      ],
+    );
+
+    final map = start == null
+        ? null
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: OsrmMapWidget(
+              stops: const [],
+              startPoint: start,
+              endPoint: end,
+              height: 190,
+              compact: true,
+              isDark: OhtliSettings.instance.isDarkMode,
+              modeIcon: mode.icon,
+              modeLabel: mode.label,
+              googleTravelMode: mode.googleTravelMode,
+            ),
+          );
+
+    return OhtliSurface(
+      radius: 20,
+      padding: const EdgeInsets.all(14),
+      child: LayoutBuilder(builder: (context, c) {
+        if (map == null) return facts;
+        if (c.maxWidth < 560) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [map, const SizedBox(height: 10), facts]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Padding(padding: const EdgeInsets.only(left: 4, right: 8), child: facts)),
+            SizedBox(width: 260, child: map),
+          ],
+        );
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -338,6 +438,12 @@ class _GroupTripPageState extends State<GroupTripPage> {
                   ),
                   const SizedBox(height: 20),
                   _statusCard(g, uid),
+                  if (g.params.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Text('EL PLAN', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+                    const SizedBox(height: 6),
+                    _planDetails(g),
+                  ],
                   const SizedBox(height: 24),
                   Text('QUIÉNES VAN', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
                   const SizedBox(height: 6),

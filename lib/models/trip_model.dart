@@ -56,6 +56,16 @@ const Map<String, String> kReleaseTags = {
   'correccion': 'Corrección',
 };
 
+/// Punto de inicio o fin de un viaje ({name, lat, lng}); null si no trae coordenadas válidas.
+Map<String, dynamic>? tripPointFrom(Object? raw, {String? name}) {
+  if (raw is! Map) return null;
+  final lat = raw['lat'] ?? raw['latitude'];
+  final lng = raw['lng'] ?? raw['longitude'];
+  if (lat is! num || lng is! num) return null;
+  final n = (name ?? raw['name'] ?? '').toString().trim();
+  return {'name': n, 'lat': lat.toDouble(), 'lng': lng.toDouble()};
+}
+
 class Trip {
   final String id;
   final String userId;
@@ -108,6 +118,11 @@ class Trip {
   /// qué extremos se fijaron ('inicio', 'fin' o 'ambos').
   final String? routeShape;
 
+  /// Inicio y fin del recorrido ({name, lat, lng}), aparte de las paradas: el punto de partida
+  /// y el de llegada (en ida y vuelta, el mismo). El editor y el visor los marcan siempre.
+  final Map<String, dynamic>? startPoint;
+  final Map<String, dynamic>? endPoint;
+
   /// Solicitud de viaje en grupo de la que salió (group_trips/{id}): con ella los invitados
   /// que aceptan se suman como coautores.
   final String? groupTripId;
@@ -139,6 +154,8 @@ class Trip {
     this.recommendedPoiIds = const [],
     this.recommendationJobId,
     this.routeShape,
+    this.startPoint,
+    this.endPoint,
     this.groupTripId,
   });
 
@@ -201,6 +218,8 @@ class Trip {
       recommendationJobId:
           data['recommendation'] is Map ? (data['recommendation'] as Map)['job_id']?.toString() : null,
       routeShape: data['routeShape']?.toString(),
+      startPoint: tripPointFrom(data['startPoint']),
+      endPoint: tripPointFrom(data['endPoint']),
       groupTripId: data['groupTripId']?.toString(),
     );
   }
@@ -232,6 +251,8 @@ class Trip {
       'version': version,
       // Solo si existen: el editor guarda con merge y no debe borrarlos.
       if (routeShape != null) 'routeShape': routeShape,
+      if (startPoint != null) 'startPoint': startPoint,
+      if (endPoint != null) 'endPoint': endPoint,
       if (groupTripId != null) 'groupTripId': groupTripId,
     };
   }

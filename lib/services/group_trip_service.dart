@@ -42,6 +42,8 @@ class GroupTrip {
 
   /// Lo escribe el motor: las 3 rutas, quiénes cuentan en el promedio y votan, la ganadora…
   final List<Map<String, dynamic>> options;
+  /// Lo que pidió el organizador al motor: origen, destino, presupuesto, transporte, intención…
+  final Map<String, dynamic> params;
   final List<String> participantIds;
   final int? winner;
   final String? generationError;
@@ -66,6 +68,7 @@ class GroupTrip {
     this.respondBy,
     this.voteBy,
     this.options = const [],
+    this.params = const {},
     this.participantIds = const [],
     this.winner,
     this.generationError,
@@ -144,6 +147,7 @@ class GroupTrip {
         for (final o in (d['options'] as List?) ?? const [])
           if (o is Map) Map<String, dynamic>.from(o),
       ],
+      params: d['params'] is Map ? Map<String, dynamic>.from(d['params'] as Map) : const {},
       participantIds: ((d['participantIds'] as List?) ?? const []).map((e) => e.toString()).toList(),
       winner: (d['winner'] as num?)?.toInt(),
       generationError: d['generationError']?.toString(),

@@ -231,6 +231,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   int _blackboardProgress = 15;
   String _currentAgentName = 'Comparador';
   List<Map<String, dynamic>> _generatedOptions = [];
+  // Solicitud con que se generaron las opciones (origen, destino, forma de la ruta): de ahí
+  // salen el inicio y el fin que se marcan en el mapa de cada opción.
+  Map<String, dynamic>? _routeRequest;
   bool _isSavingTrip = false;
 
   // Carrusel cinematográfico de multirutas
@@ -514,11 +517,55 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     } else if (widget.initialGeneratedOptions != null && widget.initialGeneratedOptions!.isNotEmpty) {
       _generatedOptions = widget.initialGeneratedOptions!;
       _activeJobId = widget.optionsJobId;
+      _loadRouteRequest(widget.optionsJobId);
       _selectedOriginName = widget.originName ?? 'CDMX';
       _currentStep = PlannerStep.routeTriadCarousel;
       _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
       _reportOptionShown();
     }
+  }
+
+  Future<void> _loadRouteRequest(String? jobId) async {
+    if (jobId == null || jobId.isEmpty) return;
+    try {
+      final d = (await FirebaseFirestore.instance.collection('itinerary_jobs').doc(jobId).get()).data();
+      final req = d?['request'];
+      if (req is Map && mounted) setState(() => _routeRequest = Map<String, dynamic>.from(req));
+    } catch (_) {}
+  }
+
+  /// Inicio y fin de una opción para el mapa: el punto de partida pedido y, según la forma de la
+  /// ruta, el mismo punto (ida y vuelta), el destino fijado o, en una ruta abierta, la última parada.
+  ({Map<String, dynamic>? start, Map<String, dynamic>? end}) _optionEndpoints(Map<String, dynamic> option) {
+    final req = _routeRequest ?? const <String, dynamic>{};
+    Map<String, dynamic>? point(Object? raw, String name) {
+      if (raw is! Map) return null;
+      final lat = raw['lat'] ?? raw['latitude'];
+      final lng = raw['lng'] ?? raw['longitude'];
+      if (lat is! num || lng is! num) return null;
+      return {'name': name, 'lat': lat.toDouble(), 'lng': lng.toDouble()};
+    }
+
+    final originName = (req['origin_name'] ?? _selectedOriginName).toString();
+    final start = point(req['origin'], originName.isEmpty ? 'Punto de partida' : originName);
+    final route = (option['route'] as List?) ?? const [];
+    Map<String, dynamic>? lastStop;
+    if (route.isNotEmpty && route.last is Map) {
+      final m = route.last as Map;
+      lastStop = point(m['location'] ?? m, 'Última parada · ${(m['name'] ?? '').toString()}');
+    }
+    final finalLeg = option['final_leg'];
+    final toOrigin = finalLeg is Map && finalLeg['to'] == 'origin';
+    final topology = (req['topology'] ?? '').toString();
+    Map<String, dynamic>? end;
+    if (toOrigin || topology == 'anillo') {
+      end = start;
+    } else {
+      final dest = point(req['destination'], (req['destination_name'] ?? 'Punto final').toString());
+      final sameAsStart = dest != null && start != null && dest['lat'] == start['lat'] && dest['lng'] == start['lng'];
+      end = (dest != null && !sameAsStart) ? dest : lastStop;
+    }
+    return (start: start, end: end);
   }
 
   /// Retroalimentación: qué opción generada vio la persona.
@@ -531,6 +578,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     if (!mounted || g == null) return;
     setState(() {
       _group = g;
+      if (g.params.isNotEmpty) _routeRequest = g.params;
       if (_generatedOptions.isEmpty && g.options.isNotEmpty) {
         _generatedOptions = g.options;
         _activeCarouselIndex = g.options.length > 2 ? 1 : 0;
@@ -877,6 +925,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           'origin': route.origin,
           'origin_name': route.originName,
           'destination': route.destination,
+          if (route.destination != null && _destinationName.isNotEmpty) 'destination_name': _destinationName,
           'topology': route.topology,
           'mood_text': route.mood,
           'transport_mode': _selectedTransportMode,
@@ -951,6 +1000,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         budget: _budgetMxn,
         origin: coords,
         originName: originTitle,
+        destinationName: needsDestination && _destinationName.isNotEmpty ? _destinationName : null,
         topology: engineTopology,
         destination: needsDestination ? _destinationCoords : null,
         moodText: effectiveMood,
@@ -1051,6 +1101,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               setState(() {
                 _jobError = null;
                 _generatedOptions = rawOptions.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                if (data['request'] is Map) _routeRequest = Map<String, dynamic>.from(data['request'] as Map);
                 _currentStep = PlannerStep.routeTriadCarousel;
                 _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
                 _reportOptionShown();
@@ -1269,6 +1320,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         surpriseTargetId: _companions == 'sorpresa' ? _surpriseTarget?.uid : null,
         surpriseTargetName: _companions == 'sorpresa' ? _surpriseTarget?.name : null,
         routeShape: routeShapeOf(_selectedTopology, _openEnds),
+        startPoint: _optionEndpoints(option).start,
+        endPoint: _optionEndpoints(option).end,
       );
 
       if (_activeJobId != null) {
@@ -1383,6 +1436,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         surpriseTargetNames: surprise != null ? [surprise.name] : const [],
         unlockOnPublish: surprise != null,
         routeShape: shape,
+        // Inicio y fin elegidos en el asistente (en ida y vuelta, el mismo punto)
+        startPoint: shape == 'fin' ? null : tripPointFrom(_selectedOriginCoords, name: _selectedOriginName),
+        endPoint: shape == 'anillo'
+            ? tripPointFrom(_selectedOriginCoords, name: _selectedOriginName)
+            : ((shape == 'fin' || shape == 'ambos') ? tripPointFrom(_destinationCoords, name: _destinationName) : null),
         groupTripId: groupId,
       );
       final service = TripService();
@@ -4691,6 +4749,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             borderRadius: BorderRadius.circular(20),
             child: OsrmMapWidget(
               stops: rawStops,
+              startPoint: _optionEndpoints(option).start,
+              endPoint: _optionEndpoints(option).end,
               routeGeometry: (option['osm_route_geometry'] as List<dynamic>?) ??
                   (option['osm_route'] is Map ? (option['osm_route']['coordinates'] as List<dynamic>?) : null),
               height: isMobile ? 260 : 380,

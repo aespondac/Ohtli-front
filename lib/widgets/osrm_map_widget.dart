@@ -8,6 +8,7 @@ import 'dart:math' as math;
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/colors.dart';
@@ -22,6 +23,10 @@ class OsrmMapWidget extends StatefulWidget {
   final List<dynamic>? stops;
   final Map<String, dynamic>? origin;
   final Map<String, dynamic>? destination;
+  /// Inicio y fin del recorrido ({name, lat, lng}), dibujados aparte de las paradas. Si están
+  /// en el mismo lugar (ida y vuelta) se dibuja un solo marcador "Inicio y fin".
+  final Map<String, dynamic>? startPoint;
+  final Map<String, dynamic>? endPoint;
   final List<dynamic>? routeCoordinates; // Array of [lng, lat]
   final List<dynamic>? routeGeometry; // Lista de [lat, lng] o [[lat, lng], ...]
   final double height;
@@ -42,6 +47,8 @@ class OsrmMapWidget extends StatefulWidget {
     this.stops,
     this.origin,
     this.destination,
+    this.startPoint,
+    this.endPoint,
     this.routeCoordinates,
     this.routeGeometry,
     this.height = 320,
@@ -89,6 +96,18 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
   // Puntos procesados
   List<Map<String, dynamic>> _parsedStops = [];
   List<List<double>> _parsedPath = [];
+  // Inicio / fin: {kind: start|end|both, name, lat, lng}
+  List<Map<String, dynamic>> _endpoints = [];
+
+  static (double, double)? _latLngOf(Map<String, dynamic>? p) {
+    if (p == null) return null;
+    final loc = p['location'] ?? p['coords'];
+    final src = loc is Map ? loc : p;
+    final lat = (src['lat'] ?? src['latitude']) as num?;
+    final lng = (src['lng'] ?? src['longitude']) as num?;
+    if (lat == null || lng == null) return null;
+    return (lat.toDouble(), lng.toDouble());
+  }
 
   @override
   void initState() {
@@ -112,6 +131,8 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
   void didUpdateWidget(covariant OsrmMapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     final dataChanged = oldWidget.stops != widget.stops ||
+        oldWidget.startPoint != widget.startPoint ||
+        oldWidget.endPoint != widget.endPoint ||
         oldWidget.origin != widget.origin ||
         oldWidget.destination != widget.destination ||
         oldWidget.routeCoordinates != widget.routeCoordinates ||
@@ -342,7 +363,42 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
               });
             }
 
-            if (hasBounds) {
+            // Inicio y fin del recorrido con el pin de Ohtli (assets/pin.svg): verde azulado el
+            // inicio, morado el fin y uno solo si es el mismo lugar. La letra va en el hueco del pin.
+            if (cfg.endpoints && cfg.endpoints.length > 0) {
+              const pinPath = "M32.64,24.01L32.64,24.02C32.705,28.54 32.801,32.354 32.828,35.433C32.951,49.412 31.663,48.222 19.69,28.98C16.846,22.571 21.191,19.329 23.747,18.7C28.433,17.548 32.603,20.375 32.64,24.01ZM25.85,23.32C22.2,23.13 22.17,29.15 25.85,28.93C29.49,29.11 29.52,23.11 25.85,23.32Z";
+              const pinUrl = (fill) => "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 61 114"><g transform="matrix(1,0,0,1,-1146.94832,-1388.552012)"><g transform="matrix(4.311286,0,0,4.311286,1066.071409,1309.053892)">' +
+                '<path d="' + pinPath + '" fill="' + fill + '" stroke="#FFFFFF" stroke-width="0.6"/></g></g></svg>');
+              cfg.endpoints.forEach((e) => {
+                const pos = { lat: e.lat, lng: e.lng };
+                bounds.extend(pos);
+                hasBounds = true;
+                const fill = e.kind === "end" ? "#6C3953" : "#2C666E";
+                const letter = e.kind === "both" ? "" : (e.kind === "start" ? "I" : "F");
+                const title = (e.kind === "both" ? "Inicio y fin" : (e.kind === "start" ? "Inicio" : "Fin")) + ": " + e.name;
+                const marker = new google.maps.Marker({
+                  position: pos,
+                  map: map,
+                  title: title,
+                  zIndex: 5,
+                  label: letter ? { text: letter, color: fill, fontWeight: "900", fontSize: "9px" } : null,
+                  icon: {
+                    url: pinUrl(fill),
+                    scaledSize: new google.maps.Size(28, 52),
+                    anchor: new google.maps.Point(27, 52),
+                    labelOrigin: new google.maps.Point(14, 15)
+                  }
+                });
+                state.markers.push(marker);
+              });
+            }
+
+            const onlyOnePoint = (!cfg.stops || cfg.stops.length === 0) && cfg.endpoints && cfg.endpoints.length === 1;
+            if (onlyOnePoint) {
+              map.setCenter({ lat: cfg.endpoints[0].lat, lng: cfg.endpoints[0].lng });
+              map.setZoom(15);
+            } else if (hasBounds) {
               if (cfg.stops && cfg.stops.length === 1 && (!cfg.path || cfg.path.length < 2)) {
                 map.setCenter({ lat: cfg.stops[0].lat, lng: cfg.stops[0].lng });
                 map.setZoom(15);
@@ -377,6 +433,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
               })
           .toList(),
       'path': _parsedPath,
+      'endpoints': _endpoints,
     };
 
     try {
@@ -387,6 +444,19 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
   void _processCoordinatesAndFitBounds() {
     _parsedStops = [];
     _parsedPath = [];
+    _endpoints = [];
+    final a = _latLngOf(widget.startPoint);
+    final b = _latLngOf(widget.endPoint);
+    String nameOf(Map<String, dynamic>? p, String fallback) {
+      final n = (p?['name'] ?? '').toString().trim();
+      return n.isEmpty ? fallback : n;
+    }
+    if (a != null && b != null && _metersBetween(a, b) < 80) {
+      _endpoints.add({'kind': 'both', 'name': nameOf(widget.startPoint, 'Inicio y fin'), 'lat': a.$1, 'lng': a.$2});
+    } else {
+      if (a != null) _endpoints.add({'kind': 'start', 'name': nameOf(widget.startPoint, 'Inicio'), 'lat': a.$1, 'lng': a.$2});
+      if (b != null) _endpoints.add({'kind': 'end', 'name': nameOf(widget.endPoint, 'Fin'), 'lat': b.$1, 'lng': b.$2});
+    }
 
     // Determinar la lista efectiva de paradas
     final effectiveStops = <dynamic>[];
@@ -457,9 +527,15 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
       }
     }
 
-    if (_parsedPath.isEmpty && _parsedStops.length >= 2) {
-      for (final s in _parsedStops) {
-        _parsedPath.add([s['lat'] as double, s['lng'] as double]);
+    // Sin geometría: línea recta del inicio, por las paradas, al fin
+    if (_parsedPath.isEmpty) {
+      final start = _endpoints.where((e) => e['kind'] != 'end').firstOrNull;
+      final end = _endpoints.where((e) => e['kind'] != 'start').firstOrNull;
+      final pts = [if (start != null) start, ..._parsedStops, if (end != null) end];
+      if (pts.length >= 2) {
+        for (final p in pts) {
+          _parsedPath.add([p['lat'] as double, p['lng'] as double]);
+        }
       }
     }
 
@@ -469,6 +545,9 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
       allPoints.add([s['lat'] as double, s['lng'] as double]);
     }
     allPoints.addAll(_parsedPath);
+    for (final e in _endpoints) {
+      allPoints.add([e['lat'] as double, e['lng'] as double]);
+    }
 
     if (allPoints.isNotEmpty) {
       double minLat = allPoints.first[0];
@@ -507,6 +586,15 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
       _initialZoom = _zoom;
       _panOffset = Offset.zero;
     }
+  }
+
+  static double _metersBetween((double, double) a, (double, double) b) {
+    const r = 6371000.0;
+    final dLat = (b.$1 - a.$1) * math.pi / 180;
+    final dLng = (b.$2 - a.$2) * math.pi / 180;
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(a.$1 * math.pi / 180) * math.cos(b.$1 * math.pi / 180) * math.sin(dLng / 2) * math.sin(dLng / 2);
+    return 2 * r * math.asin(math.sqrt(h));
   }
 
   void _resetView() {
@@ -548,10 +636,14 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
 
   void _openInGoogleMaps() {
     if (_parsedStops.isEmpty) return;
-    final origin = '${_parsedStops.first['lat']},${_parsedStops.first['lng']}';
-    final destination = '${_parsedStops.last['lat']},${_parsedStops.last['lng']}';
-    final waypoints = _parsedStops.length > 2
-        ? _parsedStops.sublist(1, _parsedStops.length - 1).map((s) => '${s['lat']},${s['lng']}').join('|')
+    // Con inicio y fin marcados, el recorrido va de uno al otro pasando por todas las paradas
+    final start = _endpoints.where((e) => e['kind'] != 'end').firstOrNull;
+    final end = _endpoints.where((e) => e['kind'] != 'start').firstOrNull;
+    final points = [if (start != null) start, ..._parsedStops, if (end != null) end];
+    final origin = '${points.first['lat']},${points.first['lng']}';
+    final destination = '${points.last['lat']},${points.last['lng']}';
+    final waypoints = points.length > 2
+        ? points.sublist(1, points.length - 1).map((s) => '${s['lat']},${s['lng']}').join('|')
         : '';
     final url =
         'https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination${waypoints.isNotEmpty ? '&waypoints=$waypoints' : ''}&travelmode=${widget.googleTravelMode}';
@@ -860,6 +952,20 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
                               ),
                             ),
                           ),
+                        for (final e in _endpoints)
+                          Builder(builder: (_) {
+                            final pt = _geoToPixel(e['lat'] as double, e['lng'] as double, viewSize);
+                            final kind = e['kind'] as String;
+                            final title = kind == 'both' ? 'Inicio y fin' : (kind == 'start' ? 'Inicio' : 'Fin');
+                            return Positioned(
+                              left: pt.dx - _EndpointPin.width + 1,
+                              top: pt.dy - _EndpointPin.height,
+                              child: Tooltip(
+                                message: '$title: ${e['name']}',
+                                child: _EndpointPin(kind: kind),
+                              ),
+                            );
+                          }),
                         ...stopOffsets.asMap().entries.map((entry) {
                           final idx = entry.key;
                           final s = entry.value;
@@ -1166,5 +1272,42 @@ class _OsmRoutePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _OsmRoutePainter oldDelegate) {
     return oldDelegate.points != points || oldDelegate.isDark != isDark;
+  }
+}
+
+/// Pin de Ohtli (assets/pin.svg) para el inicio y el fin en el mapa sin Google. La punta queda
+/// abajo a la derecha (el pin va inclinado); la letra, en el hueco.
+class _EndpointPin extends StatelessWidget {
+  const _EndpointPin({required this.kind});
+  final String kind;
+
+  static const double width = 28;
+  static const double height = 52;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = kind == 'end' ? OhtliColors.xoconostle : OhtliColors.stormyTeal;
+    final letter = kind == 'both' ? '' : (kind == 'start' ? 'I' : 'F');
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: SvgPicture.asset('assets/pin.svg', colorFilter: ColorFilter.mode(color, BlendMode.srcIn)),
+          ),
+          if (letter.isNotEmpty)
+            Positioned(
+              left: 14 - 6,
+              top: 15 - 7,
+              width: 12,
+              height: 14,
+              child: Center(
+                child: Text(letter, style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w900, color: color)),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
