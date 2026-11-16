@@ -4549,19 +4549,22 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   tooltip: 'Opciones del bloque',
                   icon: Icon(Icons.more_horiz_rounded, size: 20, color: fgLabel),
                   onSelected: (v) {
+                    // Por id: en vivo, otro pudo mover o agregar bloques con el menú abierto.
+                    final i = _idx(section.id);
+                    if (i < 0) return;
                     switch (v) {
                       case 'up':
-                        _moveUp(index);
+                        _moveUp(i);
                       case 'down':
-                        _moveDown(index);
+                        _moveDown(i);
                       case 'dup':
-                        _duplicateBlock(index);
+                        _duplicateBlock(i);
                       case 'above':
-                        _showInsertMenu(at: index);
+                        _showInsertMenu(at: i);
                       case 'below':
-                        _showInsertMenu(at: index + 1);
+                        _showInsertMenu(at: i + 1);
                       case 'delete':
-                        _deleteBlock(index);
+                        _deleteBlock(i);
                     }
                   },
                   itemBuilder: (_) => [
