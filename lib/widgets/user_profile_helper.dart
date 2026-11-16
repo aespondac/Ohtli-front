@@ -219,8 +219,10 @@ class UserProfileHelper {
     // 4. Clean up the old deleted document if UID changed
     if (oldUid != null && oldUid != user.uid) {
       try {
-        await UserPrivateData.privateRef(oldUid).delete();
+        // Primero los documentos cuyo borrado comprueba el correo del privado; al final el privado.
+        await firestore.collection('public_profiles').doc(oldUid).delete();
         await firestore.collection('users').doc(oldUid).delete();
+        await UserPrivateData.privateRef(oldUid).delete();
         print("Cleaned up legacy deleted profile document $oldUid");
       } catch (e) {
         print("Error deleting legacy restored document: $e");

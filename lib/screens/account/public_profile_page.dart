@@ -27,6 +27,7 @@ import '../friends_page.dart';
 import '../../utils/web_helpers.dart';
 import '../../screens/trips/trip_screens.dart' deferred as trips;
 import '../../widgets/deferred_view.dart';
+import '../../services/public_profiles.dart';
 
 class PublicProfilePage extends StatefulWidget {
   final String userId;
@@ -179,7 +180,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     try {
       // 1. Listen to profile document in real-time
       FirebaseFirestore.instance
-          .collection('users')
+          .collection(_isSelf ? 'users' : 'public_profiles')
           .doc(widget.userId)
           .snapshots()
           .listen((doc) async {
@@ -195,10 +196,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             final List<dynamic> possessed = data['possessedTitles'] ?? [];
             final String? active = data['activeTitleId'];
             if (possessed.isEmpty || active == null) {
-              await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).set({
+              final titles = {
                 'possessedTitles': possessed.isEmpty ? ['viajero'] : possessed,
                 'activeTitleId': active ?? 'viajero',
-              }, SetOptions(merge: true));
+              };
+              await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).set(titles, SetOptions(merge: true));
+              await PublicProfiles.mirror(_currentUser.uid, titles);
             }
             // Las listas sociales viven en users/{uid}/social/*: mover las antiguas
             if (data.containsKey('friends') || data.containsKey('following') || data.containsKey('closeFriends')) {
@@ -646,6 +649,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                                       .collection('users')
                                       .doc(_currentUser!.uid)
                                       .update({'activeTitleId': id});
+                                  await PublicProfiles.mirror(_currentUser.uid, {'activeTitleId': id});
                                   Navigator.pop(context);
                                   _showStatusSnackBar('Título activo cambiado a "$name"');
                                 }
@@ -725,6 +729,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           .collection('users')
           .doc(_currentUser.uid)
           .set(updateData, SetOptions(merge: true));
+      await PublicProfiles.mirror(_currentUser.uid, updateData);
 
       if (!isCover) {
         await _currentUser.updatePhotoURL(downloadUrl);
@@ -1202,7 +1207,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     setState(() => _userProfile = {...?_userProfile, 'moments': picked.map((m) => m.toMap()).toList()});
     if (_currentUser == null) return;
     try {
-      await FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).update({'moments': picked.map((m) => m.toMap()).toList()});
+      final moments = picked.map((m) => m.toMap()).toList();
+      await FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).update({'moments': moments});
+      await PublicProfiles.mirror(_currentUser.uid, {'moments': moments});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

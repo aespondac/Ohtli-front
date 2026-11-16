@@ -1378,7 +1378,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         // For co-authored trips, fetch author profile lazily
         if (isCoAuthored && !_authorProfilesCache.containsKey(trip.userId)) {
           _authorProfilesCache[trip.userId] = {'name': null, 'photo': null};
-          FirebaseFirestore.instance.collection('users').doc(trip.userId).get().then((doc) {
+          FirebaseFirestore.instance.collection('public_profiles').doc(trip.userId).get().then((doc) {
             if (doc.exists && mounted) {
               final data = doc.data();
               setState(() {
@@ -1442,7 +1442,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         
         if (isCoAuthored && !_authorProfilesCache.containsKey(trip.userId)) {
           _authorProfilesCache[trip.userId] = {'name': null, 'photo': null};
-          FirebaseFirestore.instance.collection('users').doc(trip.userId).get().then((doc) {
+          FirebaseFirestore.instance.collection('public_profiles').doc(trip.userId).get().then((doc) {
             if (doc.exists && mounted) {
               final data = doc.data();
               setState(() {
@@ -1532,7 +1532,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
         if (!_authorProfilesCache.containsKey(trip.userId)) {
           _authorProfilesCache[trip.userId] = {'name': null, 'photo': null};
-          FirebaseFirestore.instance.collection('users').doc(trip.userId).get().then((doc) {
+          FirebaseFirestore.instance.collection('public_profiles').doc(trip.userId).get().then((doc) {
             if (doc.exists && mounted) {
               final data = doc.data();
               setState(() {

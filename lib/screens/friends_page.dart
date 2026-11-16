@@ -77,7 +77,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
   Future<void> _loadSuggestions() async {
     try {
-      final snap = await FirebaseFirestore.instance.collection('users').limit(_suggestionsLimit).get();
+      final snap = await FirebaseFirestore.instance.collection('public_profiles').limit(_suggestionsLimit).get();
       if (!mounted) return;
       setState(() {
         for (final d in snap.docs) {
@@ -107,7 +107,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         final chunk = missing.sublist(i, (i + 10).clamp(0, missing.length));
         try {
           final snap = await FirebaseFirestore.instance
-              .collection('users')
+              .collection('public_profiles')
               .where(FieldPath.documentId, whereIn: chunk)
               .get();
           if (!mounted) return;
@@ -150,7 +150,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         // Usertag, correo o teléfono exactos (correo y teléfono van cifrados en el directorio)
         final uid = await ProfileDirectory.lookup(kind.kind, kind.value);
         if (uid != null) {
-          final d = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+          final d = await FirebaseFirestore.instance.collection('public_profiles').doc(uid).get();
           if (d.exists) {
             _userCache[d.id] = d;
             ids.add(d.id);
@@ -160,7 +160,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         final variants = <String>{q, q[0].toUpperCase() + q.substring(1)};
         for (final v in variants) {
           final snap = await FirebaseFirestore.instance
-              .collection('users')
+              .collection('public_profiles')
               .where('displayName', isGreaterThanOrEqualTo: v)
               .where('displayName', isLessThan: '$v\uf8ff')
               .limit(20)

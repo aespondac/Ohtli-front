@@ -41,7 +41,7 @@ Future<List<FriendOption>> loadFriendOptions(String uid) async {
   // whereIn admite hasta 30 valores por consulta.
   for (int i = 0; i < ids.length; i += 30) {
     final chunk = ids.sublist(i, i + 30 > ids.length ? ids.length : i + 30);
-    final snap = await FirebaseFirestore.instance.collection('users').where(FieldPath.documentId, whereIn: chunk).get();
+    final snap = await FirebaseFirestore.instance.collection('public_profiles').where(FieldPath.documentId, whereIn: chunk).get();
     for (final doc in snap.docs) {
       final data = doc.data();
       out.add(FriendOption(

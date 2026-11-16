@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'public_profiles.dart';
 
 /// Cómo encontrar perfiles públicos además de por nombre:
 ///
@@ -143,6 +144,7 @@ class ProfileDirectory {
       if (!existing.exists) tx.set(tagRef, {'uid': uid, 'createdAt': FieldValue.serverTimestamp()});
       tx.set(userRef, {'usertag': tag}, SetOptions(merge: true));
     });
+    await PublicProfiles.mirror(uid, {'usertag': tag});
   }
 
   /// Pide al servidor publicar o retirar tu correo y teléfono según tu privacidad.

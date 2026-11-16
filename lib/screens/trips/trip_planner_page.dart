@@ -958,6 +958,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
       _activeJobId = jobId;
       _listenToBlackboardJob(jobId);
+    } on ItineraryApiUnavailableException catch (e) {
+      // El motor no aceptó la solicitud: se avisa con la opción de reintentar. Nunca se
+      // muestra un itinerario que no haya calculado el motor.
+      _activeJobId = e.jobId;
+      _failJob(ItineraryBlackboardService.apiUnavailableMessage);
     } catch (e) {
       debugPrint('Error solicitando job al Blackboard: $e');
       setState(() {
@@ -1009,6 +1014,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
           if (status == 'error' || status == 'failed') {
             _jobSubscription?.cancel();
+            if (data['error_code'] == 'api_unavailable') {
+              _failJob(ItineraryBlackboardService.apiUnavailableMessage);
+              return;
+            }
             _failJob('No logramos armar tu ruta esta vez. Prueba de nuevo o ajusta tus preferencias (presupuesto, estilo o punto de partida).');
             return;
           }
@@ -1576,6 +1585,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
   Widget _buildJobErrorState(bool isMobile) {
     final stalled = _jobError!.startsWith('El cálculo está tardando');
+    final offline = _jobError == ItineraryBlackboardService.apiUnavailableMessage;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -1588,14 +1598,14 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             shape: BoxShape.circle,
           ),
           child: Icon(
-            stalled ? Icons.hourglass_top_rounded : Icons.route_outlined,
+            stalled ? Icons.hourglass_top_rounded : (offline ? Icons.cloud_off_rounded : Icons.route_outlined),
             size: 38,
             color: stalled ? OhtliColors.cempasuchil : OhtliColors.xoconostle,
           ),
         ),
         const SizedBox(height: 24),
         Text(
-          stalled ? 'Esto está tardando' : 'No pudimos armar tu ruta',
+          stalled ? 'Esto está tardando' : (offline ? 'Sin conexión con el motor' : 'No pudimos armar tu ruta'),
           textAlign: TextAlign.center,
           style: GoogleFonts.outfit(
             fontSize: isMobile ? 22 : 26,
@@ -1618,18 +1628,14 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           spacing: 12,
           runSpacing: 12,
           children: [
-            ElevatedButton.icon(
+            OhtliPrimaryButton(
+              label: 'Reintentar',
+              icon: Icons.refresh_rounded,
               onPressed: _launchBlackboardJob,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: Text('Reintentar', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.stormyTeal,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-              ),
             ),
-            OutlinedButton.icon(
+            OhtliSecondaryButton(
+              label: 'Ajustar preferencias',
+              icon: Icons.tune_rounded,
               onPressed: () {
                 _jobSubscription?.cancel();
                 _jobWatchdog?.cancel();
@@ -1638,14 +1644,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   _currentStep = PlannerStep.preferences;
                 });
               },
-              icon: const Icon(Icons.tune_rounded, size: 18),
-              label: Text('Ajustar preferencias', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: OhtliColors.stormyTeal,
-                side: const BorderSide(color: OhtliColors.stormyTeal),
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-              ),
             ),
             if (stalled)
               TextButton(

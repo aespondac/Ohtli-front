@@ -135,7 +135,7 @@ class TripService {
 
     try {
       // 1. Fetch author details
-      final authorDoc = await _firestore.collection('users').doc(authorId).get();
+      final authorDoc = await _firestore.collection('public_profiles').doc(authorId).get();
       if (!authorDoc.exists) return;
       final authorData = authorDoc.data();
       final String authorName = authorData?['displayName'] ?? 'Viajero Ohtli';
@@ -218,7 +218,7 @@ class TripService {
   Future<void> _notifyNewCoAuthors(String authorId, Trip trip, List<String> newCoAuthorIds) async {
     try {
       // Fetch author details
-      final authorDoc = await _firestore.collection('users').doc(authorId).get();
+      final authorDoc = await _firestore.collection('public_profiles').doc(authorId).get();
       if (!authorDoc.exists) return;
       final authorData = authorDoc.data();
       final String authorName = authorData?['displayName'] ?? 'Viajero Ohtli';

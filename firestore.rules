@@ -113,6 +113,13 @@ service cloud.firestore {
         && (!('followers' in fields) || selfOnlyListCreate('followers'))
         && (!('closeFriendOf' in fields) || selfOnlyListCreate('closeFriendOf'));
     }
+    // La sesión tiene el mismo correo verificado que guarda users/{userId}/private/account
+    // (restaurar una cuenta dada de baja).
+    function sameVerifiedEmailAs(userId) {
+      return request.auth.token.email_verified == true &&
+        exists(/databases/$(database)/documents/users/$(userId)/private/account) &&
+        get(/databases/$(database)/documents/users/$(userId)/private/account).data.get('email', '') == request.auth.token.email;
+    }
     function profileIsPrivate(userId) {
       return get(/databases/$(database)/documents/users/$(userId)).data.get('profilePrivate', false) == true;
     }
@@ -145,20 +152,35 @@ service cloud.firestore {
       allow update: if tripUpdateAllowed(resource.data) && notReleaseNotesUnlessSuper();
     }
 
-    match /users/{userId} {
-      // Lectura pública: es el perfil social (nombre, foto, título, amigos) que se muestra
-      // en crónicas, amistades y perfiles. Los datos personales (correo, teléfono,
-      // direcciones, privacidad) viven en /users/{userId}/private/account.
-      // Pendiente: mover también el perfil de gustos (taste_vector y preferencias), que
-      // hoy escribe el motor Yollotl en este documento.
+    // Perfil visible para los demás: solo campos de presentación. Lo escribe su dueño al
+    // guardar su perfil (lib/services/public_profiles.dart). Lo lee cualquiera, igual que
+    // el visor de viajes públicos sin sesión.
+    match /public_profiles/{userId} {
       allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'uid', 'updatedAt', 'displayName', 'photoURL', 'coverURL', 'coverUrl', 'usertag',
+          'activeTitleId', 'possessedTitles', 'moments', 'createdAt', 'profilePrivate', 'isDeleted'
+        ])
+        && request.resource.data.get('uid', userId) == userId;
+      allow delete: if request.auth != null && (
+        request.auth.uid == userId || sameVerifiedEmailAs(userId)
+      );
+    }
+
+    match /users/{userId} {
+      // Solo su dueño lo lee. Lo que ven los demás (nombre, foto, usertag, título,
+      // portada, momentos) está en /public_profiles/{userId}; los datos personales y el
+      // perfil de gustos, en /users/{userId}/private/account. El motor y las Cloud
+      // Functions usan el Admin SDK, que no pasa por estas reglas.
+      // Excepción: restaurar una cuenta dada de baja con el mismo correo verificado.
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || sameVerifiedEmailAs(userId)
+      );
       // Borrar un perfil antiguo dado de baja: solo con el mismo correo verificado
       // (el correo vive en el documento privado).
       allow delete: if request.auth != null && (
-        request.auth.uid == userId ||
-        (request.auth.token.email_verified == true &&
-         exists(/databases/$(database)/documents/users/$(userId)/private/account) &&
-         get(/databases/$(database)/documents/users/$(userId)/private/account).data.get('email', '') == request.auth.token.email)
+        request.auth.uid == userId || sameVerifiedEmailAs(userId)
       );
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && (

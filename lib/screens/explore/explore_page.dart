@@ -258,7 +258,7 @@ class _ExplorePageState extends State<ExplorePage> {
 
   Future<DocumentSnapshot> _authorFuture(String authorId) {
     return _authorFutures[authorId] ??=
-        FirebaseFirestore.instance.collection('users').doc(authorId).get();
+        FirebaseFirestore.instance.collection('public_profiles').doc(authorId).get();
   }
 
   void _openTrip(String tripId, String authorId) {
@@ -699,7 +699,7 @@ class _ExplorePageState extends State<ExplorePage> {
             .doc(pinned.tripId)
             .get(),
         FirebaseFirestore.instance
-            .collection('users')
+            .collection('public_profiles')
             .doc(pinned.authorId)
             .get(),
       ]),

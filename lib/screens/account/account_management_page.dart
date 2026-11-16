@@ -32,6 +32,7 @@ import '../../config/admin.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../utils/web_helpers.dart';
 import '../register/register_page.dart' show PasswordChecklist, PasswordRules;
+import '../../services/public_profiles.dart';
 
 enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
 
@@ -418,6 +419,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         'photoURL': downloadUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      await PublicProfiles.mirror(uid, {'photoURL': downloadUrl});
       print(
         "Successfully migrated local photo to Firebase Storage and synced URL to Firestore.",
       );
@@ -717,6 +719,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                           'updatedAt':
                                               FieldValue.serverTimestamp(),
                                         }, SetOptions(merge: true));
+                                    await PublicProfiles.mirror(user.uid, {'photoURL': downloadUrl});
                                   } catch (fsError) {
                                     print(
                                       "Error saving profile photo URL to Firestore: $fsError",

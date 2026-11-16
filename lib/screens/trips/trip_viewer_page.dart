@@ -3442,7 +3442,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Future<void> _loadAuthorProfile() async {
     if (_trip == null) return;
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(_trip!.userId).get();
+      final doc = await FirebaseFirestore.instance.collection('public_profiles').doc(_trip!.userId).get();
       if (doc.exists && mounted) {
         final profileData = doc.data();
         setState(() {
@@ -3463,7 +3463,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       // Las notas de versión no tienen coautores (solo las escribe el administrador).
       if (_trip!.coAuthorIds.isNotEmpty && !_trip!.isReleaseNotes) {
         final coAuthorsSnapshot = await FirebaseFirestore.instance
-            .collection('users')
+            .collection('public_profiles')
             .where(FieldPath.documentId, whereIn: _trip!.coAuthorIds)
             .get();
 

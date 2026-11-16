@@ -213,7 +213,7 @@ class _TripCardState extends State<TripCard> {
           authorName = currentUser.displayName ?? 'Viajero Ohtli';
         } else {
           try {
-            final authorDoc = await FirebaseFirestore.instance.collection('users').doc(widget.trip.userId).get();
+            final authorDoc = await FirebaseFirestore.instance.collection('public_profiles').doc(widget.trip.userId).get();
             if (authorDoc.exists) {
               authorName = (authorDoc.data()?['displayName'] as String?) ?? 'Viajero Ohtli';
             }

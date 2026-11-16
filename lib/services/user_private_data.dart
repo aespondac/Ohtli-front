@@ -4,13 +4,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import 'profile_directory.dart';
+import 'public_profiles.dart';
 
 /// Datos personales del usuario que NO deben ser públicos (contacto, direcciones,
 /// privacidad y perfil de gustos).
 ///
-/// El documento `users/{uid}` es el perfil social (nombre, foto, título, amigos) y
-/// cualquiera puede leerlo. Los datos sensibles viven en `users/{uid}/private/account`,
-/// que solo su dueño puede leer o escribir (ver firestore.rules).
+/// El documento `users/{uid}` es el perfil (nombre, foto, título) y solo lo lee su dueño;
+/// lo que ven los demás se copia a `public_profiles/{uid}` ([PublicProfiles]). Los datos
+/// sensibles viven en `users/{uid}/private/account`, que solo su dueño puede leer o
+/// escribir (ver firestore.rules).
 ///
 /// Las cuentas creadas antes de este cambio todavía pueden tener estos campos en el
 /// documento público: [watch] los combina mientras tanto y, al abrir la app, los mueve
@@ -82,6 +84,8 @@ class UserPrivateData {
     final futures = <Future<void>>[];
     if (pub.isNotEmpty) {
       futures.add(publicRef(uid).set(pub, SetOptions(merge: true)));
+      // Lo que ven los demás (nombre, foto, marcas de privacidad) va también al perfil visible
+      futures.add(PublicProfiles.mirror(uid, pub));
     }
     if (parts.private.isNotEmpty) {
       futures.add(privateRef(uid).set({
@@ -119,6 +123,7 @@ class UserPrivateData {
       if (!migrated && pub != null) {
         migrated = true;
         migrateLegacyFields(uid, pub!, priv);
+        PublicProfiles.syncFromUserDoc(uid, pub!);
       }
       controller.add(pub == null ? null : _merge(pub, priv));
     }

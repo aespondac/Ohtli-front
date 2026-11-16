@@ -1,7 +1,8 @@
 import 'trip_model.dart';
 
 /// Foto de un viaje que la persona fijó en su perfil ("Momentos").
-/// Se guarda en `users/{uid}.moments` (lectura pública). Si quien mira no puede ver el
+/// Se guarda en `users/{uid}.moments` y se copia a `public_profiles/{uid}.moments` (lectura
+/// pública). Si quien mira no puede ver el
 /// viaje (privado o borrador), solo ve la foto: ni título ni enlace al viaje.
 class ProfileMoment {
   final String url;

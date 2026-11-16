@@ -151,13 +151,35 @@ class ItineraryBlackboardService {
       }
     }
 
-    // Si ambos endpoints fallan o no hay red externa, activamos simulación resiliente
-    // en Firestore para que el usuario en modo demo o laboratorio nunca se quede bloqueado
+    // Si ningún endpoint aceptó la solicitud, el job queda en error: el cliente nunca
+    // inventa un itinerario. La pantalla muestra el aviso y deja reintentar.
     if (!callSuccess) {
-      _triggerResilientFallbackSim(jobId, payload, origin, budget, moodText);
+      await markJobUnavailable(jobId);
+      throw ItineraryApiUnavailableException(jobId);
     }
 
     return jobId;
+  }
+
+  /// Mensaje que ve el usuario cuando el motor no acepta la solicitud.
+  static const String apiUnavailableMessage =
+      'No pudimos comunicarnos con el motor de rutas. Revisa tu conexión e intenta de nuevo en un momento.';
+
+  /// Deja el job en error (sin resultado) para que Mis Viajes lo muestre como fallido con
+  /// opción de reintentar. Si Firestore tampoco responde, el error solo vive en la pantalla.
+  Future<void> markJobUnavailable(String jobId) async {
+    try {
+      await _firestore.collection('itinerary_jobs').doc(jobId).set({
+        'status': 'error',
+        'error_code': 'api_unavailable',
+        'error_detail': apiUnavailableMessage,
+        'current_agent': null,
+        'result': null,
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[BlackboardService] No se pudo marcar el job $jobId en error: $e');
+    }
   }
 
   /// Encabezados con el ID token de Firebase: el motor lo exige (REQUIRE_AUTH=1) en las
@@ -459,170 +481,14 @@ class ItineraryBlackboardService {
 
     return newTrip;
   }
+}
 
-  /// Simulación resiliente offline para pruebas o cuando los microservicios están en cold start
-  void _triggerResilientFallbackSim(
-    String jobId,
-    Map<String, dynamic> req,
-    Map<String, double> origin,
-    double budget,
-    String mood,
-  ) {
-    Future.delayed(const Duration(milliseconds: 1200), () async {
-      await _firestore.collection('itinerary_jobs').doc(jobId).set({
-        'progress_percent': 45,
-        'current_agent': 'generador',
-        'steps': {
-          'comparador': {'status': 'completed', 'candidates_count': 12},
-          'generador': {'status': 'running'},
-        }
-      }, SetOptions(merge: true));
+/// El motor no aceptó la solicitud (sin red, caído o sin respuesta en 12 s). El job ya
+/// quedó marcado en error en Firestore.
+class ItineraryApiUnavailableException implements Exception {
+  final String jobId;
+  const ItineraryApiUnavailableException(this.jobId);
 
-      await Future.delayed(const Duration(milliseconds: 1400));
-      await _firestore.collection('itinerary_jobs').doc(jobId).set({
-        'progress_percent': 80,
-        'current_agent': 'recomendador',
-        'steps': {
-          'generador': {'status': 'completed', 'routes_generated': 3},
-          'recomendador': {'status': 'running'},
-        }
-      }, SetOptions(merge: true));
-
-      await Future.delayed(const Duration(milliseconds: 1200));
-      
-      final mockOptions = [
-        {
-          'option_id': 'opt_1',
-          'theme': 'Bohemia, Café y Terapias Visuales',
-          'editorial_headline': 'Tarde Bohemia entre Bugambilias y Café de Grano',
-          'narrative_summary': 'Un recorrido diseñado para desconectar del ruido urbano, sumergiéndote en patios virreinales, el murmullo de fuentes centenarias y el aroma a café recién tostado.',
-          'total_cost_mxn': (budget * 0.65).clamp(150.0, budget),
-          'estimated_time_mins': 210,
-          'cover_url': CdmxPhotos.forCategory('museum', 1),
-          'route': [
-            {
-              'name': 'Café El Jarocho y Jardín Centenario',
-              'category': 'cafeterias_especialidad',
-              'price_mxn': 85.0,
-              'stay_duration_mins': 50,
-              'location': {'lat': 19.3498, 'lng': -99.1638},
-              'photo_url': CdmxPhotos.forCategory('cafe', 0),
-            },
-            {
-              'name': 'Museo Frida Kahlo (Casa Azul)',
-              'category': 'museos_arte',
-              'price_mxn': 270.0,
-              'stay_duration_mins': 90,
-              'location': {'lat': 19.3551, 'lng': -99.1626},
-              'photo_url': CdmxPhotos.forCategory('museum', 1),
-            },
-            {
-              'name': 'Mercado de Artesanías de Coyoacán',
-              'category': 'mercados_artesanias',
-              'price_mxn': 60.0,
-              'stay_duration_mins': 60,
-              'location': {'lat': 19.3501, 'lng': -99.1610},
-              'photo_url': CdmxPhotos.forCategory('market', 0),
-            }
-          ],
-          'stops_narration': [
-            {'narration': 'Comienza saboreando un café tradicional con aroma a canela bajo los árboles centenarios.'},
-            {'narration': 'Admira el universo íntimo y los jardines volcánicos de la Casa Azul.'},
-            {'narration': 'Cierra explorando piezas de arte popular, textiles tradicionales y dulces típicos.'}
-          ]
-        },
-        {
-          'option_id': 'opt_2',
-          'theme': 'Muralismo Secreto y Cantinas Centenarias',
-          'editorial_headline': 'Ecos Monumentales en el Corazón Virreinal',
-          'narrative_summary': 'Ideal para adentrarse en los frescos de Diego Rivera y José Clemente Orozco, concluyendo en una tertulia histórica con sabor a botana tradicional.',
-          'total_cost_mxn': (budget * 0.80).clamp(200.0, budget),
-          'estimated_time_mins': 240,
-          'cover_url': CdmxPhotos.forCategory('artwork', 0),
-          'route': [
-            {
-              'name': 'Antiguo Colegio de San Ildefonso',
-              'category': 'muralismo',
-              'price_mxn': 50.0,
-              'stay_duration_mins': 80,
-              'location': {'lat': 19.4359, 'lng': -99.1308},
-              'photo_url': CdmxPhotos.forCategory('artwork', 1),
-            },
-            {
-              'name': 'La Ópera Bar',
-              'category': 'cantinas_tradicionales',
-              'price_mxn': 280.0,
-              'stay_duration_mins': 90,
-              'location': {'lat': 19.4348, 'lng': -99.1390},
-              'photo_url': CdmxPhotos.forCategory('bar', 0),
-            },
-            {
-              'name': 'Palacio de Bellas Artes',
-              'category': 'arquitectura_monumental',
-              'price_mxn': 90.0,
-              'stay_duration_mins': 70,
-              'location': {'lat': 19.4352, 'lng': -99.1412},
-              'photo_url': CdmxPhotos.cover(0),
-            }
-          ],
-          'stops_narration': [
-            {'narration': 'Cuna del muralismo moderno en un majestuoso patio barroco novohispano.'},
-            {'narration': 'Brinda bajo los techos dorados donde aún se conserva el disparo de Pancho Villa.'},
-            {'narration': 'Contempla la icónica cúpula de mármol y bronce al atardecer sobre la Alameda.'}
-          ]
-        },
-        {
-          'option_id': 'opt_3',
-          'theme': 'Espacios Verdes, Escultura y Calma',
-          'editorial_headline': 'Refugio Botánico y Esculturas en Chapultepec',
-          'narrative_summary': 'Un respiro entre senderos arbolados, calzadas flotantes y recintos culturales de primer nivel con accesibilidad total.',
-          'total_cost_mxn': (budget * 0.45).clamp(100.0, budget),
-          'estimated_time_mins': 180,
-          'cover_url': CdmxPhotos.cover(3),
-          'route': [
-            {
-              'name': 'Museo de Arte Moderno (MAM)',
-              'category': 'museos_arte',
-              'price_mxn': 90.0,
-              'stay_duration_mins': 75,
-              'location': {'lat': 19.4225, 'lng': -99.1795},
-              'photo_url': CdmxPhotos.forCategory('museum', 0),
-            },
-            {
-              'name': 'Jardín Botánico y Orquideario de Chapultepec',
-              'category': 'parques_bosques',
-              'price_mxn': 0.0,
-              'stay_duration_mins': 45,
-              'location': {'lat': 19.4230, 'lng': -99.1830},
-              'photo_url': CdmxPhotos.forCategory('park', 0),
-            },
-            {
-              'name': 'Librería Porrúa del Bosque',
-              'category': 'librerias_cafes',
-              'price_mxn': 120.0,
-              'stay_duration_mins': 60,
-              'location': {'lat': 19.4245, 'lng': -99.1820},
-              'photo_url': CdmxPhotos.forCategory('park', 1),
-            }
-          ],
-          'stops_narration': [
-            {'narration': 'Recorre el jardín de esculturas y las obras maestras de Remedios Varo.'},
-            {'narration': 'Pasea entre orquídeas nativas y plantas medicinales en un microclima protegido.'},
-            {'narration': 'Disfruta una lectura al borde del lago con vista a los ahuehuetes.'}
-          ]
-        }
-      ];
-
-      await _firestore.collection('itinerary_jobs').doc(jobId).set({
-        'status': 'completed',
-        'current_agent': null,
-        'progress_percent': 100,
-        'steps': {
-          'recomendador': {'status': 'completed', 'options_count': 3}
-        },
-        'result': {'options': mockOptions},
-        'completed_at': DateTime.now().toUtc().toIso8601String()
-      }, SetOptions(merge: true));
-    });
-  }
+  @override
+  String toString() => ItineraryBlackboardService.apiUnavailableMessage;
 }

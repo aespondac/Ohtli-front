@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 /// Relaciones sociales de un usuario, fuera del perfil público para que las reglas
@@ -15,7 +16,8 @@ import 'package:flutter/foundation.dart';
 /// `followers` y `closeFriendOf` (ver firestore.rules).
 ///
 /// Las cuentas anteriores tienen estas listas en `users/{uid}`; [watchGraph] y
-/// [getGraph] las usan como respaldo hasta que se migren.
+/// [getGraph] las usan como respaldo hasta que se migren, solo para la cuenta propia:
+/// `users/{uid}` ya no lo pueden leer los demás.
 class SocialGraph {
   SocialGraph._();
 
@@ -29,6 +31,8 @@ class SocialGraph {
 
   static DocumentReference<Map<String, dynamic>> closeRef(String uid) =>
       _db.collection('users').doc(uid).collection('social').doc('close');
+
+  static bool _isMe(String uid) => FirebaseAuth.instance.currentUser?.uid == uid;
 
   static List<String> _list(Map<String, dynamic>? data, String key) =>
       ((data?[key] as List?) ?? const []).map((e) => e.toString()).toList();
@@ -50,7 +54,7 @@ class SocialGraph {
       } catch (_) {}
     }
     Map<String, dynamic>? legacy;
-    if (!hidden && (graph == null || (includeClose && close == null))) {
+    if (!hidden && _isMe(uid) && (graph == null || (includeClose && close == null))) {
       try {
         legacy = (await _db.collection('users').doc(uid).get()).data();
       } catch (_) {}
@@ -89,17 +93,21 @@ class SocialGraph {
           hidden = e is FirebaseException && e.code == 'permission-denied';
           emit('graph');
         }));
-        subs.add(_db.collection('users').doc(uid).snapshots().listen((s) {
-          final d = s.data();
-          legacy = d == null
-              ? null
-              : {
-                  for (final k in [...graphFields, ...closeFields])
-                    if (d.containsKey(k)) k: d[k],
-                };
-          if (legacy?.isEmpty ?? true) legacy = null;
+        if (!_isMe(uid)) {
           emit('legacy');
-        }, onError: (Object _) => emit('legacy')));
+        } else {
+          subs.add(_db.collection('users').doc(uid).snapshots().listen((s) {
+            final d = s.data();
+            legacy = d == null
+                ? null
+                : {
+                    for (final k in [...graphFields, ...closeFields])
+                      if (d.containsKey(k)) k: d[k],
+                  };
+            if (legacy?.isEmpty ?? true) legacy = null;
+            emit('legacy');
+          }, onError: (Object _) => emit('legacy')));
+        }
         if (includeClose) {
           subs.add(closeRef(uid).snapshots().listen((s) {
             close = s.data();

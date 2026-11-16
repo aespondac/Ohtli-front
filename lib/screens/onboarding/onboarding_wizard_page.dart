@@ -1798,7 +1798,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       final db = FirebaseFirestore.instance;
       final graph = await db.collection('users').doc(me.uid).collection('social').doc('graph').get();
       _myFriendIds = ((graph.data()?['friends'] as List?) ?? const []).map((e) => e.toString()).toSet();
-      final snap = await db.collection('users').limit(40).get();
+      final snap = await db.collection('public_profiles').limit(40).get();
       final list = snap.docs
           .where((d) => d.id != me.uid && !_myFriendIds.contains(d.id) && d.data()['profilePrivate'] != true && d.data()['isDeleted'] != true)
           .take(12)
@@ -1833,12 +1833,12 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       if (kind != null && kind.kind != 'name') {
         final uid = await ProfileDirectory.lookup(kind.kind, kind.value);
         if (uid != null) {
-          final d = await db.collection('users').doc(uid).get();
+          final d = await db.collection('public_profiles').doc(uid).get();
           if (d.exists) found.add(d);
         }
       } else {
         for (final v in {q, q[0].toUpperCase() + q.substring(1)}) {
-          final snap = await db.collection('users').where('displayName', isGreaterThanOrEqualTo: v).where('displayName', isLessThan: '$v').limit(10).get();
+          final snap = await db.collection('public_profiles').where('displayName', isGreaterThanOrEqualTo: v).where('displayName', isLessThan: '$v').limit(10).get();
           for (final d in snap.docs) {
             if (!found.any((f) => f.id == d.id)) found.add(d);
           }

@@ -262,7 +262,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           if (uidsToFetch.isNotEmpty) {
             final List<String> uidsList = uidsToFetch.take(30).toList();
             final friendsSnapshot = await FirebaseFirestore.instance
-                .collection('users')
+                .collection('public_profiles')
                 .where(FieldPath.documentId, whereIn: uidsList)
                 .get();
             
@@ -4910,7 +4910,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final owner = widget.trip.userId;
     if (_isSampleEditor || owner.isEmpty || owner == _myUid) return;
     try {
-      final d = await FirebaseFirestore.instance.collection('users').doc(owner).get();
+      final d = await FirebaseFirestore.instance.collection('public_profiles').doc(owner).get();
       final n = (d.data()?['displayName'] ?? '').toString().trim();
       if (n.isNotEmpty && mounted) setState(() => _ownerName = n);
     } catch (e) {
