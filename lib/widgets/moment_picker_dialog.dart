@@ -141,6 +141,58 @@ class _MomentPickerDialogState extends State<MomentPickerDialog> {
                       ],
                     ),
             ),
+            // Orden en el perfil: se arrastran para acomodarlos.
+            if (_selected.length > 1)
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+                decoration: BoxDecoration(border: Border(top: BorderSide(color: OhtliColors.cardBorder))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('ORDEN EN TU PERFIL · ARRASTRA PARA ACOMODAR', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 72,
+                      child: ReorderableListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        buildDefaultDragHandles: false,
+                        itemCount: _selected.length,
+                        onReorderItem: (from, to) => setState(() => _selected.insert(to, _selected.removeAt(from))),
+                        proxyDecorator: (child, _, _) => Material(color: Colors.transparent, elevation: 6, borderRadius: BorderRadius.circular(12), child: child),
+                        itemBuilder: (context, i) {
+                          final m = _selected[i];
+                          return ReorderableDragStartListener(
+                            key: ValueKey(m.url),
+                            index: i,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.grab,
+                                child: Stack(
+                                  children: [
+                                    ClipRRect(borderRadius: BorderRadius.circular(12), child: SizedBox(width: 72, height: 72, child: OhtliPhoto(m.url))),
+                                    Positioned(
+                                      left: 4,
+                                      top: 4,
+                                      child: Container(
+                                        width: 20,
+                                        height: 20,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), shape: BoxShape.circle),
+                                        child: Text('${i + 1}', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Container(
               padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
               decoration: BoxDecoration(border: Border(top: BorderSide(color: OhtliColors.cardBorder))),
