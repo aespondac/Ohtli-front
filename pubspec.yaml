@@ -81,6 +81,9 @@ flutter:
   assets:
     - assets/
     - assets/ribbons/
+    # Portada del teléfono: fotos incluidas (Wikimedia Commons, las mismas de CdmxPhotos.covers)
+    # para que se vea al instante, sin esperar descargas.
+    - assets/cover/
     # Inter y Outfit recortadas a caracteres latinos (woff2): google_fonts las toma de aquí
     # en lugar de descargar los TTF completos (~320 KB cada uno) de fonts.gstatic.com.
     - assets/google_fonts/

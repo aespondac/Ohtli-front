@@ -2604,7 +2604,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   ElevatedButton.icon(
                     onPressed: () async {
                       try {
-                        final provider = GoogleAuthProvider();
+                        final provider = GoogleAuthProvider()..setCustomParameters({'prompt': 'select_account'});
                         await FirebaseAuth.instance.currentUser?.linkWithPopup(provider);
                         if (mounted) {
                           setState(() {});

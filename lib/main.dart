@@ -223,7 +223,7 @@ enum OhtliScreen {
   underConstruction,
   ssoBridge, // ohtli.quest/sso: entrega la sesión a un subdominio (lab.ohtli.quest)
   login, // Pantalla unificada (maneja split en desktop y welcome/login en móvil)
-  mobileWelcome, // Pantalla oscura de bienvenida exclusiva móvil
+  mobileWelcome, // Portada del teléfono sin sesión (la misma que "/" en móvil)
   mobileLogin, // Formulario claro exclusivo móvil
   register, // Formulario de registro en Desktop (split screen)
   mobileRegister, // Formulario de registro en Móvil
@@ -268,6 +268,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   // La siguiente actualización de la URL reemplaza la entrada (redirecciones automáticas)
   bool _replaceNextUrl = true;
   bool _lastIsMobile = false;
+  bool _coverPrecached = false;
   bool _isAuthInitialized = false;
   bool _intentLabs = false;
   bool _isLabAppHost = false;
@@ -626,7 +627,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         LegalDocId.labs => null,
       };
 
-  OhtliScreen get _loginScreen => _lastIsMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login;
+  OhtliScreen get _loginScreen => _lastIsMobile ? OhtliScreen.mobileLogin : OhtliScreen.login;
   OhtliScreen get _registerScreen => _lastIsMobile ? OhtliScreen.mobileRegister : OhtliScreen.register;
 
   /// Ruta de las pantallas del sitio principal que se abren por URL (al arrancar).
@@ -763,6 +764,13 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
   /// "Volver" desde el inicio de sesión: en lab.ohtli.quest regresa a la landing de Labs y en
   /// ohtli.quest/sso al subdominio que pidió la sesión.
+  /// Portada del teléfono sin sesión (en "/" y al pedir iniciar sesión).
+  Widget _mobileWelcome() => MobileWelcomePage(
+        onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
+        onJoinClick: () => _navigateTo(OhtliScreen.mobileRegister),
+        onExplorePlaces: () => _navigateTo(OhtliScreen.places),
+      );
+
   void _goPublicHome() {
     // ohtli.quest/sso: quien llegó desde un subdominio (p. ej. "Participa" en Labs) vuelve allá.
     if (_ssoTarget != null && kIsWeb) {
@@ -810,6 +818,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         FirebaseAuth.instance.currentUser != null &&
         !ConstructionPage.isOldDomain;
     if (!_isAuthInitialized || redirectPending) {
+      // Mientras Firebase revisa la sesión, el teléfono ya va cargando las fotos de su portada.
+      if (!_coverPrecached && MediaQuery.sizeOf(context).width < 800) {
+        _coverPrecached = true;
+        MobileWelcomePage.precache(context);
+      }
       return Scaffold(
         backgroundColor: OhtliSettings.instance.isDarkMode ? const Color(0xFF121214) : OhtliColors.cloudDancer,
         body: const Center(
@@ -832,9 +845,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     } else if (_currentScreen == OhtliScreen.underConstruction) {
       final loginScreen = isMobile ? OhtliScreen.mobileWelcome : OhtliScreen.login;
       final registerScreen = isMobile ? OhtliScreen.mobileRegister : OhtliScreen.register;
-      // El dominio anterior (othli) conserva la pantalla de redirección; el resto ve la landing pública
+      // El dominio anterior (othli) conserva la pantalla de redirección; en el teléfono la
+      // portada es la bienvenida móvil y en escritorio, la landing pública.
       activeView = ConstructionPage.isOldDomain
           ? ConstructionPage(onLoginClick: () => _navigateTo(loginScreen))
+          : isMobile
+          ? _mobileWelcome()
           : LandingPage(
               onLoginClick: () => _navigateTo(loginScreen),
               onRegisterClick: () => _navigateTo(registerScreen),
@@ -1054,22 +1070,18 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else if (isMobile && _currentScreen == OhtliScreen.mobileWelcome) {
       // Portada de bienvenida del teléfono: unirse o iniciar sesión
-      activeView = MobileWelcomePage(
-        onBack: _goPublicHome,
-        onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
-        onJoinClick: () => _navigateTo(OhtliScreen.mobileRegister),
-      );
+      activeView = _mobileWelcome();
     } else if (_currentScreen == OhtliScreen.register || _currentScreen == OhtliScreen.mobileRegister) {
       // Una sola pantalla de registro para escritorio y teléfono
       activeView = RegisterPage(
-        onBack: isMobile ? () => _navigateTo(OhtliScreen.mobileWelcome) : _goPublicHome,
+        onBack: _goPublicHome,
         onLoginClick: () => _navigateTo(_loginScreen),
         onRegisterSuccess: _onAuthSuccess,
       );
     } else {
       // Entrar (login y mobileLogin; mobileWelcome en escritorio)
       activeView = LoginPage(
-        onBack: isMobile ? () => _navigateTo(OhtliScreen.mobileWelcome) : _goPublicHome,
+        onBack: _goPublicHome,
         onRegisterClick: () => _navigateTo(_registerScreen),
         onLoginSuccess: _onAuthSuccess,
         onForgotPasswordClick: () => _navigateTo(OhtliScreen.forgotPassword),

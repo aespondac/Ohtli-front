@@ -195,7 +195,11 @@ class _LoginPageState extends State<LoginPage> {
       await _setPersistence();
       UserCredential credential;
       try {
-        credential = await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
+        credential = await FirebaseAuth.instance.signInWithPopup(
+          // Siempre deja elegir la cuenta de Google: sin esto entra sola con la última usada
+          // y no se puede agregar otra cuenta.
+          GoogleAuthProvider()..setCustomParameters({'prompt': 'select_account'}),
+        );
       } on FirebaseAuthMultiFactorException catch (e) {
         final resolved = await TwoFactor.resolve(context, e);
         if (resolved == null) {
