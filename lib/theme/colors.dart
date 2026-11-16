@@ -128,6 +128,14 @@ class OhtliColors {
         : const Color(0xFFF0EEE9); // Light CDMX cream
   }
 
+  /// Líneas punteadas del fondo (RouteBackgroundPainter): tenues en modo oscuro, donde el
+  /// gris cantera fijo se veía casi blanco sobre el texto.
+  static Color get routeLine {
+    return OhtliSettings.instance.isDarkMode
+        ? Colors.white.withValues(alpha: 0.10)
+        : cantera.withValues(alpha: 0.95);
+  }
+
   static Color get onyx {
     return OhtliSettings.instance.isDarkMode
         ? const Color(0xFFF0EEE9) // Soft light cream for readable text in dark mode

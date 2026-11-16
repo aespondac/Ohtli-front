@@ -89,7 +89,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
             // Líneas de mapa decorativas
             Positioned.fill(
               child: CustomPaint(
-                painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.95)),
+                painter: RouteBackgroundPainter(OhtliColors.routeLine),
               ),
             ),
 
@@ -338,8 +338,14 @@ class RouteBackgroundPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Las líneas se desvanecen en la franja central, donde va el contenido, para no
+    // cruzar títulos ni textos; se ven completas solo en los márgenes.
+    final faded = lineColor.withValues(alpha: lineColor.a * 0.15);
     final paint = Paint()
-      ..color = lineColor
+      ..shader = LinearGradient(
+        colors: [lineColor, lineColor, faded, faded, lineColor, lineColor],
+        stops: const [0.0, 0.16, 0.30, 0.70, 0.84, 1.0],
+      ).createShader(Offset.zero & size)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.8;
 
@@ -377,5 +383,5 @@ class RouteBackgroundPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant RouteBackgroundPainter oldDelegate) => oldDelegate.lineColor != lineColor;
 }

@@ -450,7 +450,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         children: [
           Positioned.fill(
             child: CustomPaint(
-              painter: RouteBackgroundPainter(OhtliColors.cantera.withValues(alpha: 0.9)),
+              painter: RouteBackgroundPainter(OhtliColors.routeLine),
             ),
           ),
           SafeArea(

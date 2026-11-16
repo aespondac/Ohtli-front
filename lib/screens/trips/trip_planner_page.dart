@@ -1101,7 +1101,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           // Background Route Canvas
           Positioned.fill(
             child: CustomPaint(
-              painter: RouteBackgroundPainter(OhtliColors.cantera.withOpacity(0.95)),
+              painter: RouteBackgroundPainter(OhtliColors.routeLine),
             ),
           ),
           SafeArea(
