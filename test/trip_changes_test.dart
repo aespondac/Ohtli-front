@@ -65,4 +65,16 @@ void main() {
     expect(old.authorName, '');
     expect(old.changes, isEmpty);
   });
+
+  test('describe las propuestas de lugares', () {
+    const tacos = ProposalCandidate(id: 'c1', title: 'Tacos El Güero');
+    const pozole = ProposalCandidate(id: 'c2', title: 'Pozolería');
+    final before = [ProposalSection(id: 'v', question: '', candidates: const [tacos])];
+    final after = [ProposalSection(id: 'v', question: '¿Dónde comemos?', candidates: const [pozole])];
+    final c = describeTripChanges(before, after);
+    expect(c, contains('Cambió la pregunta de la propuesta de lugares a «¿Dónde comemos?»'));
+    expect(c, contains('Se propuso «Pozolería» en la propuesta «¿Dónde comemos?»'));
+    expect(c, contains('Se quitó «Tacos El Güero» de la propuesta «¿Dónde comemos?»'));
+    expect(describeTripChanges(const [], before), contains('Se agregó una propuesta de lugares'));
+  });
 }

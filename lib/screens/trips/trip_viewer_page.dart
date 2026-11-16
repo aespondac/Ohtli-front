@@ -49,6 +49,9 @@ import 'trip_traveler_tools.dart';
 import '../../config/admin.dart' show isSuperUser;
 import '../../utils/web_helpers.dart';
 import '../../services/feedback_service.dart';
+import '../../services/proposal_votes.dart';
+import '../../widgets/ohtli_ui.dart';
+import 'widgets/proposal_block.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -131,6 +134,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
   StreamSubscription<Map<String, Map<String, String>>>? _reactionsSub;
   List<TripNote> _notes = [];
   Map<String, Map<String, String>> _blockReactions = {};
+  // Votos de las propuestas de lugares (id del bloque → uid → lugar).
+  final Map<String, Map<String, String>> _votes = {};
+  final Map<String, StreamSubscription<Map<String, String>>> _voteSubs = {};
   final Set<String> _openThreads = {};
 
   // Diseño de lectura: mensajes al margen (pantallas anchas) y panel lateral plegable.
@@ -265,6 +271,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
     _followTimer?.cancel();
     _notesSub?.cancel();
     _reactionsSub?.cancel();
+    for (final s in _voteSubs.values) {
+      s.cancel();
+    }
     _scrollController.dispose();
     _readProgress.dispose();
     _pullDecay?.cancel();
@@ -428,6 +437,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
     if (s is TransferSection) return describeTransfer(s);
     if (s is UnknownSection) return 'Bloque';
     if (s is PlaceSection) return s.title.trim().isEmpty ? 'Lugar sin nombre' : s.title.trim();
+    if (s is ProposalSection) return s.question.trim().isEmpty ? 'Propuesta de lugares' : s.question.trim();
+    // Cualquier otro tipo que no sea texto se nombra genérico (no truena con bloques nuevos).
+    if (s is! TextSection && s is! TextImageSection) return 'Bloque';
     final String md = s is TextSection ? s.markdownText : (s as TextImageSection).markdownText;
     if (s is TextSection && parseTableMarkdown(md) != null) return 'Tabla';
     final line = md
@@ -438,6 +450,12 @@ class _TripViewerPageState extends State<TripViewerPage> {
             .trim())
         .firstWhere((l) => l.isNotEmpty, orElse: () => '');
     return line.isEmpty ? 'Nota' : line;
+  }
+
+  /// Ícono de un bloque que no es parada en el índice.
+  IconData _indexIcon(TripSection s) {
+    if (s is ProposalSection) return Icons.how_to_vote_rounded;
+    return Icons.notes_rounded;
   }
 
   void _showIndexSheet(bool isDark) {
@@ -494,7 +512,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                                       ? const Icon(Icons.check_rounded, size: 15, color: Colors.white)
                                       : Text('$num', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.white)),
                                 )
-                              : Icon(Icons.notes_rounded, size: 18, color: isDark ? Colors.white54 : OhtliColors.subtleText),
+                              : Icon(_indexIcon(s), size: 18, color: isDark ? Colors.white54 : OhtliColors.subtleText),
                           title: Text(
                             _blockLabel(s),
                             maxLines: 1,
@@ -4854,6 +4872,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
       }
     } else if (section is TextImageSection) {
       blockContent = _buildTextImageBlockViewer(section, isDark, isDesktop);
+    } else if (section is ProposalSection) {
+      blockContent = _buildProposalViewer(section, isDark);
     }
 
     final bool highlighted = _highlightedId == section.id;
@@ -5052,6 +5072,18 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ),
               ),
             ),
+          ),
+        ],
+      );
+    } else if (_useTimeline && !_isNotes && section is ProposalSection) {
+      block = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          block,
+          Positioned(
+            left: -(_spineIndent - _spineX) - 12,
+            top: 14,
+            child: _spineBadge(Icons.how_to_vote_rounded, OhtliColors.cempasuchil, isDark),
           ),
         ],
       );
@@ -5490,6 +5522,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       if (s is TransferSection || s is UnknownSection) continue;
       final bool isPlace = s is PlaceSection;
       final bool detour = s is PlaceSection && s.unplanned;
+      final bool special = s is ProposalSection;
       if (isPlace && !detour) n++;
       final visited = _visited.contains(s.id);
       final highlighted = _highlightedId == s.id;
@@ -5497,7 +5530,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         borderRadius: BorderRadius.circular(10),
         onTap: () => _scrollToBlock(s.id),
         child: Container(
-          padding: EdgeInsets.fromLTRB(isPlace ? 6 : 34, 7, 6, 7),
+          padding: EdgeInsets.fromLTRB(isPlace || special ? 6 : 34, 7, 6, 7),
           decoration: BoxDecoration(
             color: highlighted ? OhtliColors.cempasuchil.withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
@@ -5525,6 +5558,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       : Text('$n',
                           style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.w700, color: isDark ? Colors.white : OhtliColors.onyx)),
                 ),
+                const SizedBox(width: 10),
+              ] else if (special) ...[
+                SizedBox(width: 22, child: Icon(_indexIcon(s), size: 15, color: OhtliColors.cempasuchil)),
                 const SizedBox(width: 10),
               ],
               Expanded(
@@ -6001,6 +6037,118 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   /// Nota, consejo o aviso: tarjeta tintada con franja de color, ícono y etiqueta.
+  /// Punto con ícono sobre la línea de tiempo (propuestas, separaciones).
+  Widget _spineBadge(IconData icon, Color color, bool isDark) => Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
+        ),
+        child: Icon(icon, size: 12, color: Colors.white),
+      );
+
+  // ---------------------------------------------------------------------------
+  // Propuestas de lugares: el grupo vota (el ganador se elige en el editor)
+  // ---------------------------------------------------------------------------
+  /// Los votos se leen si eres del viaje (las reglas no los muestran a nadie más).
+  bool get _canSeeVotes => _isSample || (!_isPreview && _isMember && _trip != null);
+
+  List<String> get _editorUids => _trip == null ? const [] : [_trip!.userId, ..._trip!.coAuthorIds.where((u) => u != _trip!.userId)];
+
+  void _watchVotes(String proposalId) {
+    if (_isSample || !_canSeeVotes || _voteSubs.containsKey(proposalId)) return;
+    final t = _trip!;
+    _voteSubs[proposalId] = ProposalVotes.watch(t.userId, t.id, proposalId).listen(
+      (v) {
+        if (mounted) setState(() => _votes[proposalId] = v);
+      },
+      onError: (Object e) => debugPrint('Votos de $proposalId: $e'),
+    );
+  }
+
+  Future<void> _voteOn(String proposalId, String? candidateId) async {
+    final me = _myUid;
+    if (me == null || !_canEditContent) return;
+    final before = _votes[proposalId];
+    setState(() {
+      final v = Map<String, String>.from(before ?? const <String, String>{});
+      if (candidateId == null) {
+        v.remove(me);
+      } else {
+        v[me] = candidateId;
+      }
+      _votes[proposalId] = v;
+    });
+    if (_isSample) return;
+    try {
+      await ProposalVotes.vote(_trip!.userId, _trip!.id, proposalId, candidateId);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        if (before == null) {
+          _votes.remove(proposalId);
+        } else {
+          _votes[proposalId] = before;
+        }
+      });
+      _notice(friendlyError(e, fallback: 'No se pudo guardar tu voto. Intenta de nuevo.'));
+    }
+  }
+
+  /// Tarjeta «En votación»: los lugares propuestos y sus votos. Quien edita vota aquí mismo.
+  Widget _buildProposalViewer(ProposalSection section, bool isDark) {
+    _watchVotes(section.id);
+    final bool seeVotes = _canSeeVotes;
+    final bool canVote = seeVotes && _canEditContent;
+    final votes = validVotes(_votes[section.id] ?? const <String, String>{}, section.candidates);
+    final names = _memberNames;
+    final me = _myUid;
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    return OhtliSurface(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      accent: OhtliColors.cempasuchil,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.how_to_vote_rounded, size: 15, color: OhtliColors.cempasuchil),
+              const SizedBox(width: 6),
+              Text('EN VOTACIÓN', style: OhtliUi.eyebrow(OhtliColors.cempasuchil)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(section.question.trim().isEmpty ? '¿Qué lugar se queda?' : section.question.trim(), style: OhtliUi.title(size: 22)),
+          const SizedBox(height: 4),
+          Text(
+            canVote
+                ? 'Vota por el que prefieras. Cuando el grupo decida, el ganador queda como parada.'
+                : 'El grupo está decidiendo entre estos lugares.',
+            style: OhtliUi.body(size: 13),
+          ),
+          const SizedBox(height: 12),
+          ProposalCandidateList(
+            candidates: section.candidates,
+            votes: seeVotes ? votes : null,
+            names: names,
+            myUid: me,
+            canVote: canVote,
+            isDark: isDark,
+            onVote: (cid) => _voteOn(section.id, cid),
+          ),
+          if (seeVotes && section.candidates.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(proposalTally(votes, _editorUids, names, myUid: me),
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: sub)),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAlertBlockViewer(AlertData alert, bool isDark) {
     final (Color color, IconData icon, String name) = switch (alert.type) {
       AlertType.warning => (OhtliColors.xoconostle, Icons.warning_amber_rounded, 'AVISO'),

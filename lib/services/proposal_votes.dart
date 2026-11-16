@@ -45,3 +45,14 @@ ProposalCandidate? proposalWinner(List<ProposalCandidate> candidates, Map<String
 /// ¿Ya votaron todos los que editan el viaje?
 bool everyoneVotedOn(Map<String, String> votes, Iterable<String> editors) =>
     editors.isNotEmpty && editors.every(votes.containsKey);
+
+/// Quiénes votaron por [candidateId] (uids, en el orden en que llegaron los votos).
+List<String> votersOf(Map<String, String> votes, String candidateId) =>
+    [for (final e in votes.entries) if (e.value == candidateId) e.key];
+
+/// Votos válidos (de lugares que siguen propuestos) por persona: si alguien votó por un lugar
+/// que ya se quitó, su voto no cuenta y puede volver a votar.
+Map<String, String> validVotes(Map<String, String> votes, List<ProposalCandidate> candidates) {
+  final ids = {for (final c in candidates) c.id};
+  return {for (final e in votes.entries) if (ids.contains(e.value)) e.key: e.value};
+}

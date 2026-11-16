@@ -30,6 +30,9 @@ import '../../models/poi_model.dart';
 import '../../services/trip_transfers.dart';
 import '../../services/section_merge.dart';
 import '../../services/trip_changes.dart';
+import '../../services/proposal_votes.dart';
+import '../../widgets/ohtli_ui.dart';
+import 'widgets/proposal_block.dart';
 import '../../widgets/transfer_mode_picker.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../config/editorial.dart';
@@ -107,6 +110,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
   List<EditorPresence> _presence = [];
   Timer? _presenceTimer;
   Timer? _presenceDebounce;
+
+  // Votos de las propuestas de lugares (id del bloque → uid → lugar). Viven aparte del
+  // contenido, así que se escuchan por separado.
+  final Map<String, Map<String, String>> _votes = {};
+  final Map<String, StreamSubscription<Map<String, String>>> _voteSubs = {};
+  // Nombre de quien organiza cuando lo abre un coautor (para votos y ramas).
+  String? _ownerName;
 
   // Persistent TextEditingControllers for text inputs to avoid cursor jumps
   final Map<String, TextEditingController> _blockControllers = {};
@@ -225,6 +235,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
     _loadCloudContentAndCheckCache();
     _loadFriends();
+    _loadOwnerName();
   }
 
   Future<void> _loadFriends() async {
@@ -287,6 +298,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
   void dispose() {
     _debounceTimer?.cancel();
     _stopLive();
+    for (final s in _voteSubs.values) {
+      s.cancel();
+    }
     _versionController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -543,6 +557,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
     if (s is TextSection) return {s.id: s.markdownText};
     if (s is TextImageSection) return {s.id: s.markdownText};
+    if (s is ProposalSection) return {'${s.id}_question': s.question};
     if (s is TransferSection) {
       return {
         '${s.id}_mins': s.durationMins?.toString() ?? '',
@@ -1534,6 +1549,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
         ));
       } else if (type == 'transfer') {
         add(TransferSection(id: id));
+      } else if (type == 'proposal') {
+        add(ProposalSection(id: id, question: ''));
       }
     }
   }
@@ -1625,6 +1642,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
       if (_isNotes) return (t.isEmpty ? 'Novedad sin título' : t, Icons.new_releases_rounded);
       return (t.isEmpty ? 'Lugar sin nombre' : t, Icons.location_on_rounded);
     }
+    if (s is ProposalSection) {
+      return (s.question.trim().isEmpty ? 'Propuesta de lugares' : s.question.trim(), Icons.how_to_vote_rounded);
+    }
+    // Cualquier otro tipo que no sea texto se nombra genérico (no truena con bloques nuevos).
+    if (s is! TextSection && s is! TextImageSection) return ('Bloque', Icons.article_outlined);
     final String md = s is TextSection ? s.markdownText : (s as TextImageSection).markdownText;
     if (s is TextSection && parseTableMarkdown(md) != null) {
       return ('Tabla', Icons.table_chart_rounded);
@@ -1862,6 +1884,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
     final noPhoto = places.where((p) => p.mainPhotoUrl.isEmpty).length;
     if (noPhoto > 0) warnings.add(noPhoto == 1 ? '1 lugar no tiene foto.' : '$noPhoto lugares no tienen foto.');
+    final undecided = _sections.whereType<ProposalSection>().length;
+    if (undecided > 0) {
+      warnings.add(undecided == 1 ? 'Hay una votación de lugares sin decidir.' : 'Hay $undecided votaciones de lugares sin decidir.');
+    }
     if (errors.isEmpty && warnings.isEmpty) return true;
 
     Widget row(String text, bool isError) => Padding(
@@ -3627,6 +3653,17 @@ class _TripEditorPageState extends State<TripEditorPage> {
         ),
         child: Icon(transferModeOf(section.mode).icon, size: 14, color: OhtliColors.stormyTeal),
       );
+    } else if (section is ProposalSection) {
+      marker = Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: OhtliColors.cempasuchil,
+          shape: BoxShape.circle,
+          border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
+        ),
+        child: const Icon(Icons.how_to_vote_rounded, size: 13, color: Colors.white),
+      );
     } else {
       marker = Container(
         width: 12,
@@ -3812,6 +3849,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       ] else ...[
         ('place', Icons.place_rounded, 'Parada', 'Un lugar del recorrido'),
         ('transfer', Icons.route_rounded, 'Traslado', 'Cómo van de un lugar a otro'),
+        ('proposal', Icons.how_to_vote_rounded, 'Propuesta de lugares', 'El grupo propone lugares y vota cuál se queda'),
       ],
       ('text', Icons.notes_rounded, 'Texto', _isNotes ? 'Cuenta algo de la versión' : 'Cuenta algo del viaje'),
       ('text_image', Icons.image_rounded, 'Imagen', 'Una foto con texto al lado'),
@@ -4052,6 +4090,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
       typeLabel = "Traslado";
       typeIcon = transferModeOf(section.mode).icon;
       blockContent = _buildTransferEditor(section, isDark);
+    } else if (section is ProposalSection) {
+      typeLabel = "Propuesta de lugares";
+      typeIcon = Icons.how_to_vote_rounded;
+      blockContent = _buildProposalEditor(section, isDark);
     } else if (section is UnknownSection) {
       typeLabel = "Bloque no compatible";
       typeIcon = Icons.help_outline_rounded;
@@ -4791,6 +4833,301 @@ class _TripEditorPageState extends State<TripEditorPage> {
             visualDensity: VisualDensity.compact,
             onSelected: (_) => _replacePlace(section.id, (p) => p.copyWith(changeTag: e.key)),
           ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Propuestas de lugares: el grupo propone y vota cuál se queda
+  // ---------------------------------------------------------------------------
+  /// Cambia un bloque por id con los mismos caminos que el resto del editor. No hace nada
+  /// mientras se aplican cambios ajenos, si el bloque ya no está o si no cambió nada.
+  void _replaceSection<T extends TripSection>(String id, T Function(T) change, {bool structural = true}) {
+    if (_applyingRemote) return;
+    final i = _idx(id);
+    if (i < 0 || _sections[i] is! T) return;
+    final next = change(_sections[i] as T);
+    if (deepEquals(next.toMap(), _sections[i].toMap())) return;
+    setState(() {
+      _sections[i] = next;
+      if (structural) _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+  }
+
+  Future<void> _loadOwnerName() async {
+    final owner = widget.trip.userId;
+    if (_isSampleEditor || owner.isEmpty || owner == _myUid) return;
+    try {
+      final d = await FirebaseFirestore.instance.collection('users').doc(owner).get();
+      final n = (d.data()?['displayName'] ?? '').toString().trim();
+      if (n.isNotEmpty && mounted) setState(() => _ownerName = n);
+    } catch (e) {
+      debugPrint('Nombre de quien organiza: $e');
+    }
+  }
+
+  /// Quienes editan el viaje (votan y se reparten en las ramas): el dueño y los coautores.
+  List<(String, String)> get _editorPeople {
+    final owner = widget.trip.userId;
+    String ownerName() {
+      if (owner == _myUid) return _myName;
+      if (_ownerName != null) return _ownerName!;
+      for (final p in _presence) {
+        if (p.uid == owner) return p.name;
+      }
+      return 'Quien organiza';
+    }
+
+    return [
+      (owner, ownerName()),
+      for (int i = 0; i < _coAuthorIds.length; i++)
+        if (_coAuthorIds[i] != owner)
+          (
+            _coAuthorIds[i],
+            _coAuthorIds[i] == _myUid
+                ? _myName
+                : (i < _coAuthorNames.length && _coAuthorNames[i].trim().isNotEmpty ? _coAuthorNames[i].trim() : 'Coautor'),
+          ),
+    ];
+  }
+
+  /// Quien vota desde este editor (en la muestra, sin sesión, vota «la muestra»).
+  String get _voterUid => _myUid.isNotEmpty ? _myUid : 'muestra';
+
+  void _watchVotes(String proposalId) {
+    if (_isSampleEditor || _myUid.isEmpty || _voteSubs.containsKey(proposalId)) return;
+    _voteSubs[proposalId] = ProposalVotes.watch(widget.trip.userId, widget.trip.id, proposalId).listen(
+      (v) {
+        if (mounted) setState(() => _votes[proposalId] = v);
+      },
+      onError: (Object e) => debugPrint('Votos de $proposalId: $e'),
+    );
+  }
+
+  Future<void> _voteOn(String proposalId, String? candidateId) async {
+    final me = _voterUid;
+    final before = _votes[proposalId];
+    // Se ve al instante; el listener confirma lo que quedó guardado.
+    setState(() {
+      final v = Map<String, String>.from(before ?? const <String, String>{});
+      if (candidateId == null) {
+        v.remove(me);
+      } else {
+        v[me] = candidateId;
+      }
+      _votes[proposalId] = v;
+    });
+    if (_isSampleEditor || _myUid.isEmpty) return;
+    try {
+      await ProposalVotes.vote(widget.trip.userId, widget.trip.id, proposalId, candidateId);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        if (before == null) {
+          _votes.remove(proposalId);
+        } else {
+          _votes[proposalId] = before;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(friendlyError(e, fallback: 'No se pudo guardar tu voto. Intenta de nuevo.'), style: GoogleFonts.inter()),
+        backgroundColor: OhtliColors.xoconostle,
+      ));
+    }
+  }
+
+  /// Propone un lugar con el mismo buscador que usan las paradas (catálogo o sugerencia nueva).
+  Future<void> _addProposalCandidate(String sectionId) async {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final Object? choice = await showDialog<Object>(
+      context: context,
+      builder: (ctx) => _CatalogPickerDialog(isDark: isDark, normalize: _normalize),
+    );
+    if (choice == null || !mounted) return;
+    final String id = 'cand_${DateTime.now().microsecondsSinceEpoch}';
+    final ProposalCandidate cand;
+    if (choice is _SuggestNewPlace) {
+      final result = await showDialog<_SuggestedPlace>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _SuggestPlaceDialog(initialName: choice.name.trim(), initialDescription: '', tripId: widget.trip.id),
+      );
+      if (result == null || !mounted) return;
+      setState(() => _suggestionStatus[result.id] = kSuggestionPending);
+      cand = ProposalCandidate(
+        id: id,
+        title: result.name,
+        description: result.description,
+        lat: result.lat,
+        lng: result.lng,
+        poiId: result.id,
+        poiSource: kPlaceSourceSuggestion,
+        proposedBy: _voterUid,
+        proposedByName: _myName,
+      );
+    } else {
+      final poi = choice as Poi;
+      cand = ProposalCandidate(
+        id: id,
+        title: poi.name,
+        description: poi.cleanNarrative,
+        photoUrl: poi.imageUrl,
+        lat: poi.location.isValid ? poi.location.lat : null,
+        lng: poi.location.isValid ? poi.location.lng : null,
+        cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),
+        poiId: poi.poiId,
+        poiSource: kPlaceSourceCatalog,
+        proposedBy: _voterUid,
+        proposedByName: _myName,
+      );
+    }
+    final i = _idx(sectionId);
+    if (i < 0 || _sections[i] is! ProposalSection) return;
+    final current = _sections[i] as ProposalSection;
+    if (cand.poiId != null && current.candidates.any((c) => c.poiId == cand.poiId)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${cand.title} ya está en la propuesta.', style: GoogleFonts.inter()),
+        backgroundColor: OhtliColors.stormyTeal,
+      ));
+      return;
+    }
+    _replaceSection<ProposalSection>(sectionId, (p) => p.copyWith(candidates: [...p.candidates, cand]));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Propusiste ${cand.title}. Ya pueden votar por él.', style: GoogleFonts.inter()),
+      backgroundColor: OhtliColors.stormyTeal,
+    ));
+  }
+
+  void _removeProposalCandidate(String sectionId, ProposalCandidate cand) {
+    _replaceSection<ProposalSection>(sectionId, (p) => p.copyWith(candidates: [for (final c in p.candidates) if (c.id != cand.id) c]));
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Quitaste ${cand.title.trim().isEmpty ? 'el lugar' : cand.title.trim()} de la propuesta.', style: GoogleFonts.inter()),
+      backgroundColor: OhtliColors.onyx,
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+    ));
+  }
+
+  /// El más votado se queda: la propuesta se vuelve una parada en el mismo lugar del viaje.
+  void _pickProposalWinner(String sectionId) {
+    if (_applyingRemote) return;
+    final i = _idx(sectionId);
+    if (i < 0 || _sections[i] is! ProposalSection) return;
+    final p = _sections[i] as ProposalSection;
+    final votes = validVotes(_votes[sectionId] ?? const <String, String>{}, p.candidates);
+    final winner = proposalWinner(p.candidates, votes, tieBreakerUid: widget.trip.userId);
+    if (winner == null) return;
+    final newId = _newSectionId();
+    setState(() {
+      _sections[i] = winner.toPlace(newId, branchId: p.branchId);
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+    _dropBlockEditors(sectionId);
+    _voteSubs.remove(sectionId)?.cancel();
+    final name = winner.title.trim().isEmpty ? 'el lugar más votado' : winner.title.trim();
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Ganó $name. Ya es una parada del viaje.', style: GoogleFonts.inter()),
+      backgroundColor: OhtliColors.stormyTeal,
+      duration: const Duration(seconds: 6),
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+    ));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(newId));
+  }
+
+  Widget _buildProposalEditor(ProposalSection section, bool isDark) {
+    _watchVotes(section.id);
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final sid = section.id;
+    final questionController = _blockControllers.putIfAbsent('${sid}_question', () {
+      final c = TextEditingController(text: section.question);
+      c.addListener(() => _replaceSection<ProposalSection>(sid, (p) => p.copyWith(question: c.text), structural: false));
+      return c;
+    });
+    final votes = validVotes(_votes[sid] ?? const <String, String>{}, section.candidates);
+    final people = _editorPeople;
+    final editors = [for (final p in people) p.$1];
+    final names = {for (final p in people) p.$1: p.$2};
+    final me = _voterUid;
+    final bool isOwner = _isSampleEditor || widget.trip.userId == _myUid;
+    final bool everyone = everyoneVotedOn(votes, editors);
+    final winner = proposalWinner(section.candidates, votes, tieBreakerUid: widget.trip.userId);
+    final bool canPick = winner != null && (isOwner || everyone);
+    final String pickHint = winner == null
+        ? 'Elige cuando haya votos'
+        : (canPick ? 'Se queda ${winner.title.trim().isEmpty ? 'el más votado' : winner.title.trim()}' : 'Cuando voten todos, cualquiera puede elegirlo');
+
+    final Widget pickButton = OhtliPrimaryButton(
+      compact: true,
+      highlight: true,
+      icon: Icons.emoji_events_rounded,
+      label: 'Elegir el ganador',
+      onPressed: canPick ? () => _pickProposalWinner(sid) : null,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: questionController,
+          focusNode: _getFocusNode('${sid}_question'),
+          style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: fg),
+          decoration: InputDecoration(
+            hintText: '¿Dónde comemos?',
+            hintStyle: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: sub.withValues(alpha: 0.6)),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 6),
+            border: InputBorder.none,
+          ),
+        ),
+        Text(
+          isOwner
+              ? 'Propongan lugares y voten. Tú eliges el ganador cuando quieras; en empate cuenta tu voto.'
+              : 'Propongan lugares y voten. Cuando voten todos, cualquiera puede elegir el ganador.',
+          style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: sub),
+        ),
+        const SizedBox(height: 12),
+        ProposalCandidateList(
+          candidates: section.candidates,
+          votes: votes,
+          names: names,
+          myUid: me,
+          canVote: true,
+          isDark: isDark,
+          onVote: (cid) => _voteOn(sid, cid),
+          onRemove: (c) => _removeProposalCandidate(sid, c),
+          canRemove: (c) => c.proposedBy == me,
+        ),
+        if (section.candidates.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 2),
+            child: Text(proposalTally(votes, editors, names, myUid: me), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: sub)),
+          ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OhtliSecondaryButton(
+              compact: true,
+              icon: Icons.add_location_alt_rounded,
+              label: 'Agregar un lugar',
+              onPressed: () => _addProposalCandidate(sid),
+            ),
+            if (votes.containsKey(me))
+              TextButton.icon(
+                onPressed: () => _voteOn(sid, null),
+                style: TextButton.styleFrom(foregroundColor: sub),
+                icon: const Icon(Icons.undo_rounded, size: 16),
+                label: Text('Quitar mi voto', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
+              ),
+            if (section.candidates.isNotEmpty) Tooltip(message: pickHint, child: pickButton),
+          ],
+        ),
       ],
     );
   }

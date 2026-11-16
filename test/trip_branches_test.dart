@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:othli_front/models/trip_model.dart';
 import 'package:othli_front/services/proposal_votes.dart';
 import 'package:othli_front/services/trip_branches.dart';
+import 'package:othli_front/screens/trips/widgets/proposal_block.dart';
 
 PlaceSection p(String id, {String? branch, bool meetup = false, String? from, String? to, double lat = 19.43, double lng = -99.13}) =>
     PlaceSection(
@@ -158,6 +159,24 @@ void main() {
       expect(everyoneVotedOn({'a': 'x', 'b': 'y'}, ['a', 'b']), isTrue);
       expect(everyoneVotedOn({'a': 'x'}, ['a', 'b']), isFalse);
       expect(everyoneVotedOn({}, const []), isFalse);
+    });
+
+    test('quién votó por cada lugar y votos que ya no cuentan', () {
+      final votes = {'a': 'tacos', 'b': 'fonda', 'c': 'tacos', 'd': 'borrado'};
+      expect(votersOf(votes, 'tacos'), ['a', 'c']);
+      expect(votersOf(votes, 'cafe'), isEmpty);
+      final valid = validVotes(votes, [fonda, tacos]);
+      expect(valid, {'a': 'tacos', 'b': 'fonda', 'c': 'tacos'});
+      // Quien votó por un lugar quitado todavía no cuenta como «ya votó».
+      expect(everyoneVotedOn(valid, ['a', 'b', 'c', 'd']), isFalse);
+    });
+
+    test('resumen de cuántos votaron y quién falta', () {
+      final names = {'dueno': 'Ana López', 'b': 'Beto', 'c': 'Caro'};
+      expect(proposalTally({'dueno': 'x', 'b': 'y', 'c': 'x'}, ['dueno', 'b', 'c'], names), 'Ya votaron todos');
+      expect(proposalTally({'dueno': 'x'}, ['dueno', 'b', 'c'], names, myUid: 'dueno'), '1 de 3 ya votaron · faltan Beto y Caro');
+      expect(proposalTally({'b': 'x', 'c': 'x'}, ['dueno', 'b', 'c'], names, myUid: 'dueno'), '2 de 3 ya votaron · falta tu voto');
+      expect(proposalTally({'c': 'x'}, ['dueno', 'b', 'c'], names, myUid: 'b'), '1 de 3 ya votaron · faltan Ana y tú');
     });
   });
 }

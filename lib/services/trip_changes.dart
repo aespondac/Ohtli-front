@@ -36,6 +36,10 @@ String _firstLine(String md) {
 String _what(TripSection s, {bool definite = false}) {
   if (s is PlaceSection) return s.unplanned ? 'el desvío ${_name(s)}' : 'la parada ${_name(s)}';
   if (s is TransferSection) return 'el traslado ${describeTransfer(s)}';
+  if (s is ProposalSection) {
+    final q = s.question.trim();
+    return q.isEmpty ? (definite ? 'la propuesta de lugares' : 'una propuesta de lugares') : 'la propuesta «$q»';
+  }
   if (s is TextImageSection) {
     final l = _firstLine(s.markdownText);
     return l.isEmpty ? (definite ? 'la imagen' : 'una imagen') : 'la imagen «$l»';
@@ -78,6 +82,21 @@ List<String> _placeChanges(PlaceSection a, PlaceSection b) {
   return out;
 }
 
+List<String> _proposalChanges(ProposalSection a, ProposalSection b) {
+  final out = <String>[];
+  if (a.question.trim() != b.question.trim()) out.add('Cambió la pregunta de ${_what(a, definite: true)} a «${b.question.trim()}»');
+  final before = {for (final c in a.candidates) c.id: c};
+  final after = {for (final c in b.candidates) c.id: c};
+  String place(ProposalCandidate c) => c.title.trim().isEmpty ? 'un lugar' : '«${c.title.trim()}»';
+  for (final c in b.candidates) {
+    if (!before.containsKey(c.id)) out.add('Se propuso ${place(c)} en ${_what(b, definite: true)}');
+  }
+  for (final c in a.candidates) {
+    if (!after.containsKey(c.id)) out.add('Se quitó ${place(c)} de ${_what(b, definite: true)}');
+  }
+  return out;
+}
+
 /// Lista de cambios legibles entre [before] y [after]. Como máximo [limit] líneas.
 List<String> describeTripChanges(List<TripSection> before, List<TripSection> after, {int limit = 14}) {
   final out = <String>[];
@@ -103,6 +122,8 @@ List<String> describeTripChanges(List<TripSection> before, List<TripSection> aft
       if (old.markdownText != s.markdownText || old.layout != s.layout) out.add('Se editó ${_what(s, definite: true)}');
     } else if (s is TextSection && old is TextSection) {
       if (old.markdownText != s.markdownText) out.add('Se editó ${_what(s, definite: true)}');
+    } else if (s is ProposalSection && old is ProposalSection) {
+      out.addAll(_proposalChanges(old, s));
     }
   }
   for (final s in before) {
