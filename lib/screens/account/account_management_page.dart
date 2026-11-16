@@ -1740,8 +1740,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       inputDecorationTheme: base.inputDecorationTheme.copyWith(
         enabledBorder: border(OhtliColors.cardBorder, 1),
         focusedBorder: border(OhtliColors.accentText, 1.6),
-        errorBorder: border(const Color(0xFFD9534F), 1.2),
-        focusedErrorBorder: border(const Color(0xFFD9534F), 1.6),
+        errorBorder: border(OhtliColors.warning, 1.2),
+        focusedErrorBorder: border(OhtliColors.warning, 1.6),
         floatingLabelStyle: GoogleFonts.inter(color: OhtliColors.accentText, fontWeight: FontWeight.w600),
       ),
       textSelectionTheme: TextSelectionThemeData(cursorColor: OhtliColors.accentText),

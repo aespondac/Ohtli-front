@@ -945,7 +945,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   );
 
   Widget _notice(String text, {IconData icon = Icons.info_outline_rounded}) {
-    final color = OhtliSettings.instance.isDarkMode ? const Color(0xFFF2A3A3) : const Color(0xFFB3261E);
+    final color = OhtliColors.warningText;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(

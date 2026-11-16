@@ -318,7 +318,7 @@ class PasswordChecklist extends StatelessWidget {
   Widget build(BuildContext context) {
     final ok = OhtliColors.accentText;
     final missing = highlightMissing
-        ? (OhtliSettings.instance.isDarkMode ? const Color(0xFFF2A3A3) : const Color(0xFFB3261E))
+        ? OhtliColors.warningText
         : OhtliColors.subtleText;
     return Semantics(
       label: 'Requisitos de la contraseña',

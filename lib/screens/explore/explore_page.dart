@@ -387,6 +387,7 @@ class _ExplorePageState extends State<ExplorePage> {
   }
 
   Widget _buildQuickActions(bool isMobile, double gutter) {
+    // Solo colores de la paleta: turquesa y xoconostle alternados.
     final actions = <_QuickAction>[
       _QuickAction(
         icon: Icons.add_road_rounded,
@@ -406,14 +407,14 @@ class _ExplorePageState extends State<ExplorePage> {
         icon: Icons.map_outlined,
         title: 'Mis viajes',
         subtitle: 'Tus crónicas y borradores',
-        color: OhtliColors.accentFill,
+        color: OhtliColors.stormyTeal,
         onTap: () => widget.onOpenTab(1),
       ),
       _QuickAction(
         icon: Icons.people_outline,
         title: 'Amigos',
         subtitle: 'Viaja acompañado',
-        color: const Color(0xFF4A7C59),
+        color: OhtliColors.accentFill,
         onTap: () => widget.onOpenTab(3),
       ),
     ];

@@ -89,7 +89,7 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
       return NotificationLook(
         sender: sender,
         icon: Icons.chat_bubble_rounded,
-        color: const Color(0xFF3F7CAC),
+        color: OhtliColors.stormyTeal,
         message: 'comentó en tu viaje "$tripTitle"${comment.isEmpty ? '.' : ': «$comment»'}',
       );
     case 'trip_reaction':
@@ -97,7 +97,7 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
       return NotificationLook(
         sender: sender,
         icon: Icons.favorite_rounded,
-        color: const Color(0xFFD64545),
+        color: OhtliColors.accent,
         message: data['onComment'] == true ? 'reaccionó $emoji a tu mensaje en "$tripTitle".' : 'reaccionó $emoji a tu viaje "$tripTitle".',
       );
     case 'cheer':

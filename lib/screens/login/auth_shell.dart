@@ -350,9 +350,8 @@ class AuthField extends StatelessWidget {
   }
 }
 
-/// Rojo de error legible en ambos modos (el xoconostle de la marca es muy oscuro sobre negro).
-Color get _errorColor =>
-    OhtliSettings.instance.isDarkMode ? const Color(0xFFF2A3A3) : const Color(0xFFB3261E);
+/// Error legible en ambos modos (paleta: cempasúchil para advertencias).
+Color get _errorColor => OhtliColors.warningText;
 
 /// Aviso de error dentro del formulario, junto al botón que lo provocó.
 class AuthErrorBox extends StatelessWidget {

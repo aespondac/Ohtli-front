@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../theme/colors.dart';
 import '../utils/friendly_errors.dart' show kOhtliDesktopBreakpoint;
 
 /// Avisos de la app como toasts arriba, que se van solos.
@@ -220,7 +221,7 @@ class _ToastCardState extends State<_ToastCard> with SingleTickerProviderStateMi
                               close();
                             },
                             style: TextButton.styleFrom(
-                              foregroundColor: action.textColor ?? const Color(0xFFF5A55C),
+                              foregroundColor: action.textColor ?? OhtliColors.accentLight,
                               textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
                             ),
                             child: Text(action.label),
