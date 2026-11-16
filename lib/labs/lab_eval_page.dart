@@ -12,6 +12,7 @@ import 'lab_aggregates.dart';
 import 'lab_article.dart';
 import 'lab_repository.dart';
 import 'lab_studies.dart';
+import 'lab_title.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
 
@@ -150,6 +151,18 @@ class _LabParticipateViewState extends State<LabParticipateView> {
   // Una sola suscripción (no en cada build: cada redibujo volvía a mostrar el spinner).
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _activeStudies =
       LabRepository.instance.studies.where('active', isEqualTo: true).snapshots();
+
+  @override
+  void initState() {
+    super.initState();
+    // Quien respondió algún estudio antes de que existiera el título también lo recibe.
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      LabRepository.instance.responses.where('uid', isEqualTo: uid).limit(1).get().then((q) {
+        if (q.docs.isNotEmpty) LabTitle.grant(uid);
+      }).catchError((_) {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -340,6 +353,7 @@ class _SusFlowState extends State<_SusFlow> {
         'comment': _comment.text.trim().substring(0, math.min(1000, _comment.text.trim().length)),
       });
       if (mounted) setState(() => _sent = true);
+      if (await LabTitle.grant(uid) && mounted) LabTitle.announce(context);
     } catch (e) {
       if (!mounted) return;
       // Las reglas rechazan un segundo envío (ID determinista) o un estudio ya cerrado.
@@ -554,6 +568,7 @@ class _RelevanceFlowState extends State<_RelevanceFlow> {
         'criterion': 'intencion_y_tema',
       });
       if (mounted) setState(() => _count++);
+      if (await LabTitle.grant(uid) && mounted) LabTitle.announce(context);
     } catch (e) {
       // Ya calificada antes (ID determinista) o estudio cerrado: se avisa y se sigue con otra.
       if (mounted) {

@@ -436,6 +436,9 @@ class ItineraryBlackboardService {
       coverUrl = CdmxPhotos.forCategory(first['category']?.toString(), title.hashCode);
     }
 
+    // Qué propuso el motor (retroalimentación: el editor compara contra esto)
+    final recommended = FeedbackService.stopIds(chosenOption);
+
     final newTrip = Trip(
       id: tripId,
       userId: userId,
@@ -456,6 +459,9 @@ class ItineraryBlackboardService {
       routeShape: routeShape,
       startPoint: startPoint,
       endPoint: endPoint,
+      // En memoria también (el editor abre este objeto): así sabe que salió de la IA.
+      recommendedPoiIds: recommended,
+      recommendationJobId: recommended.isNotEmpty ? jobId : null,
     );
 
     // 1. Crear documento principal del viaje
@@ -468,8 +474,7 @@ class ItineraryBlackboardService {
       TripContent(sections: sections),
     );
 
-    // 3. Qué propuso el motor (retroalimentación: el editor compara contra esto)
-    final recommended = FeedbackService.stopIds(chosenOption);
+    // 3. Qué propuso el motor (se guarda aparte: Trip.toMap no lo escribe)
     if (recommended.isNotEmpty) {
       try {
         await FirebaseFirestore.instance.collection('users').doc(userId).collection('trips').doc(tripId).set({

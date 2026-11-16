@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
+import '../../services/labs_invite.dart';
 import '../../services/feedback_service.dart';
 import '../../services/user_private_data.dart';
 import '../../services/saved_places.dart';
@@ -949,7 +950,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
         backgroundColor: OhtliColors.stormyTeal,
       ));
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GroupTripPage(groupId: id)));
+      final nav = Navigator.of(context);
+      nav.pushReplacement(MaterialPageRoute(builder: (_) => GroupTripPage(groupId: id)));
+      // Primer plan con IA en grupo: invitación a Labs (una vez), sobre la página del grupo.
+      unawaited(LabsInvite.maybeShow(nav, LabsInviteMoment.aiGroup, delay: const Duration(milliseconds: 900)));
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSavingTrip = false);

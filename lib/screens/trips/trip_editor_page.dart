@@ -44,6 +44,7 @@ import '../../widgets/place_details_form.dart';
 import 'package:http/http.dart' as http;
 import '../../utils/web_helpers.dart';
 import '../../services/feedback_service.dart';
+import '../../services/labs_invite.dart';
 import '../../utils/current_location.dart';
 import '../../services/trip_endpoints.dart';
 import '../../widgets/route_endpoint_pin.dart';
@@ -306,8 +307,28 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (mounted) setState(() => _isLoadingFriends = false);
   }
 
+  // Navegador raíz, guardado para invitar a Labs al cerrar el editor (en dispose ya no hay context).
+  NavigatorState? _rootNavigator;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _rootNavigator = Navigator.maybeOf(context, rootNavigator: true);
+  }
+
+  /// Al cerrar el editor de su primer viaje armado con la IA: invitación a Labs (una vez).
+  void _maybeInviteToLabs() {
+    final nav = _rootNavigator;
+    final t = widget.trip;
+    if (nav == null || widget.sampleSections != null || t.kind != kTripKindTrip) return;
+    if (t.userId != FirebaseAuth.instance.currentUser?.uid) return;
+    if (!LabsInvite.isAiTrip(recommendationJobId: t.recommendationJobId, recommendedPoiIds: t.recommendedPoiIds)) return;
+    unawaited(LabsInvite.maybeShow(nav, LabsInviteMoment.aiTrip));
+  }
+
   @override
   void dispose() {
+    _maybeInviteToLabs();
     _debounceTimer?.cancel();
     _stopLive();
     for (final s in _voteSubs.values) {
