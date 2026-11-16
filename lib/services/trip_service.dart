@@ -404,6 +404,38 @@ class TripService {
 
   Future<void> clearPresence(String ownerId, String tripId, String uid) => _presence(ownerId, tripId).doc(uid).delete();
 
+  /// Cambia el contenido sin pisar lo que otro guardó mientras tanto (p. ej. el modo viaje
+  /// del visor con alguien en el editor en vivo): en una transacción lee la versión actual,
+  /// le aplica [change] y la escribe con una revisión nueva, que los editores abiertos aplican.
+  /// Devuelve el contenido de antes y el de después.
+  Future<(List<TripSection>, List<TripSection>)> changeTripContent(
+    String ownerId,
+    String tripId,
+    List<TripSection> Function(List<TripSection> sections) change, {
+    String? editorUid,
+    String? editorName,
+  }) {
+    final contentRef = _contentDoc(ownerId, tripId);
+    final tripRef = _tripDoc(ownerId, tripId);
+    return _firestore.runTransaction<(List<TripSection>, List<TripSection>)>((tx) async {
+      final content = (await tx.get(contentRef)).data();
+      final trip = (await tx.get(tripRef)).data();
+      final before = content == null ? <TripSection>[] : TripContent.fromMap(content).sections;
+      final after = change(List.of(before));
+      int revOf(Map<String, dynamic>? d, String key) => (d?[key] as num?)?.toInt() ?? 0;
+      // Mayor que cualquier revisión que un editor ya conozca (las dos se escriben juntas).
+      final a = revOf(content, 'rev'), b = revOf(trip, 'editRev');
+      tx.set(contentRef, {
+        'sections': [for (final s in after) s.toMap()],
+        'rev': (a > b ? a : b) + 1,
+        if (editorUid != null) 'updatedBy': editorUid,
+        if (editorName != null) 'updatedByName': editorName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return (before, after);
+    });
+  }
+
   Future<void> updateTripContent(String userId, String tripId, TripContent content) async {
     final ref = _tripsRef(userId).doc(tripId).collection('details').doc('content');
     await ref.set(content.toMap()); // Usar set para crear o reemplazar
