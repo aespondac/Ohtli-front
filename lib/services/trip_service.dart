@@ -428,8 +428,8 @@ class TripService {
       tx.set(contentRef, {
         'sections': [for (final s in after) s.toMap()],
         'rev': (a > b ? a : b) + 1,
-        if (editorUid != null) 'updatedBy': editorUid,
-        if (editorName != null) 'updatedByName': editorName,
+        'updatedBy': ?editorUid,
+        'updatedByName': ?editorName,
         'updatedAt': FieldValue.serverTimestamp(),
       });
       return (before, after);
