@@ -2164,7 +2164,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               child: Text(f.name, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
             ),
             if (f.isMutualCloseFriend) ...[
-              const Icon(Icons.favorite_rounded, size: 14, color: OhtliColors.xoconostle),
+              const Icon(Icons.star_rounded, size: 15, color: OhtliColors.cempasuchil),
               const SizedBox(width: 4),
               Text('Mejor amigo', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
               const SizedBox(width: 10),
@@ -2198,7 +2198,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(surprise ? Icons.favorite_border_rounded : Icons.people_outline_rounded, color: OhtliColors.subtleText),
+            Icon(surprise ? Icons.star_outline_rounded : Icons.people_outline_rounded, color: OhtliColors.subtleText),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
