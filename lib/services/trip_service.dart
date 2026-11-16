@@ -2,6 +2,78 @@ import 'social_graph.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/trip_model.dart';
+import 'section_merge.dart';
+
+/// Lo que quedó en la nube después de un guardado en vivo.
+class LiveSaveResult {
+  /// Bloques escritos (lo local combinado con lo que había en la nube).
+  final List<TripSection> sections;
+
+  /// Bloques que había en la nube justo antes de escribir.
+  final List<TripSection> remoteSections;
+
+  /// Bloques donde ganó lo local sobre un cambio ajeno (id → versión ajena; null = la borró).
+  final Map<String, TripSection?> conflicts;
+  final Map<String, TripSection> deletedHereChangedThere;
+
+  /// Campos del documento del viaje escritos (ver [TripService.editorTripFields]).
+  final Map<String, dynamic> tripFields;
+
+  /// Esos campos en la nube justo antes de escribir (null si el documento no existía).
+  final Map<String, dynamic>? remoteTripFields;
+
+  /// Campos del viaje que los dos cambiaron distinto (ganó lo local).
+  final Set<String> tripConflicts;
+
+  /// Revisión escrita (sirve para ignorar avisos viejos del listener).
+  final int rev;
+
+  /// Quién había guardado lo que estaba en la nube.
+  final String remoteEditorName;
+  final String remoteEditorUid;
+  final List<String> previousCoAuthorIds;
+
+  const LiveSaveResult({
+    required this.sections,
+    required this.remoteSections,
+    required this.conflicts,
+    required this.deletedHereChangedThere,
+    required this.tripFields,
+    required this.remoteTripFields,
+    this.tripConflicts = const {},
+    required this.rev,
+    required this.remoteEditorName,
+    required this.remoteEditorUid,
+    required this.previousCoAuthorIds,
+  });
+}
+
+/// Alguien con el editor del viaje abierto.
+class EditorPresence {
+  final String uid;
+  final String name;
+  final String? photo;
+
+  /// Bloque en el que está escribiendo (null = en ninguno).
+  final String? blockId;
+  final DateTime? lastSeen;
+
+  const EditorPresence({required this.uid, required this.name, this.photo, this.blockId, this.lastSeen});
+
+  factory EditorPresence.fromDoc(String uid, Map<String, dynamic> d) => EditorPresence(
+        uid: uid,
+        name: (d['name'] ?? '').toString().trim().isEmpty ? 'Alguien' : d['name'].toString().trim(),
+        photo: (d['photo'] is String && (d['photo'] as String).trim().isNotEmpty) ? d['photo'] as String : null,
+        blockId: d['blockId'] as String?,
+        lastSeen: (d['lastSeen'] as Timestamp?)?.toDate(),
+      );
+
+  /// Sigue ahí si dio señales hace poco (el latido es cada 20 s). Sin hora todavía = recién llegó.
+  bool isActive(DateTime now, {Duration window = const Duration(seconds: 60)}) =>
+      lastSeen == null || now.difference(lastSeen!).abs() < window;
+
+  String get firstName => name.split(RegExp(r'\s+')).first;
+}
 
 class TripService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -195,6 +267,142 @@ class TripService {
       print('Error notifying new co-authors: $e');
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Edición en vivo (dueño y coautores a la vez)
+  // ---------------------------------------------------------------------------
+
+  DocumentReference<Map<String, dynamic>> _tripDoc(String ownerId, String tripId) =>
+      _firestore.collection('users').doc(ownerId).collection('trips').doc(tripId);
+
+  DocumentReference<Map<String, dynamic>> _contentDoc(String ownerId, String tripId) =>
+      _tripDoc(ownerId, tripId).collection('details').doc('content');
+
+  /// Cambios del contenido (bloques) del viaje, en vivo.
+  Stream<DocumentSnapshot<Map<String, dynamic>>> watchTripContent(String ownerId, String tripId) =>
+      _contentDoc(ownerId, tripId).snapshots();
+
+  /// Cambios del documento del viaje (título, fecha, portada…), en vivo.
+  Stream<DocumentSnapshot<Map<String, dynamic>>> watchTripDoc(String ownerId, String tripId) =>
+      _tripDoc(ownerId, tripId).snapshots();
+
+  /// Campos del documento del viaje que maneja el editor, normalizados para compararlos
+  /// (sin dueño ni fechas de creación y de último cambio, que no se combinan).
+  static Map<String, dynamic> editorTripFields(Trip trip) {
+    final m = trip.toMap();
+    m.remove('createdAt');
+    m.remove('updatedAt');
+    m.remove('userId');
+    return m;
+  }
+
+  /// Lo mismo, a partir del documento tal como viene de la nube.
+  static Map<String, dynamic> editorTripFieldsFromDoc(Map<String, dynamic> data, String tripId) =>
+      editorTripFields(Trip.fromMap(data, tripId));
+
+  /// Guarda lo del editor sin pisar lo que otro guardó mientras tanto: en una transacción
+  /// lee lo que hay en la nube, lo combina a 3 vías con lo local ([mergeSections] y
+  /// [mergeFields]) y escribe el resultado. [baseSections]/[baseTrip] son lo último que este
+  /// editor vio sincronizado; [localSections]/[localTrip], lo que hay ahora en el editor.
+  Future<LiveSaveResult> saveTripLive({
+    required String ownerId,
+    required Trip localTrip,
+    required Map<String, dynamic> baseTrip,
+    required List<TripSection> baseSections,
+    required List<TripSection> localSections,
+    required int baseRev,
+    required String editorUid,
+    required String editorName,
+  }) async {
+    final tripId = localTrip.id;
+    final tripRef = _tripDoc(ownerId, tripId);
+    final contentRef = _contentDoc(ownerId, tripId);
+    final localFields = editorTripFields(localTrip);
+
+    final result = await _firestore.runTransaction<LiveSaveResult>((tx) async {
+      final contentSnap = await tx.get(contentRef);
+      final tripSnap = await tx.get(tripRef);
+      final contentData = contentSnap.data();
+      final tripData = tripSnap.data();
+
+      final remoteSections = contentData == null ? <TripSection>[] : TripContent.fromMap(contentData).sections;
+      final merged = mergeSections(baseSections, localSections, remoteSections);
+
+      final remoteFields = tripData == null ? null : editorTripFieldsFromDoc(tripData, tripId);
+      final FieldMergeResult tripMerge =
+          remoteFields == null ? FieldMergeResult(localFields, const {}) : mergeFields(baseTrip, localFields, remoteFields);
+
+      int revOf(Map<String, dynamic>? d, String key) => (d?[key] as num?)?.toInt() ?? 0;
+      final rev = [baseRev, revOf(contentData, 'rev'), revOf(tripData, 'editRev')].reduce((a, b) => a > b ? a : b) + 1;
+
+      tx.set(contentRef, {
+        'sections': [for (final s in merged.sections) s.toMap()],
+        'rev': rev,
+        'updatedBy': editorUid,
+        'updatedByName': editorName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (tripData == null) {
+        tx.set(tripRef, {...localTrip.toMap(), 'editRev': rev, 'editedBy': editorUid, 'editedByName': editorName},
+            SetOptions(merge: true));
+      } else {
+        // Solo los campos que cambian: un coautor no puede tocar al dueño ni a los participantes.
+        final changes = <String, dynamic>{
+          for (final e in tripMerge.value.entries)
+            if (!deepEquals(e.value, remoteFields![e.key])) e.key: e.value,
+        };
+        tx.update(tripRef, {
+          ...changes,
+          'updatedAt': Timestamp.fromDate(localTrip.updatedAt),
+          'editRev': rev,
+          'editedBy': editorUid,
+          'editedByName': editorName,
+        });
+      }
+
+      return LiveSaveResult(
+        sections: merged.sections,
+        remoteSections: remoteSections,
+        conflicts: merged.conflicts,
+        deletedHereChangedThere: merged.deletedHereChangedThere,
+        tripFields: tripMerge.value,
+        remoteTripFields: remoteFields,
+        tripConflicts: tripMerge.conflicts,
+        rev: rev,
+        remoteEditorName: (contentData?['updatedByName'] ?? '').toString(),
+        remoteEditorUid: (contentData?['updatedBy'] ?? '').toString(),
+        previousCoAuthorIds: List<String>.from(tripData?['coAuthorIds'] ?? const []),
+      );
+    });
+
+    // Avisos (seguidores al publicar, coautores nuevos), igual que updateTrip.
+    final savedTrip = Trip.fromMap({...localTrip.toMap(), ...result.tripFields}, tripId);
+    _checkAndNotifyFollowers(ownerId, savedTrip);
+    final added = savedTrip.coAuthorIds.where((id) => !result.previousCoAuthorIds.contains(id)).toList();
+    if (added.isNotEmpty) _notifyNewCoAuthors(ownerId, savedTrip, added);
+    return result;
+  }
+
+  // --- Presencia: quién tiene abierto el editor y en qué bloque está ---
+
+  CollectionReference<Map<String, dynamic>> _presence(String ownerId, String tripId) =>
+      _tripDoc(ownerId, tripId).collection('presence');
+
+  Stream<List<EditorPresence>> watchPresence(String ownerId, String tripId) => _presence(ownerId, tripId)
+      .snapshots()
+      .map((q) => [for (final d in q.docs) EditorPresence.fromDoc(d.id, d.data())]);
+
+  Future<void> setPresence(String ownerId, String tripId, String uid, {required String name, String? photo, String? blockId}) {
+    return _presence(ownerId, tripId).doc(uid).set({
+      'name': name,
+      'photo': photo,
+      'blockId': blockId,
+      'lastSeen': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> clearPresence(String ownerId, String tripId, String uid) => _presence(ownerId, tripId).doc(uid).delete();
 
   Future<void> updateTripContent(String userId, String tripId, TripContent content) async {
     final ref = _tripsRef(userId).doc(tripId).collection('details').doc('content');

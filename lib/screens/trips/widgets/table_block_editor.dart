@@ -36,6 +36,28 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tableMarkdown != widget.tableMarkdown) {
       _parseInitialTable();
+      _syncControllersWithTable();
+    }
+  }
+
+  /// Si la tabla cambió desde fuera (deshacer, o un coautor en vivo), las celdas muestran
+  /// el texto nuevo. Lo que se acaba de escribir aquí ya coincide y no se toca.
+  void _syncControllersWithTable() {
+    void put(String key, String text) {
+      final c = _controllers[key];
+      if (c == null || c.text == text) return;
+      c.removeListener(_handleCellChanged);
+      c.text = text;
+      c.addListener(_handleCellChanged);
+    }
+
+    for (int c = 0; c < _tableData.columns.length; c++) {
+      put('h_$c', _tableData.columns[c].name);
+    }
+    for (int r = 0; r < _tableData.rows.length; r++) {
+      for (int c = 0; c < _tableData.rows[r].length; c++) {
+        put('cell_${r}_$c', _tableData.rows[r][c]);
+      }
     }
   }
 
