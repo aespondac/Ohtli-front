@@ -1584,8 +1584,29 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                         onCleared: onCleared,
                       ),
                       const SizedBox(height: 14),
-                      Text(hasSaved ? 'O elige uno de tus puntos o de los más populares' : 'O elige un punto popular',
-                          style: OhtliUi.body(size: 12.5)),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                                hasSaved ? 'O elige uno de tus puntos o de los más populares' : 'O elige un punto popular',
+                                style: OhtliUi.body(size: 12.5)),
+                          ),
+                          // Al corregir un punto ya elegido, "Listo" cierra las opciones sin cambiarlo.
+                          if (done && _editingEndpoint == key)
+                            TextButton.icon(
+                              onPressed: () => setState(() => _editingEndpoint = null),
+                              icon: const Icon(Icons.check_rounded, size: 16),
+                              label: const Text('Listo'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: OhtliColors.accentText,
+                                backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.10),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                shape: const StadiumBorder(),
+                                textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                        ],
+                      ),
                       const SizedBox(height: 10),
                       _buildOriginGrid(isMobile, cards()),
                     ],
