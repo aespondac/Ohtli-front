@@ -132,7 +132,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _setPersistence() async {
     if (kIsWeb) {
       await FirebaseAuth.instance.setPersistence(
-        _rememberSession ? Persistence.LOCAL : Persistence.SESSION,
+        _rememberSession ? SavedAccounts.rememberedPersistence : Persistence.SESSION,
       );
     }
   }

@@ -109,13 +109,14 @@ void main() async {
       print("Firestore persistence already enabled or not supported: $e");
     }
 
-    // Ensure default Firebase Auth persistence on Web is LOCAL (IndexedDB)
+    // Sesión en web: aquí NO se llama a setPersistence. El SDK arranca buscando la sesión
+    // en IndexedDB, luego localStorage y sessionStorage, y la deja en IndexedDB (o en
+    // sessionStorage si se entró sin "Recordar sesión"). Forzar Persistence.LOCAL
+    // (localStorage) hacía que cada pestaña nueva la moviera de un almacenamiento a otro,
+    // borrándola del anterior; las pestañas ya abiertas veían ese borrado como cierre de
+    // sesión y todos sus listeners daban permission-denied. Ver
+    // SavedAccounts.rememberedPersistence.
     if (kIsWeb) {
-      try {
-        await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
-      } catch (e) {
-        print("Firebase Auth persistence initialization error: $e");
-      }
       // Avisos push (FCM): renueva el token de quien ya los activó y lo suelta al cambiar de cuenta.
       PushService.instance.start();
     }
