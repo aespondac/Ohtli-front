@@ -100,6 +100,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   List<Poi> _savedPlaces = [];
 
   double _budgetMxn = 450.0;
+  // Cómo usar el presupuesto: 'presupuesto' (entre 80 % y 100 %) o 'ahorro' (lo menos posible).
+  String _budgetStrategy = 'presupuesto';
   String _selectedMood = 'Bohemio y Cafés';
   String _selectedTopology = 'anillo'; // anillo (ida y vuelta) o radio (abierta)
   // Ruta abierta: qué extremos fija la persona (inicio, fin o ambos).
@@ -667,6 +669,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         moodText: effectiveMood,
         travelDate: _selectedTravelDate,
         transportMode: _selectedTransportMode,
+        budgetStrategy: _budgetStrategy,
       );
 
       _activeJobId = jobId;
@@ -1874,6 +1877,30 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   Text('Económico · \$150', style: OhtliUi.body(size: 12)),
                   Text('Premium · \$2,000', style: OhtliUi.body(size: 12)),
                 ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OhtliChoiceChip(
+                    label: 'Aprovechar mi presupuesto',
+                    selected: _budgetStrategy == 'presupuesto',
+                    onTap: () => setState(() => _budgetStrategy = 'presupuesto'),
+                  ),
+                  OhtliChoiceChip(
+                    label: 'Gastar lo menos posible',
+                    selected: _budgetStrategy == 'ahorro',
+                    onTap: () => setState(() => _budgetStrategy = 'ahorro'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _budgetStrategy == 'presupuesto'
+                    ? 'Buscamos lugares que usen entre el 80 % y el 100 % de tu presupuesto, si el plan lo permite.'
+                    : 'Priorizamos lugares gratuitos y económicos sin sacrificar lo que más te interesa.',
+                style: OhtliUi.body(size: 12),
               ),
             ],
           ),

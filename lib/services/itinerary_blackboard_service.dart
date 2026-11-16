@@ -31,6 +31,8 @@ class ItineraryBlackboardService {
     required String moodText,
     String? originName,
     String? transportMode,
+    // 'presupuesto' (usar entre 80 % y 100 %) o 'ahorro' (gastar lo menos posible).
+    String? budgetStrategy,
     List<double>? customTasteVector,
     DateTime? travelDate,
   }) async {
@@ -81,6 +83,7 @@ class ItineraryBlackboardService {
       // Medio de traslado (walking, bike, transit, mixto, taxi, car); sin él el motor usa el
       // del perfil cultural.
       'transport_mode': ?transportMode,
+      'budget_strategy': ?budgetStrategy,
       'created_at': nowUtc.toIso8601String(),
     };
 
