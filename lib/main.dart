@@ -42,6 +42,7 @@ import 'services/push_service.dart';
 import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
 import 'screens/trips/trip_screens.dart' deferred as trips;
+import 'widgets/ohtli_toasts.dart';
 
 
 void main() async {
@@ -206,7 +207,8 @@ class OhtliApp extends StatelessWidget {
                 // las pantallas, que leen sus colores de OhtliColors
                 platformBrightness: settings.isDarkMode ? Brightness.dark : Brightness.light,
               ),
-              child: child!,
+              // Los avisos (showSnackBar) salen como toasts arriba; abajo solo la conexión
+              child: OhtliToastMessenger(child: child!),
             );
           },
         );
@@ -285,15 +287,13 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   StreamSubscription? _onlineSub;
   StreamSubscription? _offlineSub;
 
+  /// Aviso pasajero como toast (la barra de abajo es solo para la conexión).
   void _showTemporaryBanner(String text) {
-    if (!mounted) return;
-    setState(() {
-      _showBanner = true;
-      _bannerColorIsTeal = false;
-      _bannerText = text;
-    });
-    Future.delayed(const Duration(seconds: 7), () {
-      if (mounted && _bannerText == text) setState(() => _showBanner = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(text), duration: const Duration(seconds: 7)),
+      );
     });
   }
 
