@@ -264,16 +264,30 @@ class _NotificationsPageState extends State<NotificationsPage> {
               : 'Estás al día con tu actividad.';
 
           // Encabezados por día (Hoy / Ayer / Esta semana / Antes)
+          // Avisos de rutas con IA iguales y seguidos (p. ej. tres búsquedas que terminaron a la
+          // vez) se juntan en uno: el primero se queda y cuenta cuántos representa.
           final entries = <Object>[];
+          final repeats = <String, int>{};
           String? lastGroup;
+          QueryDocumentSnapshot? lastDoc;
           for (final doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
             final group = _groupFor((data['timestamp'] as Timestamp?)?.toDate());
             if (group != lastGroup) {
               entries.add(group);
               lastGroup = group;
+              lastDoc = null;
+            }
+            final type = data['type'];
+            if (lastDoc != null && (type == 'itinerary_ready' || type == 'itinerary_failed')) {
+              final prev = lastDoc.data() as Map<String, dynamic>;
+              if (prev['type'] == type && prev['message'] == data['message']) {
+                repeats[lastDoc.id] = (repeats[lastDoc.id] ?? 1) + 1;
+                continue;
+              }
             }
             entries.add(doc);
+            lastDoc = doc;
           }
 
           final header = Padding(
@@ -356,7 +370,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     child: Text(entry.toUpperCase(), style: OhtliUi.eyebrow(OhtliColors.subtleText)),
                   );
                 }
-                return Padding(padding: const EdgeInsets.only(bottom: 12), child: _buildNotification(entry as QueryDocumentSnapshot, width));
+                return Padding(padding: const EdgeInsets.only(bottom: 12), child: _buildNotification(entry as QueryDocumentSnapshot, width, repeats: repeats[entry.id] ?? 1));
               },
             );
           }
@@ -376,7 +390,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     );
   }
 
-  Widget _buildNotification(QueryDocumentSnapshot doc, double width) {
+  Widget _buildNotification(QueryDocumentSnapshot doc, double width, {int repeats = 1}) {
     final data = doc.data() as Map<String, dynamic>;
     final String type = data['type'] ?? 'friend_request';
     final look = describeNotification(data);
@@ -388,7 +402,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final String tripTitle = data['tripTitle'] ?? 'su itinerario';
     final bool isPlan = data['isPlan'] ?? false;
 
-    final String messageText = look.message;
+    final String messageText = repeats > 1 ? itineraryGroupedMessage(type, repeats) : look.message;
     final initials = senderName.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
     final bool isClickable =
         (type == 'new_publication' ||

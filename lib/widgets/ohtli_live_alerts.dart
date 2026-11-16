@@ -132,17 +132,13 @@ class _OhtliLiveAlertsState extends State<OhtliLiveAlerts> {
         if (!done.contains(d.id) || before.contains(d.id)) continue;
         final data = d.data();
         final failed = itineraryJobFailed(data);
-        final origin = (data['origin_name'] as String?)?.trim();
-        final options = ((data['result'] as Map?)?['options'] as List?)?.length ?? 3;
         // Queda en la campana; el aviso flotante llega por el escucha de notificaciones.
         notifications
             .doc('itinerary_${d.id}')
             .set({
               'type': failed ? 'itinerary_failed' : 'itinerary_ready',
               'job_id': d.id,
-              'message': failed
-                  ? 'No pudimos terminar tus rutas con IA. Intenta de nuevo.'
-                  : '¡Listo! Tienes $options rutas con IA${origin != null && origin.isNotEmpty ? ' desde $origin' : ''} para elegir.',
+              'message': itineraryJobMessage(data, failed: failed),
               'read': false,
               'timestamp': FieldValue.serverTimestamp(),
             })

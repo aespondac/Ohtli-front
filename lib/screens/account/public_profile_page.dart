@@ -95,13 +95,29 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   SocialData? _profileSocial;
 
-  Widget _buildPrivateProfileNotice(bool isDark) {
+  /// Contenido de una pestaña: deja arriba el espacio de las barras fijas del encabezado.
+  Widget _tabScroll(Widget sliver) {
+    return Builder(
+      builder: (context) => CustomScrollView(
+        slivers: [
+          SliverOverlapInjector(handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context)),
+          sliver,
+        ],
+      ),
+    );
+  }
+
+  Widget _tabMessage(Widget child) {
     final double padding = OhtliUi.pagePadding(MediaQuery.of(context).size.width);
-    return SingleChildScrollView(
+    return _tabScroll(SliverPadding(
       padding: EdgeInsets.fromLTRB(padding, 12, padding, 40),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
+      sliver: SliverToBoxAdapter(child: Align(alignment: Alignment.topLeft, child: child)),
+    ));
+  }
+
+  Widget _buildPrivateProfileNotice(bool isDark) {
+    return _tabMessage(
+        ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
           child: const OhtliEmptyState(
             icon: Icons.lock_outline_rounded,
@@ -110,7 +126,6 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             message: 'Sus viajes y amigos solo los ven sus amigos.',
           ),
         ),
-      ),
     );
   }
 
@@ -815,7 +830,13 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       body: NestedScrollView(
         controller: _scrollController,
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+          // Todo el encabezado va en un grupo que «absorbe» la altura de las barras fijas
+          // (portada compacta + pestañas): cada pestaña la reserva arriba con SliverOverlapInjector
+          // y su primera tarjeta ya no queda debajo de las barras.
           return <Widget>[
+            SliverOverlapAbsorber(
+              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              sliver: SliverMainAxisGroup(slivers: [
             SliverPersistentHeader(
               pinned: true,
               delegate: _ProfileHeroDelegate(
@@ -866,6 +887,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             SliverPersistentHeader(
               pinned: true,
               delegate: _SliverAppBarDelegate(tabBar, horizontalPadding: padding),
+            ),
+              ]),
             ),
           ];
         },
@@ -1328,9 +1351,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   Widget _buildTripsList(bool isDesktop, bool isDark, {required bool isTrip}) {
     if (_trips == null) {
-      return const Center(
-        child: Padding(padding: EdgeInsets.symmetric(vertical: 40.0), child: CircularProgressIndicator(color: OhtliColors.stormyTeal)),
-      );
+      return _tabScroll(const SliverToBoxAdapter(
+        child: Center(
+          child: Padding(padding: EdgeInsets.symmetric(vertical: 40.0), child: CircularProgressIndicator(color: OhtliColors.stormyTeal)),
+        ),
+      ));
     }
     return _buildTripsGrid(_visibleTrips(isTrip: isTrip), isDesktop, isDark, isTrip: isTrip);
   }
@@ -1448,16 +1473,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         title = _isSelf ? 'No tienes planes en curso' : '$name no tiene planes en curso';
         subtitle = _isSelf ? 'Tus borradores aparecerán aquí mientras los armas.' : 'Cuando empiece uno, lo verás aquí.';
       }
-      return SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(padding, 12, padding, 40),
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: OhtliEmptyState(icon: icon, color: color, title: title, message: subtitle),
-          ),
-        ),
-      );
+      return _tabMessage(ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: OhtliEmptyState(icon: icon, color: color, title: title, message: subtitle),
+      ));
     }
 
     final double availableWidth = isDesktop ? (screenWidth - 260) : screenWidth;
@@ -1467,8 +1486,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     final double cardHeight = crossAxisCount == 1 ? 125.0 : (cardWidth * 9 / 16) + 150.0;
     final double computedAspectRatio = cardWidth / cardHeight;
 
-    return GridView.builder(
+    return _tabScroll(SliverPadding(
       padding: EdgeInsets.fromLTRB(padding, 12, padding, 40),
+      sliver: SliverGrid.builder(
     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         mainAxisSpacing: 20,
@@ -1512,7 +1532,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           onDelete: () => _deleteTrip(trip),
         );
       },
-    );
+      ),
+    ));
   }
 
   Future<void> _deleteTrip(Trip trip) async {
