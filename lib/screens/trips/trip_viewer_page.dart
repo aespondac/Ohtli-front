@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart' show PointerScrollEvent;
+import 'package:flutter/gestures.dart' show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:barcode/barcode.dart';
@@ -117,6 +117,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   // Modo "estoy en el viaje" (V4): paradas visitadas en este dispositivo
   bool _tripMode = false;
+  // En el teléfono el panel del modo viaje es una hoja: contraída muestra solo dónde estás y la
+  // acción principal; se abre al tocarla o arrastrarla hacia arriba.
+  bool _tripPanelOpen = false;
+  // Índice y barra de la muestra: se esconden al bajar por el viaje (en el teléfono) para no
+  // tapar los datos, y vuelven al subir.
+  final ValueNotifier<bool> _chromeHidden = ValueNotifier(false);
+  double _lastScrollPx = 0;
   Set<String> _visited = {};
 
   // Seguir el viaje con la ubicación: llegada y salida automáticas y avisos para salir.
@@ -278,6 +285,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
     _scrollController.dispose();
     _readProgress.dispose();
+    _chromeHidden.dispose();
     _pullDecay?.cancel();
     _pull.dispose();
     super.dispose();
@@ -290,6 +298,37 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final bool atTop = pos.pixels <= pos.minScrollExtent + 0.5;
     if (atTop && !_wasAtTop) _atTopSince = DateTime.now();
     _wasAtTop = atTop;
+    final double d = pos.pixels - _lastScrollPx;
+    if (d > 8 && pos.pixels > 160) {
+      _chromeHidden.value = true;
+    } else if (d < -8 || pos.pixels < 80) {
+      _chromeHidden.value = false;
+    }
+    _lastScrollPx = pos.pixels;
+  }
+
+  /// La rueda o el trackpad sobre un panel flotante desplaza el viaje que está detrás.
+  void _forwardWheel(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent || !_scrollController.hasClients) return;
+    final p = _scrollController.position;
+    _scrollController.jumpTo((p.pixels + e.scrollDelta.dy).clamp(p.minScrollExtent, p.maxScrollExtent));
+  }
+
+  /// Envuelve un control flotante para que se esconda al bajar (solo en el teléfono).
+  Widget _hideOnScroll(bool enabled, Widget child) {
+    if (!enabled) return child;
+    return ValueListenableBuilder<bool>(
+      valueListenable: _chromeHidden,
+      builder: (_, hidden, c) => IgnorePointer(
+        ignoring: hidden,
+        child: AnimatedOpacity(
+          opacity: hidden ? 0 : 1,
+          duration: const Duration(milliseconds: 200),
+          child: AnimatedSlide(offset: hidden ? const Offset(0, -0.6) : Offset.zero, duration: const Duration(milliseconds: 200), child: c),
+        ),
+      ),
+      child: child,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1070,6 +1109,108 @@ class _TripViewerPageState extends State<TripViewerPage> {
             ? (next.unplanned ? 'Desvío' : 'Siguiente parada')
             : '¡Recorrido completo!';
 
+    // En el teléfono, contraída: solo dónde estás y la acción principal.
+    final bool sheet = !embedded && MediaQuery.of(context).size.width < 700;
+    if (sheet && !_tripPanelOpen) {
+      void open() => setState(() => _tripPanelOpen = true);
+      Widget? action;
+      final h = here;
+      final n = next;
+      if (h != null && edit) {
+        action = FilledButton(
+          onPressed: () => _markLeave(h),
+          style: FilledButton.styleFrom(
+            backgroundColor: OhtliColors.stormyTeal,
+            foregroundColor: Colors.white,
+            visualDensity: VisualDensity.compact,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Text('Ya me voy', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
+        );
+      } else if (h == null && n != null) {
+        action = FilledButton(
+          onPressed: () => edit ? _markArrival(n) : _toggleVisited(n.id),
+          style: FilledButton.styleFrom(
+            backgroundColor: OhtliColors.stormyTeal,
+            foregroundColor: Colors.white,
+            visualDensity: VisualDensity.compact,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Text(edit ? 'Llegué' : 'Ya la visité', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
+        );
+      }
+      return GestureDetector(
+        onVerticalDragEnd: (d) {
+          if ((d.primaryVelocity ?? 0) < -150) open();
+        },
+        child: Material(
+          elevation: 12,
+          color: isDark ? const Color(0xFF1E1E22) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: open,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(color: sub.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(2)),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(headline,
+                                style: GoogleFonts.inter(
+                                    fontSize: 11.5, fontWeight: FontWeight.w700, color: here != null ? OhtliColors.cempasuchil : OhtliColors.stormyTeal)),
+                            if (focus != null)
+                              Text(
+                                focus.title.isEmpty ? 'Parada sin nombre' : focus.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: fg),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (_following) ...[
+                        const Icon(Icons.my_location_rounded, size: 16, color: OhtliColors.stormyTeal),
+                        const SizedBox(width: 8),
+                      ],
+                      ?action,
+                      IconButton(
+                        tooltip: 'Ver más',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.expand_less_rounded),
+                        onPressed: open,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: places.isEmpty ? 0 : done / places.length,
+                      minHeight: 3,
+                      backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.12),
+                      color: OhtliColors.stormyTeal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final List<Widget> body = [];
     if (focus != null) {
       body.add(InkWell(
@@ -1244,16 +1385,32 @@ class _TripViewerPageState extends State<TripViewerPage> {
       ));
     }
 
-    return Material(
+    void collapse() => setState(() => _tripPanelOpen = false);
+    final panel = Material(
       elevation: embedded ? 0 : 12,
       color: embedded ? Colors.transparent : (isDark ? const Color(0xFF1E1E22) : Colors.white),
       borderRadius: BorderRadius.circular(20),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(embedded ? 0 : 16, embedded ? 0 : 12, embedded ? 0 : 10, embedded ? 0 : 14),
+        padding: EdgeInsets.fromLTRB(embedded ? 0 : 16, embedded ? 0 : (sheet ? 8 : 12), embedded ? 0 : 10, embedded ? 0 : 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (sheet)
+              GestureDetector(
+                onTap: collapse,
+                behavior: HitTestBehavior.opaque,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(color: sub.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                ),
+              ),
             Row(
               children: [
                 Expanded(
@@ -1264,6 +1421,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   const SizedBox(width: 10),
                 ],
                 Text('$done/${places.length}', style: GoogleFonts.inter(fontSize: 12, color: sub)),
+                if (sheet)
+                  IconButton(
+                    tooltip: 'Contraer',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.expand_more_rounded, size: 20),
+                    onPressed: collapse,
+                  ),
                 IconButton(
                   tooltip: 'Salir del modo viaje',
                   visualDensity: VisualDensity.compact,
@@ -1297,6 +1461,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
           ],
         ),
       ),
+    );
+    if (!sheet) return panel;
+    return GestureDetector(
+      onVerticalDragEnd: (d) {
+        if ((d.primaryVelocity ?? 0) > 150) collapse();
+      },
+      child: panel,
     );
   }
 
@@ -1615,7 +1786,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
         padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 14, vertical: compact ? 5 : 7),
         // En el teléfono cabe en una línea sin la etiqueta.
         child: compact
-            ? Row(mainAxisSize: MainAxisSize.min, children: [stageSeg, const SizedBox(width: 5), roleSeg])
+            // En el teléfono las dos partes pasan a dos renglones si no caben en uno.
+            ? Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, spacing: 5, runSpacing: 5, children: [stageSeg, roleSeg])
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -3870,7 +4042,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 12 + (_isPreview ? 34 : 0),
                   right: 16,
-                  child: Material(
+                  child: _hideOnScroll(!isDesktop, Material(
                     color: isDark ? const Color(0xFF1E1E22).withValues(alpha: 0.92) : Colors.white.withValues(alpha: 0.92),
                     shape: const StadiumBorder(),
                     elevation: 3,
@@ -3890,7 +4062,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                         ),
                       ),
                     ),
-                  ),
+                  )),
                 ),
               // Botón del panel de miembros en móvil
               if (showMemberPanel && !wideAside && !_tripMode)
@@ -3933,10 +4105,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   left: 16,
                   right: 16 + asideInset,
                   bottom: 16 + MediaQuery.of(context).padding.bottom,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: _buildTripModePanel(isDark),
+                  child: Listener(
+                    onPointerSignal: _forwardWheel,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: _buildTripModePanel(isDark),
+                      ),
                     ),
                   ),
                 ),
@@ -4031,14 +4206,18 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     ),
                   ),
                 ),
-              // Barra de la muestra: abajo, salvo durante el viaje (ahí abajo va el modo viaje).
-              if (_isSample && !isLocked)
+              // Barra de la muestra: abajo; en escritorio, durante el viaje va arriba (abajo va el modo
+              // viaje). En el teléfono queda justo encima de la hoja del modo viaje para no tapar el
+              // título, y se oculta mientras la hoja está abierta.
+              if (_isSample && !isLocked && !(!isDesktop && _tripMode && _tripPanelOpen))
                 Positioned(
-                  top: _phase == TripPhase.durante ? (isDesktop ? 14 : MediaQuery.of(context).padding.top + 58) : null,
-                  bottom: _phase == TripPhase.durante ? null : 16 + MediaQuery.of(context).padding.bottom + (isDesktop ? 0 : 56),
+                  top: _phase == TripPhase.durante && isDesktop ? 14 : null,
+                  bottom: _phase == TripPhase.durante && isDesktop
+                      ? null
+                      : 16 + MediaQuery.of(context).padding.bottom + (isDesktop ? 0 : (_tripMode ? 104 : 56)),
                   left: 12,
                   right: 12 + asideInset,
-                  child: Center(child: _buildSampleBar(isDark, compact: !isDesktop)),
+                  child: _hideOnScroll(!isDesktop, Center(child: _buildSampleBar(isDark, compact: !isDesktop))),
                 ),
               if (wideAside)
                 Positioned(
