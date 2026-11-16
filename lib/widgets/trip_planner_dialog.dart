@@ -11,6 +11,8 @@ class TripPlannerDialog {
     Poi? initialOriginPoi,
     // Empieza en el plan hecho a mano (forma de ruta, con quién y fecha).
     bool startManual = false,
+    // Empieza directo en el plan con IA.
+    bool startAi = false,
     List<Map<String, dynamic>>? initialGeneratedOptions,
     String? initialActiveJobId,
     String? optionsJobId,
@@ -23,6 +25,7 @@ class TripPlannerDialog {
       context,
       initialOriginPoi: initialOriginPoi,
       startManual: startManual,
+      startAi: startAi,
       initialGeneratedOptions: initialGeneratedOptions,
       initialActiveJobId: initialActiveJobId,
       optionsJobId: optionsJobId,

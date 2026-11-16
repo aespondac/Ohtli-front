@@ -52,6 +52,8 @@ class TripPlannerPage extends StatefulWidget {
 
   /// Empieza directo en el plan hecho a mano (forma de ruta y puntos), sin la bifurcación.
   final bool startManual;
+  /// Empieza directo en el plan con IA (sin la pantalla para elegir cómo planear).
+  final bool startAi;
 
   /// Votación de un plan con IA en grupo: las 3 rutas salen del grupo y el botón vota.
   final String? groupTripId;
@@ -67,6 +69,7 @@ class TripPlannerPage extends StatefulWidget {
     super.key,
     this.initialOriginPoi,
     this.startManual = false,
+    this.startAi = false,
     this.groupTripId,
     this.initialGeneratedOptions,
     this.initialActiveJobId,
@@ -78,6 +81,7 @@ class TripPlannerPage extends StatefulWidget {
     BuildContext context, {
     Poi? initialOriginPoi,
     bool startManual = false,
+    bool startAi = false,
     List<Map<String, dynamic>>? initialGeneratedOptions,
     String? initialActiveJobId,
     String? optionsJobId,
@@ -88,6 +92,7 @@ class TripPlannerPage extends StatefulWidget {
         builder: (context) => TripPlannerPage(
           initialOriginPoi: initialOriginPoi,
           startManual: startManual,
+          startAi: startAi,
           initialGeneratedOptions: initialGeneratedOptions,
           initialActiveJobId: initialActiveJobId,
           optionsJobId: optionsJobId,
@@ -492,6 +497,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
     if (widget.startManual) {
       _manualMode = true;
+      _currentStep = PlannerStep.startingPoint;
+    } else if (widget.startAi) {
       _currentStep = PlannerStep.startingPoint;
     }
     if (widget.groupTripId != null) {
@@ -1439,7 +1446,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               setState(() => _currentStep = PlannerStep.companions);
             } else if (_currentStep == PlannerStep.companions) {
               setState(() => _currentStep = PlannerStep.startingPoint);
-            } else if (_currentStep == PlannerStep.startingPoint && !widget.startManual) {
+            } else if (_currentStep == PlannerStep.startingPoint && !widget.startManual && !widget.startAi) {
               setState(() => _currentStep = PlannerStep.bifurcation);
             } else {
               Navigator.of(context).pop();
@@ -1709,7 +1716,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           title: 'Quiero hacerlo por mi cuenta',
           subtitle: 'Eliges la forma de la ruta, el inicio y con quién vas; las paradas, fotos y notas las agregas tú en el editor.',
           icon: Icons.edit_note_rounded,
-          accentColor: const Color(0xFF6C5CE7),
+          accentColor: OhtliColors.accent,
           onTap: () => setState(() {
             _manualMode = true;
             _currentStep = PlannerStep.startingPoint;

@@ -722,7 +722,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       ],
       if (vibes.isNotEmpty) ...[
         const SizedBox(height: 30),
-        _buildTitle('AMBIENTE', 'Cómo se siente', Icons.mood_rounded, const Color(0xFF8E24AA)),
+        _buildTitle('AMBIENTE', 'Cómo se siente', Icons.mood_rounded, OhtliColors.accent),
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: vibes.map(_buildVibeChip).toList()),
       ],
@@ -909,7 +909,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         if (poi.areaVerdeCercana) _buildFriendlyPill(Icons.park_rounded, 'Áreas verdes cerca', const Color(0xFF2E7D32)),
         if (poi.wheelchairAccessible) _buildFriendlyPill(Icons.accessible_rounded, 'Accesible en silla de ruedas', const Color(0xFF1E6FD9)),
         if (poi.coeficienteMovilidad > 0) _buildFriendlyPill(Icons.directions_bike_rounded, 'Cerca de Ecobici y ciclovías', OhtliColors.accent),
-        if (poi.musicaEnVivo) _buildFriendlyPill(Icons.music_note_rounded, 'Música en vivo', const Color(0xFF8E24AA)),
+        if (poi.musicaEnVivo) _buildFriendlyPill(Icons.music_note_rounded, 'Música en vivo', OhtliColors.accent),
         if (poi.consumoAlcohol) _buildFriendlyPill(Icons.local_bar_rounded, 'Bebidas y coctelería', const Color(0xFFD81B60)),
       ];
 

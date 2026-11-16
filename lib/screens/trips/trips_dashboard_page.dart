@@ -244,7 +244,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       );
   }
 
-  void _openAiPlanner() => TripPlannerDialog.show(context);
+  void _openAiPlanner() => TripPlannerDialog.show(context, startAi: true);
 
   // En móvil: un solo botón "Nuevo viaje" que ofrece las dos formas de empezar
   void _showNewTripSheet() {
