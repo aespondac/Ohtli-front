@@ -673,7 +673,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
           Icons.logout_rounded,
           'Cerrar sesión',
           color: OhtliColors.xoconostle,
-          subtitle: currentSaved ? 'Y olvidar esta cuenta en este navegador' : null,
+          subtitle: currentSaved ? 'Podrás volver con un clic; quítala con la × al entrar' : null,
         ),
       ],
     );
