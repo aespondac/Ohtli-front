@@ -849,7 +849,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(g.title, style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                    Text(g.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
                     const SizedBox(height: 2),
                     Text(status, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
                   ],
@@ -871,8 +871,16 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           leading: const Icon(Icons.groups_rounded, size: 18, color: OhtliColors.stormyTeal),
           trailing: _countBadge(groups.length, OhtliColors.stormyTeal),
         ),
-        // Mismo ancho que las tarjetas de rutas en preparación, no de lado a lado
-        _jobCardsWrap(width, padding, [for (final g in groups) row(g)]),
+        // Una columna de la rejilla de planes, igual que sus tarjetas
+        Builder(builder: (_) {
+          final int cols = width > 1500 ? 5 : (width > 1100 ? 4 : (width > 760 ? 3 : (width > 520 ? 2 : 1)));
+          final double inner = width - padding * 2;
+          final double cardWidth = (inner - (cols - 1) * 18) / cols;
+          return Wrap(
+            spacing: 18,
+            children: [for (final g in groups) SizedBox(width: cardWidth, child: row(g))],
+          );
+        }),
       ],
     );
   }
