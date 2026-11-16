@@ -321,7 +321,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     _suppressDwellUntilExit = true;
     _cancelDwell();
     _closePeek(immediate: true);
-    TripPlannerDialog.show(context, onManualPlanSelected: () => widget.onTabSelected(1));
+    // "Quiero hacerlo por mi cuenta" abre el editor con un borrador en blanco
+    TripPlannerDialog.show(context);
   }
 
   // ---------------------------------------------------------------------------

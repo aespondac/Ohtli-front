@@ -38,6 +38,7 @@ import '../../widgets/place_details_form.dart';
 import 'package:http/http.dart' as http;
 import '../../utils/web_helpers.dart';
 import '../../services/feedback_service.dart';
+import '../../utils/current_location.dart';
 
 class TripEditorPage extends StatefulWidget {
   final Trip trip;
@@ -2959,7 +2960,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
-                onPressed: () => _showInsertMenu(at: _sections.length),
+                onPressed: () => _showInsertMenu(at: _sections.length, askWhere: true),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: OhtliColors.stormyTeal,
                   side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
@@ -3290,7 +3291,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   /// Menú de bloques: insertar en [at] o cambiar el tipo del texto vacío [replaceId] ("/").
-  Future<void> _showInsertMenu({int? at, String? replaceId}) async {
+  /// Con [askWhere], una parada nueva pregunta antes en qué lugar del recorrido va.
+  Future<void> _showInsertMenu({int? at, String? replaceId, bool askWhere = false}) async {
     final bool isDark = OhtliSettings.instance.isDarkMode;
     final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
     final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
@@ -3390,7 +3392,146 @@ class _TripEditorPageState extends State<TripEditorPage> {
       _addBlock(type, replaceId: replaceId);
       return;
     }
-    if (type != null) _addBlock(type, at: at);
+    if (type == null) return;
+    if (askWhere && (type == 'place' || type == 'detour') && _sections.any((s) => s is PlaceSection)) {
+      final where = await _askPlacePosition(isNotes: _isNotes);
+      if (where == null || !mounted) return;
+      _addBlock(type, at: where);
+      return;
+    }
+    _addBlock(type, at: at);
+  }
+
+  /// Pregunta en qué punto del recorrido va una parada nueva. Devuelve el índice donde
+  /// insertarla (o null si se cancela).
+  Future<int?> _askPlacePosition({bool isNotes = false}) async {
+    final bool isDark = OhtliSettings.instance.isDarkMode;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final places = <(int, PlaceSection)>[
+      for (var i = 0; i < _sections.length; i++)
+        if (_sections[i] is PlaceSection) (i, _sections[i] as PlaceSection),
+    ];
+    String name(PlaceSection p, int n) => p.title.trim().isNotEmpty ? p.title.trim() : '${isNotes ? 'Novedad' : 'Parada'} $n';
+    // (índice de inserción, título, detalle, número que llevará la parada nueva)
+    final options = <(int, String, String, int)>[
+      (places.first.$1, 'Al inicio', 'Antes de ${name(places.first.$2, 1)}', 1),
+      for (var k = 0; k < places.length - 1; k++)
+        (places[k].$1 + 1, 'Después de ${name(places[k].$2, k + 1)}', 'Antes de ${name(places[k + 1].$2, k + 2)}', k + 2),
+      (_sections.length, 'Al final', 'Después de ${name(places.last.$2, places.length)}', places.length + 1),
+    ];
+    int selected = options.length - 1;
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => Dialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
+          insetPadding: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 460, maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(isNotes ? '¿Dónde va la novedad?' : '¿Dónde va la parada?',
+                            style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.bold, color: fg)),
+                      ),
+                      IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close_rounded)),
+                    ],
+                  ),
+                  Text('Elige en qué punto del recorrido la agregamos.', style: GoogleFonts.inter(fontSize: 13, color: sub)),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 6),
+                      itemBuilder: (_, i) {
+                        final o = options[i];
+                        final on = i == selected;
+                        return Material(
+                          color: on
+                              ? OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.28 : 0.10)
+                              : (isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F6F5)),
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => setLocal(() => selected = i),
+                            onDoubleTap: () => Navigator.pop(ctx, o.$1),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: on ? OhtliColors.stormyTeal : Colors.transparent, width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: on ? OhtliColors.stormyTeal : OhtliColors.stormyTeal.withValues(alpha: 0.12),
+                                    ),
+                                    child: Text('${o.$4}',
+                                        style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w800, color: on ? Colors.white : OhtliColors.stormyTeal)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(o.$2,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w700, color: fg)),
+                                        Text(o.$3, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 11.5, color: sub)),
+                                      ],
+                                    ),
+                                  ),
+                                  if (on) const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancelar', style: GoogleFonts.inter(color: sub))),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => Navigator.pop(ctx, options[selected].$1),
+                        icon: const Icon(Icons.add_location_alt_rounded, size: 18),
+                        label: Text('Agregar aquí', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: OhtliColors.stormyTeal,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildBlockCard(int index, TripSection section, bool isDark) {
@@ -5212,6 +5353,7 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
   double? _lng;
   String _address = '';
   List<Map<String, dynamic>> _results = [];
+  bool _locating = false;
   bool _searching = false;
   String? _searchError;
   bool _saving = false;
@@ -5273,6 +5415,33 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
       setState(() => _searchError = 'No pudimos buscar la dirección. Revisa tu conexión o pega las coordenadas.');
     } finally {
       if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  /// Llena la ubicación con la posición actual del dispositivo.
+  Future<void> _useCurrentLocation() async {
+    setState(() {
+      _locating = true;
+      _searchError = null;
+      _results = [];
+    });
+    try {
+      final here = await getCurrentLocation();
+      if (!mounted) return;
+      if (!here.inCdmx) {
+        setState(() => _searchError = 'Tu ubicación actual queda fuera de la Ciudad de México. Busca la dirección del lugar.');
+        return;
+      }
+      setState(() {
+        _lat = here.lat;
+        _lng = here.lng;
+        _address = here.address.isNotEmpty ? here.address : 'Coordenadas ${here.lat.toStringAsFixed(5)}, ${here.lng.toStringAsFixed(5)}';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _searchError = e is CurrentLocationException ? e.message : 'No pudimos obtener tu ubicación. Busca la dirección.');
+    } finally {
+      if (mounted) setState(() => _locating = false);
     }
   }
 
@@ -5512,6 +5681,21 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
                           child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                         )
                       : IconButton(icon: const Icon(Icons.arrow_forward_rounded), onPressed: _runSearch),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _locating ? null : _useCurrentLocation,
+                icon: _locating
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.my_location_rounded, size: 18),
+                label: Text(_locating ? 'Buscando tu ubicación…' : 'Estoy aquí: usar mi ubicación actual',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: OhtliColors.stormyTeal,
+                  side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
               const SizedBox(height: 6),

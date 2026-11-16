@@ -280,10 +280,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _openTripPlanner() {
-    TripPlannerDialog.show(
-      context,
-      onManualPlanSelected: () => _selectTab(1),
-    );
+    // "Quiero hacerlo por mi cuenta" abre el editor con un borrador en blanco
+    TripPlannerDialog.show(context);
   }
 
   @override
@@ -423,10 +421,7 @@ class _HomePageState extends State<HomePage> {
         floatingActionButton: FloatingActionButton(
           heroTag: 'fab_plan_trip_mobile',
           onPressed: () {
-            TripPlannerDialog.show(
-              context,
-              onManualPlanSelected: () => _selectTab(1),
-            );
+            TripPlannerDialog.show(context);
           },
           backgroundColor: OhtliColors.stormyTeal,
           elevation: 6,

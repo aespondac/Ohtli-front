@@ -5,6 +5,7 @@ import '../../services/user_private_data.dart';
 import '../../services/saved_places.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
 import 'package:web/web.dart' as web;
 import 'dart:ui' show lerpDouble;
@@ -1019,8 +1020,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     } else {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
+        // Con id propio: sin él, el editor no tiene dónde guardar ("Sin guardar")
         final newTrip = Trip(
-          id: '',
+          id: const Uuid().v4(),
           userId: user.uid,
           title: 'Nuevo Viaje',
           description: '',
