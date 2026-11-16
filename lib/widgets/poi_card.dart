@@ -140,8 +140,13 @@ class _PoiCardState extends State<PoiCard> {
           scale: _isHovered ? zoom : 1.0,
           duration: const Duration(milliseconds: 700),
           curve: Curves.easeOutCubic,
-          child: Image.network(
-            CdmxPhotos.sized(poi.imageUrl, widget.width ?? 640, MediaQuery.devicePixelRatioOf(context)),
+          child: LayoutBuilder(builder: (context, c) => Image.network(
+            // El ancho real de la tarjeta (antes, sin ancho fijo se pedía como si midiera 640)
+            CdmxPhotos.sized(
+              poi.imageUrl,
+              widget.width ?? (c.maxWidth.isFinite ? c.maxWidth : 330),
+              MediaQuery.devicePixelRatioOf(context),
+            ),
             fit: BoxFit.cover,
             gaplessPlayback: true,
             frameBuilder: (context, child, frame, wasSync) {
@@ -154,7 +159,7 @@ class _PoiCardState extends State<PoiCard> {
               );
             },
             errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-          ),
+          )),
         ),
       ],
     );

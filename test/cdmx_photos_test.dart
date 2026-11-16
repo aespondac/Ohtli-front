@@ -10,9 +10,9 @@ void main() {
   group('CdmxPhotos.sized', () {
     test('pide el ancho estándar más pequeño que cubre la foto', () {
       expect(_width(CdmxPhotos.sized(_url, 44, 2)), '250');
-      expect(_width(CdmxPhotos.sized(_url, 160, 2)), '330');
-      expect(_width(CdmxPhotos.sized(_url, 240, 2)), '500');
-      expect(_width(CdmxPhotos.sized(_url, 268, 2)), '960');
+      expect(_width(CdmxPhotos.sized(_url, 200, 2)), '330');
+      expect(_width(CdmxPhotos.sized(_url, 330, 3)), '500', reason: 'tarjeta en teléfono: 1.5x');
+      expect(_width(CdmxPhotos.sized(_url, 420, 2)), '960');
       expect(_width(CdmxPhotos.sized(_url, 560, 2)), '1280');
     });
 
@@ -29,6 +29,19 @@ void main() {
       expect(small.replaceFirst('/250px-', '/1280px-'), _url);
     });
 
+    test('las fotos de 500 px se agrandan cuando hace falta (portadas)', () {
+      final small = _url.replaceFirst('/1280px-', '/500px-');
+      expect(_width(CdmxPhotos.sized(small, 560, 2)), '1280');
+      expect(_width(CdmxPhotos.sized(small, 400, 2)), '960');
+      expect(CdmxPhotos.sized(small, 240, 2), small);
+    });
+
+    test('las fotos por categoría vienen ligeras (500 px)', () {
+      for (final u in CdmxPhotos.covers) {
+        expect(u, contains('/500px-'));
+      }
+    });
+
     test('la densidad se limita a 2x', () {
       expect(CdmxPhotos.sized(_url, 200, 3), CdmxPhotos.sized(_url, 200, 2));
     });
@@ -40,12 +53,13 @@ void main() {
       expect(CdmxPhotos.sized(noThumb, 100, 2), noThumb);
     });
 
-    test('todas las fotos del catálogo son miniaturas que se pueden reducir', () {
+    test('todas las fotos del catálogo vienen a 500 px y se pueden reducir o agrandar', () {
       final all = [...CdmxPhotos.covers, for (final l in CdmxPhotos.byCategory.values) ...l];
       expect(all, isNotEmpty);
       for (final url in all) {
-        expect(url, contains('/1280px-'), reason: url);
+        expect(url, contains('/500px-'), reason: url);
         expect(_width(CdmxPhotos.sized(url, 100, 2)), '250', reason: url);
+        expect(_width(CdmxPhotos.sized(url, 640, 2)), '1280', reason: url);
       }
     });
   });

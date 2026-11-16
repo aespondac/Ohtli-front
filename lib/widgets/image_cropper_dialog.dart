@@ -435,15 +435,24 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
         // Convert PNG to JPEG using Web Canvas to optimize size and standard compatibility
         if (kIsWeb) {
           try {
+            // Lado mayor de 1600 px como máximo: suficiente para verse nítida en cualquier
+            // pantalla y ligera para quien la abre en el teléfono (antes salían de varios MB)
+            const maxSide = 1600;
+            final longest = image.width > image.height ? image.width : image.height;
+            final scale = longest > maxSide ? maxSide / longest : 1.0;
+            final outW = (image.width * scale).round();
+            final outH = (image.height * scale).round();
             final web.HTMLCanvasElement canvas = web.HTMLCanvasElement()
-              ..width = image.width
-              ..height = image.height;
-            final web.CanvasRenderingContext2D ctx = canvas.context2D;
+              ..width = outW
+              ..height = outH;
+            final web.CanvasRenderingContext2D ctx = canvas.context2D
+              ..imageSmoothingEnabled = true
+              ..imageSmoothingQuality = 'high';
 
             final web.HTMLImageElement imgElement = web.HTMLImageElement();
             final Completer<void> completer = Completer<void>();
             imgElement.onload = ((web.Event _) {
-              ctx.drawImage(imgElement, 0, 0);
+              ctx.drawImageScaled(imgElement, 0, 0, outW.toDouble(), outH.toDouble());
               completer.complete();
             }).toJS;
             imgElement.onerror = ((web.Event _) {
@@ -452,8 +461,8 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
             imgElement.src = base64String;
             await completer.future;
 
-            // Export to JPEG with premium compressed quality (0.95)
-            base64String = canvas.toDataURL('image/jpeg', 0.95.toJS);
+            // JPEG al 85 %: sin diferencia visible y bastante más ligero que al 95 %
+            base64String = canvas.toDataURL('image/jpeg', 0.85.toJS);
           } catch (e) {
             print("Error converting cropped image to JPEG: $e");
           }
