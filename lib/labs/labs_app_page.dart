@@ -16,6 +16,7 @@ import 'lab_console_page.dart';
 import 'lab_eval_page.dart';
 import 'lab_experiments.dart';
 import 'lab_publishing.dart';
+import 'lab_sma_page.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
@@ -41,7 +42,7 @@ class LabsAppPage extends StatefulWidget {
     if (s == 'participa' || s == 'resultados') return s;
     if (s.startsWith('exp:')) return experimentById(s.substring(4)) != null ? s : fallback;
     if (s.startsWith('study:')) return role.isMember && studyById(s.substring(6)) != null ? s : fallback;
-    if (s == 'posts') return role.isMember ? s : fallback;
+    if (s == 'posts' || s == 'sma') return role.isMember ? s : fallback;
     if (s == 'members') return role == LabRole.admin ? s : fallback;
     return fallback;
   }
@@ -111,6 +112,10 @@ class _LabsAppPageState extends State<LabsAppPage> {
         if (_role.isMember)
           ('PRUEBAS DEL TT', [
             for (final s in kLabStudies) _NavEntry('study:${s.id}', labStudyIcon(s.kind), s.title),
+          ]),
+        if (_role.isMember)
+          ('SISTEMA MULTIAGENTE', const [
+            _NavEntry('sma', Icons.hub_outlined, 'Aprendizaje del SMA'),
           ]),
         if (_role.isMember)
           ('PUBLICACIÓN', [
@@ -273,6 +278,7 @@ class _LabsAppPageState extends State<LabsAppPage> {
     }
     if (section == 'resultados') return _scroll(const LabReleasedView(), maxWidth: 820);
     if (section == 'posts') return _scroll(LabPostsPanel(role: _role));
+    if (section == 'sma') return _scroll(const LabSmaPanel());
     if (section == 'members') return _scroll(const LabMembersPanel());
     if (section.startsWith('study:')) return _scroll(LabStudyPanel(study: studyById(section.substring(6))!));
     final e = experimentById(section.substring(4))!;

@@ -22,11 +22,13 @@ void main() {
     expect(LabsAppPage.validSection(firstStudy, LabRole.tester), 'participa');
     expect(LabsAppPage.validSection('posts', LabRole.tester), 'participa');
     expect(LabsAppPage.validSection('members', LabRole.tester), 'participa');
+    expect(LabsAppPage.validSection('sma', LabRole.tester), 'participa');
   });
 
   test('miembros: pruebas y publicación; Miembros solo administración', () {
     expect(LabsAppPage.validSection(firstStudy, LabRole.researcher), firstStudy);
     expect(LabsAppPage.validSection('posts', LabRole.researcher), 'posts');
+    expect(LabsAppPage.validSection('sma', LabRole.researcher), 'sma');
     expect(LabsAppPage.validSection('members', LabRole.researcher), firstStudy);
     expect(LabsAppPage.validSection('members', LabRole.admin), 'members');
   });
