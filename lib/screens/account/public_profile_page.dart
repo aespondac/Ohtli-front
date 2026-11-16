@@ -981,7 +981,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(eyebrow, style: OhtliUi.eyebrow(OhtliColors.accent).copyWith(shadows: [Shadow(color: Colors.black.withValues(alpha: 0.7), blurRadius: 10)])),
+                Text(eyebrow, style: OhtliUi.eyebrow(OhtliColors.accentLight).copyWith(shadows: [Shadow(color: Colors.black.withValues(alpha: 0.7), blurRadius: 10)])),
                 const SizedBox(height: 6),
                 Text(
                   displayName,

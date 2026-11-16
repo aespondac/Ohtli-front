@@ -1594,7 +1594,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           width: 84,
           height: 84,
           decoration: BoxDecoration(
-            color: (stalled ? OhtliColors.warning : OhtliColors.accent).withOpacity(0.12),
+            color: (stalled ? OhtliColors.warning : OhtliColors.accentFill).withOpacity(0.12),
             shape: BoxShape.circle,
           ),
           child: Icon(

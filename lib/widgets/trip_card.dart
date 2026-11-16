@@ -377,9 +377,9 @@ class _TripCardState extends State<TripCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [OhtliColors.accent, Color(0xFFB8325A)]),
+        gradient: LinearGradient(colors: [OhtliColors.accentFill, Color(0xFFB8325A)]),
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: OhtliColors.accent.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: OhtliColors.accentFill.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

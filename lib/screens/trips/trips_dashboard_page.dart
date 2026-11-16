@@ -1052,7 +1052,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: isNew ? OhtliColors.accent : Colors.white.withValues(alpha: 0.92),
+                        color: isNew ? OhtliColors.accentFill : Colors.white.withValues(alpha: 0.92),
                         borderRadius: BorderRadius.circular(30),
                       ),
                       child: Row(

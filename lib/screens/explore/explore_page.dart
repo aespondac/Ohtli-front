@@ -399,14 +399,14 @@ class _ExplorePageState extends State<ExplorePage> {
         icon: Icons.place_outlined,
         title: 'Lugares',
         subtitle: 'Explora el catálogo',
-        color: OhtliColors.accent,
+        color: OhtliColors.accentFill,
         onTap: () => widget.onOpenTab(5),
       ),
       _QuickAction(
         icon: Icons.map_outlined,
         title: 'Mis viajes',
         subtitle: 'Tus crónicas y borradores',
-        color: OhtliColors.accent,
+        color: OhtliColors.accentFill,
         onTap: () => widget.onOpenTab(1),
       ),
       _QuickAction(

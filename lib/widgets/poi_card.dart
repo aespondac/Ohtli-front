@@ -236,7 +236,7 @@ class _PoiCardState extends State<PoiCard> {
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: saved ? OhtliColors.accent : Colors.black.withValues(alpha: 0.38),
+              color: saved ? OhtliColors.accentFill : Colors.black.withValues(alpha: 0.38),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withValues(alpha: saved ? 0.0 : 0.22), width: 0.8),
               boxShadow: saved

@@ -231,7 +231,7 @@ class _PhotoPanel extends StatelessWidget {
                   const TextSpan(text: 'Tu camino por la Ciudad de México, '),
                   TextSpan(
                     text: 'a tu medida.',
-                    style: TextStyle(color: OhtliColors.accent.withValues(alpha: 0.95)),
+                    style: const TextStyle(color: OhtliColors.accentLight),
                   ),
                 ],
               ),

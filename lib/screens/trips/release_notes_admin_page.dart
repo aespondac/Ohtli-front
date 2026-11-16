@@ -574,7 +574,7 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: (public ? OhtliColors.stormyTeal : OhtliColors.accent).withValues(alpha: 0.14),
+                          color: (public ? OhtliColors.stormyTeal : OhtliColors.accentFill).withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(

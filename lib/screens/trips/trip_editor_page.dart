@@ -3214,7 +3214,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
               decoration: BoxDecoration(
-                color: (_status == 'published' ? OhtliColors.stormyTeal : OhtliColors.accent).withValues(alpha: 0.14),
+                color: (_status == 'published' ? OhtliColors.stormyTeal : OhtliColors.accentFill).withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_status == 'published' ? 'Publicado' : 'Borrador',

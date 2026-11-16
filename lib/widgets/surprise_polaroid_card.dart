@@ -260,7 +260,7 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: locked ? OhtliColors.innerCardBg : null,
-        gradient: locked ? null : LinearGradient(colors: [OhtliColors.accent, Color(0xFFB8325A)]),
+        gradient: locked ? null : LinearGradient(colors: [OhtliColors.accentFill, Color(0xFFB8325A)]),
         borderRadius: BorderRadius.circular(30),
         border: locked ? Border.all(color: OhtliColors.cardBorder) : null,
         boxShadow: locked ? null : [BoxShadow(color: OhtliColors.accent.withValues(alpha: _hover ? 0.45 : 0.25), blurRadius: 12, offset: const Offset(0, 4))],
