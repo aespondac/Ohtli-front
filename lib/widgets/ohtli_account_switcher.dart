@@ -101,7 +101,18 @@ class AccountSwitchActions {
       );
       if (ok != true) return;
     }
+    _addingAccount = true;
     onLogout();
+  }
+
+  static bool _addingAccount = false;
+
+  /// true una sola vez tras "Agregar otra cuenta": al cerrar la sesión, la app va directo
+  /// al inicio de sesión (con el formulario abierto) en lugar de la portada.
+  static bool takeAddingAccount() {
+    final adding = _addingAccount;
+    _addingAccount = false;
+    return adding;
   }
 
   /// Cerrar sesión conservando la cuenta recordada: guarda su sesión más reciente para

@@ -22,8 +22,11 @@ class LoginPage extends StatefulWidget {
     required this.onRegisterClick,
     required this.onLoginSuccess,
     required this.onForgotPasswordClick,
+    this.startWithForm = false,
   });
 
+  /// Abre directo el formulario (p. ej. al agregar otra cuenta) en lugar de "Continuar como".
+  final bool startWithForm;
   final VoidCallback onBack;
   final VoidCallback onRegisterClick;
   final VoidCallback onLoginSuccess;
@@ -49,7 +52,7 @@ class _LoginPageState extends State<LoginPage> {
 
   /// Con cuentas recordadas, primero se ofrecen ellas; el formulario completo aparece
   /// con "Usar otra cuenta".
-  late bool _showFullForm = _quick.isEmpty;
+  late bool _showFullForm = widget.startWithForm || _quick.isEmpty;
   String? _switchingUid;
 
   bool get _busy => _loadingEmail || _loadingGoogle || _switchingUid != null;

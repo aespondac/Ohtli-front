@@ -38,6 +38,7 @@ import 'services/ohtli_sso.dart';
 import 'services/app_route.dart';
 import 'services/app_url.dart';
 import 'services/saved_accounts.dart';
+import 'widgets/ohtli_account_switcher.dart';
 import 'services/push_service.dart';
 import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
@@ -269,6 +270,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   bool _replaceNextUrl = true;
   bool _lastIsMobile = false;
   bool _coverPrecached = false;
+  bool _loginWithForm = false;
   bool _isAuthInitialized = false;
   bool _intentLabs = false;
   bool _isLabAppHost = false;
@@ -764,6 +766,17 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
 
   /// "Volver" desde el inicio de sesión: en lab.ohtli.quest regresa a la landing de Labs y en
   /// ohtli.quest/sso al subdominio que pidió la sesión.
+  /// Pantalla tras cerrar sesión: la portada, o el inicio de sesión con el formulario
+  /// abierto si se cerró para agregar otra cuenta (web y teléfono).
+  void _afterLogout() {
+    if (AccountSwitchActions.takeAddingAccount()) {
+      _loginWithForm = true;
+      _navigateTo(_loginScreen);
+    } else {
+      _navigateTo(OhtliScreen.underConstruction);
+    }
+  }
+
   /// Portada del teléfono sin sesión (en "/" y al pedir iniciar sesión).
   Widget _mobileWelcome() => MobileWelcomePage(
         onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
@@ -890,7 +903,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       activeView = HomePage(
         initialIndex: _homeInitialIndex,
         onTabChanged: (index) => setState(() => _homeInitialIndex = index),
-        onLogout: () => _navigateTo(OhtliScreen.underConstruction),
+        onLogout: _afterLogout,
         onNavigateToAccount: () {
           setState(() {
             _homeInitialIndex = 0; // standard reset
@@ -908,7 +921,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         },
         onLogout: () async {
           try {
-            _navigateTo(OhtliScreen.underConstruction);
+            _afterLogout();
             await FirebaseAuth.instance.signOut();
           } catch (e) {
             print("Error al cerrar sesión: $e");
@@ -1079,7 +1092,10 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       );
     } else {
       // Entrar (login y mobileLogin; mobileWelcome en escritorio)
+      final withForm = _loginWithForm;
+      _loginWithForm = false;
       activeView = LoginPage(
+        startWithForm: withForm,
         onBack: _goPublicHome,
         onRegisterClick: () => _navigateTo(_registerScreen),
         onLoginSuccess: _onAuthSuccess,
