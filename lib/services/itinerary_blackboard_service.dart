@@ -353,7 +353,9 @@ class ItineraryBlackboardService {
           id: 'sec_${const Uuid().v4()}',
           title: stopName,
           description: stopDesc,
-          rating: 5,
+          // Sin calificar hasta que la persona visite el lugar (0, como en los planes manuales):
+          // las 5 estrellas prellenadas contaban como "me gustó" en la retroalimentación.
+          rating: 0,
           mainPhotoUrl: photo.toString(),
           secondaryPhotoUrls: [],
           cost: (stop['price_mxn'] as num?)?.toDouble() ?? 0.0,
