@@ -1897,6 +1897,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           _syncAllTables();
                           try {
                             await _saveToCloudFirestore().timeout(const Duration(minutes: 2));
+                            // Éxito de la recomendación: publicarlo (no privado) cuenta como compartirlo.
+                            if (_visibility != 'private') {
+                              FeedbackService.itineraryShared(
+                                  tripId: widget.trip.id, jobId: widget.trip.recommendationJobId, channel: 'publicar');
+                            }
                             if (mounted) {
                               setState(() {
                                 _isPublishing = false;

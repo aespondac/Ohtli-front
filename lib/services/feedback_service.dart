@@ -125,6 +125,19 @@ class FeedbackService {
         surface: 'itinerary');
   }
 
+  /// Hizo el viaje (lo terminó). Mide el éxito de la recomendación junto con elegir, no modificar y
+  /// compartir (Agente Crítico del motor). `jobId` es el de la recomendación, si la hubo.
+  static void itineraryCompleted({required String? tripId, String? jobId}) {
+    if ((tripId ?? '').isEmpty) return;
+    track('itinerary_completed', jobId: jobId, tripId: tripId, surface: 'trip');
+  }
+
+  /// Compartió el viaje: enlace, copia del enlace o publicación (`channel` dice cuál).
+  static void itineraryShared({required String? tripId, String? jobId, required String channel}) {
+    if ((tripId ?? '').isEmpty) return;
+    track('itinerary_shared', jobId: jobId, tripId: tripId, surface: 'trip', reason: channel);
+  }
+
   /// Volvió a generar o descartó las opciones sin elegir ninguna.
   static void itineraryDiscarded(String? jobId, {String? reason}) =>
       track('itinerary_discarded', jobId: jobId, reason: reason);

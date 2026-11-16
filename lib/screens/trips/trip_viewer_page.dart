@@ -2497,6 +2497,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
         'finishedAt': Timestamp.fromDate(now),
         'updatedAt': Timestamp.fromDate(now),
       });
+      // Éxito de la recomendación: la persona hizo el viaje.
+      FeedbackService.itineraryCompleted(tripId: t.id, jobId: t.recommendationJobId);
       if (!mounted) return;
       _stopFollow();
       setState(() {
@@ -2960,12 +2962,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextButton(
-                onPressed: () => Share.share('${_trip!.title} — ${_trip!.isReleaseNotes ? 'novedades de Ohtli' : 'mi viaje en Ohtli'}\n$url'),
+                onPressed: () {
+                  FeedbackService.itineraryShared(tripId: _trip!.id, jobId: _trip!.recommendationJobId, channel: 'compartir');
+                  Share.share('${_trip!.title} — ${_trip!.isReleaseNotes ? 'novedades de Ohtli' : 'mi viaje en Ohtli'}\n$url');
+                },
                 child: Text('Más…', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
               ),
               const SizedBox(width: 4),
               FilledButton.icon(
                 onPressed: () async {
+                  FeedbackService.itineraryShared(tripId: _trip!.id, jobId: _trip!.recommendationJobId, channel: 'enlace');
                   await Clipboard.setData(ClipboardData(text: url));
                   if (ctx.mounted) Navigator.of(ctx).pop();
                   if (mounted) {
