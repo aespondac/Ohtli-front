@@ -53,6 +53,13 @@
       else if (h === 'api.ohtli.quest') document.title = 'Ohtli API';
     })();
   </script>
+  <!-- Fuentes más usadas: se descargan junto con la app y no al final (en teléfono se veía
+       primero la letra del sistema y luego cambiaba) -->
+  <link rel="preload" href="assets/assets/google_fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/assets/google_fonts/Inter-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/assets/google_fonts/Inter-Bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/assets/google_fonts/Outfit-Bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/assets/google_fonts/Outfit-ExtraBold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="manifest" href="manifest.json">
   <style>
     body {

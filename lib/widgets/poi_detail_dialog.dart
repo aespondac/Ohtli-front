@@ -806,7 +806,8 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       if (cuisine.isNotEmpty) _QuickFact(Icons.restaurant_menu_rounded, 'Cocina', cuisine, OhtliColors.xoconostle),
     ];
     return LayoutBuilder(builder: (context, c) {
-      final cols = c.maxWidth >= 640 ? facts.length : 2;
+      // En teléfono, una columna: en dos, el precio y el horario se cortaban ('Costoso (~ $350 - $6…')
+      final cols = c.maxWidth >= 640 ? facts.length : (c.maxWidth >= 440 ? 2 : 1);
       final w = (c.maxWidth - (cols - 1) * 10) / cols;
       return Wrap(
         spacing: 10,

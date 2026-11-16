@@ -195,13 +195,17 @@ class _LandingPageState extends State<LandingPage> {
             _navLink('Crónicas', () => _scrollTo(_storiesKey)),
           ],
           const Spacer(),
-          const OhtliThemeToggle(),
-          SizedBox(width: isMobile ? 4 : 10),
+          // En teléfonos angostos no cabe junto a los dos botones (se encimaba con el logo);
+          // el tema también se cambia en Cuenta → Preferencias
+          if (MediaQuery.sizeOf(context).width >= 420) ...[
+            const OhtliThemeToggle(),
+            SizedBox(width: isMobile ? 4 : 10),
+          ],
           TextButton(
             onPressed: widget.onLoginClick,
             style: TextButton.styleFrom(
               foregroundColor: OhtliColors.onyx,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: 12),
               textStyle: GoogleFonts.inter(
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
