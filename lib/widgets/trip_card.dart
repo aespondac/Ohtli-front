@@ -11,6 +11,7 @@ import '../services/trip_service.dart';
 import '../services/pdf_export_service.dart';
 import 'ohtli_markdown_renderer.dart';
 import 'trip_polaroid.dart';
+import 'ohtli_ui.dart';
 import '../utils/friendly_errors.dart';
 
 class TripCard extends StatefulWidget {
@@ -289,10 +290,7 @@ class _TripCardState extends State<TripCard> {
           ),
           title: Text(
             _isOthers ? (_isSurprise ? '¿Quitar la sorpresa de tus planes?' : '¿Quitar el viaje de tus viajes?') : '¿Eliminar viaje?',
-            style: GoogleFonts.inter(
-              fontWeight: FontWeight.w600,
-              color: OhtliColors.onyx,
-            ),
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 22, color: OhtliColors.onyx),
           ),
           content: Text(
             _isOthers
@@ -302,18 +300,9 @@ class _TripCardState extends State<TripCard> {
               color: OhtliColors.onyx.withValues(alpha: 0.8),
             ),
           ),
-          actionsPadding: const EdgeInsets.only(right: 16, bottom: 16),
+          actionsPadding: const EdgeInsets.only(right: 20, bottom: 20),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                'Cancelar',
-                style: GoogleFonts.inter(
-                  color: OhtliColors.onyx.withValues(alpha: 0.6),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
+            OhtliSecondaryButton(compact: true, label: 'Cancelar', onPressed: () => Navigator.of(dialogContext).pop()),
             ElevatedButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
@@ -322,16 +311,13 @@ class _TripCardState extends State<TripCard> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: OhtliColors.xoconostle,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 elevation: 0,
               ),
               child: Text(
                 _isOthers ? 'Quitar' : 'Eliminar',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w500,
-                ),
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14),
               ),
             ),
           ],

@@ -532,16 +532,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       )
                     ]
                   : [
-                      TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: Text(
-                          'Cancelar',
-                          style: GoogleFonts.inter(
-                            color: OhtliColors.onyx.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
+                      OhtliSecondaryButton(compact: true, label: 'Cancelar', onPressed: () => Navigator.of(dialogContext).pop()),
                       ElevatedButton(
                         onPressed: () async {
                           if (formKey.currentState!.validate()) {
@@ -634,18 +625,11 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: OhtliColors.stormyTeal,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                          shape: const StadiumBorder(),
                           elevation: 0,
                         ),
-                        child: Text(
-                          'Guardar',
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        child: Text('Guardar', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14)),
                       ),
                     ],
             );
@@ -1495,14 +1479,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         ? 'No encontramos lugares que encajen con esas preferencias.'
         : 'Hubo un problema al calcular la ruta.';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OhtliSurface(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E22) : Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: OhtliColors.xoconostle.withOpacity(0.35), width: 1.2),
-      ),
+      accent: OhtliColors.xoconostle,
+      selected: true,
       child: Row(
         children: [
           Container(
@@ -1539,19 +1521,15 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                   spacing: 8,
                   runSpacing: 6,
                   children: [
-                    ElevatedButton.icon(
+                    OhtliPrimaryButton(
+                      compact: true,
+                      label: 'Intentar de nuevo',
+                      icon: Icons.refresh_rounded,
                       onPressed: () => TripPlannerDialog.show(context, originName: originName),
-                      icon: const Icon(Icons.refresh_rounded, size: 16),
-                      label: Text('Intentar de nuevo', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      ),
                     ),
-                    TextButton(
+                    OhtliSecondaryButton(
+                      compact: true,
+                      label: 'Descartar',
                       onPressed: () async {
                         try {
                           await doc.reference.set({'status': 'dismissed'}, SetOptions(merge: true));
@@ -1562,7 +1540,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                           );
                         }
                       },
-                      child: Text('Descartar', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
                     ),
                   ],
                 ),
@@ -1571,6 +1548,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -1651,17 +1629,11 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             final actions = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton.icon(
-                  onPressed: () {
-                    TripPlannerDialog.show(
-                      context,
-                      initialActiveJobId: doc.id,
-                      originName: originName,
-                    );
-                  },
-                  icon: const Icon(Icons.visibility_outlined, size: 16),
-                  label: Text('Ver avance', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                  style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
+                OhtliSecondaryButton(
+                  compact: true,
+                  label: 'Ver avance',
+                  icon: Icons.visibility_outlined,
+                  onPressed: () => TripPlannerDialog.show(context, initialActiveJobId: doc.id, originName: originName),
                 ),
                 IconButton(
                   icon: Icon(Icons.close_rounded, size: 18, color: isDark ? Colors.white38 : OhtliColors.onyx.withOpacity(0.45)),
