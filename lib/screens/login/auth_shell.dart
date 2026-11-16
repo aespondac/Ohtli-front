@@ -60,16 +60,8 @@ class AuthShell extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if (logoHeader)
-                      const SizedBox(height: 24)
-                    else ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 132,
-                        child: _PhotoPanel(photo: photo, compact: true),
-                      ),
-                      const SizedBox(height: 28),
-                    ],
+                    // En el teléfono no va la foto con el lema: el formulario empieza de inmediato.
+                    SizedBox(height: logoHeader ? 24 : 20),
                     form,
                   ],
                 ),
@@ -175,17 +167,16 @@ class _BackButton extends StatelessWidget {
 
 /// Foto de la ciudad con el lema de la portada.
 class _PhotoPanel extends StatelessWidget {
-  const _PhotoPanel({required this.photo, this.compact = false, this.showLogo = true});
+  const _PhotoPanel({required this.photo, this.showLogo = true});
 
   final int photo;
-  final bool compact;
   final bool showLogo;
 
   @override
   Widget build(BuildContext context) {
     final url = CdmxPhotos.covers[photo % CdmxPhotos.covers.length];
     return ClipRRect(
-      borderRadius: BorderRadius.circular(compact ? 22 : 32),
+      borderRadius: BorderRadius.circular(32),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -204,13 +195,13 @@ class _PhotoPanel extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withValues(alpha: compact ? 0.05 : 0.15),
-                  Colors.black.withValues(alpha: compact ? 0.55 : 0.72),
+                  Colors.black.withValues(alpha: 0.15),
+                  Colors.black.withValues(alpha: 0.72),
                 ],
               ),
             ),
           ),
-          if (!compact && showLogo)
+          if (showLogo)
             Positioned(
               top: 32,
               left: 36,
@@ -222,9 +213,9 @@ class _PhotoPanel extends StatelessWidget {
               ),
             ),
           Positioned(
-            left: compact ? 18 : 36,
-            right: compact ? 18 : 36,
-            bottom: compact ? 16 : 40,
+            left: 36,
+            right: 36,
+            bottom: 40,
             child: Text.rich(
               TextSpan(
                 children: [
@@ -236,11 +227,11 @@ class _PhotoPanel extends StatelessWidget {
                 ],
               ),
               style: GoogleFonts.outfit(
-                fontSize: compact ? 21 : 44,
+                fontSize: 44,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
                 height: 1.05,
-                letterSpacing: compact ? -0.4 : -1.4,
+                letterSpacing: -1.4,
               ),
             ),
           ),
