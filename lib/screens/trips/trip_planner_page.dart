@@ -945,6 +945,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   /// Misma descripción que "Sobre este lugar" en el detalle del lugar.
+  /// Narración del Recomendador para una parada de la alternativa (highlight, historia, consejo).
+  static Map<String, String> _stopNarration(Map<String, dynamic> option, Map<String, dynamic> stop) {
+    final pid = stop['poi_id']?.toString();
+    final idx = (stop['stop_index'] as num?)?.toInt();
+    for (final n in (option['stops_narration'] as List?) ?? const []) {
+      if (n is! Map) continue;
+      if ((pid != null && n['poi_id']?.toString() == pid) || (idx != null && (n['stop_index'] as num?)?.toInt() == idx)) {
+        return {
+          'highlight': (n['highlight'] ?? '').toString().trim(),
+          'story': (n['cultural_story'] ?? '').toString().trim(),
+          'tip': (n['curator_tip'] ?? '').toString().trim(),
+        };
+      }
+    }
+    return const {};
+  }
+
   String _stopDetailDescription(Map<String, dynamic> stop) {
     final cached = _poiCache[_stopPoiId(stop)];
     return (cached ?? _poiFromStop(stop)).cleanNarrative;
@@ -3030,7 +3047,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
   ({String title, String summary, double cost, String timeStr, String coverUrl, List<dynamic> stops}) _routeCardData(Map<String, dynamic> option, int index) {
     final title = (option['editorial_headline'] ?? option['theme'] ?? 'Ruta ${index + 1}').toString();
-    final summary = (option['narrative_summary'] ?? '').toString();
+    final pitch = (option['pitch'] ?? '').toString().trim();
+    final summary = pitch.isNotEmpty ? pitch : (option['narrative_summary'] ?? '').toString();
     final cost = (option['total_cost_mxn'] as num?)?.toDouble() ?? 250.0;
     final timeMins = _computeOptionTotalDuration(option);
     final List<dynamic> stops = option['route'] ?? [];
@@ -3768,7 +3786,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       // Sin calificación en el catálogo no se muestra ninguna (antes se rellenaba con 4.8)
       final rating = (stop['rating'] as num?)?.toDouble();
       final priceIsEstimate = stop['price_is_estimate'] != false;
-      final desc = _stopDetailDescription(stop);
+      // Lo que escribió el Recomendador para esta parada; si no hay, la descripción del lugar.
+      final nar = _stopNarration(option, stop);
+      final narText = [nar['highlight'] ?? '', nar['story'] ?? ''].where((t) => t.isNotEmpty).join(' — ');
+      final desc = narText.isNotEmpty ? narText : _stopDetailDescription(stop);
       final photoSize = isMobile ? 92.0 : 128.0;
       Widget wrapInfo(Widget c) => isMobile ? c : Expanded(child: c);
 
@@ -4034,6 +4055,36 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Por qué esta alternativa es para la persona y sus puntos fuertes (Recomendador).
+        if ((option['pitch'] ?? '').toString().trim().isNotEmpty) ...[
+          Text(
+            (option['pitch']).toString().trim(),
+            style: GoogleFonts.outfit(fontSize: isMobile ? 17 : 20, fontWeight: FontWeight.w700, color: textPrimary, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (((option['highlights'] as List?) ?? const []).isNotEmpty) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final h in (option['highlights'] as List).take(3))
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: OhtliColors.stormyTeal.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.check_circle_rounded, size: 15, color: OhtliColors.stormyTeal),
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(h.toString(), style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: textPrimary))),
+                  ]),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
         if (summary.isNotEmpty) ...[
           Text(
             summary,

@@ -264,34 +264,59 @@ class ItineraryBlackboardService {
     final now = DateTime.now();
 
     final title = (chosenOption['editorial_headline'] ?? chosenOption['theme'] ?? defaultTitle).toString();
-    final description = (chosenOption['narrative_summary'] ?? '').toString();
-    
+    final summary = (chosenOption['narrative_summary'] ?? '').toString();
+    final pitch = (chosenOption['pitch'] ?? '').toString().trim();
+    final highlights = ((chosenOption['highlights'] as List?) ?? const [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    // Descripción del viaje: por qué es para la persona (pitch) o, si no, el resumen.
+    final description = pitch.isNotEmpty ? pitch : summary;
+
     // Extraer paradas
     final List<dynamic> rawStops = chosenOption['route'] ?? [];
     final List<dynamic> rawNarrations = chosenOption['stops_narration'] ?? [];
-    
+    // La narración de cada parada se busca por poi_id o por stop_index (no por posición).
+    final narrationByPoi = <String, Map>{};
+    final narrationByIndex = <int, Map>{};
+    for (final n in rawNarrations) {
+      if (n is! Map) continue;
+      final pid = n['poi_id']?.toString();
+      if (pid != null && pid.isNotEmpty) narrationByPoi[pid] = n;
+      final idx = (n['stop_index'] as num?)?.toInt();
+      if (idx != null) narrationByIndex[idx] = n;
+    }
+
     String coverUrl = '';
     final List<TripSection> sections = [];
 
     for (int i = 0; i < rawStops.length; i++) {
       final stop = rawStops[i] as Map<String, dynamic>;
       final stopName = stop['name'] ?? 'Parada ${i + 1}';
-      final photo = stop['photo_url'] ?? stop['main_photo_url'] ?? '';
-      if (coverUrl.isEmpty && photo.toString().isNotEmpty) {
-        coverUrl = photo.toString();
-      }
+      final category = stop['category']?.toString();
+      final ownPhoto = (stop['photo_url'] ?? stop['main_photo_url'] ?? '').toString();
+      // Sin foto del lugar, una foto de la CDMX de su categoría (antes, ninguna).
+      final photo = ownPhoto.isNotEmpty ? ownPhoto : CdmxPhotos.forCategory(category, i + stopName.hashCode);
+      if (coverUrl.isEmpty && ownPhoto.isNotEmpty) coverUrl = ownPhoto;
 
-      String stopDesc = '';
-      if (i < rawNarrations.length && rawNarrations[i] != null) {
-        final n = rawNarrations[i];
-        if (n is Map) {
-          stopDesc = n['narration'] ?? n['why'] ?? '';
-        } else {
-          stopDesc = n.toString();
-        }
-      }
+      // Prellenado con lo que escribió el Recomendador: historia, por qué destaca y consejo.
+      // Antes se buscaban campos que el motor no envía (narration/why) y cada parada quedaba con
+      // la receta técnica de ejes del embedding.
+      final n = narrationByPoi[stop['poi_id']?.toString()] ??
+          narrationByIndex[(stop['stop_index'] as num?)?.toInt() ?? i + 1] ??
+          const {};
+      final story = (n['cultural_story'] ?? '').toString().trim();
+      final hl = (n['highlight'] ?? '').toString().trim();
+      final tip = (n['curator_tip'] ?? '').toString().trim();
+      final parts = <String>[
+        if (hl.isNotEmpty) '**$hl**',
+        if (story.isNotEmpty) story,
+        if (tip.isNotEmpty) '**Consejo:** $tip',
+      ];
+      String stopDesc = parts.join('\n\n');
       if (stopDesc.isEmpty) {
-        stopDesc = stop['semantic_description'] ?? 'Parada recomendada por afinidad cultural.';
+        final own = (stop['description'] ?? '').toString().trim();
+        stopDesc = own.isNotEmpty && !own.startsWith('[EJE') ? own : '';
       }
 
       double? lat = (stop['lat'] as num?)?.toDouble();
@@ -355,15 +380,24 @@ class ItineraryBlackboardService {
       ));
     }
 
-    // Agregar sección narrativa general de la ruta si existe
-    if (description.isNotEmpty) {
+    // Introducción del viaje: el resumen del Recomendador y sus puntos fuertes, listos para
+    // publicarse sin reescribirlos.
+    final intro = <String>[
+      if (summary.isNotEmpty) summary,
+      if (highlights.isNotEmpty) highlights.map((h) => '- $h').join('\n'),
+    ].join('\n\n');
+    if (intro.isNotEmpty) {
       sections.insert(
         0,
         TextSection(
           id: 'sec_${const Uuid().v4()}',
-          markdownText: '### Propósito del Viaje\n$description',
+          markdownText: intro,
         ),
       );
+    }
+    if (coverUrl.isEmpty && rawStops.isNotEmpty) {
+      final first = rawStops.first as Map<String, dynamic>;
+      coverUrl = CdmxPhotos.forCategory(first['category']?.toString(), title.hashCode);
     }
 
     final newTrip = Trip(
