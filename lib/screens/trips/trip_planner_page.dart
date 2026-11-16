@@ -2880,7 +2880,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ] else
           _buildPlacesLimitSurface(),
         const SizedBox(height: 10),
-        _plannerNote(Icons.traffic_outlined, 'Las rutas consideran el tráfico del día de tu visita.'),
+        _plannerNote(Icons.traffic_outlined, 'Los tiempos de traslado son aproximados; el tráfico puede alargarlos.'),
         const SizedBox(height: 28),
 
         // Estilo del día: el texto manda; las etiquetas se suman solas al detectarse o al elegirse
