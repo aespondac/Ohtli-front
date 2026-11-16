@@ -117,10 +117,10 @@ class _UsertagSettingsState extends State<UsertagSettings> {
     final help = switch (_status) {
       'checking' => ('Revisando…', OhtliColors.subtleText),
       'ok' => (ProfileDirectory.normalizeTag(_tag.text) == _current ? 'Es tu usertag.' : '¡Está libre!', OhtliColors.accentText),
-      'taken' => ('Ya lo tiene alguien más.', OhtliColors.xoconostle),
-      'invalid' => ('De 3 a 20: letras, números, punto o guion bajo.', OhtliColors.xoconostle),
-      'reserved' => ('Ese usertag está reservado.', OhtliColors.xoconostle),
-      'prohibited' => ('Ese usertag no está permitido.', OhtliColors.xoconostle),
+      'taken' => ('Ya lo tiene alguien más.', OhtliColors.warningText),
+      'invalid' => ('De 3 a 20: letras, números, punto o guion bajo.', OhtliColors.warningText),
+      'reserved' => ('Ese usertag está reservado.', OhtliColors.warningText),
+      'prohibited' => ('Ese usertag no está permitido.', OhtliColors.warningText),
       _ => ('Tu nombre único en Ohtli.', OhtliColors.subtleText),
     };
     final canSave = _status == 'ok' && ProfileDirectory.normalizeTag(_tag.text) != _current;

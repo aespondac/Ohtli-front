@@ -33,7 +33,7 @@ class AccountSwitchActions {
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(
       SnackBar(
-        backgroundColor: OhtliColors.xoconostle,
+        backgroundColor: OhtliColors.warning,
         content: Text(
           result == SwitchAccountResult.expired
               ? 'La sesión de $label caducó. Inicia sesión de nuevo con esa cuenta para recordarla.'
@@ -307,7 +307,7 @@ class _AccountRow extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
                             fontSize: 12.5,
-                            color: needsLogin ? OhtliColors.xoconostle : OhtliColors.onyx.withValues(alpha: 0.55),
+                            color: needsLogin ? OhtliColors.warningText : OhtliColors.onyx.withValues(alpha: 0.55),
                           ),
                         ),
                       ],

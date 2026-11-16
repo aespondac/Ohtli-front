@@ -252,7 +252,7 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
             Semantics(
               liveRegion: true,
               child: Text(_error ?? _info!,
-                  style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: _error != null ? OhtliColors.xoconostle : OhtliColors.accentText)),
+                  style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: _error != null ? OhtliColors.warningText : OhtliColors.accentText)),
             ),
           ],
         ],

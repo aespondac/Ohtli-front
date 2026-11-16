@@ -284,7 +284,7 @@ class _SecondFactorDialogState extends State<_SecondFactorDialog> {
               const SizedBox(height: 8),
               Semantics(
                 liveRegion: true,
-                child: Text(_error!, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.xoconostle, fontWeight: FontWeight.w600)),
+                child: Text(_error!, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.warningText, fontWeight: FontWeight.w600)),
               ),
             ],
             TextButton(onPressed: _busy ? null : _send, child: const Text('Reenviar código')),

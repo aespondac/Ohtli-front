@@ -149,7 +149,7 @@ class _SsoBridgePageState extends State<SsoBridgePage> {
                       Text(
                         _error!,
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.xoconostle),
+                        style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.warningText),
                       ),
                     ],
                     const SizedBox(height: 14),

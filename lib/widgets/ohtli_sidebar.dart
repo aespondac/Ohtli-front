@@ -581,7 +581,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
                   Text(
                     'Inicia sesión de nuevo',
                     maxLines: 1,
-                    style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.xoconostle),
+                    style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.warningText),
                   )
                 else if (name.isNotEmpty && email.isNotEmpty)
                   Text(
@@ -673,7 +673,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
           'logout',
           Icons.logout_rounded,
           'Cerrar sesión',
-          color: OhtliColors.xoconostle,
+          color: OhtliColors.warningText,
           subtitle: currentSaved ? 'Podrás volver con un clic; quítala con la × al entrar' : null,
         ),
       ],
@@ -918,7 +918,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
               right: -4,
               child: Container(
                 padding: const EdgeInsets.all(1.5),
-                decoration: const BoxDecoration(color: OhtliColors.xoconostle, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: OhtliColors.accentFill, shape: BoxShape.circle),
                 constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
                 child: Center(
                   child: Text(
@@ -945,7 +945,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
 
     final Color itemColor = isActive
         ? _accent
-        : (isHovered ? OhtliColors.xoconostle : OhtliColors.onyx.withOpacity(0.7));
+        : (isHovered ? OhtliColors.accent : OhtliColors.onyx.withOpacity(0.7));
 
     Widget iconWidget = _buildItemIcon(isActive ? item.activeIcon : item.icon, itemColor);
     if (item.index == 6) iconWidget = _withNotificationBadge(iconWidget);

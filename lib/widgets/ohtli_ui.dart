@@ -170,8 +170,8 @@ class OhtliPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = highlight ? OhtliColors.cempasuchil : OhtliColors.stormyTeal;
-    final fg = highlight ? const Color(0xFF1A120B) : Colors.white;
+    final bg = highlight ? OhtliColors.accentFill : OhtliColors.stormyTeal;
+    final fg = highlight ? Colors.white : Colors.white;
     final child = ElevatedButton(
       onPressed: loading ? null : onPressed,
       style: ElevatedButton.styleFrom(

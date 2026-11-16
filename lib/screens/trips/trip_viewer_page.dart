@@ -233,7 +233,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyError(e, fallback: 'No pudimos exportar el itinerario. Intenta de nuevo.')),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -553,7 +553,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                           leading: num != null
                               ? CircleAvatar(
                                   radius: 13,
-                                  backgroundColor: visited ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
+                                  backgroundColor: visited ? OhtliColors.stormyTeal : OhtliColors.accentFill,
                                   child: visited
                                       ? const Icon(Icons.check_rounded, size: 15, color: Colors.white)
                                       : Text('$num', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -1169,7 +1169,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                           children: [
                             Text(headline,
                                 style: GoogleFonts.inter(
-                                    fontSize: 11.5, fontWeight: FontWeight.w700, color: here != null ? OhtliColors.cempasuchil : OhtliColors.stormyTeal)),
+                                    fontSize: 11.5, fontWeight: FontWeight.w700, color: here != null ? OhtliColors.accent : OhtliColors.stormyTeal)),
                             if (focus != null)
                               Text(
                                 focus.title.isEmpty ? 'Parada sin nombre' : focus.title,
@@ -1232,7 +1232,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       ));
       if (timed) {
         final bool late = !DateTime.now().isBefore(leave.leaveBy);
-        final Color c = late ? OhtliColors.cempasuchil : (isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45)! : OhtliColors.stormyTeal);
+        final Color c = late ? OhtliColors.warning : (isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45)! : OhtliColors.stormyTeal);
         final String nextName = leave.next!.title.trim().isEmpty ? 'la siguiente' : leave.next!.title.trim();
         body.add(Padding(
           padding: const EdgeInsets.only(top: 4),
@@ -1269,7 +1269,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 onTap: () => _rateStop(h, i),
                 child: Padding(
                   padding: const EdgeInsets.all(2),
-                  child: Icon(i <= h.rating ? Icons.star_rounded : Icons.star_outline_rounded, size: 24, color: i <= h.rating ? Colors.amber : sub),
+                  child: Icon(i <= h.rating ? Icons.star_rounded : Icons.star_outline_rounded, size: 24, color: i <= h.rating ? OhtliColors.rating : sub),
                 ),
               ),
           ],
@@ -1414,7 +1414,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             Row(
               children: [
                 Expanded(
-                  child: Text(headline, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: here != null ? OhtliColors.cempasuchil : OhtliColors.stormyTeal)),
+                  child: Text(headline, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: here != null ? OhtliColors.accent : OhtliColors.stormyTeal)),
                 ),
                 if (_canFollow && (here != null || next != null)) ...[
                   _buildFollowPill(isDark),
@@ -1450,7 +1450,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               Row(
                 children: [
                   Icon(_locationProblem == LocationProblem.denied ? Icons.location_disabled_rounded : Icons.near_me_rounded,
-                      size: 13, color: _locationProblem == LocationProblem.denied ? OhtliColors.cempasuchil : sub),
+                      size: 13, color: _locationProblem == LocationProblem.denied ? OhtliColors.warning : sub),
                   const SizedBox(width: 5),
                   Expanded(child: Text(_followStatus(here, next), style: GoogleFonts.inter(fontSize: 11.5, color: sub))),
                 ],
@@ -1772,7 +1772,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final badge = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.science_outlined, size: 16, color: OhtliColors.cempasuchil),
+        Icon(Icons.science_outlined, size: 16, color: OhtliColors.accent),
         const SizedBox(width: 6),
         Text('Viaje de muestra', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w800, color: fg)),
       ],
@@ -1802,7 +1802,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     FilledButton.icon(
                       onPressed: _bringSampleToAccount,
                       style: FilledButton.styleFrom(
-                        backgroundColor: OhtliColors.xoconostle,
+                        backgroundColor: OhtliColors.accentFill,
                         foregroundColor: Colors.white,
                         visualDensity: VisualDensity.compact,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2112,7 +2112,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     child: Text(p.title.isEmpty ? 'Parada sin nombre' : p.title,
                         style: GoogleFonts.inter(fontSize: 14, color: isDark ? Colors.white : const Color(0xFF1F2A2A))),
                   ),
-                  if (identical(p, current)) Text('ahora', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil)),
+                  if (identical(p, current)) Text('ahora', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: OhtliColors.accent)),
                 ],
               ),
             ),
@@ -2390,7 +2390,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       if (rated.isNotEmpty) ...[
         Row(
           children: [
-            ...List.generate(5, (i) => Icon(i < avg.round() ? Icons.star_rounded : Icons.star_outline_rounded, size: 19, color: Colors.amber)),
+            ...List.generate(5, (i) => Icon(i < avg.round() ? Icons.star_rounded : Icons.star_outline_rounded, size: 19, color: OhtliColors.rating)),
             const SizedBox(width: 6),
             Text(avg.toStringAsFixed(1), style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: fg)),
             const Spacer(),
@@ -2745,7 +2745,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle),
+                        Icon(Icons.history_edu_rounded, color: OhtliColors.accent),
                         const SizedBox(width: 10),
                         Expanded(child: Text('Fe de erratas', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: fg))),
                         IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close_rounded)),
@@ -2771,9 +2771,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
                                   children: [
                                     CircleAvatar(
                                       radius: 15,
-                                      backgroundColor: OhtliColors.xoconostle.withValues(alpha: 0.15),
+                                      backgroundColor: OhtliColors.accent.withValues(alpha: 0.15),
                                       child: Text(who.characters.first.toUpperCase(),
-                                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.xoconostle)),
+                                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.accent)),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
@@ -2796,7 +2796,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                                                 children: [
                                                   Padding(
                                                     padding: const EdgeInsets.only(top: 7, right: 8),
-                                                    child: Container(width: 5, height: 5, decoration: const BoxDecoration(color: OhtliColors.xoconostle, shape: BoxShape.circle)),
+                                                    child: Container(width: 5, height: 5, decoration: BoxDecoration(color: OhtliColors.accentFill, shape: BoxShape.circle)),
                                                   ),
                                                   Expanded(child: Text(c, style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: fg.withValues(alpha: 0.85)))),
                                                 ],
@@ -2840,7 +2840,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                                     await _recordErrata(const [], note: text);
                                     setLocal(() {});
                                   },
-                            style: FilledButton.styleFrom(backgroundColor: OhtliColors.xoconostle, foregroundColor: Colors.white),
+                            style: FilledButton.styleFrom(backgroundColor: OhtliColors.accentFill, foregroundColor: Colors.white),
                             child: const Text('Publicar'),
                           ),
                         ],
@@ -2967,8 +2967,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
           if (invited > 0)
             CircleAvatar(
               radius: 17,
-              backgroundColor: OhtliColors.cempasuchil.withValues(alpha: 0.16),
-              child: Text('+$invited', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil)),
+              backgroundColor: OhtliColors.accent.withValues(alpha: 0.16),
+              child: Text('+$invited', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.accent)),
             ),
         ],
       ),
@@ -2998,7 +2998,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 _setTripMode(!_tripMode);
               },
               style: FilledButton.styleFrom(
-                backgroundColor: _tripMode ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+                backgroundColor: _tripMode ? OhtliColors.accentFill : OhtliColors.stormyTeal,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -3119,12 +3119,12 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   margin: const EdgeInsets.only(bottom: 14),
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: OhtliColors.cempasuchil.withValues(alpha: 0.12),
+                    color: OhtliColors.accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.lock_outline_rounded, size: 16, color: OhtliColors.cempasuchil),
+                      Icon(Icons.lock_outline_rounded, size: 16, color: OhtliColors.accent),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -3230,7 +3230,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                           visualDensity: VisualDensity.compact,
                           tooltip: '${star + 1} de 5',
                           icon: Icon(active ? Icons.star_rounded : Icons.star_outline_rounded,
-                              color: active ? Colors.amber : OhtliColors.cantera),
+                              color: active ? OhtliColors.rating : OhtliColors.cantera),
                           onPressed: () => setD(() => ratings[p.id] = star + 1),
                         );
                       }),
@@ -3312,7 +3312,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           action: (t.status != 'published' && canEditNow)
               ? SnackBarAction(
                   label: 'Convertir en crónica',
-                  textColor: OhtliColors.cempasuchil,
+                  textColor: OhtliColors.accent,
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -3329,7 +3329,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(friendlyError(e, fallback: 'No pudimos guardar tu reseña. Intenta de nuevo.')),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
     }
@@ -3769,7 +3769,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.cloud_off_rounded, color: OhtliColors.xoconostle, size: 48),
+                const Icon(Icons.cloud_off_rounded, color: OhtliColors.warning, size: 48),
                 const SizedBox(height: 16),
                 Text(
                   "Sin conexión",
@@ -3814,14 +3814,14 @@ class _TripViewerPageState extends State<TripViewerPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline_rounded, color: OhtliColors.xoconostle, size: 48),
+                const Icon(Icons.error_outline_rounded, color: OhtliColors.warning, size: 48),
                 const SizedBox(height: 16),
                 Text(
                   "¡Vaya! Ocurrió un inconveniente",
                   style: GoogleFonts.inter(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: OhtliColors.xoconostle,
+                    color: OhtliColors.accent,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -3916,7 +3916,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               if (_isPreview)
                 Container(
                   width: double.infinity,
-                  color: OhtliColors.cempasuchil,
+                  color: OhtliColors.accent,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Text(
                     'Vista previa · así verán tu viaje los lectores. Los cambios se guardan en el editor.',
@@ -4032,7 +4032,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                         value: v,
                         minHeight: 3,
                         backgroundColor: Colors.transparent,
-                        color: OhtliColors.cempasuchil,
+                        color: OhtliColors.accent,
                       ),
                     ),
                   ),
@@ -4256,7 +4256,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   _showCoAuthorErrataDialog();
                 }
               },
-              backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
+              backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.accentFill,
               foregroundColor: Colors.white,
               elevation: 4,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -4715,7 +4715,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     return Padding(
       padding: const EdgeInsets.only(top: 28),
       child: Material(
-        color: OhtliColors.xoconostle.withValues(alpha: isDark ? 0.14 : 0.06),
+        color: OhtliColors.accent.withValues(alpha: isDark ? 0.14 : 0.06),
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
@@ -4724,7 +4724,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle),
+                Icon(Icons.history_edu_rounded, color: OhtliColors.accent),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -4737,8 +4737,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
                     ],
                   ),
                 ),
-                Text('Ver', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.xoconostle)),
-                const Icon(Icons.chevron_right_rounded, color: OhtliColors.xoconostle),
+                Text('Ver', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.accent)),
+                Icon(Icons.chevron_right_rounded, color: OhtliColors.accent),
               ],
             ),
           ),
@@ -5125,7 +5125,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       padding: EdgeInsets.all(highlighted ? 10 : 0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        color: highlighted ? OhtliColors.cempasuchil.withValues(alpha: isDark ? 0.16 : 0.10) : Colors.transparent,
+        color: highlighted ? OhtliColors.accent.withValues(alpha: isDark ? 0.16 : 0.10) : Colors.transparent,
       ),
       child: blockContent,
     );
@@ -5265,7 +5265,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               child: CustomPaint(
                 painter: _DetourBranchPainter(
                   color: isDark ? Colors.white38 : OhtliColors.onyx.withValues(alpha: 0.32),
-                  dot: OhtliColors.cempasuchil,
+                  dot: OhtliColors.accent,
                   ring: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer,
                 ),
               ),
@@ -5281,7 +5281,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           Positioned(
             left: -(_spineIndent - _spineX) - 12,
             top: 14,
-            child: _spineBadge(Icons.call_split_rounded, OhtliColors.xoconostle, isDark),
+            child: _spineBadge(Icons.call_split_rounded, OhtliColors.accent, isDark),
           ),
         ],
       );
@@ -5293,7 +5293,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
           Positioned(
             left: -(_spineIndent - _spineX) - 12,
             top: 14,
-            child: _spineBadge(Icons.how_to_vote_rounded, OhtliColors.cempasuchil, isDark),
+            child: _spineBadge(Icons.how_to_vote_rounded, OhtliColors.accent, isDark),
           ),
         ],
       );
@@ -5610,7 +5610,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             FilledButton.icon(
               onPressed: () => _openEditorOrErrata(canEdit),
               style: FilledButton.styleFrom(
-                backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
+                backgroundColor: canEdit ? OhtliColors.stormyTeal : OhtliColors.accentFill,
                 foregroundColor: Colors.white,
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -5773,7 +5773,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         child: Container(
           padding: EdgeInsets.fromLTRB(isPlace || special ? 6 : 34, 7, 6, 7),
           decoration: BoxDecoration(
-            color: highlighted ? OhtliColors.cempasuchil.withValues(alpha: 0.12) : Colors.transparent,
+            color: highlighted ? OhtliColors.accent.withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -5781,19 +5781,19 @@ class _TripViewerPageState extends State<TripViewerPage> {
               if (isPlace && _isNotes) ...[
                 CircleAvatar(
                   radius: 11,
-                  backgroundColor: detour ? OhtliColors.cempasuchil.withValues(alpha: 0.18) : releaseTagColor(s.changeTag),
+                  backgroundColor: detour ? OhtliColors.accent.withValues(alpha: 0.18) : releaseTagColor(s.changeTag),
                   child: Icon(detour ? Icons.alt_route_rounded : releaseTagIcon(s.changeTag),
-                      size: 12, color: detour ? OhtliColors.cempasuchil : Colors.white),
+                      size: 12, color: detour ? OhtliColors.accent : Colors.white),
                 ),
                 const SizedBox(width: 10),
               ] else if (isPlace) ...[
                 CircleAvatar(
                   radius: 11,
                   backgroundColor: detour
-                      ? OhtliColors.cempasuchil.withValues(alpha: 0.18)
+                      ? OhtliColors.accent.withValues(alpha: 0.18)
                       : (visited ? OhtliColors.stormyTeal : (isDark ? const Color(0xFF2C2C30) : OhtliColors.cantera.withValues(alpha: 0.6))),
                   child: detour
-                      ? const Icon(Icons.alt_route_rounded, size: 13, color: OhtliColors.cempasuchil)
+                      ? Icon(Icons.alt_route_rounded, size: 13, color: OhtliColors.accent)
                       : visited
                       ? const Icon(Icons.check_rounded, size: 13, color: Colors.white)
                       : Text('$n',
@@ -5801,7 +5801,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ),
                 const SizedBox(width: 10),
               ] else if (special) ...[
-                SizedBox(width: 22, child: Icon(_indexIcon(s), size: 15, color: s is SplitSection ? branchInk(OhtliColors.xoconostle, isDark) : OhtliColors.cempasuchil)),
+                SizedBox(width: 22, child: Icon(_indexIcon(s), size: 15, color: s is SplitSection ? branchInk(OhtliColors.accent, isDark) : OhtliColors.accent)),
                 const SizedBox(width: 10),
               ],
               Expanded(
@@ -5993,7 +5993,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   /// título, texto y capturas.
   Widget _buildNoveltyViewer(PlaceSection item, bool isDark) {
     final bool upcoming = item.unplanned;
-    final Color tag = upcoming ? OhtliColors.cempasuchil : releaseTagColor(item.changeTag);
+    final Color tag = upcoming ? OhtliColors.accent : releaseTagColor(item.changeTag);
     final photos = [item.mainPhotoUrl, ...item.secondaryPhotoUrls].where((u) => u.isNotEmpty).toList();
     Widget shot(String url, double ratio) => ClipRRect(
           borderRadius: BorderRadius.circular(14),
@@ -6151,7 +6151,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             final active = starIdx < place.rating;
             return Icon(
               active ? Icons.star_rounded : Icons.star_outline_rounded,
-              color: active ? Colors.amber : (isDark ? Colors.white24 : OhtliColors.cantera),
+              color: active ? OhtliColors.rating : (isDark ? Colors.white24 : OhtliColors.cantera),
               size: 16,
             );
           }),
@@ -6361,15 +6361,15 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
     return OhtliSurface(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-      accent: OhtliColors.cempasuchil,
+      accent: OhtliColors.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              const Icon(Icons.how_to_vote_rounded, size: 15, color: OhtliColors.cempasuchil),
+              Icon(Icons.how_to_vote_rounded, size: 15, color: OhtliColors.accent),
               const SizedBox(width: 6),
-              Text('EN VOTACIÓN', style: OhtliUi.eyebrow(OhtliColors.cempasuchil)),
+              Text('EN VOTACIÓN', style: OhtliUi.eyebrow(OhtliColors.accent)),
             ],
           ),
           const SizedBox(height: 6),
@@ -6404,8 +6404,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   Widget _buildAlertBlockViewer(AlertData alert, bool isDark) {
     final (Color color, IconData icon, String name) = switch (alert.type) {
-      AlertType.warning => (OhtliColors.xoconostle, Icons.warning_amber_rounded, 'AVISO'),
-      AlertType.tip => (OhtliColors.cempasuchil, Icons.lightbulb_rounded, 'CONSEJO'),
+      AlertType.warning => (OhtliColors.warning, Icons.warning_amber_rounded, 'AVISO'),
+      AlertType.tip => (OhtliColors.accent, Icons.lightbulb_rounded, 'CONSEJO'),
       _ => (OhtliColors.stormyTeal, Icons.sticky_note_2_rounded, 'NOTA'),
     };
     final Color accent = isDark ? Color.lerp(color, Colors.white, 0.25)! : color;
@@ -6630,7 +6630,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
             padding: EdgeInsets.only(top: lead ? 11 : 10, left: 6),
             child: Align(
               alignment: Alignment.topLeft,
-              child: Container(width: 7, height: 7, decoration: const BoxDecoration(color: OhtliColors.cempasuchil, shape: BoxShape.circle)),
+              child: Container(width: 7, height: 7, decoration: BoxDecoration(color: OhtliColors.accentFill, shape: BoxShape.circle)),
             ),
           ),
           bullet.group(1)!,
@@ -6746,7 +6746,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Row(
                 children: [
-                  const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle, size: 20),
+                  Icon(Icons.history_edu_rounded, color: OhtliColors.accent, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     'Publicar Fe de Errata',
@@ -6784,7 +6784,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: OhtliColors.xoconostle, width: 1.2),
+                        borderSide: BorderSide(color: OhtliColors.accent, width: 1.2),
                       ),
                     ),
                     onChanged: (val) {
@@ -6818,9 +6818,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
                           );
 
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
+                            SnackBar(
                               content: Text('Guardando fe de errata...'),
-                              backgroundColor: OhtliColors.xoconostle,
+                              backgroundColor: OhtliColors.accentFill,
                               duration: Duration(milliseconds: 600),
                             ),
                           );
@@ -6843,7 +6843,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: const Text('¡Fe de Errata publicada por el co-autor con éxito!'),
-                                  backgroundColor: OhtliColors.xoconostle,
+                                  backgroundColor: OhtliColors.accentFill,
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
@@ -6854,7 +6854,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.xoconostle,
+                    backgroundColor: OhtliColors.warning,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: Colors.grey.shade300,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

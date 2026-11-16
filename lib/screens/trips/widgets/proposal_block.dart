@@ -163,7 +163,7 @@ class ProposalCandidateList extends StatelessWidget {
         color: isDark ? Colors.white.withValues(alpha: 0.04) : OhtliColors.innerCardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: leading ? OhtliColors.cempasuchil.withValues(alpha: 0.7) : OhtliColors.cardBorder,
+          color: leading ? OhtliColors.accent.withValues(alpha: 0.7) : OhtliColors.cardBorder,
           width: leading ? 1.5 : 1,
         ),
       ),
@@ -187,9 +187,9 @@ class ProposalCandidateList extends StatelessWidget {
                     ),
                     if (leading && voters.isNotEmpty) ...[
                       const SizedBox(width: 6),
-                      const Tooltip(
+                      Tooltip(
                         message: 'Va ganando',
-                        child: Icon(Icons.emoji_events_rounded, size: 16, color: OhtliColors.cempasuchil),
+                        child: Icon(Icons.emoji_events_rounded, size: 16, color: OhtliColors.accent),
                       ),
                     ],
                   ],

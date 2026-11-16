@@ -317,9 +317,9 @@ class _PhoneVerificationFieldState extends State<PhoneVerificationField> {
             liveRegion: true,
             child: Row(
               children: [
-                Icon(Icons.error_outline_rounded, size: 16, color: OhtliColors.xoconostle),
+                Icon(Icons.error_outline_rounded, size: 16, color: OhtliColors.warning),
                 const SizedBox(width: 6),
-                Expanded(child: Text(_error!, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.xoconostle, fontWeight: FontWeight.w600))),
+                Expanded(child: Text(_error!, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.warningText, fontWeight: FontWeight.w600))),
               ],
             ),
           ),

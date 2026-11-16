@@ -870,7 +870,7 @@ class _OsrmMapWidgetState extends State<OsrmMapWidget> {
 
                           final Color pinColor = isLast
                               ? const Color(0xFFE26D5C)
-                              : (isFirst ? const Color(0xFF2C666E) : OhtliColors.cempasuchil);
+                              : (isFirst ? const Color(0xFF2C666E) : OhtliColors.accent);
 
                           return Positioned(
                             left: pt.dx - 16,
@@ -1147,7 +1147,7 @@ class _OsmRoutePainter extends CustomPainter {
     canvas.drawPath(path, glowPaint);
 
     final casingPaint = Paint()
-      ..color = OhtliColors.cempasuchil.withOpacity(0.4)
+      ..color = OhtliColors.accent.withOpacity(0.4)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6.5
       ..strokeCap = StrokeCap.round

@@ -229,7 +229,7 @@ class PolaroidDesk extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [tint.withValues(alpha: 0.10), tint.withValues(alpha: 0.03), OhtliColors.cempasuchil.withValues(alpha: 0.08)],
+            colors: [tint.withValues(alpha: 0.10), tint.withValues(alpha: 0.03), OhtliColors.accent.withValues(alpha: 0.08)],
           ),
         ),
         child: child,

@@ -119,7 +119,7 @@ class _CoAuthorsModalState extends State<CoAuthorsModal> {
         bottom: 0,
         child: Container(
           padding: const EdgeInsets.all(2),
-          decoration: const BoxDecoration(color: OhtliColors.xoconostle, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: OhtliColors.accentFill, shape: BoxShape.circle),
           child: const Icon(Icons.close_rounded, color: Colors.white, size: 10),
         ),
       );
@@ -145,8 +145,8 @@ class _CoAuthorsModalState extends State<CoAuthorsModal> {
       borderColor = OhtliColors.stormyTeal.withValues(alpha: 0.5);
       bgColor = OhtliColors.stormyTeal.withValues(alpha: 0.05);
     } else if (isRemoved) {
-      borderColor = OhtliColors.xoconostle.withValues(alpha: 0.5);
-      bgColor = OhtliColors.xoconostle.withValues(alpha: 0.05);
+      borderColor = OhtliColors.accent.withValues(alpha: 0.5);
+      bgColor = OhtliColors.accent.withValues(alpha: 0.05);
     }
 
     final avatar = Stack(

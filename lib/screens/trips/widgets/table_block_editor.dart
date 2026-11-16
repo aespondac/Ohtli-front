@@ -601,7 +601,7 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
                                   child: Icon(
                                     Icons.close_rounded,
                                     size: 14,
-                                    color: OhtliColors.xoconostle.withValues(alpha: 0.8),
+                                    color: OhtliColors.accent.withValues(alpha: 0.8),
                                   ),
                                 ),
                               ),
@@ -696,7 +696,7 @@ class _OhtliTableBlockEditorState extends State<OhtliTableBlockEditor> {
                         );
                       }),
                       IconButton(
-                        icon: const Icon(Icons.remove_circle_outline_rounded, color: OhtliColors.xoconostle),
+                        icon: const Icon(Icons.remove_circle_outline_rounded, color: OhtliColors.warning),
                         onPressed: () => _deleteRow(rowIdx),
                         tooltip: 'Eliminar Fila',
                       ),

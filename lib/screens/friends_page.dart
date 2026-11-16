@@ -240,14 +240,14 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
       await db.collection('users').doc(_currentUser.uid).collection('notifications').doc(requestId).update({'status': 'declined'}).catchError((_) {});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Solicitud rechazada.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+          SnackBar(content: Text('Solicitud rechazada.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.warning),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(friendlyError(e, fallback: 'No pudimos rechazar la solicitud. Intenta de nuevo.'), style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ));
       }
     }
@@ -361,7 +361,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
             result == FriendRequestResult.alreadyPending ? 'Ya existe una solicitud de amistad pendiente.' : '¡Solicitud de amistad enviada a $targetName!',
             style: GoogleFonts.inter(),
           ),
-          backgroundColor: result == FriendRequestResult.alreadyPending ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+          backgroundColor: result == FriendRequestResult.alreadyPending ? OhtliColors.accentFill : OhtliColors.stormyTeal,
         ),
       );
     } catch (e) {
@@ -414,7 +414,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                   constraints: const BoxConstraints(maxWidth: 460),
                   child: const OhtliEmptyState(
                     icon: Icons.wifi_off_rounded,
-                    color: OhtliColors.xoconostle,
+                    color: OhtliColors.warning,
                     title: 'No pudimos cargar tus amigos',
                     message: 'Revisa tu conexión e intenta de nuevo.',
                   ),
@@ -867,7 +867,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                 ? null
                 : Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: OhtliColors.xoconostle, borderRadius: BorderRadius.circular(30)),
+                    decoration: BoxDecoration(color: OhtliColors.accentFill, borderRadius: BorderRadius.circular(30)),
                     child: Text('${people.incomingPending.length}', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white)),
                   ),
           ),
@@ -966,8 +966,8 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
       color: OhtliColors.cardBg,
       items: [
         PopupMenuItem(value: 'profile', child: _menuRow(Icons.person_rounded, 'Ver perfil de ${name.split(' ').first}', OhtliColors.accentText)),
-        PopupMenuItem(value: 'friend', child: _menuRow(Icons.star_outline_rounded, 'Quitar de mejores amigos', OhtliColors.cempasuchil)),
-        PopupMenuItem(value: 'none', child: _menuRow(Icons.person_remove_rounded, 'Eliminar amigo', OhtliColors.xoconostle)),
+        PopupMenuItem(value: 'friend', child: _menuRow(Icons.star_outline_rounded, 'Quitar de mejores amigos', OhtliColors.accent)),
+        PopupMenuItem(value: 'none', child: _menuRow(Icons.person_remove_rounded, 'Eliminar amigo', OhtliColors.warningText)),
       ],
     );
     if (action == null || !mounted) return;
@@ -991,12 +991,12 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
           child: _menuRow(
             isCloseFriend ? Icons.star_outline_rounded : Icons.star_rounded,
             isCloseFriend ? 'Quitar de mejores amigos' : 'Hacer mejor amigo',
-            OhtliColors.cempasuchil,
+            OhtliColors.accent,
           ),
         ),
         PopupMenuItem<String>(
           value: 'none',
-          child: _menuRow(Icons.person_remove_rounded, 'Eliminar amigo', OhtliColors.xoconostle),
+          child: _menuRow(Icons.person_remove_rounded, 'Eliminar amigo', OhtliColors.warningText),
         ),
       ],
     );
@@ -1075,7 +1075,7 @@ class _Avatar extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: OhtliColors.cempasuchil,
+                  color: OhtliColors.accentFill,
                   shape: BoxShape.circle,
                   border: Border.all(color: OhtliColors.cardBg, width: 2.5),
                 ),

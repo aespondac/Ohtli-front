@@ -137,7 +137,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
           _isSaved ? 'Guardado en "Mis lugares"' : 'Eliminado de "Mis lugares"',
           style: GoogleFonts.inter(color: Colors.white),
         ),
-        backgroundColor: _isSaved ? OhtliColors.stormyTeal : OhtliColors.xoconostle,
+        backgroundColor: _isSaved ? OhtliColors.stormyTeal : OhtliColors.warning,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -716,7 +716,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       _buildNarrative(poi),
       if (highlights.isNotEmpty) ...[
         const SizedBox(height: 30),
-        _buildTitle('ANTES DE IR', 'Lo que debes saber', Icons.tips_and_updates_rounded, OhtliColors.cempasuchil),
+        _buildTitle('ANTES DE IR', 'Lo que debes saber', Icons.tips_and_updates_rounded, OhtliColors.accent),
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: highlights),
       ],
@@ -728,7 +728,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       ],
       if (reviews.isNotEmpty) ...[
         const SizedBox(height: 30),
-        _buildTitle('RESEÑAS', 'Lo que dicen quienes han ido', Icons.format_quote_rounded, OhtliColors.xoconostle),
+        _buildTitle('RESEÑAS', 'Lo que dicen quienes han ido', Icons.format_quote_rounded, OhtliColors.accent),
         const SizedBox(height: 12),
         SizedBox(
           height: 150,
@@ -821,8 +821,8 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     final cuisine = _cuisineDisplay;
     final facts = [
       _QuickFact(Icons.payments_rounded, poi.priceIsEstimate ? 'Precio estimado' : 'Precio', poi.priceRangeEstimate.replaceAll(', estimado', ''), OhtliColors.stormyTeal),
-      _QuickFact(Icons.schedule_rounded, hasRealHours ? 'Horario' : 'Horario aprox.', poi.openingHoursDisplay, OhtliColors.cempasuchil),
-      if (cuisine.isNotEmpty) _QuickFact(Icons.restaurant_menu_rounded, 'Cocina', cuisine, OhtliColors.xoconostle),
+      _QuickFact(Icons.schedule_rounded, hasRealHours ? 'Horario' : 'Horario aprox.', poi.openingHoursDisplay, OhtliColors.accent),
+      if (cuisine.isNotEmpty) _QuickFact(Icons.restaurant_menu_rounded, 'Cocina', cuisine, OhtliColors.accent),
     ];
     return LayoutBuilder(builder: (context, c) {
       // En teléfono, una columna: en dos, el precio y el horario se cortaban ('Costoso (~ $350 - $6…')
@@ -905,10 +905,10 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
 
   // Solo características reales del lugar
   List<Widget> _highlightPills(Poi poi) => [
-        if (poi.patrimonioHistorico) _buildFriendlyPill(Icons.account_balance_rounded, 'Patrimonio histórico', OhtliColors.xoconostle),
+        if (poi.patrimonioHistorico) _buildFriendlyPill(Icons.account_balance_rounded, 'Patrimonio histórico', OhtliColors.accent),
         if (poi.areaVerdeCercana) _buildFriendlyPill(Icons.park_rounded, 'Áreas verdes cerca', const Color(0xFF2E7D32)),
         if (poi.wheelchairAccessible) _buildFriendlyPill(Icons.accessible_rounded, 'Accesible en silla de ruedas', const Color(0xFF1E6FD9)),
-        if (poi.coeficienteMovilidad > 0) _buildFriendlyPill(Icons.directions_bike_rounded, 'Cerca de Ecobici y ciclovías', OhtliColors.cempasuchil),
+        if (poi.coeficienteMovilidad > 0) _buildFriendlyPill(Icons.directions_bike_rounded, 'Cerca de Ecobici y ciclovías', OhtliColors.accent),
         if (poi.musicaEnVivo) _buildFriendlyPill(Icons.music_note_rounded, 'Música en vivo', const Color(0xFF8E24AA)),
         if (poi.consumoAlcohol) _buildFriendlyPill(Icons.local_bar_rounded, 'Bebidas y coctelería', const Color(0xFFD81B60)),
       ];
@@ -937,7 +937,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.format_quote_rounded, size: 22, color: OhtliColors.xoconostle.withValues(alpha: 0.7)),
+          Icon(Icons.format_quote_rounded, size: 22, color: OhtliColors.accent.withValues(alpha: 0.7)),
           const SizedBox(height: 4),
           Expanded(
             child: Text(text,
@@ -1149,14 +1149,14 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         _isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
         key: ValueKey(_isSaved),
         size: iconOnly ? 22 : 18,
-        color: _isSaved ? OhtliColors.cempasuchil : OhtliColors.onyx,
+        color: _isSaved ? OhtliColors.accent : OhtliColors.onyx,
       ),
     );
     final style = OutlinedButton.styleFrom(
       foregroundColor: OhtliColors.onyx,
       backgroundColor: OhtliColors.cardBg,
       padding: iconOnly ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-      side: BorderSide(color: _isSaved ? OhtliColors.cempasuchil : OhtliColors.cardBorder),
+      side: BorderSide(color: _isSaved ? OhtliColors.accent : OhtliColors.cardBorder),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
     );
@@ -1178,7 +1178,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildTitle('COMUNIDAD', 'Viajes que pasan por aquí', Icons.route_rounded, OhtliColors.cempasuchil),
+        _buildTitle('COMUNIDAD', 'Viajes que pasan por aquí', Icons.route_rounded, OhtliColors.accent),
         const SizedBox(height: 12),
         if (_isLoadingTrips)
           SizedBox(
@@ -1207,8 +1207,8 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                 Container(
                   width: 38,
                   height: 38,
-                  decoration: BoxDecoration(color: OhtliColors.cempasuchil.withValues(alpha: 0.14), shape: BoxShape.circle),
-                  child: const Icon(Icons.explore_rounded, size: 20, color: OhtliColors.cempasuchil),
+                  decoration: BoxDecoration(color: OhtliColors.accent.withValues(alpha: 0.14), shape: BoxShape.circle),
+                  child: Icon(Icons.explore_rounded, size: 20, color: OhtliColors.accent),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

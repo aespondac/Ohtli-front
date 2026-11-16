@@ -596,7 +596,7 @@ class TripPdfBuilder {
           body.add(lines[i].trim().replaceFirst(RegExp(r'^>\s*'), ''));
           i++;
         }
-        final color = type == 'WARNING' || type == 'CAUTION' ? PdfColor.fromHex('#B3261E') : cempasuchil;
+        final color = type == 'WARNING' || type == 'CAUTION' ? PdfColor.fromHex('#B3261E') : xoconostle;
         out.add(pw.Padding(
           padding: const pw.EdgeInsets.fromLTRB(20, 0, 0, 6),
           child: pw.RichText(
@@ -736,7 +736,7 @@ class TripPdfBuilder {
             ),
           ),
           pw.SizedBox(height: 28),
-          _eyebrow('Ciudad de México · $_dateText', color: cempasuchil),
+          _eyebrow('Ciudad de México · $_dateText', color: xoconostle),
           pw.SizedBox(height: 8),
           pw.Text(
             trip.title.isNotEmpty ? trip.title : 'Mi ruta por la ciudad',
@@ -1213,9 +1213,9 @@ class TripPdfBuilder {
 
   pw.Widget _callout(String type, String body) {
     final (color, label) = switch (type) {
-      'TIP' => (cempasuchil, 'Consejo'),
+      'TIP' => (xoconostle, 'Consejo'),
       'WARNING' || 'CAUTION' => (PdfColor.fromHex('#B3261E'), 'Ojo'),
-      'IMPORTANT' => (xoconostle, 'Importante'),
+      'IMPORTANT' => (cempasuchil, 'Importante'),
       _ => (teal, 'Nota'),
     };
     return pw.Padding(
@@ -1267,7 +1267,7 @@ class TripPdfBuilder {
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            _eyebrow('Fe de erratas', color: cempasuchil),
+            _eyebrow('Fe de erratas', color: xoconostle),
             pw.SizedBox(height: 6),
             for (final e in trip.errataHistory)
               pw.Padding(

@@ -393,8 +393,8 @@ class _ActivityCard extends StatelessWidget {
     final firstName = name.split(' ').first;
 
     final ({IconData icon, Color color, String verb}) kind = switch (activity.type) {
-      'finished' => (icon: Icons.flag_rounded, color: OhtliColors.xoconostle, verb: 'terminó un viaje'),
-      'joined' => (icon: Icons.celebration_rounded, color: OhtliColors.cempasuchil, verb: 'se unió a Ohtli'),
+      'finished' => (icon: Icons.flag_rounded, color: OhtliColors.accent, verb: 'terminó un viaje'),
+      'joined' => (icon: Icons.celebration_rounded, color: OhtliColors.accent, verb: 'se unió a Ohtli'),
       _ => (icon: Icons.auto_stories_rounded, color: OhtliColors.stormyTeal, verb: 'publicó un viaje'),
     };
 
@@ -461,9 +461,9 @@ class _ActivityCard extends StatelessWidget {
               key: const ValueKey('done'),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
               decoration: BoxDecoration(
-                color: OhtliColors.cempasuchil.withValues(alpha: 0.14),
+                color: OhtliColors.accent.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.4)),
+                border: Border.all(color: OhtliColors.accent.withValues(alpha: 0.4)),
               ),
               child: Text(
                 activity.type == 'joined' ? '👋  Saludaste' : '🎉  Felicitaste a $firstName',

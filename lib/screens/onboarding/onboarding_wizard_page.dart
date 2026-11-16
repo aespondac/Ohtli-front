@@ -469,7 +469,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("Ocurrió un detalle al guardar tu perfil: $e"),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.accentFill,
           ),
         );
         setState(() => _isSynthesizing = false);
@@ -579,7 +579,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                   width: 92,
                   height: 92,
                   child: CircularProgressIndicator(
-                    color: OhtliColors.cempasuchil.withValues(alpha: 0.8),
+                    color: OhtliColors.accent.withValues(alpha: 0.8),
                     strokeWidth: 2,
                   ),
                 ),
@@ -1750,13 +1750,13 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: OhtliColors.cempasuchil.withValues(alpha: 0.10),
+                color: OhtliColors.accent.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.35)),
+                border: Border.all(color: OhtliColors.accent.withValues(alpha: 0.35)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.auto_awesome_rounded, color: OhtliColors.cempasuchil),
+                  Icon(Icons.auto_awesome_rounded, color: OhtliColors.accent),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -2085,10 +2085,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     final tagHelp = switch (_tagStatus) {
       'checking' => ('Revisando…', OhtliColors.subtleText, Icons.hourglass_top_rounded),
       'ok' => (ProfileDirectory.normalizeTag(_tagController.text) == _currentTag ? 'Es tu usertag' : '¡Está libre!', OhtliColors.accentText, Icons.check_circle_rounded),
-      'taken' => ('Ya lo tiene alguien más. Prueba otro.', OhtliColors.xoconostle, Icons.cancel_rounded),
-      'invalid' => ('De 3 a 20: letras, números, punto o guion bajo.', OhtliColors.xoconostle, Icons.info_outline_rounded),
-      'reserved' => ('Ese usertag está reservado. Prueba otro.', OhtliColors.xoconostle, Icons.block_rounded),
-      'prohibited' => ('Ese usertag no está permitido. Prueba otro.', OhtliColors.xoconostle, Icons.block_rounded),
+      'taken' => ('Ya lo tiene alguien más. Prueba otro.', OhtliColors.warningText, Icons.cancel_rounded),
+      'invalid' => ('De 3 a 20: letras, números, punto o guion bajo.', OhtliColors.warningText, Icons.info_outline_rounded),
+      'reserved' => ('Ese usertag está reservado. Prueba otro.', OhtliColors.warningText, Icons.block_rounded),
+      'prohibited' => ('Ese usertag no está permitido. Prueba otro.', OhtliColors.warningText, Icons.block_rounded),
       _ => ('Es tu nombre único en Ohtli: así te encuentran y te etiquetan.', OhtliColors.subtleText, Icons.alternate_email_rounded),
     };
     InputDecoration deco(String hint, IconData icon, {String? prefix}) => InputDecoration(

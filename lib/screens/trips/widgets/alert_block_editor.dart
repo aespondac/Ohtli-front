@@ -124,11 +124,11 @@ class _OhtliAlertBlockEditorState extends State<OhtliAlertBlockEditor> {
     String alertName = "Nota / Info";
     
     if (_currentType == AlertType.warning) {
-      alertColor = OhtliColors.xoconostle;
+      alertColor = OhtliColors.warning;
       alertIcon = Icons.warning_amber_rounded;
       alertName = "Advertencia";
     } else if (_currentType == AlertType.tip) {
-      alertColor = OhtliColors.cempasuchil;
+      alertColor = OhtliColors.accent;
       alertIcon = Icons.lightbulb_outline_rounded;
       alertName = "Consejo / Tip";
     }
@@ -182,10 +182,10 @@ class _OhtliAlertBlockEditorState extends State<OhtliAlertBlockEditor> {
                   Color chipColor = OhtliColors.stormyTeal;
                   String label = "Nota";
                   if (type == AlertType.warning) {
-                    chipColor = OhtliColors.xoconostle;
+                    chipColor = OhtliColors.warning;
                     label = "Alerta";
                   } else if (type == AlertType.tip) {
-                    chipColor = OhtliColors.cempasuchil;
+                    chipColor = OhtliColors.accent;
                     label = "Consejo";
                   }
 

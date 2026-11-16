@@ -478,7 +478,7 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyError(e, fallback: 'No pudimos recortar la imagen. Intenta con otra foto.')),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }

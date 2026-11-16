@@ -744,7 +744,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         duration: const Duration(seconds: 12),
         action: SnackBarAction(
           label: 'Usar lo suyo',
-          textColor: OhtliColors.cempasuchil,
+          textColor: OhtliColors.accent,
           onPressed: () {
             if (!mounted) return;
             final local = TripService.editorTripFields(_buildCurrentTrip());
@@ -771,7 +771,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         duration: const Duration(seconds: 10),
         action: SnackBarAction(
           label: 'Restaurar',
-          textColor: OhtliColors.cempasuchil,
+          textColor: OhtliColors.accent,
           onPressed: () {
             if (!mounted) return;
             setState(() {
@@ -860,7 +860,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               child: Text(
                 'Descartar',
                 style: GoogleFonts.inter(
-                  color: OhtliColors.xoconostle,
+                  color: OhtliColors.accent,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -937,7 +937,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           'Borrador local descartado.',
           style: GoogleFonts.inter(),
         ),
-        backgroundColor: OhtliColors.xoconostle,
+        backgroundColor: OhtliColors.warning,
       ),
     );
   }
@@ -1423,7 +1423,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     : '$_failedUploads fotos no se pudieron subir. Las volveremos a intentar en el siguiente guardado.',
                 style: GoogleFonts.inter(),
               ),
-              backgroundColor: OhtliColors.xoconostle,
+              backgroundColor: OhtliColors.accentFill,
             ),
           );
         }
@@ -1604,7 +1604,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Deshacer',
-          textColor: OhtliColors.cempasuchil,
+          textColor: OhtliColors.accent,
           onPressed: _undo,
         ),
       ),
@@ -1916,7 +1916,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(isError ? Icons.error_rounded : Icons.warning_amber_rounded,
-                  size: 18, color: isError ? OhtliColors.xoconostle : OhtliColors.cempasuchil),
+                  size: 18, color: OhtliColors.warning),
               const SizedBox(width: 10),
               Expanded(child: Text(text, style: GoogleFonts.inter(fontSize: 13.5, height: 1.35))),
             ],
@@ -2210,7 +2210,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   });
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: OhtliColors.xoconostle,
+                  backgroundColor: OhtliColors.accentFill,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -2480,7 +2480,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                     friendlyError(e, fallback: 'No pudimos publicar el viaje. Intenta de nuevo.'),
                                     style: GoogleFonts.inter(color: Colors.white),
                                   ),
-                                  backgroundColor: OhtliColors.xoconostle,
+                                  backgroundColor: OhtliColors.warning,
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -2523,7 +2523,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: Row(
                 children: [
-                  const Icon(Icons.history_edu_rounded, color: OhtliColors.xoconostle, size: 20),
+                  Icon(Icons.history_edu_rounded, color: OhtliColors.accent, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     'Publicar Fe de Errata',
@@ -2561,7 +2561,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: OhtliColors.xoconostle, width: 1.2),
+                        borderSide: BorderSide(color: OhtliColors.accent, width: 1.2),
                       ),
                     ),
                     onChanged: (val) {
@@ -2611,7 +2611,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                     '¡Fe de Errata publicada con éxito!',
                                     style: GoogleFonts.inter(color: Colors.white),
                                   ),
-                                  backgroundColor: OhtliColors.xoconostle,
+                                  backgroundColor: OhtliColors.accentFill,
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -2630,7 +2630,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                     friendlyError(e, fallback: 'No pudimos publicar la errata. Intenta de nuevo.'),
                                     style: GoogleFonts.inter(color: Colors.white),
                                   ),
-                                  backgroundColor: OhtliColors.xoconostle,
+                                  backgroundColor: OhtliColors.warning,
                                   behavior: SnackBarBehavior.floating,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -2641,7 +2641,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.xoconostle,
+                    backgroundColor: OhtliColors.accentFill,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: Colors.grey.shade300,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2850,7 +2850,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.xoconostle, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.accentFill, foregroundColor: Colors.white),
             child: Text('Salir de todas formas', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
           ),
         ],
@@ -2874,15 +2874,15 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (_isSampleEditor) {
       syncStatusText = "Editor de muestra · no se guarda";
       syncIcon = Icons.science_outlined;
-      syncColor = OhtliColors.cempasuchil;
+      syncColor = OhtliColors.accent;
     } else if (_isSavingCloud) {
       syncStatusText = "Guardando…";
       syncIcon = Icons.sync_rounded;
-      syncColor = OhtliColors.cempasuchil;
+      syncColor = OhtliColors.accent;
     } else if (_cloudSaveError != null) {
       syncStatusText = "Sin guardar · toca para reintentar";
       syncIcon = Icons.cloud_off_rounded;
-      syncColor = OhtliColors.xoconostle;
+      syncColor = OhtliColors.warning;
     } else if (_hasPendingCloudChanges) {
       syncStatusText = "Cambios sin subir…";
       syncIcon = Icons.cloud_upload_outlined;
@@ -3072,7 +3072,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       child: Text(syncText,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: _cloudSaveError != null ? OhtliColors.xoconostle : fg.withValues(alpha: 0.65))),
+                          style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: _cloudSaveError != null ? OhtliColors.warningText : fg.withValues(alpha: 0.65))),
                     ),
                   ],
                 ),
@@ -3108,7 +3108,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               child: FilledButton.icon(
                 onPressed: _handlePublishAction,
                 style: FilledButton.styleFrom(
-                  backgroundColor: published ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+                  backgroundColor: published ? OhtliColors.accentFill : OhtliColors.stormyTeal,
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16),
                   shape: const StadiumBorder(),
@@ -3214,11 +3214,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
               decoration: BoxDecoration(
-                color: (_status == 'published' ? OhtliColors.stormyTeal : OhtliColors.cempasuchil).withValues(alpha: 0.14),
+                color: (_status == 'published' ? OhtliColors.stormyTeal : OhtliColors.accent).withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_status == 'published' ? 'Publicado' : 'Borrador',
-                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _status == 'published' ? OhtliColors.stormyTeal : OhtliColors.cempasuchil)),
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _status == 'published' ? OhtliColors.stormyTeal : OhtliColors.accent)),
             ),
           ),
           row(
@@ -3300,7 +3300,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline_rounded, size: 16, color: OhtliColors.cempasuchil),
+                      const Icon(Icons.error_outline_rounded, size: 16, color: OhtliColors.warning),
                       const SizedBox(width: 8),
                       Expanded(child: Text(it.$1, style: GoogleFonts.inter(fontSize: 12.5, color: fg))),
                       if (it.$2 != null) Icon(Icons.chevron_right_rounded, size: 16, color: sub),
@@ -3397,10 +3397,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
           Container(
             margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(color: OhtliColors.xoconostle.withValues(alpha: isDark ? 0.18 : 0.08), borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(color: OhtliColors.accent.withValues(alpha: isDark ? 0.18 : 0.08), borderRadius: BorderRadius.circular(14)),
             child: Row(
               children: [
-                const Icon(Icons.history_edu_rounded, size: 18, color: OhtliColors.xoconostle),
+                Icon(Icons.history_edu_rounded, size: 18, color: OhtliColors.accent),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text('Después del viaje: lo que cambies quedará en la fe de erratas con tu nombre.',
@@ -3628,7 +3628,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: OhtliColors.cempasuchil,
+          color: OhtliColors.accentFill,
           shape: BoxShape.circle,
           border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
         ),
@@ -3681,7 +3681,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: OhtliColors.cempasuchil,
+          color: OhtliColors.accentFill,
           shape: BoxShape.circle,
           border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
         ),
@@ -3692,7 +3692,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         width: 26,
         height: 26,
         decoration: BoxDecoration(
-          color: OhtliColors.xoconostle,
+          color: OhtliColors.accentFill,
           shape: BoxShape.circle,
           border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
         ),
@@ -4266,7 +4266,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                   tooltip: '${starIndex + 1} ${starIndex == 0 ? 'estrella' : 'estrellas'}',
                   icon: Icon(
                     starIndex < section.rating ? Icons.star_rounded : Icons.star_outline_rounded,
-                    color: starIndex < section.rating ? Colors.amber : subP,
+                    color: starIndex < section.rating ? OhtliColors.rating : subP,
                     size: 20,
                   ),
                   onPressed: () => _updatePlaceBlock(_idx(section.id), rating: starIndex + 1),
@@ -4337,10 +4337,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
             FilterChip(
               selected: section.unplanned,
               showCheckmark: false,
-              avatar: Icon(Icons.alt_route_rounded, size: 16, color: section.unplanned ? Colors.white : OhtliColors.cempasuchil),
-              label: Text('Desvío', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: section.unplanned ? Colors.white : OhtliColors.cempasuchil)),
-              selectedColor: OhtliColors.cempasuchil,
-              side: BorderSide(color: OhtliColors.cempasuchil.withValues(alpha: 0.4)),
+              avatar: Icon(Icons.alt_route_rounded, size: 16, color: section.unplanned ? Colors.white : OhtliColors.accent),
+              label: Text('Desvío', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: section.unplanned ? Colors.white : OhtliColors.accent)),
+              selectedColor: OhtliColors.accentFill,
+              side: BorderSide(color: OhtliColors.accent.withValues(alpha: 0.4)),
               shape: const StadiumBorder(),
               visualDensity: VisualDensity.compact,
               onSelected: (_) => _replacePlace(section.id, (p) => p.copyWith(unplanned: !p.unplanned)),
@@ -4698,8 +4698,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       value: 'delete',
                       child: ListTile(
                         dense: true,
-                        leading: const Icon(Icons.delete_outline_rounded, color: OhtliColors.xoconostle),
-                        title: Text('Eliminar', style: GoogleFonts.inter(color: OhtliColors.xoconostle)),
+                        leading: const Icon(Icons.delete_outline_rounded, color: OhtliColors.warning),
+                        title: Text('Eliminar', style: GoogleFonts.inter(color: OhtliColors.warningText)),
                       ),
                     ),
                   ],
@@ -4779,9 +4779,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
       margin: const EdgeInsets.fromLTRB(14, 6, 14, 4),
       padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
       decoration: BoxDecoration(
-        color: OhtliColors.cempasuchil.withValues(alpha: isDark ? 0.18 : 0.12),
+        color: OhtliColors.accent.withValues(alpha: isDark ? 0.18 : 0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.5)),
+        border: Border.all(color: OhtliColors.accent.withValues(alpha: 0.5)),
       ),
       child: Wrap(
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -4791,7 +4791,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.call_split_rounded, size: 16, color: OhtliColors.cempasuchil),
+              Icon(Icons.call_split_rounded, size: 16, color: OhtliColors.accent),
               const SizedBox(width: 8),
               Flexible(child: Text(text, style: GoogleFonts.inter(fontSize: 12.5, height: 1.35, color: fg))),
             ],
@@ -4985,7 +4985,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(friendlyError(e, fallback: 'No se pudo guardar tu voto. Intenta de nuevo.'), style: GoogleFonts.inter()),
-        backgroundColor: OhtliColors.xoconostle,
+        backgroundColor: OhtliColors.warning,
       ));
     }
   }
@@ -5058,7 +5058,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Quitaste ${cand.title.trim().isEmpty ? 'el lugar' : cand.title.trim()} de la propuesta.', style: GoogleFonts.inter()),
       backgroundColor: OhtliColors.onyx,
-      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.accent, onPressed: _undo),
     ));
   }
 
@@ -5085,7 +5085,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       content: Text('Ganó $name. Ya es una parada del viaje.', style: GoogleFonts.inter()),
       backgroundColor: OhtliColors.stormyTeal,
       duration: const Duration(seconds: 6),
-      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.accent, onPressed: _undo),
     ));
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(newId));
   }
@@ -5346,7 +5346,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       content: Text('Quitaste $name. Sus paradas quedaron sin grupo: elige «¿Quién va?» en cada una.', style: GoogleFonts.inter()),
       backgroundColor: OhtliColors.onyx,
       duration: const Duration(seconds: 6),
-      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.accent, onPressed: _undo),
     ));
   }
 
@@ -5548,7 +5548,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (est == null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Para estimarlo, las paradas de antes y después deben tener ubicación.', style: GoogleFonts.inter()),
-        backgroundColor: OhtliColors.xoconostle,
+        backgroundColor: OhtliColors.warning,
       ));
       return;
     }
@@ -5623,7 +5623,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         style: GoogleFonts.inter(),
       ),
       backgroundColor: OhtliColors.stormyTeal,
-      action: added > 0 ? SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo) : null,
+      action: added > 0 ? SnackBarAction(label: 'Deshacer', textColor: OhtliColors.accent, onPressed: _undo) : null,
     ));
   }
 
@@ -5656,7 +5656,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Horarios ajustados con las estancias y los traslados.', style: GoogleFonts.inter()),
       backgroundColor: OhtliColors.stormyTeal,
-      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.accent, onPressed: _undo),
     ));
   }
 
@@ -5693,8 +5693,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                     Container(
                       margin: const EdgeInsets.only(left: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: OhtliColors.cempasuchil.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8)),
-                      child: Text('Estimado', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil)),
+                      decoration: BoxDecoration(color: OhtliColors.accent.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(8)),
+                      child: Text('Estimado', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: OhtliColors.accent)),
                     ),
                   const SizedBox(width: 6),
                   Text(open ? 'Listo' : 'Editar', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal)),
@@ -5805,8 +5805,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 message: 'Calculado por Ohtli a partir de la ubicación de las paradas. Puedes corregirlo.',
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: OhtliColors.cempasuchil.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                  child: Text('Estimado por Ohtli', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.cempasuchil)),
+                  decoration: BoxDecoration(color: OhtliColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                  child: Text('Estimado por Ohtli', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.accent)),
                 ),
               ),
           ],
@@ -5948,7 +5948,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                           child: n != null
                               ? CircleAvatar(
                                   radius: 11,
-                                  backgroundColor: OhtliColors.xoconostle,
+                                  backgroundColor: OhtliColors.accentFill,
                                   child: Text('$n', style: GoogleFonts.inter(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white)),
                                 )
                               : Icon(icon, size: 16, color: OhtliColors.stormyTeal),
@@ -5969,7 +5969,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         if (s is PlaceSection && (s.lat == null || s.lng == null))
                           const Tooltip(
                             message: 'Sin ubicación',
-                            child: Icon(Icons.location_off_outlined, size: 14, color: OhtliColors.xoconostle),
+                            child: Icon(Icons.location_off_outlined, size: 14, color: OhtliColors.warning),
                           ),
                         const SizedBox(width: 4),
                         Icon(Icons.drag_indicator_rounded, size: 16, color: OhtliColors.onyx.withValues(alpha: 0.3)),
@@ -6024,7 +6024,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final String label = chosen
         ? 'Cambiar lugar'
         : (located ? 'Buscar en los lugares de Ohtli' : 'Sin ubicación · Buscar lugar');
-    Color tone = located || chosen ? OhtliColors.stormyTeal : OhtliColors.xoconostle;
+    Color tone = located || chosen ? OhtliColors.stormyTeal : OhtliColors.warning;
     // En modo oscuro los tonos de marca se aclaran para que se lean sobre fondo oscuro
     if (isDark) tone = Color.lerp(tone, Colors.white, 0.45)!;
     return ActionChip(
@@ -6238,7 +6238,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                                 onDelete();
                               },
                               style: TextButton.styleFrom(
-                                foregroundColor: OhtliColors.xoconostle,
+                                foregroundColor: OhtliColors.warningText,
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               ),
                               icon: const Icon(Icons.delete_outline_rounded, size: 14),
@@ -6675,7 +6675,7 @@ class _CatalogPickerDialogState extends State<_CatalogPickerDialog> {
                               ? null
                               : const Tooltip(
                                   message: 'Sin coordenadas',
-                                  child: Icon(Icons.location_off_outlined, size: 16, color: OhtliColors.xoconostle),
+                                  child: Icon(Icons.location_off_outlined, size: 16, color: OhtliColors.warning),
                                 ),
                           onTap: () => Navigator.of(context).pop(p),
                         );
@@ -7117,7 +7117,7 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(_searchError!,
-                      style: GoogleFonts.inter(fontSize: 12, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
+                      style: GoogleFonts.inter(fontSize: 12, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.warningText)),
                 ),
               const SizedBox(height: 10),
               Theme(
@@ -7304,7 +7304,7 @@ class _SuggestPlaceDialogState extends State<_SuggestPlaceDialog> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
                 child: Text(_error!,
-                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.xoconostle)),
+                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: isDark ? const Color(0xFFFF9E9E) : OhtliColors.warningText)),
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 18, 16),

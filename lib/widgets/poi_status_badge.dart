@@ -17,7 +17,7 @@ class PoiClosedBadge extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: small ? 8 : 10, vertical: small ? 3 : 6),
       decoration: BoxDecoration(
-        color: OhtliColors.xoconostle,
+        color: OhtliColors.warning,
         borderRadius: BorderRadius.circular(30),
         border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
       ),
@@ -46,7 +46,7 @@ class PoiClosedNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const color = OhtliColors.xoconostle;
+    const color = OhtliColors.warning;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(

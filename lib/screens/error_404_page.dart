@@ -53,13 +53,13 @@ class _Error404PageState extends State<Error404Page> {
                     width: 90,
                     height: 90,
                     decoration: BoxDecoration(
-                      color: OhtliColors.xoconostle.withValues(alpha: 0.1),
+                      color: OhtliColors.accent.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.explore_off_outlined,
                       size: 44,
-                      color: OhtliColors.xoconostle,
+                      color: OhtliColors.accent,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -68,7 +68,7 @@ class _Error404PageState extends State<Error404Page> {
                     '404',
                     style: GoogleFonts.caprasimo(
                       fontSize: isMobile ? 80 : 110,
-                      color: OhtliColors.xoconostle,
+                      color: OhtliColors.accent,
                       height: 1.1,
                     ),
                   ),

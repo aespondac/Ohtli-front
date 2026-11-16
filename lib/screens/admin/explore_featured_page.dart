@@ -83,7 +83,7 @@ class _ExploreFeaturedPageState extends State<ExploreFeaturedPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(friendlyError(e, fallback: 'No se pudo guardar.'), style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+        SnackBar(content: Text(friendlyError(e, fallback: 'No se pudo guardar.'), style: GoogleFonts.inter()), backgroundColor: OhtliColors.warning),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -196,7 +196,7 @@ class _ExploreFeaturedPageState extends State<ExploreFeaturedPage> {
                                     ),
                                     IconButton(
                                       tooltip: 'Quitar de destacados',
-                                      icon: const Icon(Icons.close_rounded, size: 18, color: OhtliColors.xoconostle),
+                                      icon: const Icon(Icons.close_rounded, size: 18, color: OhtliColors.warning),
                                       onPressed: () => _change(() => _pinned.removeAt(i)),
                                     ),
                                   ],
@@ -211,7 +211,7 @@ class _ExploreFeaturedPageState extends State<ExploreFeaturedPage> {
                       builder: (context, snap) {
                         if (snap.hasError) {
                           return Text(friendlyError(snap.error!, fallback: 'No se pudieron cargar los viajes públicos.'),
-                              style: GoogleFonts.inter(color: OhtliColors.xoconostle));
+                              style: GoogleFonts.inter(color: OhtliColors.warningText));
                         }
                         if (!snap.hasData) return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
                         final pinnedIds = _pinned.map((p) => p.tripId).toSet();

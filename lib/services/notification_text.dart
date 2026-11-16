@@ -74,14 +74,14 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
       return NotificationLook(
         sender: sender,
         icon: Icons.card_giftcard_rounded,
-        color: OhtliColors.xoconostle,
+        color: OhtliColors.accent,
         message: 'te preparó un plan sorpresa: "$tripTitle".',
       );
     case 'co_author_added':
       return NotificationLook(
         sender: sender,
         icon: Icons.group_add_rounded,
-        color: OhtliColors.cempasuchil,
+        color: OhtliColors.accent,
         message: 'te agregó como coautor en su ${isPlan ? "plan" : "viaje"}: "$tripTitle".',
       );
     case 'trip_comment':
@@ -104,7 +104,7 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
       return NotificationLook(
         sender: sender,
         icon: Icons.celebration_rounded,
-        color: OhtliColors.cempasuchil,
+        color: OhtliColors.accent,
         message: data['tripId'] != null ? 'te felicitó por tu viaje "$tripTitle". 🎉' : 'te saludó. 👋',
       );
     case 'group_trip_invite':
@@ -137,7 +137,7 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
         sender: 'Ohtli',
         fromSystem: true,
         icon: Icons.how_to_vote_rounded,
-        color: OhtliColors.cempasuchil,
+        color: OhtliColors.accent,
         message: (data['message'] as String?) ?? 'Las rutas de "$tripTitle" están listas: vota por tu favorita.',
       );
     case 'group_trip_created':
@@ -153,7 +153,7 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
         sender: 'Ohtli',
         fromSystem: true,
         icon: Icons.event_busy_rounded,
-        color: OhtliColors.xoconostle,
+        color: OhtliColors.warning,
         message: (data['message'] as String?) ?? 'Se canceló el plan "$tripTitle": nadie aceptó a tiempo.',
       );
     case 'itinerary_ready':
@@ -161,7 +161,7 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
         sender: 'Ohtli',
         fromSystem: true,
         icon: Icons.auto_awesome_rounded,
-        color: OhtliColors.cempasuchil,
+        color: OhtliColors.accent,
         message: (data['message'] as String?) ?? 'Tus rutas con IA están listas para elegir.',
       );
     case 'itinerary_failed':
@@ -169,7 +169,7 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
         sender: 'Ohtli',
         fromSystem: true,
         icon: Icons.error_outline_rounded,
-        color: OhtliColors.xoconostle,
+        color: OhtliColors.warning,
         message: (data['message'] as String?) ?? 'No pudimos terminar tus rutas con IA. Intenta de nuevo.',
       );
     default:

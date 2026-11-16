@@ -166,6 +166,31 @@ class OhtliColors {
         : const Color(0xFFF7F5F1); // Light inner card background
   }
 
+  // Reglas de color (decisión del usuario, 17-nov-2026):
+  // - El acento de la marca es el xoconostle (morado): resaltados, botones destacados, etiquetas, insignias.
+  // - El cempasúchil queda SOLO para las estrellas de calificación y para advertencias, errores y
+  //   acciones de borrar.
+  // Usa estos nombres en vez de cempasuchil/xoconostle directo.
+
+  /// Acento principal (xoconostle). En modo oscuro, una versión clara para que se lea.
+  static Color get accent => OhtliSettings.instance.isDarkMode ? accentLight : xoconostle;
+
+  /// Relleno de acento con texto blanco encima (botones, insignias, avisos): igual en los dos modos.
+  static const Color accentFill = xoconostle;
+
+  /// Xoconostle claro: acento sobre fondos oscuros o fotos.
+  static const Color accentLight = Color(0xFFD3A3BD);
+
+  /// Estrellas de calificación.
+  static const Color rating = cempasuchil;
+
+  /// Advertencias, errores y borrar: fondos, íconos y bordes.
+  static const Color warning = cempasuchil;
+
+  /// Texto de advertencia o error: cempasúchil oscurecido para pasar contraste AA sobre crema,
+  /// y aclarado en modo oscuro.
+  static Color get warningText => OhtliSettings.instance.isDarkMode ? const Color(0xFFF29A55) : const Color(0xFFA34B0B);
+
   /// Turquesa para textos de acento: más claro en modo oscuro para mantener el contraste.
   static Color get accentText {
     return OhtliSettings.instance.isDarkMode ? const Color(0xFF6FB6BF) : stormyTeal;

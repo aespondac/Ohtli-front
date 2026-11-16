@@ -132,7 +132,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Solicitud rechazada.', style: GoogleFonts.inter()),
-              backgroundColor: OhtliColors.xoconostle,
+              backgroundColor: OhtliColors.warning,
             ),
           );
         }
@@ -142,7 +142,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyError(e, fallback: 'No pudimos responder la solicitud. Intenta de nuevo.'), style: GoogleFonts.inter()),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -652,9 +652,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
               key: const ValueKey('done'),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
               decoration: BoxDecoration(
-                color: OhtliColors.cempasuchil.withValues(alpha: 0.14),
+                color: OhtliColors.accent.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.4)),
+                border: Border.all(color: OhtliColors.accent.withValues(alpha: 0.4)),
               ),
               child: Text(
                 '¡Listo!',

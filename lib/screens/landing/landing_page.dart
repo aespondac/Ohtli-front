@@ -297,8 +297,8 @@ class _LandingPageState extends State<LandingPage> {
               icon: const Icon(Icons.alt_route_rounded, size: 19),
               label: const Text('Crea tu ruta gratis'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.cempasuchil,
-                foregroundColor: const Color(0xFF1A120B),
+                backgroundColor: OhtliColors.accentFill,
+                foregroundColor: Colors.white,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -481,7 +481,7 @@ class _LandingPageState extends State<LandingPage> {
                   Icons.alt_route_rounded,
                   'Ruta de 4 paradas',
                   'Centro Histórico · 5 h',
-                  OhtliColors.cempasuchil,
+                  OhtliColors.accent,
                 ),
               ),
               Positioned(
@@ -741,7 +741,7 @@ class _LandingPageState extends State<LandingPage> {
         Icons.favorite_rounded,
         'Cuéntanos qué te mueve',
         'Un breve cuestionario sobre tus gustos, tu ritmo y tu presupuesto.',
-        OhtliColors.xoconostle,
+        OhtliColors.accent,
       ),
       (
         Icons.auto_awesome_rounded,
@@ -753,7 +753,7 @@ class _LandingPageState extends State<LandingPage> {
         Icons.auto_stories_rounded,
         'Vívela y compártela',
         'Convierte tu recorrido en una crónica con fotos para tus amigos o la comunidad.',
-        OhtliColors.cempasuchil,
+        OhtliColors.accent,
       ),
     ];
     final cards = [
@@ -1038,8 +1038,8 @@ class _LandingPageState extends State<LandingPage> {
                     ElevatedButton(
                       onPressed: widget.onRegisterClick,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.cempasuchil,
-                        foregroundColor: const Color(0xFF1A120B),
+                        backgroundColor: OhtliColors.accentFill,
+                        foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 26,
@@ -1292,17 +1292,17 @@ class _StoryCardState extends State<_StoryCard> {
                             style: GoogleFonts.inter(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
-                              color: OhtliColors.cempasuchil,
+                              color: OhtliColors.accent,
                             ),
                           ),
                           const SizedBox(width: 6),
                           AnimatedSlide(
                             offset: Offset(_hover ? 0.3 : 0, 0),
                             duration: const Duration(milliseconds: 250),
-                            child: const Icon(
+                            child: Icon(
                               Icons.arrow_forward_rounded,
                               size: 16,
-                              color: OhtliColors.cempasuchil,
+                              color: OhtliColors.accent,
                             ),
                           ),
                         ],

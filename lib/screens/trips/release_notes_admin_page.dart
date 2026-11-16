@@ -336,7 +336,7 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
   void _error(Object e, String fallback) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(friendlyError(e, fallback: fallback), style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+      SnackBar(content: Text(friendlyError(e, fallback: fallback), style: GoogleFonts.inter()), backgroundColor: OhtliColors.warning),
     );
   }
 
@@ -420,7 +420,7 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [OhtliColors.stormyTeal, OhtliColors.stormyTeal.withValues(alpha: 0.82), OhtliColors.xoconostle.withValues(alpha: 0.9)],
+          colors: [OhtliColors.stormyTeal, OhtliColors.stormyTeal.withValues(alpha: 0.82), OhtliColors.accent.withValues(alpha: 0.9)],
         ),
         boxShadow: [BoxShadow(color: OhtliColors.stormyTeal.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 8))],
       ),
@@ -515,9 +515,9 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
                   if (hasCover)
                     Image.network(t.coverUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => const ColoredBox(color: OhtliColors.stormyTeal))
                   else
-                    const DecoratedBox(
+                    DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [OhtliColors.stormyTeal, OhtliColors.xoconostle], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        gradient: LinearGradient(colors: [OhtliColors.stormyTeal, OhtliColors.accent], begin: Alignment.topLeft, end: Alignment.bottomRight),
                       ),
                     ),
                   DecoratedBox(
@@ -539,7 +539,7 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
                       runSpacing: 6,
                       children: [
                         pill('Notas de versión · v${t.version ?? '—'}', OhtliColors.stormyTeal, icon: Icons.new_releases_rounded, solid: true),
-                        if (current) pill('Versión actual', OhtliColors.cempasuchil, solid: true),
+                        if (current) pill('Versión actual', OhtliColors.accent, solid: true),
                       ],
                     ),
                   ),
@@ -574,12 +574,12 @@ class _ReleaseNotesAdminPageState extends State<ReleaseNotesAdminPage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: (public ? OhtliColors.stormyTeal : OhtliColors.cempasuchil).withValues(alpha: 0.14),
+                          color: (public ? OhtliColors.stormyTeal : OhtliColors.accent).withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           public ? 'Publicada · en Explorar' : (published ? 'Publicada · privada' : 'Borrador'),
-                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: public ? OhtliColors.stormyTeal : OhtliColors.cempasuchil),
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: public ? OhtliColors.stormyTeal : OhtliColors.accent),
                         ),
                       ),
                       Text('Actualizada el ${_fmtDate(t.updatedAt)}', style: GoogleFonts.inter(fontSize: 12, color: sub)),

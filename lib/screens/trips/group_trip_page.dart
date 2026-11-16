@@ -76,7 +76,7 @@ class _GroupTripPageState extends State<GroupTripPage> {
     switch (g.status) {
       case 'inviting':
         icon = Icons.hourglass_top_rounded;
-        color = OhtliColors.cempasuchil;
+        color = OhtliColors.accent;
         title = 'Esperando respuestas';
         text = g.respondBy != null
             ? 'Las rutas se arman cuando todos respondan o ${_when(g.respondBy!)}, con los gustos de quienes acepten.'
@@ -105,7 +105,7 @@ class _GroupTripPageState extends State<GroupTripPage> {
             : 'Con los gustos de quienes aceptaron (sin mostrárselos a nadie) y las intenciones del grupo.';
       case 'voting':
         icon = Icons.how_to_vote_rounded;
-        color = OhtliColors.cempasuchil;
+        color = OhtliColors.accent;
         title = 'Votación abierta';
         final voted = g.voters.where(g.votes.containsKey).length;
         text = 'Votaron $voted de ${g.voters.length}.${g.voteBy != null ? ' Cierra ${_when(g.voteBy!)} o cuando voten todos.' : ''}';
@@ -133,7 +133,7 @@ class _GroupTripPageState extends State<GroupTripPage> {
         }
       case 'cancelled':
         icon = Icons.event_busy_rounded;
-        color = OhtliColors.xoconostle;
+        color = OhtliColors.warning;
         title = 'Se canceló';
         text = g.cancelReason == 'generation_failed'
             ? 'No pudimos generar las rutas. Pueden intentarlo de nuevo desde el asistente.'
@@ -181,7 +181,7 @@ class _GroupTripPageState extends State<GroupTripPage> {
       'host' => ('Organiza', OhtliColors.stormyTeal),
       'accepted' => ('Va', OhtliColors.stormyTeal),
       'declined' => ('No va', OhtliColors.subtleText),
-      _ => ('Sin responder', OhtliColors.cempasuchil),
+      _ => ('Sin responder', OhtliColors.accent),
     };
     final intention = g.intentions[uid];
     final voted = g.status == 'voting' && g.votes.containsKey(uid);
@@ -206,7 +206,7 @@ class _GroupTripPageState extends State<GroupTripPage> {
             ),
           ),
           if (voted) ...[
-            const Icon(Icons.how_to_vote_rounded, size: 15, color: OhtliColors.cempasuchil),
+            Icon(Icons.how_to_vote_rounded, size: 15, color: OhtliColors.accent),
             const SizedBox(width: 8),
           ],
           Container(

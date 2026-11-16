@@ -852,7 +852,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   title: 'Descubre nuevos lugares',
                   subtitle: 'Rincones de toda la ciudad que aún no conoces',
                   icon: Icons.explore_rounded,
-                  color: OhtliColors.xoconostle,
+                  color: OhtliColors.accent,
                   isMobile: isMobile,
                   controller: _descubreScrollController,
                   scrollStep: (standardWidth + 20) * 2,
@@ -882,7 +882,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   title: 'Mis lugares',
                   subtitle: 'Tus favoritos, listos para tu próxima ruta',
                   icon: Icons.favorite_rounded,
-                  color: OhtliColors.cempasuchil,
+                  color: OhtliColors.accent,
                   count: misLugaresPois.length,
                   isMobile: isMobile,
                   controller: _misLugaresScrollController,
@@ -987,7 +987,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                       const Color(0xFF123338).withValues(alpha: 0.97),
                       const Color(0xFF1B4A51).withValues(alpha: 0.90),
                       OhtliColors.stormyTeal.withValues(alpha: 0.45),
-                      OhtliColors.xoconostle.withValues(alpha: 0.30),
+                      OhtliColors.accent.withValues(alpha: 0.30),
                     ],
                     stops: const [0.0, 0.42, 0.75, 1.0],
                   ),
@@ -998,7 +998,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
             Positioned(
               right: -80,
               top: -90,
-              child: _glowOrb(260, OhtliColors.cempasuchil.withValues(alpha: 0.35)),
+              child: _glowOrb(260, OhtliColors.accent.withValues(alpha: 0.35)),
             ),
             Positioned(
               left: -60,
@@ -1151,7 +1151,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 15, color: OhtliColors.cempasuchil),
+        Icon(icon, size: 15, color: OhtliColors.accent),
         const SizedBox(width: 6),
         Text(value, style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
         const SizedBox(width: 4),
@@ -1623,8 +1623,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                       _goRegister();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: OhtliColors.cempasuchil,
-                      foregroundColor: const Color(0xFF1A120B),
+                      backgroundColor: OhtliColors.accentFill,
+                      foregroundColor: Colors.white,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 17),
                       shape: const StadiumBorder(),
@@ -1663,8 +1663,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         ElevatedButton(
           onPressed: _goRegister,
           style: ElevatedButton.styleFrom(
-            backgroundColor: OhtliColors.cempasuchil,
-            foregroundColor: const Color(0xFF1A120B),
+            backgroundColor: OhtliColors.accentFill,
+            foregroundColor: Colors.white,
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
             shape: const StadiumBorder(),
@@ -1695,10 +1695,10 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.auto_awesome_rounded, size: 15, color: OhtliColors.cempasuchil),
+            Icon(Icons.auto_awesome_rounded, size: 15, color: OhtliColors.accent),
             const SizedBox(width: 6),
             Text('PERSONALIZA',
-                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.cempasuchil)),
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: OhtliColors.accent)),
           ],
         ),
         const SizedBox(height: 8),
@@ -1756,7 +1756,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
           ],
         );
     final features = [
-      feature(Icons.favorite_rounded, OhtliColors.cempasuchil, 'Mis lugares', 'Guarda tus favoritos con un toque.'),
+      feature(Icons.favorite_rounded, OhtliColors.accent, 'Mis lugares', 'Guarda tus favoritos con un toque.'),
       feature(Icons.history_rounded, const Color(0xFF3949AB), 'Tu historial', 'Retoma los lugares que ya exploraste.'),
       feature(Icons.alt_route_rounded, OhtliColors.stormyTeal, 'Rutas con IA', 'Convierte tus lugares en un recorrido.'),
     ];
@@ -1858,7 +1858,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   Widget _buildEmptyMisLugaresBanner() {
     return _buildEmptyShelf(
       icon: Icons.favorite_rounded,
-      color: OhtliColors.cempasuchil,
+      color: OhtliColors.accent,
       title: 'Aún no guardas lugares',
       message: 'Toca el corazón en cualquier tarjeta para tener tus rincones favoritos siempre a la mano.',
     );
@@ -1890,7 +1890,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [OhtliColors.stormyTeal.withValues(alpha: 0.18), OhtliColors.xoconostle.withValues(alpha: 0.14)],
+                    colors: [OhtliColors.stormyTeal.withValues(alpha: 0.18), OhtliColors.accent.withValues(alpha: 0.14)],
                   ),
                 ),
                 child: const Icon(Icons.travel_explore_rounded, size: 40, color: OhtliColors.stormyTeal),
@@ -1940,10 +1940,10 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                 width: 84,
                 height: 84,
                 decoration: BoxDecoration(
-                  color: OhtliColors.xoconostle.withValues(alpha: 0.12),
+                  color: OhtliColors.warning.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.cloud_off_rounded, size: 38, color: OhtliColors.xoconostle),
+                child: const Icon(Icons.cloud_off_rounded, size: 38, color: OhtliColors.warning),
               ),
               const SizedBox(height: 18),
               Text(
@@ -2080,7 +2080,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [const Color(0xFF173F45), OhtliColors.stormyTeal, OhtliColors.xoconostle.withValues(alpha: 0.8)],
+                        colors: [const Color(0xFF173F45), OhtliColors.stormyTeal, OhtliColors.accent.withValues(alpha: 0.8)],
                       ),
                     ),
                     child: Column(

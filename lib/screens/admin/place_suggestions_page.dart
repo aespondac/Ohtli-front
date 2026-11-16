@@ -158,7 +158,7 @@ class _PlaceSuggestionsPageState extends State<PlaceSuggestionsPage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.xoconostle, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.accentFill, foregroundColor: Colors.white),
             child: const Text('Rechazar'),
           ),
         ],
@@ -176,7 +176,7 @@ class _PlaceSuggestionsPageState extends State<PlaceSuggestionsPage> {
   void _toast(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg, style: GoogleFonts.inter()), backgroundColor: error ? OhtliColors.xoconostle : OhtliColors.stormyTeal),
+      SnackBar(content: Text(msg, style: GoogleFonts.inter()), backgroundColor: error ? OhtliColors.warning : OhtliColors.stormyTeal),
     );
   }
 
@@ -304,8 +304,8 @@ class _SuggestionCard extends StatelessWidget {
     final pending = s.status == kSuggestionPending;
     final (Color tone, String statusLabel) = switch (s.status) {
       kSuggestionApproved => (OhtliColors.stormyTeal, 'Aprobado'),
-      kSuggestionRejected => (OhtliColors.xoconostle, 'Rechazado'),
-      _ => (OhtliColors.cempasuchil, s.profile != null ? 'Perfil listo para aprobar' : 'Pendiente'),
+      kSuggestionRejected => (OhtliColors.warning, 'Rechazado'),
+      _ => (OhtliColors.accent, s.profile != null ? 'Perfil listo para aprobar' : 'Pendiente'),
     };
     final muted = OhtliColors.onyx.withValues(alpha: 0.65);
     final details = describeDetails(s.details);
@@ -387,7 +387,7 @@ class _SuggestionCard extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: OhtliColors.cempasuchil.withValues(alpha: isDark ? 0.14 : 0.06),
+                color: OhtliColors.accent.withValues(alpha: isDark ? 0.14 : 0.06),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -404,7 +404,7 @@ class _SuggestionCard extends StatelessWidget {
           ],
           if (s.status == kSuggestionRejected && (s.reviewNote ?? '').isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('Motivo: ${s.reviewNote}', style: GoogleFonts.inter(fontSize: 12, fontStyle: FontStyle.italic, color: OhtliColors.xoconostle)),
+            Text('Motivo: ${s.reviewNote}', style: GoogleFonts.inter(fontSize: 12, fontStyle: FontStyle.italic, color: OhtliColors.warningText)),
           ],
           const SizedBox(height: 12),
           if (busy)
@@ -428,14 +428,14 @@ class _SuggestionCard extends StatelessWidget {
                     label: const Text('Ver en el mapa'),
                   )
                 else
-                  Text('Sin ubicación', style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.xoconostle)),
+                  Text('Sin ubicación', style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.warningText)),
                 if (pending) ...[
                   TextButton.icon(onPressed: onEdit, icon: const Icon(Icons.edit_outlined, size: 16), label: const Text('Corregir datos')),
                   OutlinedButton(
                     onPressed: onReject,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: OhtliColors.xoconostle,
-                      side: BorderSide(color: OhtliColors.xoconostle.withValues(alpha: 0.5)),
+                      foregroundColor: OhtliColors.accent,
+                      side: BorderSide(color: OhtliColors.accent.withValues(alpha: 0.5)),
                     ),
                     child: const Text('Rechazar'),
                   ),

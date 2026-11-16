@@ -819,7 +819,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Elige dónde quieres terminar tu recorrido.', style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
       return null;
@@ -850,7 +850,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Inicia sesión para planear en grupo.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+        SnackBar(content: Text('Inicia sesión para planear en grupo.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.warning),
       );
       return;
     }
@@ -900,7 +900,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(friendlyError(e, fallback: 'No pudimos crear el plan en grupo. Intenta de nuevo.'), style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
     }
@@ -916,7 +916,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Por favor inicia sesión para generar tu itinerario.', style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
       return;
@@ -972,7 +972,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyError(e, fallback: 'No pudimos iniciar el cálculo de tu ruta. Intenta de nuevo.'), style: GoogleFonts.inter()),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -1243,7 +1243,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Inicia sesión para guardar este plan en tu perfil.', style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
       return;
@@ -1289,7 +1289,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyError(e, fallback: 'No pudimos guardar este viaje. Intenta de nuevo.'), style: GoogleFonts.inter()),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -1333,7 +1333,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Inicia sesión para crear tu plan.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+        SnackBar(content: Text('Inicia sesión para crear tu plan.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.warning),
       );
       return;
     }
@@ -1412,7 +1412,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(friendlyError(e, fallback: 'No pudimos crear tu plan. Intenta de nuevo.'), style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
     }
@@ -1594,13 +1594,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           width: 84,
           height: 84,
           decoration: BoxDecoration(
-            color: (stalled ? OhtliColors.cempasuchil : OhtliColors.xoconostle).withOpacity(0.12),
+            color: (stalled ? OhtliColors.warning : OhtliColors.accent).withOpacity(0.12),
             shape: BoxShape.circle,
           ),
           child: Icon(
             stalled ? Icons.hourglass_top_rounded : (offline ? Icons.cloud_off_rounded : Icons.route_outlined),
             size: 38,
-            color: stalled ? OhtliColors.cempasuchil : OhtliColors.xoconostle,
+            color: stalled ? OhtliColors.warning : OhtliColors.accent,
           ),
         ),
         const SizedBox(height: 24),
@@ -2189,10 +2189,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
-                            color: OhtliColors.cempasuchil.withValues(alpha: 0.15),
+                            color: OhtliColors.accent.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Text(badge, style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: OhtliColors.cempasuchil)),
+                          child: Text(badge, style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: OhtliColors.accent)),
                         ),
                       ],
                     ],
@@ -2262,7 +2262,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                         child: Container(
                           padding: const EdgeInsets.all(3),
                           decoration: BoxDecoration(
-                            color: OhtliColors.cempasuchil,
+                            color: OhtliColors.accentFill,
                             shape: BoxShape.circle,
                             border: Border.all(color: OhtliColors.cardBg, width: 2.5),
                           ),
@@ -3252,7 +3252,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         return const Color(0xFF8B5CF6);
       case 'market':
       case 'marketplace':
-        return OhtliColors.cempasuchil;
+        return OhtliColors.accent;
       default:
         return OhtliColors.stormyTeal;
     }
@@ -3587,14 +3587,14 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: OhtliColors.cempasuchil, borderRadius: BorderRadius.circular(30)),
+            decoration: BoxDecoration(color: OhtliColors.accentFill, borderRadius: BorderRadius.circular(30)),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.how_to_vote_rounded, size: 13, color: Color(0xFF1A120B)),
+                const Icon(Icons.how_to_vote_rounded, size: 13, color: Colors.white),
                 const SizedBox(width: 4),
                 Text('${_group!.votersFor(index).length}',
-                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: const Color(0xFF1A120B))),
+                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.white)),
               ],
             ),
           ),
@@ -3604,7 +3604,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   Widget _buildChooseRouteButton(Map<String, dynamic> option, double cost, bool isMobile, {bool compact = false}) {
-    const fg = Color(0xFF1A120B);
+    const fg = Colors.white;
     return ElevatedButton.icon(
       onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
       icon: _isSavingTrip
@@ -3615,9 +3615,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         style: GoogleFonts.outfit(fontSize: compact ? 13.5 : (isMobile ? 14 : 15), fontWeight: FontWeight.w800, color: fg),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: OhtliColors.cempasuchil,
+        backgroundColor: OhtliColors.accentFill,
         foregroundColor: fg,
-        disabledBackgroundColor: OhtliColors.cempasuchil.withValues(alpha: 0.6),
+        disabledBackgroundColor: OhtliColors.accent.withValues(alpha: 0.6),
         padding: compact ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : EdgeInsets.symmetric(horizontal: isMobile ? 20 : 26, vertical: isMobile ? 14 : 17),
         shape: const StadiumBorder(),
         elevation: 0,
@@ -4226,8 +4226,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       statTile(Icons.schedule_rounded, fmtMins(timeMins), 'Duración total', OhtliColors.stormyTeal),
       statTile(Icons.payments_outlined, '\$${(cost + transportCost).toStringAsFixed(0)}',
           transportCost > 0 ? 'Costo (incl. \$${transportCost.toStringAsFixed(0)} traslados)' : 'Costo (MXN)',
-          OhtliColors.cempasuchil),
-      statTile(Icons.place_rounded, '${rawStops.length} paradas', '${fmtMins(totalStayMins)} en sitio', OhtliColors.xoconostle),
+          OhtliColors.accent),
+      statTile(Icons.place_rounded, '${rawStops.length} paradas', '${fmtMins(totalStayMins)} en sitio', OhtliColors.accent),
       onFoot
           ? statTile(Icons.directions_walk_rounded, '${walkingKm.toStringAsFixed(1)} km', '${fmtMins(totalWalkMins)} caminando', const Color(0xFF3F8F5B))
           : statTile(optionMode.icon, '${(travelKm ?? walkingKm).toStringAsFixed(1)} km',
@@ -4320,23 +4320,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                           ),
                           if (rating != null) chip(
                             Row(mainAxisSize: MainAxisSize.min, children: [
-                              const Icon(Icons.star_rounded, size: 12, color: Color(0xFFE0A100)),
+                              const Icon(Icons.star_rounded, size: 12, color: OhtliColors.rating),
                               const SizedBox(width: 3),
                               Text(rating.toStringAsFixed(1),
                                   style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFFB07E00))),
                             ]),
-                            const Color(0xFFE0A100),
+                            OhtliColors.rating,
                           ),
                           chip(
                             Row(mainAxisSize: MainAxisSize.min, children: [
-                              const Icon(Icons.schedule_rounded, size: 12, color: OhtliColors.cempasuchil),
+                              Icon(Icons.schedule_rounded, size: 12, color: OhtliColors.accent),
                               const SizedBox(width: 4),
                               Text(
                                 arrival != null ? '$arrival${departure != null ? ' – $departure' : ''} · $stayMins min' : '$stayMins min',
-                                style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: OhtliColors.cempasuchil),
+                                style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: OhtliColors.accent),
                               ),
                             ]),
-                            OhtliColors.cempasuchil,
+                            OhtliColors.accent,
                           ),
                         ],
                       ),

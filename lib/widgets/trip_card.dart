@@ -75,7 +75,7 @@ class _TripCardState extends State<TripCard> {
 
   Widget _buildStatusChip() {
     final published = _isPublished;
-    final color = published ? OhtliColors.stormyTeal : OhtliColors.cempasuchil;
+    final color = published ? OhtliColors.stormyTeal : OhtliColors.accent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -196,7 +196,7 @@ class _TripCardState extends State<TripCard> {
               'El viaje no tiene paradas o secciones cargadas para exportar.',
               style: GoogleFonts.inter(color: Colors.white),
             ),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -266,7 +266,7 @@ class _TripCardState extends State<TripCard> {
               friendlyError(e, fallback: 'No pudimos exportar el viaje a PDF. Intenta de nuevo.'),
               style: GoogleFonts.inter(color: Colors.white),
             ),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -309,7 +309,7 @@ class _TripCardState extends State<TripCard> {
                 widget.onDelete();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: OhtliColors.xoconostle,
+                backgroundColor: OhtliColors.warning,
                 foregroundColor: Colors.white,
                 shape: const StadiumBorder(),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
@@ -377,9 +377,9 @@ class _TripCardState extends State<TripCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [OhtliColors.xoconostle, Color(0xFFB8325A)]),
+        gradient: LinearGradient(colors: [OhtliColors.accent, Color(0xFFB8325A)]),
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: OhtliColors.xoconostle.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: OhtliColors.accent.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -401,7 +401,7 @@ class _TripCardState extends State<TripCard> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [OhtliColors.xoconostle.withValues(alpha: 0.10), Colors.transparent, const Color(0xFF7A1F3D).withValues(alpha: 0.45)],
+            colors: [OhtliColors.accent.withValues(alpha: 0.10), Colors.transparent, const Color(0xFF7A1F3D).withValues(alpha: 0.45)],
           ),
         ),
       ),
@@ -421,7 +421,7 @@ class _TripCardState extends State<TripCard> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(published ? Icons.check_circle_rounded : Icons.edit_note_rounded, size: 12, color: published ? Colors.white : OhtliColors.cempasuchil),
+          Icon(published ? Icons.check_circle_rounded : Icons.edit_note_rounded, size: 12, color: published ? Colors.white : OhtliColors.accent),
           const SizedBox(width: 5),
           Text(published ? 'Publicado' : 'Borrador', style: GoogleFonts.inter(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w700)),
         ],
@@ -433,9 +433,9 @@ class _TripCardState extends State<TripCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: OhtliColors.xoconostle,
+        color: OhtliColors.accentFill,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: OhtliColors.xoconostle.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: OhtliColors.accent.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -556,8 +556,8 @@ class _TripCardState extends State<TripCard> {
         item('share', Icons.ios_share_rounded, 'Compartir'),
         const PopupMenuDivider(height: 1),
         _isOthers
-            ? item('delete', Icons.remove_circle_outline_rounded, _isSurprise ? 'Quitar de mis planes' : 'Quitar de mis viajes', color: OhtliColors.xoconostle)
-            : item('delete', Icons.delete_outline_rounded, 'Eliminar', color: OhtliColors.xoconostle),
+            ? item('delete', Icons.remove_circle_outline_rounded, _isSurprise ? 'Quitar de mis planes' : 'Quitar de mis viajes', color: OhtliColors.warningText)
+            : item('delete', Icons.delete_outline_rounded, 'Eliminar', color: OhtliColors.warningText),
       ],
     );
   }
@@ -571,7 +571,7 @@ class _TripCardState extends State<TripCard> {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: widget.hasNews || _isSurprise
-              ? OhtliColors.xoconostle.withValues(alpha: widget.hasNews ? 0.55 : 0.35)
+              ? OhtliColors.accent.withValues(alpha: widget.hasNews ? 0.55 : 0.35)
               : (_hover ? OhtliColors.stormyTeal.withValues(alpha: 0.35) : OhtliColors.cardBorder),
           width: widget.hasNews || _isSurprise ? 1.4 : 1,
         ),
@@ -660,7 +660,7 @@ class _TripCardState extends State<TripCard> {
                               scrollDirection: Axis.horizontal,
                               child: _isOwnSurprise
                                   ? Row(children: [
-                                      _pill(icon: Icons.card_giftcard_rounded, label: _surpriseFor, color: OhtliColors.xoconostle),
+                                      _pill(icon: Icons.card_giftcard_rounded, label: _surpriseFor, color: OhtliColors.accent),
                                       const SizedBox(width: 6),
                                       _pill(icon: Icons.schedule_rounded, label: _surpriseWhen),
                                     ])
@@ -722,7 +722,7 @@ class _TripCardState extends State<TripCard> {
                           ),
                           if (widget.hasNews) ...[
                             const SizedBox(width: 6),
-                            Container(width: 9, height: 9, decoration: const BoxDecoration(color: OhtliColors.xoconostle, shape: BoxShape.circle)),
+                            Container(width: 9, height: 9, decoration: BoxDecoration(color: OhtliColors.accentFill, shape: BoxShape.circle)),
                           ],
                         ],
                       ),

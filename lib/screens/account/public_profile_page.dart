@@ -120,9 +120,9 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     return _tabMessage(
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
-          child: const OhtliEmptyState(
+          child: OhtliEmptyState(
             icon: Icons.lock_outline_rounded,
-            color: OhtliColors.xoconostle,
+            color: OhtliColors.accent,
             title: 'Este perfil es privado',
             message: 'Sus viajes y amigos solo los ven sus amigos.',
           ),
@@ -299,7 +299,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             'Inicia sesión para poder seguir a otros viajeros',
             style: GoogleFonts.inter(),
           ),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
       return;
@@ -539,7 +539,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.workspace_premium_rounded, size: 14, color: OhtliColors.cempasuchil),
+              Icon(Icons.workspace_premium_rounded, size: 14, color: OhtliColors.accent),
               const SizedBox(width: 6),
               Text(titleName, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
               if (_isSelf) ...[
@@ -617,11 +617,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: OhtliColors.xoconostle.withOpacity(0.1),
+                              color: OhtliColors.accent.withOpacity(0.1),
                             ),
                             child: Icon(
                               isActive ? Icons.stars_rounded : Icons.star_rounded,
-                              color: OhtliColors.xoconostle,
+                              color: OhtliColors.accent,
                               size: 18,
                             ),
                           ),
@@ -875,7 +875,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                       OhtliSectionHeader(
                         eyebrow: 'Momentos',
                         icon: Icons.favorite_rounded,
-                        color: OhtliColors.cempasuchil,
+                        color: OhtliColors.accent,
                         title: _isSelf ? 'Momentos que atesoras' : (firstName.isEmpty ? 'Sus momentos' : 'Momentos de $firstName'),
                         subtitle: _isSelf ? 'Fotos de tus viajes que eliges para tu perfil.' : null,
                         trailing: _isSelf && moments.isNotEmpty
@@ -981,7 +981,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(eyebrow, style: OhtliUi.eyebrow(OhtliColors.cempasuchil).copyWith(shadows: [Shadow(color: Colors.black.withValues(alpha: 0.7), blurRadius: 10)])),
+                Text(eyebrow, style: OhtliUi.eyebrow(OhtliColors.accent).copyWith(shadows: [Shadow(color: Colors.black.withValues(alpha: 0.7), blurRadius: 10)])),
                 const SizedBox(height: 6),
                 Text(
                   displayName,
@@ -1139,7 +1139,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   child: Tooltip(
                     message: 'Cambiar foto',
                     child: Material(
-                      color: OhtliColors.cempasuchil,
+                      color: OhtliColors.accent,
                       shape: CircleBorder(side: BorderSide(color: OhtliColors.cloudDancer, width: 3)),
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
@@ -1156,7 +1156,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                   child: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: OhtliColors.cempasuchil,
+                      color: OhtliColors.accentFill,
                       shape: BoxShape.circle,
                       border: Border.all(color: OhtliColors.cloudDancer, width: 3),
                     ),
@@ -1214,7 +1214,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(friendlyError(e, fallback: 'No pudimos guardar tus momentos. Intenta de nuevo.'), style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ));
       }
     }
@@ -1240,7 +1240,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           constraints: const BoxConstraints(maxWidth: 720),
           child: OhtliEmptyState(
             icon: Icons.photo_library_rounded,
-            color: OhtliColors.cempasuchil,
+            color: OhtliColors.accent,
             title: 'Fija tus momentos favoritos',
             message: 'Elige fotos de tus viajes para que todos las vean en tu perfil. Si el viaje es privado, solo se verá la foto.',
             action: OhtliPrimaryButton(compact: true, highlight: true, label: 'Elegir momentos', icon: Icons.add_photo_alternate_rounded, onPressed: _editMoments),
@@ -1381,7 +1381,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 Expanded(
                   child: Text(label,
                       style: GoogleFonts.inter(
-                          fontSize: 14, fontWeight: FontWeight.w600, color: value == 'none' ? OhtliColors.xoconostle : OhtliColors.onyx)),
+                          fontSize: 14, fontWeight: FontWeight.w600, color: value == 'none' ? OhtliColors.warningText : OhtliColors.onyx)),
                 ),
                 if (checked) Icon(Icons.check_rounded, size: 16, color: OhtliColors.accentText),
               ],
@@ -1396,22 +1396,22 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         offset: const Offset(0, 48),
         itemBuilder: (context) => [
           item('friend', Icons.people_outline_rounded, 'Amigo', OhtliColors.accentText, checked: !_isCloseFriend),
-          item('closeFriend', Icons.star_rounded, 'Mejor amigo', OhtliColors.cempasuchil, checked: _isCloseFriend),
+          item('closeFriend', Icons.star_rounded, 'Mejor amigo', OhtliColors.accent, checked: _isCloseFriend),
           const PopupMenuDivider(height: 1),
-          item('none', Icons.person_remove_rounded, 'Eliminar amistad', OhtliColors.xoconostle),
+          item('none', Icons.person_remove_rounded, 'Eliminar amistad', OhtliColors.warningText),
         ],
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           decoration: BoxDecoration(
-            color: _isCloseFriend ? OhtliColors.cempasuchil.withValues(alpha: 0.14) : OhtliColors.cardBg,
+            color: _isCloseFriend ? OhtliColors.accent.withValues(alpha: 0.14) : OhtliColors.cardBg,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: _isCloseFriend ? OhtliColors.cempasuchil.withValues(alpha: 0.45) : OhtliColors.onyx.withValues(alpha: 0.18)),
+            border: Border.all(color: _isCloseFriend ? OhtliColors.accent.withValues(alpha: 0.45) : OhtliColors.onyx.withValues(alpha: 0.18)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(_isCloseFriend ? Icons.star_rounded : Icons.people_alt_rounded,
-                  size: 16, color: _isCloseFriend ? OhtliColors.cempasuchil : OhtliColors.accentText),
+                  size: 16, color: _isCloseFriend ? OhtliColors.accent : OhtliColors.accentText),
               const SizedBox(width: 6),
               Text(_isCloseFriend ? 'Mejor amigo' : 'Amigo',
                   style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
@@ -1472,7 +1472,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         subtitle = _isSelf ? 'Cuando publiques un viaje aparecerá aquí para que tus amigos lo vean.' : 'Cuando publique uno, lo verás aquí.';
       } else if (!_isSelf && !_isFriend) {
         icon = Icons.lock_outline_rounded;
-        color = OhtliColors.xoconostle;
+        color = OhtliColors.accent;
         title = 'Planes solo para amigos';
         subtitle = 'Agrega a $name como amigo para ver los planes que está armando.';
       } else {
@@ -1562,7 +1562,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyError(e, fallback: 'No pudimos eliminar el viaje. Intenta de nuevo.'), style: GoogleFonts.inter()),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }

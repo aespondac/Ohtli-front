@@ -766,7 +766,7 @@ class _OhtliMarkdownEditorState extends State<OhtliMarkdownEditor> {
     bool isActive = false,
     Color? activeColor,
   }) {
-    final Color actualActiveColor = activeColor ?? OhtliColors.cempasuchil;
+    final Color actualActiveColor = activeColor ?? OhtliColors.accent;
     final Color inactiveColor = isDark ? OhtliColors.onyx.withValues(alpha: 0.7) : OhtliColors.stormyTeal;
 
     return Tooltip(

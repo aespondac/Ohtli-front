@@ -775,7 +775,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                     content: Text(
                                       'Error al guardar la imagen: ${err.toString()}',
                                     ),
-                                    backgroundColor: OhtliColors.xoconostle,
+                                    backgroundColor: OhtliColors.warning,
                                   ),
                                 );
                               }
@@ -797,7 +797,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(friendlyError(e)),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
     }
@@ -867,7 +867,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyError(e)),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -890,7 +890,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Las contraseñas nuevas no coinciden.'),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
       return;
@@ -955,7 +955,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -997,7 +997,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 children: [
                   const Icon(
                     Icons.delete_forever_rounded,
-                    color: OhtliColors.xoconostle,
+                    color: OhtliColors.warning,
                     size: 24,
                   ),
                   const SizedBox(width: 8),
@@ -1032,7 +1032,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                         style: GoogleFonts.inter(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w500,
-                          color: OhtliColors.xoconostle,
+                          color: OhtliColors.warningText,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -1070,7 +1070,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     if (isDeleting)
                       const Center(
                         child: CircularProgressIndicator(
-                          color: OhtliColors.xoconostle,
+                          color: OhtliColors.warning,
                         ),
                       ),
                   ],
@@ -1185,7 +1185,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  backgroundColor: OhtliColors.xoconostle,
+                                  backgroundColor: OhtliColors.warning,
                                   duration: const Duration(seconds: 4),
                                 ),
                               );
@@ -1207,7 +1207,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                               ScaffoldMessenger.of(parentContext).showSnackBar(
                                 SnackBar(
                                   content: Text(err),
-                                  backgroundColor: OhtliColors.xoconostle,
+                                  backgroundColor: OhtliColors.warning,
                                 ),
                               );
                             }
@@ -1218,7 +1218,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           }
                         },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: OhtliColors.xoconostle,
+                    backgroundColor: OhtliColors.warning,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -1686,19 +1686,19 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 icon: const Icon(
                   Icons.logout_rounded,
                   size: 18,
-                  color: OhtliColors.xoconostle,
+                  color: OhtliColors.warning,
                 ),
                 label: Text(
                   'Cerrar sesión',
                   style: GoogleFonts.inter(
-                    color: OhtliColors.xoconostle,
+                    color: OhtliColors.warningText,
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(
-                    color: OhtliColors.xoconostle,
+                    color: OhtliColors.warning,
                     width: 1.5,
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -2620,7 +2620,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(friendlyError(e, fallback: 'No pudimos vincular tu cuenta de Google. Intenta de nuevo.')),
-                              backgroundColor: OhtliColors.xoconostle,
+                              backgroundColor: OhtliColors.warning,
                             ),
                           );
                         }
@@ -2958,7 +2958,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                   tooltip: 'Eliminar dirección',
                                   icon: const Icon(
                                     Icons.delete_outline_rounded,
-                                    color: OhtliColors.xoconostle,
+                                    color: OhtliColors.warning,
                                     size: 18,
                                   ),
                                   onPressed: () {
@@ -3125,10 +3125,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: OhtliColors.xoconostle.withValues(alpha: 0.06),
+                  color: OhtliColors.warning.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: OhtliColors.xoconostle.withValues(alpha: 0.3),
+                    color: OhtliColors.warning.withValues(alpha: 0.3),
                     width: 1.2,
                   ),
                 ),
@@ -3139,7 +3139,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       children: [
                         const Icon(
                           Icons.warning_amber_rounded,
-                          color: OhtliColors.xoconostle,
+                          color: OhtliColors.warning,
                           size: 20,
                         ),
                         const SizedBox(width: 8),
@@ -3147,7 +3147,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           'Zona de riesgo',
                           style: GoogleFonts.inter(
                             fontWeight: FontWeight.w700,
-                            color: OhtliColors.xoconostle,
+                            color: OhtliColors.warningText,
                             fontSize: 13.5,
                           ),
                         ),
@@ -3181,7 +3181,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                           ),
                         ),
                         style: TextButton.styleFrom(
-                          backgroundColor: OhtliColors.xoconostle,
+                          backgroundColor: OhtliColors.warning,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),

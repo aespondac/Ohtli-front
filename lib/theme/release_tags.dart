@@ -8,7 +8,7 @@ Color releaseTagColor(String? tag) => switch (tag) {
       'mejora' => OhtliColors.stormyTeal,
       // Xoconostle aclarado: el original casi no se ve sobre fondo oscuro.
       'correccion' => const Color(0xFFB4436C),
-      _ => OhtliColors.cempasuchil,
+      _ => OhtliColors.accent,
     };
 
 IconData releaseTagIcon(String? tag) => switch (tag) {

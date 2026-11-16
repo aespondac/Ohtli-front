@@ -77,9 +77,9 @@ class OhtliAccountChip extends StatelessWidget {
             PopupMenuItem<String>(
               value: 'logout',
               child: Row(children: [
-                const Icon(Icons.logout_rounded, size: 18, color: OhtliColors.xoconostle),
+                const Icon(Icons.logout_rounded, size: 18, color: OhtliColors.warning),
                 const SizedBox(width: 12),
-                Text('Cerrar sesión', style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.xoconostle)),
+                Text('Cerrar sesión', style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.warningText)),
               ]),
             ),
           ],

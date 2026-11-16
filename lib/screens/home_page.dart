@@ -158,7 +158,7 @@ class _HomePageState extends State<HomePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error al cerrar sesión: ${e.toString()}'),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -378,7 +378,7 @@ class _HomePageState extends State<HomePage> {
                           child: Container(
                             padding: const EdgeInsets.all(2),
                             decoration: BoxDecoration(
-                              color: OhtliColors.xoconostle,
+                              color: OhtliColors.accentFill,
                               shape: BoxShape.circle,
                             ),
                             constraints: const BoxConstraints(

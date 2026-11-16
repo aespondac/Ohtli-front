@@ -104,7 +104,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
                   child: TextButton(
                     onPressed: widget.onLoginClick!,
                     style: TextButton.styleFrom(
-                      foregroundColor: _isHoveringEnter ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+                      foregroundColor: _isHoveringEnter ? OhtliColors.accent : OhtliColors.stormyTeal,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
                     child: Text(
@@ -220,7 +220,7 @@ class _ConstructionPageState extends State<ConstructionPage> with SingleTickerPr
           'Oh - tli!',
           style: GoogleFonts.caprasimo(
             fontSize: isMobile ? 72 : 110,
-            color: OhtliColors.xoconostle,
+            color: OhtliColors.accent,
             letterSpacing: 1.0,
           ),
         ),

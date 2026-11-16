@@ -221,7 +221,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(friendlyError(e), style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+        SnackBar(content: Text(friendlyError(e), style: GoogleFonts.inter()), backgroundColor: OhtliColors.warning),
       );
       return;
     }
@@ -237,7 +237,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           action: SnackBarAction(
             label: 'Deshacer',
-            textColor: OhtliColors.cempasuchil,
+            textColor: OhtliColors.accent,
             onPressed: () => ref.set(backup),
           ),
         ),
@@ -285,7 +285,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                 ),
                 const SizedBox(height: 12),
                 option(Icons.auto_awesome_rounded, 'Planear con IA', 'Te proponemos 3 rutas según tus gustos', OhtliColors.stormyTeal, _openAiPlanner),
-                option(Icons.edit_note_rounded, 'Crear plan por mi cuenta', 'Empieza un borrador en blanco', OhtliColors.cempasuchil, () => TripPlannerDialog.show(context, startManual: true)),
+                option(Icons.edit_note_rounded, 'Crear plan por mi cuenta', 'Empieza un borrador en blanco', OhtliColors.accent, () => TripPlannerDialog.show(context, startManual: true)),
               ],
             ),
           ),
@@ -349,7 +349,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
               width: 9,
               height: 9,
               decoration: BoxDecoration(
-                color: OhtliColors.xoconostle,
+                color: OhtliColors.accentFill,
                 shape: BoxShape.circle,
                 border: Border.all(color: selected ? Colors.white : Colors.transparent, width: 1.5),
               ),
@@ -460,7 +460,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         SnackBar(
           content: Text(friendlyError(e, fallback: 'No pudimos quitar el viaje. Intenta de nuevo.'),
               style: GoogleFonts.inter(color: Colors.white)),
-          backgroundColor: OhtliColors.xoconostle,
+          backgroundColor: OhtliColors.warning,
         ),
       );
     }
@@ -498,7 +498,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
               friendlyError(e, fallback: 'No pudimos eliminar el viaje. Intenta de nuevo.'),
               style: GoogleFonts.inter(color: Colors.white),
             ),
-            backgroundColor: OhtliColors.xoconostle,
+            backgroundColor: OhtliColors.warning,
           ),
         );
       }
@@ -764,8 +764,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                     _buildSectionHeader(
                                       'Sorpresas que preparas',
                                       subtitle: 'Viajes que estás armando para regalar. Tus amigos los abrirán en la fecha que elegiste.',
-                                      leading: const Icon(Icons.card_giftcard_rounded, size: 18, color: OhtliColors.xoconostle),
-                                      trailing: _countBadge(mySurpriseDrafts.length, OhtliColors.xoconostle),
+                                      leading: Icon(Icons.card_giftcard_rounded, size: 18, color: OhtliColors.accent),
+                                      trailing: _countBadge(mySurpriseDrafts.length, OhtliColors.accent),
                                     ),
                                     _buildTripsGrid(mySurpriseDrafts, crossAxisCount, width, padding),
                                     const SizedBox(height: 28),
@@ -774,7 +774,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                     _buildSectionHeader(
                                       'Borradores',
                                       subtitle: 'Los planes que estás armando. Publícalos cuando estén listos.',
-                                      trailing: _countBadge(draftTrips.length, OhtliColors.cempasuchil),
+                                      trailing: _countBadge(draftTrips.length, OhtliColors.accent),
                                     ),
                                     _buildTripsGrid(draftTrips, crossAxisCount, width, padding),
                                     const SizedBox(height: 80),
@@ -823,13 +823,13 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     Widget row(GroupTrip g) {
       final pendingForMe = g.hostId != uid && g.responseOf(uid) == 'pending';
       final (IconData icon, Color color, String status) = pendingForMe
-          ? (Icons.mark_email_unread_rounded, OhtliColors.cempasuchil, '${g.hostName} te invitó · responde')
+          ? (Icons.mark_email_unread_rounded, OhtliColors.accent, '${g.hostName} te invitó · responde')
           : switch (g.status) {
-              'inviting' => (Icons.hourglass_top_rounded, OhtliColors.cempasuchil, 'Esperando respuestas'),
+              'inviting' => (Icons.hourglass_top_rounded, OhtliColors.accent, 'Esperando respuestas'),
               'generating' => (Icons.auto_awesome_rounded, OhtliColors.stormyTeal, 'Armando las rutas del grupo'),
               'voting' => (
                   Icons.how_to_vote_rounded,
-                  OhtliColors.cempasuchil,
+                  OhtliColors.accent,
                   g.votes.containsKey(uid) ? 'Votaste · esperando a los demás' : 'Vota por tu ruta favorita'
                 ),
               _ => (Icons.groups_rounded, OhtliColors.stormyTeal, 'Plan en grupo'),
@@ -925,12 +925,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           _buildSectionHeader(
             'En preparación',
             subtitle: 'Estamos armando tus rutas. Puedes salir y volver: seguirá avanzando.',
-            leading: const SizedBox(
+            leading: SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil)),
+              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.accent)),
             ),
-            trailing: _countBadge(generatingJobs.length, OhtliColors.cempasuchil),
+            trailing: _countBadge(generatingJobs.length, OhtliColors.accent),
           ),
           _jobCardsWrap(width, padding, generatingJobs.map((doc) => _buildGeneratingJobCard(doc, isDark)).toList()),
           const SizedBox(height: 20),
@@ -942,7 +942,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         if (failedJobs.isNotEmpty) ...[
           _buildSectionHeader(
             'No se pudieron generar',
-            leading: const Icon(Icons.error_outline_rounded, size: 18, color: OhtliColors.xoconostle),
+            leading: const Icon(Icons.error_outline_rounded, size: 18, color: OhtliColors.warning),
           ),
           _jobCardsWrap(width, padding, failedJobs.map((doc) => _buildFailedJobCard(doc, isDark)).toList()),
           const SizedBox(height: 20),
@@ -1051,7 +1051,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: isNew ? OhtliColors.xoconostle : Colors.white.withValues(alpha: 0.92),
+                        color: isNew ? OhtliColors.accent : Colors.white.withValues(alpha: 0.92),
                         borderRadius: BorderRadius.circular(30),
                       ),
                       child: Row(
@@ -1123,7 +1123,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
       padding: const EdgeInsets.only(bottom: 12),
       child: OhtliSurface(
       padding: const EdgeInsets.all(16),
-      accent: OhtliColors.xoconostle,
+      accent: OhtliColors.accent,
       selected: true,
       child: Row(
         children: [
@@ -1131,10 +1131,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: OhtliColors.xoconostle.withOpacity(0.12),
+              color: OhtliColors.accent.withOpacity(0.12),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.route_outlined, size: 18, color: OhtliColors.xoconostle),
+            child: Icon(Icons.route_outlined, size: 18, color: OhtliColors.accent),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1177,7 +1177,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                         } catch (e) {
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(friendlyError(e), style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+                            SnackBar(content: Text(friendlyError(e), style: GoogleFonts.inter()), backgroundColor: OhtliColors.warning),
                           );
                         }
                       },
@@ -1218,12 +1218,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: OhtliColors.cempasuchil.withOpacity(0.4),
+          color: OhtliColors.accent.withOpacity(0.4),
           width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: OhtliColors.cempasuchil.withOpacity(0.06),
+            color: OhtliColors.accent.withOpacity(0.06),
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -1256,7 +1256,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       progress: progress,
                       builder: (value) => Text(
                         '${value.round()}%',
-                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.cempasuchil),
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.accent),
                       ),
                     ),
                   ],
@@ -1489,8 +1489,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
         _buildSectionHeader(
           'Sorpresas por abrir',
           subtitle: 'Viajes que tus amigos prepararon para ti. Ábrelos cuando llegue el día.',
-          leading: const Icon(Icons.card_giftcard_rounded, size: 18, color: OhtliColors.xoconostle),
-          trailing: _countBadge(surpriseTrips.length, OhtliColors.xoconostle),
+          leading: Icon(Icons.card_giftcard_rounded, size: 18, color: OhtliColors.accent),
+          trailing: _countBadge(surpriseTrips.length, OhtliColors.accent),
         ),
         _buildSurpriseTripsGrid(surpriseTrips, crossAxisCount, availableWidth, padding, isDark),
       ],
@@ -1616,7 +1616,7 @@ class _HoverCardState extends State<_HoverCard> {
             color: OhtliColors.cardBg,
             borderRadius: BorderRadius.circular(28),
             border: Border.all(
-              color: widget.highlight ? OhtliColors.xoconostle.withValues(alpha: 0.55) : (_hover ? OhtliColors.stormyTeal.withValues(alpha: 0.35) : OhtliColors.cardBorder),
+              color: widget.highlight ? OhtliColors.accent.withValues(alpha: 0.55) : (_hover ? OhtliColors.stormyTeal.withValues(alpha: 0.35) : OhtliColors.cardBorder),
               width: widget.highlight ? 1.4 : 1,
             ),
             boxShadow: OhtliUi.softShadow(color: _hover ? OhtliColors.stormyTeal : null, raised: _hover),
@@ -1688,8 +1688,8 @@ class _SmoothJobProgressState extends State<_SmoothJobProgress> {
         child: LinearProgressIndicator(
           value: _shown / 100.0,
           minHeight: 4,
-          backgroundColor: OhtliColors.cempasuchil.withValues(alpha: 0.12),
-          valueColor: const AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil),
+          backgroundColor: OhtliColors.accent.withValues(alpha: 0.12),
+          valueColor: AlwaysStoppedAnimation<Color>(OhtliColors.accent),
         ),
       ),
     );

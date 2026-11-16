@@ -232,11 +232,11 @@ class _RoutePainter extends CustomPainter {
       final p = points[i];
       if (s.unplanned) {
         canvas.drawCircle(p, 6.5, Paint()..color = Colors.white);
-        canvas.drawCircle(p, 4.5, Paint()..color = OhtliColors.cempasuchil);
+        canvas.drawCircle(p, 4.5, Paint()..color = OhtliColors.accent);
         continue;
       }
       final Color tone = s.color ?? teal;
-      final Color fill = s.isNext ? OhtliColors.cempasuchil : (s.visited ? tone : Colors.white);
+      final Color fill = s.isNext ? OhtliColors.accent : (s.visited ? tone : Colors.white);
       canvas.drawCircle(p + const Offset(0, 1.5), 12.5, Paint()..color = Colors.black.withValues(alpha: 0.18));
       canvas.drawCircle(p, 12, Paint()..color = fill);
       canvas.drawCircle(

@@ -92,12 +92,12 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
         children: [
           CircleAvatar(
             radius: 10,
-            backgroundColor: OhtliColors.xoconostle.withValues(alpha: 0.25),
+            backgroundColor: OhtliColors.accent.withValues(alpha: 0.25),
             backgroundImage: photo != null && photo.isNotEmpty ? NetworkImage(photo) : null,
             child: photo != null && photo.isNotEmpty
                 ? null
                 : Text(widget.fromName.isNotEmpty ? widget.fromName[0].toUpperCase() : '?',
-                    style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w800, color: OhtliColors.xoconostle)),
+                    style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w800, color: OhtliColors.accent)),
           ),
           const SizedBox(width: 6),
           Text('De ${widget.fromName}', style: GoogleFonts.inter(fontSize: compact ? 11 : 12, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
@@ -140,7 +140,7 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
                             end: Alignment.bottomRight,
                             colors: locked
                                 ? [const Color(0xFF2E3238).withValues(alpha: 0.72 * veil), const Color(0xFF15171A).withValues(alpha: 0.82 * veil)]
-                                : [OhtliColors.xoconostle.withValues(alpha: 0.55 * veil), const Color(0xFF6E1F45).withValues(alpha: 0.70 * veil)],
+                                : [OhtliColors.accent.withValues(alpha: 0.55 * veil), const Color(0xFF6E1F45).withValues(alpha: 0.70 * veil)],
                           ),
                         ),
                       ),
@@ -204,7 +204,7 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: OhtliColors.xoconostle,
+              backgroundColor: OhtliColors.accentFill,
               foregroundColor: Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -240,12 +240,12 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
         color: OhtliColors.cardBg,
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: widget.isLocked ? OhtliColors.cardBorder : OhtliColors.xoconostle.withValues(alpha: _hover ? 0.6 : 0.4),
+          color: widget.isLocked ? OhtliColors.cardBorder : OhtliColors.accent.withValues(alpha: _hover ? 0.6 : 0.4),
           width: widget.isLocked ? 1 : 1.4,
         ),
         boxShadow: [
           BoxShadow(
-            color: (_hover ? OhtliColors.xoconostle : Colors.black).withValues(alpha: _hover ? 0.16 : 0.05),
+            color: (_hover ? OhtliColors.accent : Colors.black).withValues(alpha: _hover ? 0.16 : 0.05),
             blurRadius: _hover ? 30 : 14,
             spreadRadius: -4,
             offset: Offset(0, _hover ? 16 : 6),
@@ -260,10 +260,10 @@ class _SurprisePolaroidCardState extends State<SurprisePolaroidCard> with Single
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: locked ? OhtliColors.innerCardBg : null,
-        gradient: locked ? null : const LinearGradient(colors: [OhtliColors.xoconostle, Color(0xFFB8325A)]),
+        gradient: locked ? null : LinearGradient(colors: [OhtliColors.accent, Color(0xFFB8325A)]),
         borderRadius: BorderRadius.circular(30),
         border: locked ? Border.all(color: OhtliColors.cardBorder) : null,
-        boxShadow: locked ? null : [BoxShadow(color: OhtliColors.xoconostle.withValues(alpha: _hover ? 0.45 : 0.25), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: locked ? null : [BoxShadow(color: OhtliColors.accent.withValues(alpha: _hover ? 0.45 : 0.25), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

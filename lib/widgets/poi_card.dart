@@ -236,11 +236,11 @@ class _PoiCardState extends State<PoiCard> {
             width: size,
             height: size,
             decoration: BoxDecoration(
-              color: saved ? OhtliColors.cempasuchil : Colors.black.withValues(alpha: 0.38),
+              color: saved ? OhtliColors.accent : Colors.black.withValues(alpha: 0.38),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withValues(alpha: saved ? 0.0 : 0.22), width: 0.8),
               boxShadow: saved
-                  ? [BoxShadow(color: OhtliColors.cempasuchil.withValues(alpha: 0.45), blurRadius: 14, offset: const Offset(0, 4))]
+                  ? [BoxShadow(color: OhtliColors.accent.withValues(alpha: 0.45), blurRadius: 14, offset: const Offset(0, 4))]
                   : null,
             ),
             child: AnimatedSwitcher(
@@ -434,8 +434,8 @@ class _PoiCardState extends State<PoiCard> {
         icon: const Icon(Icons.alt_route_rounded, size: 18),
         label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         style: ElevatedButton.styleFrom(
-          backgroundColor: OhtliColors.cempasuchil,
-          foregroundColor: const Color(0xFF1A120B),
+          backgroundColor: OhtliColors.accentFill,
+          foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 18),
           shape: const StadiumBorder(),
@@ -549,7 +549,7 @@ class _PoiCardState extends State<PoiCard> {
                               padding: EdgeInsets.symmetric(horizontal: _isHovered ? 14 : 0),
                               constraints: const BoxConstraints(minWidth: 40),
                               decoration: BoxDecoration(
-                                color: OhtliColors.cempasuchil,
+                                color: OhtliColors.accentFill,
                                 borderRadius: BorderRadius.circular(30),
                                 boxShadow: [
                                   BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4)),
@@ -559,7 +559,7 @@ class _PoiCardState extends State<PoiCard> {
                                 mainAxisSize: MainAxisSize.min,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.alt_route_rounded, size: 18, color: Color(0xFF1A120B)),
+                                  const Icon(Icons.alt_route_rounded, size: 18, color: Colors.white),
                                   AnimatedSize(
                                     duration: const Duration(milliseconds: 280),
                                     curve: Curves.easeOutCubic,
@@ -568,7 +568,7 @@ class _PoiCardState extends State<PoiCard> {
                                             padding: const EdgeInsets.only(left: 6),
                                             child: Text(
                                               'Crear ruta',
-                                              style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w800, color: const Color(0xFF1A120B)),
+                                              style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
                                             ),
                                           )
                                         : const SizedBox.shrink(),

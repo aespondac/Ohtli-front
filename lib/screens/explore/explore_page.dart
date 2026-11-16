@@ -399,14 +399,14 @@ class _ExplorePageState extends State<ExplorePage> {
         icon: Icons.place_outlined,
         title: 'Lugares',
         subtitle: 'Explora el catálogo',
-        color: OhtliColors.xoconostle,
+        color: OhtliColors.accent,
         onTap: () => widget.onOpenTab(5),
       ),
       _QuickAction(
         icon: Icons.map_outlined,
         title: 'Mis viajes',
         subtitle: 'Tus crónicas y borradores',
-        color: OhtliColors.cempasuchil,
+        color: OhtliColors.accent,
         onTap: () => widget.onOpenTab(1),
       ),
       _QuickAction(
@@ -743,7 +743,7 @@ class _ExplorePageState extends State<ExplorePage> {
         final String activeTitleId = authorData?['activeTitleId'] ?? 'viajero';
 
         final trip = Trip.fromMap({...?tripData, 'userId': pinned.authorId}, pinned.tripId);
-        final accent = isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.xoconostle;
+        final accent = isReleaseNotes ? OhtliColors.stormyTeal : OhtliColors.accent;
 
         final avatar = Container(
           width: 36,

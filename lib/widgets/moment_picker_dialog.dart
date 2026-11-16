@@ -86,7 +86,7 @@ class _MomentPickerDialogState extends State<MomentPickerDialog> {
                     child: OhtliSectionHeader(
                       eyebrow: 'Momentos',
                       icon: Icons.favorite_rounded,
-                      color: OhtliColors.cempasuchil,
+                      color: OhtliColors.accent,
                       title: 'Elige lo que quieres atesorar',
                       subtitle: 'Si el viaje es privado, en tu perfil solo se verá la foto.',
                     ),
@@ -243,7 +243,7 @@ class _Thumb extends StatelessWidget {
               padding: EdgeInsets.all(selected ? 4 : 0),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: selected ? OhtliColors.cempasuchil : Colors.transparent, width: 3),
+                border: Border.all(color: selected ? OhtliColors.accent : Colors.transparent, width: 3),
               ),
               child: Stack(
                 fit: StackFit.expand,
@@ -255,7 +255,7 @@ class _Thumb extends StatelessWidget {
                       right: 6,
                       child: Container(
                         padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(color: OhtliColors.cempasuchil, shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: OhtliColors.accentFill, shape: BoxShape.circle),
                         child: const Icon(Icons.check_rounded, size: 15, color: Colors.white),
                       ),
                     ),
