@@ -562,7 +562,17 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           .then((d) => d.isEmpty ? null : d);
       final rawVector = userData != null ? userData['taste_vector'] : null;
       bool hasTasteVector = rawVector is List && rawVector.isNotEmpty;
-      final bool flagDone = userData != null && (userData['onboarding_completed'] == true);
+      final bool completedOnce = userData != null && (userData['onboarding_completed'] == true);
+      // Interruptor del equipo: app_config/onboarding.requiredVersion. Si es mayor que la
+      // versión del cuestionario que hizo la persona, se le vuelve a pedir (p. ej. tras
+      // reiniciar los vectores de gustos). Sin el documento, no cambia nada.
+      int requiredVersion = 1;
+      try {
+        final cfg = await FirebaseFirestore.instance.collection('app_config').doc('onboarding').get().timeout(const Duration(seconds: 3));
+        requiredVersion = (cfg.data()?['requiredVersion'] as num?)?.toInt() ?? 1;
+      } catch (_) {}
+      final int doneVersion = (userData?['onboarding_version'] as num?)?.toInt() ?? (completedOnce ? 1 : 0);
+      final bool flagDone = completedOnce && doneVersion >= requiredVersion;
 
       // Si completó el wizard antes pero taste_vector quedó en null, sintetizarlo en background
       if (flagDone && !hasTasteVector && userData['cultural_profile'] is Map) {

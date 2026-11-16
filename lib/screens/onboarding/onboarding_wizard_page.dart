@@ -1,4 +1,5 @@
 import '../../services/user_private_data.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -15,11 +16,20 @@ import '../../services/saved_places.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../widgets/address_picker_widget.dart';
 import '../places/places_page.dart';
+import '../../services/profile_directory.dart';
+import '../../services/friend_requests.dart';
+import '../../widgets/ohtli_ui.dart';
+import '../../widgets/phone_verification_field.dart';
+import '../../widgets/two_factor_card.dart';
 
 class OnboardingWizardPage extends StatefulWidget {
+  /// Versión del cuestionario. Si app_config/onboarding.requiredVersion es mayor que la
+  /// que completó la persona (onboarding_version), main.dart se lo vuelve a mostrar.
+  static const int currentVersion = 2;
+
   final VoidCallback onCompleted;
 
-  /// Modo de prueba (Ohtli Labs): recorre los 5 pasos sin llamar al motor ni guardar nada, así
+  /// Modo de prueba (Ohtli Labs): recorre los pasos sin llamar al motor ni guardar nada, así
   /// el perfil de gustos real de la persona no cambia.
   final bool sandbox;
 
@@ -156,7 +166,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   static const int _totalSteps = 7;
   int _currentStep = 0;
   bool _isSynthesizing = false;
-  String _synthesisMessage = "El motor Yollotl está alineando tus 4 ejes ontológicos...";
+  String _synthesisMessage = "Estamos preparando tus primeras recomendaciones…";
 
   // Paso 1: Vocación Cultural
   final Set<String> _selectedCultural = {};
@@ -188,8 +198,32 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   final List<Map<String, dynamic>> _newAddresses = [];
   bool _addingAddress = false;
 
-  // Paso 7: Bio / Manifiesto libre
-  final TextEditingController _bioController = TextEditingController();
+  // Texto libre de versiones anteriores (ya no se pide; se conserva si existía)
+  String _existingBio = '';
+
+  // Gustos prellenados con los lugares elegidos (solo si la persona no los ha tocado)
+  bool _tastesTouched = false;
+  bool _tastesPrefilled = false;
+
+  // Amigos en Ohtli
+  List<DocumentSnapshot> _friendSuggestions = const [];
+  bool _friendsLoaded = false;
+  final Set<String> _requested = {};
+  Set<String> _myFriendIds = {};
+  String _friendQuery = '';
+  List<DocumentSnapshot> _friendResults = const [];
+  bool _friendSearching = false;
+  Timer? _friendDebounce;
+
+  // Privacidad: perfil público, usertag, teléfono y si te pueden encontrar por correo o teléfono
+  bool _profilePublic = true;
+  bool _contactDiscoverable = true;
+  bool _notificationsOn = true;
+  final TextEditingController _tagController = TextEditingController();
+  String? _currentTag;
+  /// null, 'checking', 'ok', 'taken' o 'invalid'
+  String? _tagStatus;
+  Timer? _tagDebounce;
 
   final List<Map<String, dynamic>> _culturalOptions = [
     {"id": "muralismo", "label": "Muralismo y Arte Monumental", "icon": Icons.brush_outlined},
@@ -226,6 +260,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   void initState() {
     super.initState();
     _loadExistingSelectionsIfAny();
+    // Lugares es el 2.º paso: el catálogo se carga mientras se ajusta la accesibilidad.
+    _ensureCatalog();
   }
 
   Future<void> _loadExistingSelectionsIfAny() async {
@@ -233,6 +269,16 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     if (user == null) return;
     try {
       final data = await UserPrivateData.get(user.uid);
+      if (mounted) {
+        setState(() {
+          _profilePublic = data['privacy_public'] != false;
+          _contactDiscoverable = data['contact_discoverable'] != false;
+          _notificationsOn = data['privacy_notifications'] != false;
+          _currentTag = data['usertag'] as String?;
+          _tagController.text = _currentTag ?? _suggestTag(user.displayName ?? (data['displayName'] as String?) ?? '');
+        });
+        _checkTag(_tagController.text, immediate: true);
+      }
       final profile = data['cultural_profile'];
       if (profile is Map && mounted) {
         setState(() {
@@ -270,8 +316,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             _accessibilityNeeds = profile['accessibility_needs'];
           }
           if (profile['free_bio'] is String) {
-            _bioController.text = profile['free_bio'];
+            _existingBio = profile['free_bio'];
           }
+          // Ya tenía gustos: no se reemplazan con los de los lugares
+          _tastesTouched = _selectedCultural.isNotEmpty || _selectedCulinary.isNotEmpty;
           if (profile['avg_budget_mxn'] is num) {
             _avgBudgetOverride = (profile['avg_budget_mxn'] as num).toDouble();
           }
@@ -287,15 +335,30 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   @override
   void dispose() {
-    _bioController.dispose();
+    _tagController.dispose();
+    _tagDebounce?.cancel();
+    _friendDebounce?.cancel();
     _stepScrollController.dispose();
     super.dispose();
   }
 
+  /// Orden: accesibilidad primero (para que cada quien ajuste la letra antes de todo),
+  /// luego lugares, que prellenan los gustos.
+  static const List<String> _stepIds = ['a11y', 'places', 'tastes', 'outings', 'addresses', 'friends', 'privacy'];
+  String get _stepId => _stepIds[_currentStep];
+
+  /// El usertag es obligatorio para todos (identifica tu perfil aunque sea privado).
+  bool get _tagOk => _tagStatus == 'ok';
+
   bool get _canProceed {
-    if (_currentStep == 0) return _selectedCultural.length >= 2;
-    if (_currentStep == 1) return _selectedCulinary.isNotEmpty;
-    return true;
+    switch (_stepId) {
+      case 'tastes':
+        return _selectedCultural.length >= 2 && _selectedCulinary.isNotEmpty;
+      case 'privacy':
+        return _tagOk;
+      default:
+        return true;
+    }
   }
 
   void _nextStep() {
@@ -322,7 +385,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     final atmoLabels = _selectedAtmosphere.isEmpty
         ? "ambiente auténtico"
         : _selectedAtmosphere.join(", ");
-    final bio = _bioController.text.trim();
+    final bio = _existingBio.trim();
 
     return {
       "Eje 1 • Vocación Cultural y Gastronómica":
@@ -351,7 +414,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
     setState(() {
       _isSynthesizing = true;
-      _synthesisMessage = "Alineando los 4 ejes ontológicos e invocando al motor Yollotl (768d)...";
+      _synthesisMessage = "Guardando tus lugares y preparando tus recomendaciones…";
     });
 
     final payload = {
@@ -368,7 +431,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       "seed_poi_ids": List<String>.from(_seedPlaceIds),
       "transport_preference": _transportPref,
       "accessibility_needs": _accessibilityNeeds,
-      "free_bio": _bioController.text.trim(),
+      "free_bio": _existingBio,
     };
 
     // Lugares y direcciones primero: no dependen del motor y no deben perderse si este falla
@@ -378,17 +441,21 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       debugPrint('[onboarding] no se pudieron guardar los lugares: $e');
     }
     await _saveNewAddresses(user.uid);
+    await _savePrivacy(user.uid);
 
     try {
-      final vector = await OnboardingWizardPage.synthesizeAndSaveProfile(
+      await OnboardingWizardPage.synthesizeAndSaveProfile(
         user.uid,
         payload,
         previewAxes: _buildPreviewAxes(),
       );
 
+      // Esta versión del cuestionario ya está completa (main.dart vuelve a pedirlo si
+      // app_config/onboarding.requiredVersion es mayor).
+      await UserPrivateData.save(user.uid, {'onboarding_version': OnboardingWizardPage.currentVersion});
       setState(() {
         _synthesisMessage =
-            "¡Vector de gusto (${vector.length} dimensiones) guardado en tu perfil!";
+            "¡Listo! Tus rutas ya se parecen a ti.";
       });
 
       await Future.delayed(const Duration(milliseconds: 1200));
@@ -414,30 +481,42 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   // UI
   // ==========================================================
   static const List<Map<String, dynamic>> _stepMeta = [
-    {"label": "Cultura", "icon": Icons.palette_outlined},
-    {"label": "Sabores", "icon": Icons.restaurant_outlined},
-    {"label": "Social", "icon": Icons.groups_outlined},
-    {"label": "Ritmo", "icon": Icons.directions_walk_rounded},
+    {"label": "Accesibilidad", "icon": Icons.accessibility_new_rounded},
     {"label": "Lugares", "icon": Icons.bookmark_add_outlined},
+    {"label": "Gustos", "icon": Icons.palette_outlined},
+    {"label": "Salidas", "icon": Icons.directions_walk_rounded},
     {"label": "Direcciones", "icon": Icons.home_work_outlined},
-    {"label": "Manifiesto", "icon": Icons.edit_note_rounded},
+    {"label": "Amigos", "icon": Icons.people_alt_outlined},
+    {"label": "Privacidad", "icon": Icons.lock_outline_rounded},
   ];
 
   final ScrollController _stepScrollController = ScrollController();
 
   void _goToStep(int step) {
     if (step == _currentStep) return;
-    if (step == 4) _ensureCatalog();
+    final target = _stepIds[step];
+    if (target == 'places') _ensureCatalog();
+    // Al pasar de Lugares a lo siguiente, los lugares elegidos marcan los gustos.
+    if (_stepId == 'places' && step > _currentStep) _prefillTastesFromPlaces();
+    if (target == 'friends') _loadFriendSuggestions();
     setState(() => _currentStep = step);
     if (_stepScrollController.hasClients) _stepScrollController.jumpTo(0);
   }
 
   String get _blockedHint {
-    if (_currentStep == 0) {
-      final missing = 2 - _selectedCultural.length;
-      return missing == 1 ? "Elige 1 opción más para continuar" : "Elige al menos 2 opciones para continuar";
+    if (_stepId == 'tastes') {
+      if (_selectedCultural.length < 2) {
+        final missing = 2 - _selectedCultural.length;
+        return missing == 1 ? "Elige 1 actividad más" : "Elige al menos 2 actividades";
+      }
+      return "Elige al menos 1 sabor";
     }
-    if (_currentStep == 1) return "Elige al menos 1 preferencia gastronómica";
+    if (_stepId == 'privacy') {
+      if (!_tagOk) {
+        if (_tagController.text.trim().isEmpty) return "Elige tu usertag";
+        return _tagStatus == 'checking' ? "Revisando tu usertag…" : "Elige otro usertag";
+      }
+    }
     return "";
   }
 
@@ -475,10 +554,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   Widget _buildLoadingView() {
     final axes = [
-      {"label": "Vocación cultural", "icon": Icons.palette_outlined, "color": OhtliColors.stormyTeal},
-      {"label": "Atmósfera sensorial", "icon": Icons.spa_outlined, "color": OhtliColors.cempasuchil},
-      {"label": "Dinámica social", "icon": Icons.groups_outlined, "color": OhtliColors.xoconostle},
-      {"label": "Entorno urbano", "icon": Icons.directions_walk_rounded, "color": OhtliColors.stormyTeal},
+      {"label": "Tus gustos", "icon": Icons.palette_outlined, "color": OhtliColors.stormyTeal},
+      {"label": "El ambiente", "icon": Icons.spa_outlined, "color": OhtliColors.cempasuchil},
+      {"label": "Con quién sales", "icon": Icons.groups_outlined, "color": OhtliColors.xoconostle},
+      {"label": "Cómo te mueves", "icon": Icons.directions_walk_rounded, "color": OhtliColors.stormyTeal},
     ];
     return Padding(
       padding: const EdgeInsets.all(32.0),
@@ -529,7 +608,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           ),
           const SizedBox(height: 36),
           Text(
-            "Tejiendo tu Identidad Ohtli",
+            "Armando tu Ohtli",
             textAlign: TextAlign.center,
             style: GoogleFonts.fraunces(
               fontSize: 30,
@@ -581,7 +660,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                       Icon(a["icon"] as IconData, size: 15, color: color),
                       const SizedBox(width: 6),
                       Text(
-                        "Eje ${i + 1} · ${a["label"]}",
+                        a["label"] as String,
                         style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
                       ),
                     ],
@@ -591,16 +670,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             }),
           ),
           const SizedBox(height: 22),
-          Text(
-            "Ontología Puente de 4 Ejes • Vector 768d (text-embedding-004)",
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: OhtliColors.stormyTeal,
-              letterSpacing: 0.2,
-            ),
-          ),
+
         ],
       ),
     );
@@ -653,7 +723,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              "Identidad Cultural en 4 Ejes",
+                              "Tu Ohtli a tu medida",
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.outfit(
@@ -665,7 +735,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                             Text(
                               isMobile
                                   ? "Paso ${_currentStep + 1} de $_totalSteps · ${_stepMeta[_currentStep]["label"]}"
-                                  : "Personaliza las rutas que Ohtli diseña para ti",
+                                  : "Así armamos rutas que sí te gusten",
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
@@ -737,16 +807,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
               child: Row(
                 children: [
                   if (_currentStep > 0)
-                    TextButton.icon(
-                      onPressed: _previousStep,
-                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                      label: Text("Anterior", style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
-                      style: TextButton.styleFrom(
-                        foregroundColor: OhtliColors.onyx,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
+                    OhtliSecondaryButton(compact: true, label: isMobile ? 'Atrás' : 'Anterior', icon: Icons.arrow_back_rounded, onPressed: _previousStep),
                   const SizedBox(width: 8),
                   Expanded(
                     child: AnimatedOpacity(
@@ -762,28 +823,12 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  ElevatedButton(
+                  OhtliPrimaryButton(
+                    compact: isMobile,
+                    highlight: isLast,
+                    label: isLast ? '¡Listo, empezar!' : 'Siguiente',
+                    icon: isLast ? Icons.auto_awesome_rounded : Icons.arrow_forward_rounded,
                     onPressed: _canProceed ? _nextStep : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isLast ? OhtliColors.cempasuchil : OhtliColors.stormyTeal,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: OhtliColors.innerCardBg,
-                      disabledForegroundColor: OhtliColors.subtleText,
-                      elevation: 0,
-                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 18 : 26, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          isLast ? (isMobile ? "Completar" : "Completar y Tejer Vector 768d") : "Siguiente",
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(isLast ? Icons.auto_awesome_rounded : Icons.arrow_forward_rounded, size: 18),
-                      ],
-                    ),
                   ),
                 ],
               ),
@@ -862,21 +907,24 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   }
 
   Widget _buildStepContent(double width, bool isMobile) {
-    switch (_currentStep) {
-      case 0:
-        return _buildCulturalStep(width, isMobile);
-      case 1:
-        return _buildCulinaryAtmosphereStep(width, isMobile);
-      case 2:
-        return _buildSocialDiscoveryStep();
-      case 3:
-        return _buildPaceMobilityStep();
-      case 4:
+    switch (_stepId) {
+      case 'a11y':
+        return _buildA11yStep(width);
+      case 'places':
         return _buildSeedPlacesStep(width);
-      case 5:
+      case 'tastes':
+        return _buildTastesStep(width, isMobile);
+      case 'outings':
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [_buildSocialDiscoveryStep(), const SizedBox(height: 30), _buildPaceMobilityStep()],
+        );
+      case 'addresses':
         return _buildAddressesStep();
-      case 6:
-        return _buildBioStep(width);
+      case 'friends':
+        return _buildFriendsStep(width);
+      case 'privacy':
+        return _buildPrivacyStep();
       default:
         return const SizedBox.shrink();
     }
@@ -886,25 +934,9 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          eyebrow.toUpperCase(),
-          style: GoogleFonts.inter(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.4,
-            color: OhtliColors.stormyTeal,
-          ),
-        ),
+        Text(eyebrow.toUpperCase(), style: OhtliUi.eyebrow(OhtliColors.accentText)),
         const SizedBox(height: 8),
-        Text(
-          title,
-          style: GoogleFonts.fraunces(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: OhtliColors.onyx,
-            height: 1.15,
-          ),
-        ),
+        Semantics(header: true, child: Text(title, style: OhtliUi.title(size: 28))),
         const SizedBox(height: 10),
         Text(
           description,
@@ -968,19 +1000,20 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         final isSelected = selected.contains(id);
         return SizedBox(
           width: tileWidth,
-          child: _SelectableTile(
+          child: _StaggerIn(index: options.indexOf(opt), child: _SelectableTile(
             icon: opt["icon"] as IconData,
             label: opt["label"] as String,
             selected: isSelected,
             accent: accent,
             onTap: () => setState(() {
+              _tastesTouched = true;
               if (isSelected) {
                 selected.remove(id);
               } else {
                 selected.add(id);
               }
             }),
-          ),
+          )),
         );
       }).toList(),
     );
@@ -1008,82 +1041,14 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
-  Widget _buildCulturalStep(double width, bool isMobile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildStepHeader(
-          eyebrow: "Eje 1 · Vocación cultural",
-          title: "¿Qué vocación cultural te inspira?",
-          description:
-              "Selecciona al menos 2 disciplinas artísticas o patrimoniales. Estas alimentan directamente el Eje 1 de tu vector para empatar con la vocación de cada recinto.",
-        ),
-        const SizedBox(height: 22),
-        _buildGroupLabel(
-          "Disciplinas",
-          trailing: _buildSelectionCounter(_selectedCultural.length, min: 2),
-        ),
-        const SizedBox(height: 12),
-        _buildMultiSelectGrid(
-          options: _culturalOptions,
-          selected: _selectedCultural,
-          accent: OhtliColors.stormyTeal,
-          width: width,
-          isMobile: isMobile,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCulinaryAtmosphereStep(double width, bool isMobile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildStepHeader(
-          eyebrow: "Ejes 1 y 2 · Sabores y atmósfera",
-          title: "Gastronomía y Atmósfera Sensorial",
-          description:
-              "Tus gustos culinarios y las vibras que buscas se comparan contra las reseñas destiladas de los visitantes en cada lugar.",
-        ),
-        const SizedBox(height: 22),
-        _buildGroupLabel(
-          "Preferencias gastronómicas",
-          trailing: _buildSelectionCounter(_selectedCulinary.length, min: 1),
-        ),
-        const SizedBox(height: 12),
-        _buildMultiSelectGrid(
-          options: _culinaryOptions,
-          selected: _selectedCulinary,
-          accent: OhtliColors.cempasuchil,
-          width: width,
-          isMobile: isMobile,
-        ),
-        const SizedBox(height: 28),
-        _buildGroupLabel(
-          "Atmósfera y vibra sensorial predilecta",
-          trailing: _buildSelectionCounter(_selectedAtmosphere.length),
-        ),
-        const SizedBox(height: 12),
-        _buildMultiSelectGrid(
-          options: _atmosphereOptions,
-          selected: _selectedAtmosphere,
-          accent: OhtliColors.xoconostle,
-          width: width,
-          isMobile: isMobile,
-        ),
-      ],
-    );
-  }
-
   Widget _buildSocialDiscoveryStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildStepHeader(
-          eyebrow: "Eje 3 · Dinámica social",
-          title: "Dinámica Social y Estilo de Descubrimiento",
-          description:
-              "No es lo mismo recorrer la ciudad en solitario que con niños o amigos de noche. Estos parámetros calibran la compatibilidad social de cada POI.",
+          eyebrow: "Tus salidas",
+          title: "¿Cómo te gusta salir?",
+          description: "No es lo mismo recorrer la ciudad solo que con niños o con amigos de noche.",
         ),
         const SizedBox(height: 26),
         _buildGroupLabel("¿Con quién acostumbras recorrer la ciudad?"),
@@ -1099,7 +1064,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           ],
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("¿Qué tipo de hallazgos prefieres en la CDMX?"),
+        _buildGroupLabel("¿Qué tipo de lugares prefieres?"),
         const SizedBox(height: 12),
         _buildChoiceGroup(
           value: _discoveryStyle,
@@ -1111,7 +1076,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           ],
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("Franja horaria favorita"),
+        _buildGroupLabel("¿A qué hora sales?"),
         const SizedBox(height: 12),
         _buildChoiceGroup(
           value: _preferredTimeWindow,
@@ -1132,10 +1097,9 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildStepHeader(
-          eyebrow: "Eje 4 · Entorno y filtros",
-          title: "Ritmo, traslados y presupuesto",
-          description:
-              "La caminabilidad alimenta el Eje 4 de tu vector, mientras que el presupuesto y la accesibilidad operan como restricciones exactas en DEAP y OR-Tools.",
+          eyebrow: "Ritmo y presupuesto",
+          title: "¿A qué ritmo y cuánto gastas?",
+          description: "Calculamos un gasto promedio con lo que elegiste; ajústalo si quieres.",
         ),
         const SizedBox(height: 26),
         _buildGroupLabel("Ritmo de la jornada"),
@@ -1150,7 +1114,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           ],
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("Preferencia de desplazamiento barrial"),
+        _buildGroupLabel("¿Cómo te mueves?"),
         const SizedBox(height: 12),
         _buildChoiceGroup(
           value: _transportPref,
@@ -1165,17 +1129,6 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         ),
         const SizedBox(height: 26),
         _buildBudgetEstimator(),
-        const SizedBox(height: 26),
-        _buildGroupLabel("Requerimiento de accesibilidad motriz"),
-        const SizedBox(height: 12),
-        _buildChoiceGroup(
-          value: _accessibilityNeeds,
-          onChanged: (v) => _accessibilityNeeds = v,
-          options: const [
-            {"value": "estandar", "label": "Peatonal Estándar", "icon": Icons.directions_walk_outlined},
-            {"value": "accesibilidad_universal", "label": "Accesibilidad Universal / Rampas", "icon": Icons.accessible_outlined},
-          ],
-        ),
       ],
     );
   }
@@ -1381,7 +1334,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         if (!cats.contains(c)) cats.add(c);
       }
     }
-    if (cats.isEmpty) cats.addAll(["museum", "cafe", "park", "restaurant"]);
+    // Sin gustos todavía (Lugares va antes): una mezcla variada de la ciudad.
+    if (cats.isEmpty) cats.addAll(["museum", "cafe", "park", "marketplace", "theatre", "viewpoint", "restaurant", "gallery", "bar", "bakery"]);
     final byCat = <String, List<Poi>>{
       for (final c in cats) c: _catalog.where((p) => p.category == c && p.imageUrl.isNotEmpty).toList(),
     };
@@ -1407,10 +1361,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildStepHeader(
-          eyebrow: "Tus primeros lugares",
-          title: "¿Cuáles te gustaría visitar?",
+          eyebrow: "Empecemos por los lugares",
+          title: "¿Qué lugares te llaman?",
           description:
-              "Guárdalos en Mis lugares. Además, nos ayudan a entender mejor tu gusto: tus recomendaciones se parecerán a ellos.",
+              "Elige los que conoces o quieres conocer. Se guardan en Mis lugares y con ellos marcamos tus gustos en el siguiente paso.",
         ),
         const SizedBox(height: 18),
         TextField(
@@ -1466,19 +1420,19 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
               for (final poi in suggestions)
                 SizedBox(
                   width: tileWidth,
-                  child: _SeedPlaceTile(
+                  child: _StaggerIn(index: suggestions.indexOf(poi), child: _SeedPlaceTile(
                     poi: poi,
                     selected: _seedPlaceIds.contains(poi.poiId),
                     onTap: () => setState(() {
                       if (!_seedPlaceIds.remove(poi.poiId)) _seedPlaceIds.add(poi.poiId);
                     }),
-                  ),
+                  )),
                 ),
             ],
           ),
         const SizedBox(height: 12),
         Text(
-          "Opcional. Elige 3 o más para que tus recomendaciones se ajusten mejor.",
+          "Opcional, pero ayuda mucho: elige 3 o más.",
           style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText),
         ),
       ],
@@ -1592,130 +1546,641 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
-  Widget _buildBioStep(double width) {
-    final previewAxes = _buildPreviewAxes();
-    const axisStyles = [
-      {"icon": Icons.palette_outlined, "color": OhtliColors.stormyTeal},
-      {"icon": Icons.spa_outlined, "color": OhtliColors.cempasuchil},
-      {"icon": Icons.groups_outlined, "color": OhtliColors.xoconostle},
-      {"icon": Icons.directions_walk_rounded, "color": OhtliColors.stormyTeal},
-    ];
-    final twoCols = width >= 560;
-    final cardWidth = twoCols ? (width - 12) / 2 : width;
-    final entries = previewAxes.entries.toList();
+  // ==========================================================
+  // Lugares → gustos
+  // ==========================================================
 
+  /// Qué gusto sugiere cada categoría del catálogo (cultura/sabor y ambiente).
+  static const Map<String, List<String>> _categoryTastes = {
+    "museum": ["museos_arte"],
+    "gallery": ["museos_arte"],
+    "artwork": ["muralismo"],
+    "arts_centre": ["muralismo", "teatros_foros"],
+    "arqueologia": ["arqueologia"],
+    "place_of_worship": ["arquitectura_virreinal"],
+    "monument": ["arquitectura_virreinal"],
+    "park": ["parques_bosques"],
+    "garden": ["parques_bosques"],
+    "nature_reserve": ["parques_bosques"],
+    "theatre": ["teatros_foros"],
+    "cinema": ["teatros_foros"],
+    "viewpoint": ["fotografia_urbana"],
+    "attraction": ["fotografia_urbana"],
+    "books": ["librerias_cafes"],
+    "library": ["librerias_cafes"],
+    "marketplace": ["mercados_artesanias", "mercados_populares"],
+    "bar": ["musica_conciertos", "cantinas_tradicionales"],
+    "pub": ["musica_conciertos"],
+    "nightclub": ["musica_conciertos"],
+    "cafe": ["cafeterias_especialidad"],
+    "coffee": ["cafeterias_especialidad"],
+    "cantina": ["cantinas_tradicionales"],
+    "fast_food": ["comida_callejera"],
+    "restaurant": ["alta_gastronomia"],
+    "pulqueria": ["pulquerias"],
+    "bakery": ["panaderias_clasicas"],
+    "pastry": ["panaderias_clasicas"],
+  };
+
+  static const Map<String, String> _categoryAtmosphere = {
+    "park": "tranquilo_arbolado",
+    "garden": "tranquilo_arbolado",
+    "nature_reserve": "tranquilo_arbolado",
+    "museum": "historico",
+    "monument": "historico",
+    "place_of_worship": "historico",
+    "arqueologia": "historico",
+    "gallery": "bohemio",
+    "books": "bohemio",
+    "arts_centre": "bohemio",
+    "cafe": "bohemio",
+    "marketplace": "vibrante_concurrido",
+    "fast_food": "vibrante_concurrido",
+    "attraction": "vibrante_concurrido",
+    "bar": "festivo_nocturno",
+    "pub": "festivo_nocturno",
+    "nightclub": "festivo_nocturno",
+    "cantina": "festivo_nocturno",
+    "pulqueria": "festivo_nocturno",
+  };
+
+  /// Marca los gustos que se parecen a los lugares elegidos. Solo si la persona aún no
+  /// los ha tocado: nunca le quitamos lo que ya eligió.
+  void _prefillTastesFromPlaces() {
+    if (_tastesTouched || _seedPlaceIds.isEmpty) return;
+    final chosen = _catalog.where((p) => _seedPlaceIds.contains(p.poiId));
+    final culturalIds = _culturalOptions.map((o) => o["id"] as String).toSet();
+    final culinaryIds = _culinaryOptions.map((o) => o["id"] as String).toSet();
+    final cultural = <String>{};
+    final culinary = <String>{};
+    final atmosphere = <String>{};
+    for (final p in chosen) {
+      for (final id in _categoryTastes[p.category] ?? const <String>[]) {
+        if (culturalIds.contains(id)) cultural.add(id);
+        if (culinaryIds.contains(id)) culinary.add(id);
+      }
+      final a = _categoryAtmosphere[p.category];
+      if (a != null) atmosphere.add(a);
+    }
+    if (cultural.isEmpty && culinary.isEmpty && atmosphere.isEmpty) return;
+    setState(() {
+      _selectedCultural
+        ..clear()
+        ..addAll(cultural);
+      _selectedCulinary
+        ..clear()
+        ..addAll(culinary);
+      _selectedAtmosphere
+        ..clear()
+        ..addAll(atmosphere);
+      _tastesPrefilled = true;
+    });
+  }
+
+  // ==========================================================
+  // Paso: accesibilidad
+  // ==========================================================
+
+  Widget _buildA11yStep(double width) {
+    final settings = OhtliSettings.instance;
+    final name = (FirebaseAuth.instance.currentUser?.displayName ?? '').split(' ').first;
+    const sizes = [
+      (OhtliFontSize.small, 'Chica', 13.0),
+      (OhtliFontSize.medium, 'Normal', 16.0),
+      (OhtliFontSize.large, 'Grande', 19.0),
+      (OhtliFontSize.extraLarge, 'Muy grande', 22.0),
+    ];
+    const themes = [
+      (OhtliThemeMode.system, 'Como mi equipo', Icons.brightness_auto_rounded),
+      (OhtliThemeMode.light, 'Claro', Icons.light_mode_rounded),
+      (OhtliThemeMode.dark, 'Oscuro', Icons.dark_mode_rounded),
+    ];
+    return AnimatedBuilder(
+      animation: settings,
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildStepHeader(
+            eyebrow: name.isEmpty ? "¡Bienvenido a Ohtli!" : "¡Hola, $name!",
+            title: "Primero, que estés a gusto",
+            description: "Ajusta cómo se ve Ohtli. Lo verás al instante y puedes cambiarlo cuando quieras desde el botón de accesibilidad.",
+          ),
+          const SizedBox(height: 24),
+          _buildGroupLabel("Tamaño de la letra"),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (var i = 0; i < sizes.length; i++)
+                _StaggerIn(
+                  index: i,
+                  child: _OptionCard(
+                    selected: settings.fontSize == sizes[i].$1,
+                    onTap: () => settings.fontSize = sizes[i].$1,
+                    semanticsLabel: 'Letra ${sizes[i].$2}',
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Aa',
+                            textScaler: TextScaler.noScaling,
+                            style: GoogleFonts.outfit(fontSize: sizes[i].$3 * 1.6, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+                        const SizedBox(height: 4),
+                        Text(sizes[i].$2, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 26),
+          _buildGroupLabel("Colores"),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final t in themes)
+                OhtliChoiceChip(label: t.$2, icon: t.$3, selected: settings.themeMode == t.$1, onTap: () => settings.themeMode = t.$1),
+            ],
+          ),
+          const SizedBox(height: 26),
+          _buildGroupLabel("¿Cómo te mueves por la ciudad?"),
+          const SizedBox(height: 6),
+          Text("Si eliges rampas y accesos, tus rutas evitan escaleras y caminos difíciles cuando se pueda.",
+              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.45)),
+          const SizedBox(height: 12),
+          _buildChoiceGroup(
+            value: _accessibilityNeeds,
+            onChanged: (v) => _accessibilityNeeds = v,
+            options: const [
+              {"value": "estandar", "label": "Camino sin problema", "icon": Icons.directions_walk_outlined},
+              {"value": "accesibilidad_universal", "label": "Necesito rampas y accesos", "icon": Icons.accessible_outlined},
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================
+  // Paso: gustos (prellenados con los lugares)
+  // ==========================================================
+
+  Widget _buildTastesStep(double width, bool isMobile) {
+    Widget grid(List<Map<String, dynamic>> options, Set<String> selected, Color accent) => _buildMultiSelectGrid(
+          options: options,
+          selected: selected,
+          accent: accent,
+          width: width,
+          isMobile: isMobile,
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildStepHeader(
-          eyebrow: "Síntesis · Tu manifiesto",
-          title: "Manifiesto Personal y Síntesis en 4 Ejes",
-          description:
-              "Añade cualquier matiz personal y revisa cómo tu perfil se alinea con la estructura de 4 ejes del Agente Recolector.",
+          eyebrow: "Lo que te gusta",
+          title: "¿Qué disfrutas de la ciudad?",
+          description: "Con esto elegimos los lugares de tus rutas. Marca todo lo que te llame.",
         ),
-        const SizedBox(height: 22),
-        TextField(
-          controller: _bioController,
-          maxLines: 4,
-          minLines: 3,
-          maxLength: 280,
-          style: GoogleFonts.inter(color: OhtliColors.onyx, height: 1.5),
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            hintText:
-                "Ej.: Me fascina caminar por Coyoacán, encontrar librerías independientes y tomar un espresso en patios con bugambilias...",
-            hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 13.5),
-            filled: true,
-            fillColor: OhtliColors.innerCardBg,
-            contentPadding: const EdgeInsets.all(18),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide(color: OhtliColors.cardBorder),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide(color: OhtliColors.cardBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(18),
-              borderSide: const BorderSide(color: OhtliColors.stormyTeal, width: 2),
+        if (_tastesPrefilled) ...[
+          const SizedBox(height: 16),
+          _StaggerIn(
+            index: 0,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: OhtliColors.cempasuchil.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, color: OhtliColors.cempasuchil),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Marcamos lo que se parece a los lugares que elegiste. Ajusta lo que quieras.",
+                      style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+        ],
+        const SizedBox(height: 22),
+        _buildGroupLabel("Actividades", trailing: _buildSelectionCounter(_selectedCultural.length, min: 2)),
+        const SizedBox(height: 12),
+        grid(_culturalOptions, _selectedCultural, OhtliColors.stormyTeal),
+        const SizedBox(height: 28),
+        _buildGroupLabel("Sabores", trailing: _buildSelectionCounter(_selectedCulinary.length, min: 1)),
+        const SizedBox(height: 12),
+        grid(_culinaryOptions, _selectedCulinary, OhtliColors.cempasuchil),
+        const SizedBox(height: 28),
+        _buildGroupLabel("Ambiente", trailing: _buildSelectionCounter(_selectedAtmosphere.length)),
+        const SizedBox(height: 12),
+        grid(_atmosphereOptions, _selectedAtmosphere, OhtliColors.xoconostle),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // Paso: amigos en Ohtli
+  // ==========================================================
+
+  Future<void> _loadFriendSuggestions() async {
+    if (_friendsLoaded) return;
+    _friendsLoaded = true;
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null || widget.sandbox) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final graph = await db.collection('users').doc(me.uid).collection('social').doc('graph').get();
+      _myFriendIds = ((graph.data()?['friends'] as List?) ?? const []).map((e) => e.toString()).toSet();
+      final snap = await db.collection('users').limit(40).get();
+      final list = snap.docs
+          .where((d) => d.id != me.uid && !_myFriendIds.contains(d.id) && d.data()['profilePrivate'] != true && d.data()['isDeleted'] != true)
+          .take(12)
+          .toList();
+      if (mounted) setState(() => _friendSuggestions = list);
+    } catch (e) {
+      debugPrint('[onboarding] sugerencias de amigos: $e');
+    }
+  }
+
+  void _onFriendQuery(String q) {
+    setState(() => _friendQuery = q);
+    _friendDebounce?.cancel();
+    if (q.trim().isEmpty) {
+      setState(() {
+        _friendResults = const [];
+        _friendSearching = false;
+      });
+      return;
+    }
+    _friendDebounce = Timer(const Duration(milliseconds: 380), () => _searchFriends(q.trim()));
+  }
+
+  Future<void> _searchFriends(String q) async {
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null) return;
+    setState(() => _friendSearching = true);
+    final db = FirebaseFirestore.instance;
+    final found = <DocumentSnapshot>[];
+    try {
+      final kind = ProfileDirectory.classify(q);
+      if (kind != null && kind.kind != 'name') {
+        final uid = await ProfileDirectory.lookup(kind.kind, kind.value);
+        if (uid != null) {
+          final d = await db.collection('users').doc(uid).get();
+          if (d.exists) found.add(d);
+        }
+      } else {
+        for (final v in {q, q[0].toUpperCase() + q.substring(1)}) {
+          final snap = await db.collection('users').where('displayName', isGreaterThanOrEqualTo: v).where('displayName', isLessThan: '$v').limit(10).get();
+          for (final d in snap.docs) {
+            if (!found.any((f) => f.id == d.id)) found.add(d);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[onboarding] búsqueda de amigos: $e');
+    }
+    if (!mounted || _friendQuery.trim() != q) return;
+    setState(() {
+      // Solo perfiles públicos se pueden encontrar.
+      _friendResults = found.where((d) => d.id != me.uid && (d.data() as Map<String, dynamic>?)?['profilePrivate'] != true).toList();
+      _friendSearching = false;
+    });
+  }
+
+  Future<void> _addFriend(DocumentSnapshot doc) async {
+    if (_requested.contains(doc.id)) return;
+    setState(() => _requested.add(doc.id));
+    try {
+      await FriendRequests.send(doc.id);
+    } catch (e) {
+      debugPrint('[onboarding] solicitud: $e');
+      if (mounted) setState(() => _requested.remove(doc.id));
+    }
+  }
+
+  Widget _buildFriendsStep(double width) {
+    final searching = _friendQuery.trim().isNotEmpty;
+    final list = searching ? _friendResults : _friendSuggestions;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepHeader(
+          eyebrow: "Viaja acompañado",
+          title: "¿Quiénes de tus amigos ya están aquí?",
+          description: "Agrégalos para ver sus viajes, armar rutas juntos y prepararles sorpresas.",
         ),
-        const SizedBox(height: 14),
-        Row(
+        const SizedBox(height: 18),
+        TextField(
+          onChanged: _onFriendQuery,
+          style: GoogleFonts.inter(color: OhtliColors.onyx),
+          decoration: InputDecoration(
+            hintText: "Nombre, @usertag, correo o teléfono",
+            hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14),
+            prefixIcon: Icon(Icons.person_search_rounded, color: OhtliColors.accentText),
+            suffixIcon: _friendSearching
+                ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+                : null,
+            filled: true,
+            fillColor: OhtliColors.innerCardBg,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: OhtliColors.cardBorder)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: OhtliColors.cardBorder)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: OhtliColors.accentText, width: 1.6)),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text("Solo aparecen perfiles públicos. El correo y el teléfono deben estar completos.",
+            style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+        const SizedBox(height: 16),
+        _buildGroupLabel(searching ? "Resultados" : "Viajeros en Ohtli",
+            trailing: _requested.isEmpty ? null : _buildSelectionCounter(_requested.length)),
+        const SizedBox(height: 10),
+        if (list.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            child: Text(
+              searching
+                  ? (_friendSearching ? "Buscando…" : "No encontramos un perfil público con eso.")
+                  : (widget.sandbox ? "En el modo de prueba no se muestran personas." : "Todavía no hay sugerencias. Búscalos por su nombre o @usertag."),
+              style: GoogleFonts.inter(color: OhtliColors.subtleText),
+            ),
+          )
+        else
+          for (var i = 0; i < list.length; i++) _StaggerIn(index: i, child: _friendRow(list[i])),
+        const SizedBox(height: 8),
+        Text("Opcional. También puedes hacerlo después desde Amigos.", style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+      ],
+    );
+  }
+
+  Widget _friendRow(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? const {};
+    final name = (data['displayName'] as String?) ?? 'Viajero Ohtli';
+    final photo = data['photoURL'] as String?;
+    final tag = data['usertag'] as String?;
+    final initials = name.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
+    final isFriend = _myFriendIds.contains(doc.id);
+    final requested = _requested.contains(doc.id);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: OhtliColors.innerCardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: requested ? OhtliColors.accentText.withValues(alpha: 0.5) : OhtliColors.cardBorder),
+        ),
+        child: Row(
           children: [
-            const Icon(Icons.auto_awesome_rounded, size: 16, color: OhtliColors.cempasuchil),
-            const SizedBox(width: 6),
-            Text(
-              "Vista previa de tu receta ontológica espejo",
-              style: GoogleFonts.inter(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: OhtliColors.onyx,
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: OhtliColors.stormyTeal),
+              child: ClipOval(
+                child: photo != null && photo.isNotEmpty
+                    ? Image.network(photo, fit: BoxFit.cover, errorBuilder: (c, e, s) => Center(child: Text(initials, style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800))))
+                    : Center(child: Text(initials, style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800))),
               ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+                  if (tag != null && tag.isNotEmpty) Text('@$tag', style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+              child: isFriend
+                  ? Text('Ya son amigos', key: const ValueKey('f'), style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, fontWeight: FontWeight.w600))
+                  : requested
+                      ? Row(
+                          key: const ValueKey('r'),
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_rounded, size: 18, color: OhtliColors.accentText),
+                            const SizedBox(width: 4),
+                            Text('Enviada', style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.accentText, fontWeight: FontWeight.w700)),
+                          ],
+                        )
+                      : OhtliSecondaryButton(key: const ValueKey('a'), compact: true, label: 'Añadir', icon: Icons.person_add_alt_1_rounded, onPressed: () => _addFriend(doc)),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: List.generate(entries.length, (i) {
-            final entry = entries[i];
-            final style = axisStyles[i % axisStyles.length];
-            final color = style["color"] as Color;
-            return SizedBox(
-              width: cardWidth,
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: OhtliColors.innerCardBg,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: OhtliColors.cardBorder),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(style["icon"] as IconData, size: 18, color: color),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            entry.key,
-                            style: GoogleFonts.inter(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            entry.value,
-                            style: GoogleFonts.inter(
-                              fontSize: 12.5,
-                              color: OhtliColors.onyx,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // Paso: privacidad (perfil público, usertag, teléfono)
+  // ==========================================================
+
+  static String _suggestTag(String displayName) {
+    final base = _norm(displayName).replaceAll(RegExp(r'[^a-z0-9 ]'), '').trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).take(2).join('.');
+    return base.length >= 3 ? (base.length > 20 ? base.substring(0, 20) : base) : '';
+  }
+
+  void _checkTag(String raw, {bool immediate = false}) {
+    _tagDebounce?.cancel();
+    final text = raw.trim();
+    if (text.isEmpty) {
+      setState(() => _tagStatus = null);
+      return;
+    }
+    final tag = ProfileDirectory.normalizeTag(text);
+    if (tag == null) {
+      setState(() => _tagStatus = 'invalid');
+      return;
+    }
+    final problem = ProfileDirectory.tagProblem(tag);
+    if (problem != null && tag != _currentTag) {
+      setState(() => _tagStatus = problem);
+      return;
+    }
+    if (tag == _currentTag) {
+      setState(() => _tagStatus = 'ok');
+      return;
+    }
+    setState(() => _tagStatus = 'checking');
+    _tagDebounce = Timer(Duration(milliseconds: immediate ? 0 : 450), () async {
+      final me = FirebaseAuth.instance.currentUser;
+      if (me == null) return;
+      bool free;
+      try {
+        free = await ProfileDirectory.isTagAvailable(tag, me.uid);
+      } catch (_) {
+        free = true; // Sin conexión: se vuelve a comprobar al guardar.
+      }
+      if (!mounted || ProfileDirectory.normalizeTag(_tagController.text) != tag) return;
+      setState(() => _tagStatus = free ? 'ok' : 'taken');
+    });
+  }
+
+  Future<void> _savePrivacy(String uid) async {
+    if (widget.sandbox) return;
+    try {
+      await UserPrivateData.save(uid, {
+        'privacy_public': _profilePublic,
+        'contact_discoverable': _contactDiscoverable,
+        'privacy_notifications': _notificationsOn,
+      });
+    } catch (e) {
+      debugPrint('[onboarding] privacidad: $e');
+    }
+    final tag = ProfileDirectory.normalizeTag(_tagController.text);
+    if (tag != null && tag != _currentTag) {
+      try {
+        await ProfileDirectory.claimTag(uid, tag);
+      } catch (e) {
+        debugPrint('[onboarding] usertag: $e');
+      }
+    }
+  }
+
+  Widget _switchCard({required IconData icon, required String title, required String body, required bool value, required ValueChanged<bool> onChanged}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: OhtliColors.innerCardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: value ? OhtliColors.accentText.withValues(alpha: 0.45) : OhtliColors.cardBorder),
+      ),
+      child: MergeSemantics(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: OhtliColors.accentText),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+                  const SizedBox(height: 3),
+                  Text(body, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4)),
+                ],
               ),
-            );
-          }),
+            ),
+            Switch(value: value, onChanged: (v) => setState(() => onChanged(v)), activeThumbColor: Colors.white, activeTrackColor: OhtliColors.stormyTeal),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrivacyStep() {
+    final tagHelp = switch (_tagStatus) {
+      'checking' => ('Revisando…', OhtliColors.subtleText, Icons.hourglass_top_rounded),
+      'ok' => (ProfileDirectory.normalizeTag(_tagController.text) == _currentTag ? 'Es tu usertag' : '¡Está libre!', OhtliColors.accentText, Icons.check_circle_rounded),
+      'taken' => ('Ya lo tiene alguien más. Prueba otro.', OhtliColors.xoconostle, Icons.cancel_rounded),
+      'invalid' => ('De 3 a 20: letras, números, punto o guion bajo.', OhtliColors.xoconostle, Icons.info_outline_rounded),
+      'reserved' => ('Ese usertag está reservado. Prueba otro.', OhtliColors.xoconostle, Icons.block_rounded),
+      'prohibited' => ('Ese usertag no está permitido. Prueba otro.', OhtliColors.xoconostle, Icons.block_rounded),
+      _ => ('Es tu nombre único en Ohtli: así te encuentran y te etiquetan.', OhtliColors.subtleText, Icons.alternate_email_rounded),
+    };
+    InputDecoration deco(String hint, IconData icon, {String? prefix}) => InputDecoration(
+          hintText: hint,
+          prefixText: prefix,
+          prefixIcon: Icon(icon, color: OhtliColors.accentText),
+          filled: true,
+          fillColor: OhtliColors.innerCardBg,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: OhtliColors.cardBorder)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: OhtliColors.cardBorder)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: OhtliColors.accentText, width: 1.6)),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepHeader(
+          eyebrow: "Tu privacidad",
+          title: "Tú decides quién te ve",
+          description: "Puedes cambiar todo esto después en Cuenta → Privacidad.",
+        ),
+        const SizedBox(height: 20),
+        _StaggerIn(
+          index: 0,
+          child: _switchCard(
+            icon: Icons.public_rounded,
+            title: "Perfil público",
+            body: _profilePublic
+                ? "Cualquiera puede ver tu perfil, tus viajes públicos y encontrarte."
+                : "Solo tus amigos ven tus viajes y tus amigos. Nadie te encuentra al buscar.",
+            value: _profilePublic,
+            onChanged: (v) => _profilePublic = v,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildGroupLabel("Tu usertag"),
+        const SizedBox(height: 10),
+        Semantics(
+          label: 'Usertag',
+          textField: true,
+          child: TextField(
+            controller: _tagController,
+            onChanged: _checkTag,
+            autocorrect: false,
+            style: GoogleFonts.inter(color: OhtliColors.onyx, fontWeight: FontWeight.w600),
+            decoration: deco("tu.nombre", Icons.alternate_email_rounded),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Semantics(
+          liveRegion: true,
+          child: Row(
+            children: [
+              Icon(tagHelp.$3, size: 15, color: tagHelp.$2),
+              const SizedBox(width: 6),
+              Expanded(child: Text(tagHelp.$1, style: GoogleFonts.inter(fontSize: 12.5, color: tagHelp.$2, fontWeight: FontWeight.w600))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildGroupLabel("Tu teléfono"),
+        const SizedBox(height: 10),
+        PhoneVerificationField(sandbox: widget.sandbox, onVerified: (_) => setState(() {})),
+        // Con el teléfono verificado se puede activar la verificación en dos pasos.
+        if ((FirebaseAuth.instance.currentUser?.phoneNumber ?? '').isNotEmpty && !widget.sandbox) ...[
+          const SizedBox(height: 12),
+          const TwoFactorCard(),
+        ],
+        const SizedBox(height: 6),
+        Text("Opcional. Te mandamos un código por SMS para confirmar que es tuyo. Con él podrás activar la verificación en dos pasos y, si tu perfil es público, que alguien que ya tiene tu número te encuentre. Nunca lo mostramos.",
+            style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, height: 1.4)),
+        const SizedBox(height: 18),
+        if (_profilePublic)
+          _StaggerIn(
+            index: 1,
+            child: _switchCard(
+              icon: Icons.person_search_rounded,
+              title: "Que me encuentren por correo o teléfono",
+              body: "Quien escriba tu correo o tu teléfono verificado completos te verá en Amigos. No se muestran en tu perfil.",
+              value: _contactDiscoverable,
+              onChanged: (v) => _contactDiscoverable = v,
+            ),
+          ),
+        _StaggerIn(
+          index: 2,
+          child: _switchCard(
+            icon: Icons.notifications_active_outlined,
+            title: "Avisos",
+            body: "Te avisamos de solicitudes, comentarios y cuando tus rutas estén listas.",
+            value: _notificationsOn,
+            onChanged: (v) => _notificationsOn = v,
+          ),
         ),
       ],
     );
@@ -1964,6 +2429,67 @@ class _ChoicePill extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Entrada escalonada: aparece desde abajo con un pequeño retraso según su posición.
+/// Respeta «reducir movimiento» del sistema.
+class _StaggerIn extends StatelessWidget {
+  final int index;
+  final Widget child;
+  const _StaggerIn({required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return child;
+    final delay = (index.clamp(0, 12)) * 45;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 380 + delay),
+      curve: Interval(delay / (380 + delay), 1, curve: Curves.easeOutCubic),
+      builder: (context, v, c) => Opacity(opacity: v, child: Transform.translate(offset: Offset(0, 14 * (1 - v)), child: c)),
+      child: child,
+    );
+  }
+}
+
+/// Tarjeta de opción grande (p. ej. tamaño de letra) con borde al seleccionarse.
+class _OptionCard extends StatelessWidget {
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget child;
+  final String semanticsLabel;
+  const _OptionCard({required this.selected, required this.onTap, required this.child, required this.semanticsLabel});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: semanticsLabel,
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            width: 116,
+            height: 104,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? OhtliColors.stormyTeal.withValues(alpha: 0.10) : OhtliColors.innerCardBg,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: selected ? OhtliColors.stormyTeal : OhtliColors.cardBorder, width: selected ? 2 : 1),
+              boxShadow: selected ? [BoxShadow(color: OhtliColors.stormyTeal.withValues(alpha: 0.18), blurRadius: 14, offset: const Offset(0, 6))] : null,
+            ),
+            child: child,
           ),
         ),
       ),
