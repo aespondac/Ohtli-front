@@ -2155,6 +2155,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
+        // Solo el aro marca la selección: sin la mancha del foco ni del toque.
+        focusColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        splashColor: OhtliColors.stormyTeal.withValues(alpha: 0.12),
         child: SizedBox(
           width: 78,
           child: Column(
