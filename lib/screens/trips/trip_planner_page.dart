@@ -84,6 +84,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   final ItineraryBlackboardService _blackboardService = ItineraryBlackboardService();
   final TextEditingController _originSearchController = TextEditingController();
   final TextEditingController _destinationSearchController = TextEditingController();
+  // 'origin' o 'destination' cuando la persona reabre un punto ya elegido para corregirlo.
+  String? _editingEndpoint;
   final TextEditingController _customMoodController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController(text: '450');
   int _ideaIndex = 0;
@@ -477,39 +479,27 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     required bool selected,
     required VoidCallback onTap,
   }) {
-    return OhtliSurface(
+    final card = OhtliSurface(
       selected: selected,
-      radius: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      radius: 16,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       onTap: onTap,
       child: Row(
         children: [
-          SizedBox(width: 38, height: 38, child: FittedBox(child: leading)),
-          const SizedBox(width: 12),
+          SizedBox(width: 30, height: 30, child: FittedBox(child: leading)),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.outfit(fontSize: 14.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-                if (subtitle != null && subtitle.trim().isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: OhtliUi.body(size: 12)),
-                ],
-              ],
-            ),
-          ),
-          AnimatedOpacity(
-            duration: const Duration(milliseconds: 200),
-            opacity: selected ? 1 : 0,
-            child: const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 20),
+            child: Text(title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.outfit(
+                    fontSize: 13, height: 1.15, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
           ),
         ],
       ),
     );
+    if (subtitle == null || subtitle.trim().isEmpty) return card;
+    return Tooltip(message: subtitle, waitDuration: const Duration(milliseconds: 400), child: card);
   }
 
   Widget _thumb(String? url, IconData icon, Color color, bool selected) {
@@ -534,6 +524,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final cards = <Widget>[];
     final current = forDestination ? _destinationName : _selectedOriginName;
     void select(String name, double lat, double lng) => setState(() {
+          _editingEndpoint = null;
           if (forDestination) {
             _destinationName = name;
             _destinationCoords = {'lat': lat, 'lng': lng};
@@ -596,14 +587,14 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   Widget _buildOriginGrid(bool isMobile, List<Widget> cards) {
-    final cols = isMobile ? 1 : 3;
-    const gap = 12.0;
+    final cols = isMobile ? 2 : 6;
+    const gap = 10.0;
     return Column(
       children: [
         for (int r = 0; r * cols < cards.length; r++) ...[
           if (r > 0) const SizedBox(height: gap),
           SizedBox(
-            height: 62,
+            height: 56,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1460,7 +1451,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   label: o.$2,
                   icon: o.$3,
                   selected: _openEnds == o.$1,
-                  onTap: () => setState(() => _openEnds = o.$1),
+                  onTap: () => setState(() {
+                    _openEnds = o.$1;
+                    _editingEndpoint = null;
+                  }),
                 ),
             ],
           ),
@@ -1518,17 +1512,52 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           ),
         );
 
+    final originDone = _selectedOriginCoords != null && _selectedOriginName.trim().isNotEmpty;
+    final destDone = _destinationCoords != null;
+    // Solo un punto muestra buscador y opciones: el que se corrige o el primero pendiente.
+    final String? active = _editingEndpoint ??
+        (_fixesOrigin && !originDone ? 'origin' : (_fixesDestination && !destDone ? 'destination' : null));
+
+    Widget chosen(String name, String key) => Align(
+          alignment: Alignment.centerLeft,
+          child: OhtliSurface(
+            radius: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            onTap: () => setState(() => _editingEndpoint = key),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.place_rounded, size: 18, color: OhtliColors.stormyTeal),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+                ),
+                const SizedBox(width: 14),
+                Text('Cambiar',
+                    style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: OhtliColors.accentText)),
+              ],
+            ),
+          ),
+        );
+
     Widget point({
+      required String key,
       required String title,
       required IconData icon,
       required bool done,
+      required String doneName,
+      required String pendingHint,
       required bool lineBelow,
       required TextEditingController controller,
       required String hint,
       required void Function(String name, double lat, double lng) onSelected,
       required VoidCallback onCleared,
-      required List<Widget> cards,
+      required List<Widget> Function() cards,
     }) {
+      final isActive = active == key;
       return IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1545,17 +1574,21 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                       padding: const EdgeInsets.only(top: 7, bottom: 12),
                       child: Text(title, style: OhtliUi.eyebrow(OhtliColors.subtleText)),
                     ),
-                    PlaceSearchField(
-                      controller: controller,
-                      hintText: hint,
-                      onSelected: onSelected,
-                      onCleared: onCleared,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(hasSaved ? 'O elige uno de tus puntos o de los más populares' : 'O elige un punto popular',
-                        style: OhtliUi.body(size: 12.5)),
-                    const SizedBox(height: 10),
-                    _buildOriginGrid(isMobile, cards),
+                    if (!isActive)
+                      done ? chosen(doneName, key) : Text(pendingHint, style: OhtliUi.body(size: 12.5))
+                    else ...[
+                      PlaceSearchField(
+                        controller: controller,
+                        hintText: hint,
+                        onSelected: onSelected,
+                        onCleared: onCleared,
+                      ),
+                      const SizedBox(height: 14),
+                      Text(hasSaved ? 'O elige uno de tus puntos o de los más populares' : 'O elige un punto popular',
+                          style: OhtliUi.body(size: 12.5)),
+                      const SizedBox(height: 10),
+                      _buildOriginGrid(isMobile, cards()),
+                    ],
                   ],
                 ),
               ),
@@ -1570,39 +1603,47 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       children: [
         if (_fixesOrigin)
           point(
+            key: 'origin',
             title: both ? '1 · ¿DÓNDE EMPIEZAS?' : '¿DÓNDE EMPIEZAS?',
             icon: Icons.trip_origin_rounded,
-            done: _selectedOriginCoords != null && _selectedOriginName.trim().isNotEmpty,
+            done: originDone,
+            doneName: _selectedOriginName,
+            pendingHint: 'Elige dónde empiezas.',
             lineBelow: both,
             controller: _originSearchController,
             hint: 'Escribe dónde empiezas: dirección, colonia o lugar…',
             onSelected: (name, lat, lng) => setState(() {
               _selectedOriginName = name;
               _selectedOriginCoords = {'lat': lat, 'lng': lng};
+              _editingEndpoint = null;
             }),
             onCleared: () => setState(() {
               _selectedOriginName = '';
               _selectedOriginCoords = null;
             }),
-            cards: _startPointCards(),
+            cards: () => _startPointCards(),
           ),
         if (_fixesDestination)
           point(
+            key: 'destination',
             title: both ? '2 · ¿DÓNDE QUIERES TERMINAR?' : '¿DÓNDE QUIERES TERMINAR?',
             icon: Icons.flag_rounded,
-            done: _destinationCoords != null,
+            done: destDone,
+            doneName: _destinationName,
+            pendingHint: 'Cuando elijas el inicio, aquí eliges la llegada.',
             lineBelow: false,
             controller: _destinationSearchController,
             hint: 'Escribe dónde terminas: dirección, colonia o lugar…',
             onSelected: (name, lat, lng) => setState(() {
               _destinationName = name;
               _destinationCoords = {'lat': lat, 'lng': lng};
+              _editingEndpoint = null;
             }),
             onCleared: () => setState(() {
               _destinationName = '';
               _destinationCoords = null;
             }),
-            cards: _startPointCards(forDestination: true),
+            cards: () => _startPointCards(forDestination: true),
           ),
       ],
     );
