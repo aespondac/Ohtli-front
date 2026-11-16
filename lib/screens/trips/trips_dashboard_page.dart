@@ -7,6 +7,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/ohtli_ui.dart';
+import '../../widgets/group_trip_sheet.dart' show openGroupTrip;
+import '../../services/group_trip_service.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../theme/colors.dart';
 import '../../theme/cdmx_photos.dart';
@@ -43,6 +45,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   StreamSubscription? _coAuthorSub;
   StreamSubscription? _surpriseSub;
   StreamSubscription? _jobsSub;
+  // Planes en grupo en curso (invitaciones, rutas por generar o por votar).
+  StreamSubscription? _groupsSub;
+  List<GroupTrip> _groupTrips = [];
 
   /// Planes con IA terminados que todavía no abres.
   Set<String> _newJobIds = {};
@@ -87,6 +92,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
   }
 
   static bool _jobIsReady(Map<String, dynamic> data) {
+    // Las rutas de un plan en grupo se votan en su sala, no se eligen desde aquí.
+    if (data['group_trip_id'] != null) return false;
     final status = (data['status'] ?? '').toString();
     final res = data['result'] as Map<String, dynamic>? ?? {};
     final options = (res['options'] as List<dynamic>?) ?? [];
@@ -99,6 +106,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     _coAuthorSub?.cancel();
     _surpriseSub?.cancel();
     _jobsSub?.cancel();
+    _groupsSub?.cancel();
+    _groupsSub = null;
     _ownedSub = null;
     _coAuthorSub = null;
     _surpriseSub = null;
@@ -121,6 +130,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     // Novedades: comentarios en viajes publicados y planes con IA recién terminados
     TripActivity.instance.start(uid);
     HiddenTrips.instance.start(uid);
+    _groupsSub = GroupTripService.watchMine(uid).listen((groups) {
+      if (mounted) setState(() => _groupTrips = groups);
+    });
     _jobsSub = FirebaseFirestore.instance
         .collection('itinerary_jobs')
         .where('user_id', isEqualTo: uid)
@@ -703,7 +715,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                               ? (data['request']['user_id'] ?? data['request']['userId'])
                                               : null))
                                       ?.toString();
-                                  if (docUid == currentUid) {
+                                  // Los del plan en grupo se votan en su sala.
+                                  if (docUid == currentUid && data['group_trip_id'] == null) {
                                     aiJobs.add(doc);
                                   }
                                 }
@@ -720,7 +733,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                 });
                               }
 
-                              if (draftTrips.isEmpty && mySurpriseDrafts.isEmpty && unopenedSurprises.isEmpty && aiJobs.isEmpty) {
+                              final activeGroups = _activeGroupTrips(currentUid);
+                              if (draftTrips.isEmpty && mySurpriseDrafts.isEmpty && unopenedSurprises.isEmpty && aiJobs.isEmpty && activeGroups.isEmpty) {
                                 return _buildTripsList(
                                   [],
                                   'Tu libreta de caminos está vacía',
@@ -734,6 +748,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                               return ListView(
                                 padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
                                 children: [
+                                  if (activeGroups.isNotEmpty) ...[
+                                    _buildGroupTripsSection(activeGroups, currentUid ?? ''),
+                                    const SizedBox(height: 24),
+                                  ],
                                   if (aiJobs.isNotEmpty) ...[
                                     _buildAiTriadsSection(aiJobs, width, isDark, padding),
                                   ],
@@ -783,6 +801,77 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           ),
         );
       },
+    );
+  }
+
+  /// Planes en grupo que siguen en curso para ti: invitaciones sin responder y planes con IA
+  /// que esperan respuestas, rutas o votos.
+  List<GroupTrip> _activeGroupTrips(String? uid) {
+    if (uid == null) return const [];
+    return [
+      for (final g in _groupTrips)
+        if (g.isManual
+            ? (g.hostId != uid && g.responseOf(uid) == 'pending')
+            : ((g.status == 'inviting' || g.status == 'generating' || g.status == 'voting') &&
+                (g.hostId == uid || g.responseOf(uid) != 'declined')))
+          g,
+    ];
+  }
+
+  Widget _buildGroupTripsSection(List<GroupTrip> groups, String uid) {
+    Widget row(GroupTrip g) {
+      final pendingForMe = g.hostId != uid && g.responseOf(uid) == 'pending';
+      final (IconData icon, Color color, String status) = pendingForMe
+          ? (Icons.mark_email_unread_rounded, OhtliColors.cempasuchil, '${g.hostName} te invitó · responde')
+          : switch (g.status) {
+              'inviting' => (Icons.hourglass_top_rounded, OhtliColors.cempasuchil, 'Esperando respuestas'),
+              'generating' => (Icons.auto_awesome_rounded, OhtliColors.stormyTeal, 'Armando las rutas del grupo'),
+              'voting' => (
+                  Icons.how_to_vote_rounded,
+                  OhtliColors.cempasuchil,
+                  g.votes.containsKey(uid) ? 'Votaste · esperando a los demás' : 'Vota por tu ruta favorita'
+                ),
+              _ => (Icons.groups_rounded, OhtliColors.stormyTeal, 'Plan en grupo'),
+            };
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: OhtliSurface(
+          radius: 18,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          accent: color,
+          onTap: () => openGroupTrip(context, g.id),
+          child: Row(
+            children: [
+              Icon(icon, color: color),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(g.title, style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                    const SizedBox(height: 2),
+                    Text(status, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: OhtliColors.subtleText),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          'Planes en grupo',
+          subtitle: 'Invitaciones y planes que se están armando con tus amigos.',
+          leading: const Icon(Icons.groups_rounded, size: 18, color: OhtliColors.stormyTeal),
+          trailing: _countBadge(groups.length, OhtliColors.stormyTeal),
+        ),
+        for (final g in groups) row(g),
+      ],
     );
   }
 

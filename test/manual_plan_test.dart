@@ -97,5 +97,38 @@ void main() {
       expect(g.votes, {'a': 1, 'h': 2});
       expect(g.travelDate, DateTime(2026, 11, 21));
     });
+
+    test('votación: votan el organizador y quienes aceptaron', () {
+      GroupTrip g(Map<String, dynamic> extra) => GroupTrip.fromMap('grp_2', {
+            'kind': 'ai',
+            'hostId': 'h',
+            'invitedIds': ['a', 'b', 'c'],
+            'responses': {'a': 'accepted', 'b': 'declined'},
+            'status': 'voting',
+            'options': [
+              {'theme': 'Cafés'},
+              {'theme': 'Museos'},
+              'no es una ruta',
+            ],
+            ...extra,
+          });
+      final sinMotor = g({'votes': {'h': 1}});
+      expect(sinMotor.isManual, isFalse);
+      expect(sinMotor.options.map((o) => o['theme']), ['Cafés', 'Museos']);
+      expect(sinMotor.voters, ['h', 'a']);
+      expect(sinMotor.everyoneVoted, isFalse);
+      expect(sinMotor.everyoneResponded, isFalse); // c no ha respondido
+
+      // El motor fija quiénes votan; un voto de alguien que no participa no cuenta.
+      final conMotor = g({
+        'participantIds': ['h', 'a'],
+        'votes': {'h': 1, 'a': 1, 'b': 0},
+        'winner': 1,
+      });
+      expect(conMotor.votersFor(1), ['h', 'a']);
+      expect(conMotor.votersFor(0), isEmpty);
+      expect(conMotor.everyoneVoted, isTrue);
+      expect(conMotor.winner, 1);
+    });
   });
 }

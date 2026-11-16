@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import 'friend_options.dart';
+import 'itinerary_blackboard_service.dart';
 
 /// Plan hecho a mano: el viaje ya existe y quienes aceptan se suman como coautores.
 const String kGroupKindManual = 'manual';
@@ -33,6 +38,13 @@ class GroupTrip {
   final DateTime? respondBy;
   final DateTime? voteBy;
 
+  /// Lo escribe el motor: las 3 rutas, quiénes cuentan en el promedio y votan, la ganadora…
+  final List<Map<String, dynamic>> options;
+  final List<String> participantIds;
+  final int? winner;
+  final String? generationError;
+  final String? cancelReason;
+
   const GroupTrip({
     required this.id,
     required this.kind,
@@ -50,9 +62,26 @@ class GroupTrip {
     this.votes = const {},
     this.respondBy,
     this.voteBy,
+    this.options = const [],
+    this.participantIds = const [],
+    this.winner,
+    this.generationError,
+    this.cancelReason,
   });
 
   bool get isManual => kind == kGroupKindManual;
+
+  /// Quiénes votan: los que cuentan en el plan (el organizador y quienes aceptaron).
+  List<String> get voters => participantIds.isNotEmpty ? participantIds : [hostId, ...acceptedIds];
+
+  List<String> votersFor(int option) => [
+        for (final u in voters)
+          if (votes[u] == option) u,
+      ];
+
+  bool get everyoneVoted => voters.isNotEmpty && voters.every(votes.containsKey);
+
+  bool get everyoneResponded => pendingIds.isEmpty;
 
   /// 'pending', 'accepted' o 'declined'.
   String responseOf(String uid) {
@@ -106,6 +135,14 @@ class GroupTrip {
       votes: votes,
       respondBy: _date(d['respondBy']),
       voteBy: _date(d['voteBy']),
+      options: [
+        for (final o in (d['options'] as List?) ?? const [])
+          if (o is Map) Map<String, dynamic>.from(o),
+      ],
+      participantIds: ((d['participantIds'] as List?) ?? const []).map((e) => e.toString()).toList(),
+      winner: (d['winner'] as num?)?.toInt(),
+      generationError: d['generationError']?.toString(),
+      cancelReason: d['cancelReason']?.toString(),
     );
   }
 }
@@ -118,6 +155,37 @@ class GroupTripService {
 
   static Stream<GroupTrip?> watch(String id) =>
       _col.doc(id).snapshots().map((s) => s.exists ? GroupTrip.fromMap(s.id, s.data()!) : null);
+
+  /// Tus planes en grupo: los que organizas y a los que te invitaron.
+  static Stream<List<GroupTrip>> watchMine(String uid) {
+    late StreamController<List<GroupTrip>> controller;
+    var hosted = <GroupTrip>[];
+    var invited = <GroupTrip>[];
+    StreamSubscription? a;
+    StreamSubscription? b;
+    void emit() {
+      final byId = {for (final g in [...hosted, ...invited]) g.id: g};
+      controller.add(byId.values.toList());
+    }
+
+    controller = StreamController<List<GroupTrip>>(
+      onListen: () {
+        a = _col.where('hostId', isEqualTo: uid).snapshots().listen((s) {
+          hosted = [for (final d in s.docs) GroupTrip.fromMap(d.id, d.data())];
+          emit();
+        }, onError: (_) {});
+        b = _col.where('invitedIds', arrayContains: uid).snapshots().listen((s) {
+          invited = [for (final d in s.docs) GroupTrip.fromMap(d.id, d.data())];
+          emit();
+        }, onError: (_) {});
+      },
+      onCancel: () {
+        a?.cancel();
+        b?.cancel();
+      },
+    );
+    return controller.stream;
+  }
 
   static Future<GroupTrip?> get(String id) async {
     final s = await _col.doc(id).get();
@@ -167,6 +235,78 @@ class GroupTripService {
       'createdAt': FieldValue.serverTimestamp(),
     });
     await _notifyInvitees(id, title, host, uid, invitees, tripId: tripId);
+  }
+
+  /// Solicitud de un plan con IA: el motor genera las rutas con los gustos de quienes acepten
+  /// (al responder todos o al vencer [respondWindow]) y luego votan durante [voteWindow].
+  static Future<String> createAi({
+    required String title,
+    required DateTime travelDate,
+    required Map<String, dynamic> params,
+    required List<FriendOption> invitees,
+    required Duration respondWindow,
+    required Duration voteWindow,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final host = await me();
+    final id = newId();
+    final respondBy = DateTime.now().add(respondWindow);
+    await _col.doc(id).set({
+      'kind': kGroupKindAi,
+      'hostId': uid,
+      'hostName': host.name,
+      'hostPhoto': ?host.photo,
+      'title': title,
+      'travelDate': Timestamp.fromDate(travelDate),
+      'invitedIds': [for (final f in invitees) f.uid],
+      'members': {
+        for (final f in invitees) f.uid: {'name': f.name, 'photo': ?f.photoUrl},
+      },
+      'responses': <String, String>{},
+      'intentions': <String, String>{},
+      'votes': <String, int>{},
+      'params': params,
+      'respondBy': Timestamp.fromDate(respondBy),
+      'voteBy': Timestamp.fromDate(respondBy.add(voteWindow)),
+      'status': 'inviting',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    await _notifyInvitees(id, title, host, uid, invitees);
+    return id;
+  }
+
+  /// Pide al motor generar las rutas ya (el organizador, o cualquiera cuando todos respondieron).
+  static Future<bool> generate(String id) => _postEngine('/v1/group-trips/$id/generate');
+
+  /// Pide al motor cerrar la votación y crear el viaje (el organizador, o cuando todos votaron).
+  static Future<bool> close(String id) => _postEngine('/v1/group-trips/$id/close');
+
+  static Future<bool> _postEngine(String path) async {
+    String? token;
+    try {
+      token = await FirebaseAuth.instance.currentUser?.getIdToken();
+    } catch (_) {}
+    for (final base in ItineraryBlackboardService.apiBases) {
+      try {
+        final res = await http
+            .post(Uri.parse('$base$path'),
+                headers: {'Content-Type': 'application/json', 'Authorization': ?(token == null ? null : 'Bearer $token')},
+                body: jsonEncode(const {}))
+            .timeout(const Duration(seconds: 15));
+        if (res.statusCode >= 200 && res.statusCode < 300) return true;
+        // Un 4xx (sin permiso, estado que no lo permite) no cambia en el otro servidor.
+        if (res.statusCode >= 400 && res.statusCode < 500) return false;
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  /// Tu voto (índice de la ruta). Si con él ya votaron todos, se cierra la votación.
+  static Future<void> vote(GroupTrip g, int option) async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    await _col.doc(g.id).update({'votes.$uid': option});
+    final fresh = await get(g.id);
+    if (fresh != null && fresh.status == 'voting' && fresh.everyoneVoted) unawaited(close(g.id));
   }
 
   static Future<void> _notifyInvitees(String id, String title, ({String name, String? photo}) host, String hostId,
@@ -229,6 +369,15 @@ class GroupTripService {
         'coAuthorIds': FieldValue.arrayUnion([uid]),
         'coAuthorNames': FieldValue.arrayUnion([mine.name]),
       });
+    }
+    // Plan con IA: si con esta respuesta ya respondieron todos, se generan las rutas.
+    if (!g.isManual) {
+      try {
+        final fresh = await get(g.id);
+        if (fresh != null && fresh.status == 'inviting' && fresh.everyoneResponded && fresh.acceptedIds.isNotEmpty) {
+          unawaited(generate(g.id));
+        }
+      } catch (_) {}
     }
     // Tu aviso queda como respondido.
     try {

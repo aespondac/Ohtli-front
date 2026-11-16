@@ -18,6 +18,9 @@ class ItineraryBlackboardService {
   );
   static const String _secondaryApiUrl = 'https://api.ohtli.quest';
 
+  /// Servidores del motor, en orden (el segundo es el respaldo).
+  static const List<String> apiBases = [_primaryApiUrl, _secondaryApiUrl];
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TripService _tripService = TripService();
 

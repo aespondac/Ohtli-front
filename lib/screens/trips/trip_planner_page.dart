@@ -36,6 +36,7 @@ import '../construction_page.dart'; // RouteBackgroundPainter
 import '../places/places_page.dart';
 import 'trip_viewer_page.dart';
 import 'trip_editor_page.dart';
+import 'group_trip_page.dart';
 
 enum PlannerStep {
   bifurcation,
@@ -51,6 +52,9 @@ class TripPlannerPage extends StatefulWidget {
 
   /// Empieza directo en el plan hecho a mano (forma de ruta y puntos), sin la bifurcación.
   final bool startManual;
+
+  /// Votación de un plan con IA en grupo: las 3 rutas salen del grupo y el botón vota.
+  final String? groupTripId;
   final List<Map<String, dynamic>>? initialGeneratedOptions;
   final String? initialActiveJobId;
 
@@ -63,6 +67,7 @@ class TripPlannerPage extends StatefulWidget {
     super.key,
     this.initialOriginPoi,
     this.startManual = false,
+    this.groupTripId,
     this.initialGeneratedOptions,
     this.initialActiveJobId,
     this.optionsJobId,
@@ -117,6 +122,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   bool _friendsLoading = false;
   final Set<String> _invitedIds = {};
   String? _surpriseTargetId;
+
+  // Plan con IA en grupo: plazos para responder y votar (horas) y, en la votación, el grupo.
+  int _respondHours = 6;
+  int _voteHours = 6;
+  GroupTrip? _group;
+  StreamSubscription<GroupTrip?>? _groupSub;
+  bool _leftForGroupTrip = false;
 
   // Form State
   String _selectedOriginName = '';
@@ -425,6 +437,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       _manualMode = true;
       _currentStep = PlannerStep.startingPoint;
     }
+    if (widget.groupTripId != null) {
+      _currentStep = PlannerStep.routeTriadCarousel;
+      _groupSub = GroupTripService.watch(widget.groupTripId!).listen(_onGroupUpdate, onError: (_) {});
+    }
 
     if (widget.initialActiveJobId != null && widget.initialActiveJobId!.isNotEmpty) {
       _activeJobId = widget.initialActiveJobId;
@@ -447,8 +463,71 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     FeedbackService.itineraryShown(_activeJobId, _activeCarouselIndex, _generatedOptions[_activeCarouselIndex]);
   }
 
+  void _onGroupUpdate(GroupTrip? g) {
+    if (!mounted || g == null) return;
+    setState(() {
+      _group = g;
+      if (_generatedOptions.isEmpty && g.options.isNotEmpty) {
+        _generatedOptions = g.options;
+        _activeCarouselIndex = g.options.length > 2 ? 1 : 0;
+      }
+    });
+    // Se cerró la votación: al viaje que salió.
+    if (g.status == 'created' && g.tripId != null && !_leftForGroupTrip) {
+      _leftForGroupTrip = true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(g.winner != null ? 'Ganó la opción ${g.winner! + 1}. ¡Ya pueden editar el plan!' : '¡El plan quedó listo!',
+            style: GoogleFonts.inter()),
+        backgroundColor: OhtliColors.stormyTeal,
+      ));
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => TripViewerPage(tripId: g.tripId!, authorId: g.hostId)),
+      );
+    }
+  }
+
+  int? get _myVote => _group?.votes[FirebaseAuth.instance.currentUser?.uid];
+
+  /// Texto del botón de una ruta: elegir (solo) o votar (grupo).
+  String _chooseLabel(Map<String, dynamic> option, double cost, {bool compact = false}) {
+    if (widget.groupTripId != null) {
+      final voted = _myVote != null && _myVote == _generatedOptions.indexOf(option);
+      if (voted) return compact ? '✓ Tu voto' : '✓ Votaste por esta ruta';
+      return compact ? 'Votar' : 'Votar por esta ruta';
+    }
+    if (_isSavingTrip) return compact ? 'Creando…' : 'Creando viaje…';
+    return compact ? 'Elegir · \$${cost.toStringAsFixed(0)}' : 'Elegir esta ruta · \$${cost.toStringAsFixed(0)} MXN';
+  }
+
+  Future<void> _voteForOption(Map<String, dynamic> option) async {
+    final g = _group;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (g == null || uid == null) return;
+    void say(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text, style: GoogleFonts.inter())));
+    if (g.status != 'voting') {
+      say('La votación ya cerró.');
+      return;
+    }
+    if (!g.voters.contains(uid)) {
+      say('Votan quienes aceptaron el plan.');
+      return;
+    }
+    final i = _generatedOptions.indexOf(option);
+    if (i < 0) return;
+    setState(() => _isSavingTrip = true);
+    try {
+      await GroupTripService.vote(g, i);
+      if (mounted) say('Votaste por la opción ${i + 1}. Te avisamos cuando cierre la votación.');
+    } catch (e) {
+      if (mounted) say(friendlyError(e, fallback: 'No se pudo guardar tu voto.'));
+    } finally {
+      if (mounted) setState(() => _isSavingTrip = false);
+    }
+  }
+
   @override
   void dispose() {
+    _groupSub?.cancel();
     _jobSubscription?.cancel();
     _jobWatchdog?.cancel();
     _triadPageController?.dispose();
@@ -664,6 +743,101 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     );
   }
 
+  /// Lo que el motor necesita de la ruta: origen, forma (anillo, radio, fin o elipse, como en
+  /// core/topology.py), destino e intención. Si falta el punto final, avisa y devuelve null.
+  ({Map<String, double> origin, String originName, String topology, Map<String, double>? destination, String mood})?
+      _engineRoute() {
+    final coords = (!_fixesOrigin ? _destinationCoords : null) ?? _selectedOriginCoords ?? {'lat': 19.4326, 'lng': -99.1332};
+    final bool needsDestination = _selectedTopology == 'radio' && _openEnds != 'inicio';
+    if (needsDestination && _destinationCoords == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Elige dónde quieres terminar tu recorrido.', style: GoogleFonts.inter()),
+          backgroundColor: OhtliColors.xoconostle,
+        ),
+      );
+      return null;
+    }
+    final topology = _selectedTopology == 'anillo'
+        ? 'anillo'
+        : (_openEnds == 'fin' ? 'fin' : (_openEnds == 'ambos' ? 'elipse' : 'radio'));
+    final mood = _customMoodController.text.trim().isNotEmpty ? _customMoodController.text.trim() : _selectedMood;
+    final originName = !_fixesOrigin && _destinationName.isNotEmpty
+        ? _destinationName
+        : (_originSearchController.text.trim().isNotEmpty
+            ? _originSearchController.text.trim()
+            : (widget.originName ?? 'Ciudad de México'));
+    return (
+      origin: coords,
+      originName: originName,
+      topology: topology,
+      destination: needsDestination ? _destinationCoords : null,
+      mood: mood,
+    );
+  }
+
+  bool get _isAiGroup => !_manualMode && _companions == 'amigos' && _invitedIds.isNotEmpty;
+
+  /// Plan con IA en grupo: se crea la solicitud, se avisa a los invitados y se pasa a la sala
+  /// del grupo. Las rutas las genera el motor con los gustos de quienes acepten.
+  Future<void> _createAiGroup() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Inicia sesión para planear en grupo.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+      );
+      return;
+    }
+    final route = _engineRoute();
+    final invitees = _invitedFriends;
+    if (route == null || invitees.isEmpty) return;
+    setState(() => _isSavingTrip = true);
+    try {
+      final d = _selectedTravelDate;
+      const weekdays = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+      const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+      final id = await GroupTripService.createAi(
+        title: 'Salida del ${weekdays[d.weekday - 1]} ${d.day} de ${months[d.month - 1]}',
+        travelDate: d,
+        params: {
+          'budget': _budgetMxn,
+          'origin': route.origin,
+          'origin_name': route.originName,
+          'destination': route.destination,
+          'topology': route.topology,
+          'mood_text': route.mood,
+          'transport_mode': _selectedTransportMode,
+          'budget_strategy': _budgetStrategy,
+          'travel_date': d.toIso8601String(),
+        },
+        invitees: invitees,
+        respondWindow: Duration(hours: _respondHours),
+        voteWindow: Duration(hours: _voteHours),
+      );
+      if (!mounted) return;
+      setState(() => _isSavingTrip = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          invitees.length == 1
+              ? 'Invitamos a ${invitees.first.name}. Las rutas se arman cuando responda.'
+              : 'Invitamos a ${invitees.length} amigos. Las rutas se arman cuando respondan.',
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: OhtliColors.stormyTeal,
+      ));
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => GroupTripPage(groupId: id)));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSavingTrip = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlyError(e, fallback: 'No pudimos crear el plan en grupo. Intenta de nuevo.'), style: GoogleFonts.inter()),
+          backgroundColor: OhtliColors.xoconostle,
+        ),
+      );
+    }
+  }
+
   Future<void> _launchBlackboardJob() async {
     // Volver a generar con opciones en pantalla = no le convenció ninguna
     if (_generatedOptions.isNotEmpty) {
@@ -680,26 +854,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       return;
     }
 
-    final coords = (!_fixesOrigin ? _destinationCoords : null) ??
-        _selectedOriginCoords ?? {'lat': 19.4326, 'lng': -99.1332};
-    // Forma de la ruta para el motor (core/topology.py): anillo, radio (solo inicio),
-    // fin (solo final) o elipse (inicio y final).
-    final bool needsDestination = _selectedTopology == 'radio' && _openEnds != 'inicio';
-    if (needsDestination && _destinationCoords == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Elige dónde quieres terminar tu recorrido.', style: GoogleFonts.inter()),
-          backgroundColor: OhtliColors.xoconostle,
-        ),
-      );
-      return;
-    }
-    final String engineTopology = _selectedTopology == 'anillo'
-        ? 'anillo'
-        : (_openEnds == 'fin' ? 'fin' : (_openEnds == 'ambos' ? 'elipse' : 'radio'));
-    final effectiveMood = _customMoodController.text.trim().isNotEmpty
-        ? _customMoodController.text.trim()
-        : _selectedMood;
+    final route = _engineRoute();
+    if (route == null) return;
+    final coords = route.origin;
+    final bool needsDestination = route.destination != null;
+    final String engineTopology = route.topology;
+    final effectiveMood = route.mood;
 
     setState(() {
       _currentStep = PlannerStep.blackboardProcessing;
@@ -709,11 +869,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     });
 
     try {
-      final originTitle = !_fixesOrigin && _destinationName.isNotEmpty
-          ? _destinationName
-          : (_originSearchController.text.trim().isNotEmpty
-              ? _originSearchController.text.trim()
-              : (widget.originName ?? 'Ciudad de México'));
+      final originTitle = route.originName;
 
       final jobId = await _blackboardService.requestItineraryJob(
         userId: user.uid,
@@ -999,6 +1155,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   Future<void> _chooseRouteAndCreateTrip(Map<String, dynamic> option) async {
+    if (widget.groupTripId != null) {
+      await _voteForOption(option);
+      return;
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1235,7 +1395,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   ),
                 ),
                 Text(
-                  _currentStep == PlannerStep.routeTriadCarousel
+                  widget.groupTripId != null
+                      ? (_group == null
+                          ? 'Votación del grupo'
+                          : 'Votación del grupo · votaron ${_group!.voters.where(_group!.votes.containsKey).length} de ${_group!.voters.length}')
+                      : _currentStep == PlannerStep.routeTriadCarousel
                       ? '3 multirutas temáticas calculadas por IA'
                       : (_manualMode && _currentStep != PlannerStep.bifurcation
                           ? 'Tu plan, armado por ti'
@@ -2071,11 +2235,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     );
   }
 
+  Widget _buildDeadlineRow(String label, int hours, ValueChanged<int> onPick) {
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        SizedBox(width: 118, child: Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx))),
+        for (final o in const [(1, '1 hora'), (6, '6 horas'), (24, '1 día')])
+          OhtliChoiceChip(label: o.$2, selected: hours == o.$1, onTap: () => onPick(o.$1)),
+      ],
+    );
+  }
+
   Widget _buildCompanionsStep(bool isMobile) {
     final surprise = _companions == 'sorpresa';
     final friends = _companions == 'amigos';
-    // En el plan con IA, el grupo vota entre las 3 rutas: llega con el motor del grupo.
-    final groupAvailable = _manualMode;
+    const groupAvailable = true;
     final options = [
       _buildCompanionOption(key: 'solo', icon: Icons.person_rounded, title: 'Solo yo', desc: 'El plan es para ti.'),
       _buildCompanionOption(
@@ -2086,7 +2262,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             ? 'Los invitas y quien acepte edita el plan contigo.'
             : 'Cada quien acepta y suma su intención; las rutas salen de los gustos del grupo y votan.',
         enabled: groupAvailable,
-        badge: groupAvailable ? null : 'PRONTO',
       ),
       _buildCompanionOption(
         key: 'sorpresa',
@@ -2114,6 +2289,16 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           Text(surprise ? '¿PARA QUIÉN ES LA SORPRESA?' : '¿A QUIÉN INVITAS?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
           const SizedBox(height: 12),
           _buildFriendPicker(),
+          if (friends && !_manualMode) ...[
+            const SizedBox(height: 22),
+            Text('PLAZOS', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+            const SizedBox(height: 10),
+            _buildDeadlineRow('Para responder', _respondHours, (h) => setState(() => _respondHours = h)),
+            const SizedBox(height: 10),
+            _buildDeadlineRow('Para votar', _voteHours, (h) => setState(() => _voteHours = h)),
+            const SizedBox(height: 10),
+            Text('Si todos responden o votan antes, no esperamos al plazo.', style: OhtliUi.body(size: 12.5)),
+          ],
           if (surprise) ...[
             const SizedBox(height: 10),
             Text(
@@ -2458,10 +2643,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         Align(
           alignment: Alignment.centerRight,
           child: OhtliPrimaryButton(
-            label: 'Calcular opciones de viaje',
-            icon: Icons.auto_awesome_rounded,
+            label: _isAiGroup ? 'Invitar y esperar respuestas' : 'Calcular opciones de viaje',
+            icon: _isAiGroup ? Icons.groups_rounded : Icons.auto_awesome_rounded,
             highlight: true,
-            onPressed: _launchBlackboardJob,
+            loading: _isAiGroup && _isSavingTrip,
+            onPressed: _isAiGroup ? (_isSavingTrip ? null : _createAiGroup) : _launchBlackboardJob,
           ),
         ),
       ],
@@ -2830,7 +3016,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
 
   Widget _buildRouteTriadCarouselStep(bool isMobile) {
     if (_generatedOptions.isEmpty) {
-      return const SizedBox.shrink();
+      return widget.groupTripId != null
+          ? const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal))
+          : const SizedBox.shrink();
     }
 
     return LayoutBuilder(
@@ -3136,6 +3324,22 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             ),
           ),
         ),
+        if (_group != null && _group!.votersFor(index).isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: OhtliColors.cempasuchil, borderRadius: BorderRadius.circular(30)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.how_to_vote_rounded, size: 13, color: Color(0xFF1A120B)),
+                const SizedBox(width: 4),
+                Text('${_group!.votersFor(index).length}',
+                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w800, color: const Color(0xFF1A120B))),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -3148,7 +3352,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: fg))
           : Icon(Icons.alt_route_rounded, color: fg, size: compact ? 17 : 19),
       label: Text(
-        _isSavingTrip ? (compact ? 'Creando…' : 'Creando viaje…') : (compact ? 'Elegir · \$${cost.toStringAsFixed(0)}' : 'Elegir esta ruta · \$${cost.toStringAsFixed(0)} MXN'),
+        _chooseLabel(option, cost, compact: compact),
         style: GoogleFonts.outfit(fontSize: compact ? 13.5 : (isMobile ? 14 : 15), fontWeight: FontWeight.w800, color: fg),
       ),
       style: ElevatedButton.styleFrom(
@@ -4168,7 +4372,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
                 label: Text(
-                  _isSavingTrip ? 'Creando viaje...' : 'Elegir esta ruta · \$${cost.toStringAsFixed(0)} MXN',
+                  _chooseLabel(option, cost),
                   style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.3),
                 ),
                 style: ElevatedButton.styleFrom(

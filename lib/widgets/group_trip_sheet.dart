@@ -43,12 +43,26 @@ Future<void> openGroupTrip(BuildContext context, String groupId) async {
     openGroupTripTrip(context, g);
     return;
   }
+  if (joined && !g.isManual) {
+    openGroupTripLobby(context, g.id);
+    return;
+  }
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => GroupInviteSheet(groupId: groupId),
   );
+}
+
+/// Sala del plan con IA en grupo (respuestas, rutas y votación).
+void openGroupTripLobby(BuildContext context, String groupId) {
+  Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => DeferredView(
+      load: trips.loadLibrary,
+      builder: (_) => trips.GroupTripPage(groupId: groupId),
+    ),
+  ));
 }
 
 void openGroupTripTrip(BuildContext context, GroupTrip g) {
@@ -95,6 +109,7 @@ class _GroupInviteSheetState extends State<GroupInviteSheet> {
             : 'Le avisamos a ${g.hostName} que no puedes ir.'),
       ));
       if (accept && g.isManual && g.tripId != null) openGroupTripTrip(nav.context, g);
+      if (accept && !g.isManual) openGroupTripLobby(nav.context, g.id);
     } catch (e) {
       if (!mounted) return;
       setState(() => _sending = false);

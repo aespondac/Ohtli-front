@@ -122,7 +122,8 @@ class _OhtliLiveAlertsState extends State<OhtliLiveAlerts> {
     _jobsSub = db.collection('itinerary_jobs').where('user_id', isEqualTo: widget.uid).snapshots().listen((snap) {
       final done = <String>{
         for (final d in snap.docs)
-          if (itineraryJobReady(d.data()) || itineraryJobFailed(d.data())) d.id,
+          // Los del plan en grupo los avisa el motor (a votar), no esta vista.
+          if (d.data()['group_trip_id'] == null && (itineraryJobReady(d.data()) || itineraryJobFailed(d.data()))) d.id,
       };
       final before = _jobsDone;
       _jobsDone = done;
