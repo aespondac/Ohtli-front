@@ -54,6 +54,17 @@ class _TwoFactorCardState extends State<TwoFactorCard> {
       _info = null;
     });
     try {
+      // Recién verificado el teléfono, la sesión queda «por teléfono»: primero se confirma la cuenta.
+      if (await TwoFactor.needsAccountConfirmation()) {
+        if (!mounted) return;
+        setState(() => _info = 'Confirma tu cuenta para activar la verificación.');
+        final ok = await TwoFactor.confirmAccount(context);
+        if (!ok) {
+          if (mounted) setState(() => _info = 'Necesitamos confirmar tu cuenta para activarla.');
+          return;
+        }
+        if (mounted) setState(() => _info = null);
+      }
       final id = await TwoFactor.sendEnrollmentCode(phone);
       if (mounted) setState(() => _verificationId = id);
     } catch (e) {

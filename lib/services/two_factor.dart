@@ -27,6 +27,43 @@ class TwoFactor {
     }
   }
 
+  /// Firebase no permite el teléfono como primer factor. Justo después de vincular el
+  /// teléfono, la sesión queda como «iniciada por teléfono» y la inscripción falla con
+  /// unsupported-first-factor; se arregla confirmando la cuenta con Google o la contraseña.
+  static Future<bool> needsAccountConfirmation() async {
+    final user = _user;
+    if (user == null) return false;
+    try {
+      return (await user.getIdTokenResult()).signInProvider == 'phone';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Confirma la cuenta con su proveedor original: Google (ventana) o contraseña.
+  /// Devuelve false si la persona cancela.
+  static Future<bool> confirmAccount(BuildContext context) async {
+    final user = _user;
+    if (user == null) return false;
+    final providers = user.providerData.map((p) => p.providerId).toSet();
+    if (providers.contains('google.com')) {
+      try {
+        await user.reauthenticateWithPopup(GoogleAuthProvider());
+        return true;
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'popup-closed-by-user' || e.code == 'cancelled-popup-request') return false;
+        rethrow;
+      }
+    }
+    if (providers.contains('password') && user.email != null) {
+      final password = await showDialog<String>(context: context, builder: (_) => const _PasswordDialog());
+      if (password == null || password.isEmpty) return false;
+      await user.reauthenticateWithCredential(EmailAuthProvider.credential(email: user.email!, password: password));
+      return true;
+    }
+    return false;
+  }
+
   /// Envía el código para inscribir [phoneE164] como segundo factor. Devuelve el id de verificación.
   static Future<String> sendEnrollmentCode(String phoneE164) async {
     final user = _user;
@@ -103,6 +140,8 @@ class TwoFactor {
   /// Texto para los errores de esta función.
   static String messageFor(Object e) {
     final code = e is FirebaseAuthException ? e.code : '';
+    // Para diagnosticar en producción (sin datos personales: solo tipo, código y mensaje).
+    debugPrint('[2FA] ${e.runtimeType} code=$code ${e is FirebaseAuthException ? e.message : e}');
     return switch (code) {
       'invalid-verification-code' => 'El código no coincide. Revísalo e intenta de nuevo.',
       'code-expired' || 'session-expired' => 'El código venció. Pide uno nuevo.',
@@ -111,6 +150,8 @@ class TwoFactor {
       'requires-recent-login' => 'Por seguridad, cierra sesión, vuelve a entrar y repite este paso.',
       'operation-not-allowed' || 'admin-restricted-operation' => 'La verificación en dos pasos aún no está activada. Intenta más tarde.',
       'second-factor-already-in-use' => 'Ese teléfono ya está inscrito.',
+      'unsupported-first-factor' => 'Confirma tu cuenta para continuar e intenta de nuevo.',
+      'wrong-password' || 'invalid-credential' => 'La contraseña no coincide.',
       'maximum-second-factor-count-exceeded' => 'Ya tienes el máximo de teléfonos inscritos.',
       'network-request-failed' => 'Sin conexión. Revisa tu internet.',
       _ => 'No pudimos completar la verificación. Intenta de nuevo.',
@@ -253,6 +294,45 @@ class _SecondFactorDialogState extends State<_SecondFactorDialog> {
       actions: [
         OhtliSecondaryButton(compact: true, label: 'Cancelar', onPressed: _busy ? null : () => Navigator.of(context).pop()),
         OhtliPrimaryButton(compact: true, label: 'Entrar', loading: _busy && _verificationId != null, onPressed: _busy ? null : _confirm),
+      ],
+    );
+  }
+}
+
+/// Pide la contraseña para confirmar la cuenta.
+class _PasswordDialog extends StatefulWidget {
+  const _PasswordDialog();
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  final _c = TextEditingController();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(OhtliUi.radiusLarge)),
+      title: Text('Confirma que eres tú', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+      content: TextField(
+        controller: _c,
+        obscureText: true,
+        autofocus: true,
+        autofillHints: const [AutofillHints.password],
+        onSubmitted: (v) => Navigator.pop(context, v),
+        decoration: const InputDecoration(labelText: 'Tu contraseña de Ohtli'),
+      ),
+      actions: [
+        OhtliSecondaryButton(compact: true, label: 'Cancelar', onPressed: () => Navigator.pop(context)),
+        OhtliPrimaryButton(compact: true, label: 'Confirmar', onPressed: () => Navigator.pop(context, _c.text)),
       ],
     );
   }
