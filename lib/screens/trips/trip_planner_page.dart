@@ -28,6 +28,7 @@ import '../../services/trip_transfers.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_ui.dart';
+import '../../widgets/feedback_dialog.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../widgets/osrm_map_widget.dart';
 import '../../widgets/place_search_field.dart';
@@ -1585,6 +1586,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   color: OhtliColors.stormyTeal,
                 ),
               ),
+            ),
+          // Comentarios sobre los planes con IA (no en el plan armado a mano)
+          if (!_manualMode && _currentStep != PlannerStep.bifurcation)
+            FeedbackButton(
+              compact: isMobile,
+              screen: 'planear_con_ia',
+              contextBuilder: () => {
+                'paso': _currentStep.name,
+                if (_activeJobId != null) 'job_id': _activeJobId!,
+                if (_currentStep == PlannerStep.routeTriadCarousel && _generatedOptions.isNotEmpty)
+                  'opcion': '${_activeCarouselIndex + 1} de ${_generatedOptions.length}',
+                if (widget.groupTripId != null) 'plan_en_grupo': 'sí',
+              },
             ),
           const SizedBox(width: 8),
         ],

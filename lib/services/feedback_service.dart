@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:web/web.dart' as web;
+
+import '../config/app_version.dart';
 
 /// Retroalimentación del comportamiento (RF-12): lo que la persona hace con las
 /// recomendaciones y con los lugares se manda al motor Yollotl en lotes
@@ -154,6 +157,120 @@ class FeedbackService {
   static void stopAdded(String? poiId, {String? tripId}) => track('stop_added', poiId: poiId, tripId: tripId);
 
   static void stopReordered({String? tripId}) => track('stop_reordered', tripId: tripId);
+
+  // ---------------------------------------------------------------------------
+  // Comentarios ("Enviar comentarios")
+  // ---------------------------------------------------------------------------
+
+  /// Colección donde se guardan los comentarios escritos a mano. La Cloud Function
+  /// `feedbackEmail` (functions/feedback.js) los manda por correo al equipo de Ohtli.
+  static const String commentsCollection = 'app_feedback';
+
+  /// Tipos de comentario que acepta firestore.rules.
+  static const List<String> commentCategories = ['idea', 'bug', 'other'];
+  static const int commentMinLength = 3;
+  static const int commentMaxLength = 2000;
+
+  /// Navegador y sistema en pocas palabras ("Chrome · macOS"), sin la cadena completa del
+  /// user agent: basta para reproducir un error y no identifica a la persona.
+  static String describeBrowser(String userAgent) {
+    final ua = userAgent.toLowerCase();
+    String browser;
+    if (ua.contains('edg/')) {
+      browser = 'Edge';
+    } else if (ua.contains('opr/') || ua.contains('opera')) {
+      browser = 'Opera';
+    } else if (ua.contains('samsungbrowser')) {
+      browser = 'Samsung Internet';
+    } else if (ua.contains('firefox/') || ua.contains('fxios')) {
+      browser = 'Firefox';
+    } else if (ua.contains('crios') || ua.contains('chrome/')) {
+      browser = 'Chrome';
+    } else if (ua.contains('safari/')) {
+      browser = 'Safari';
+    } else {
+      browser = 'Otro navegador';
+    }
+    String os;
+    if (ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod')) {
+      os = 'iOS';
+    } else if (ua.contains('android')) {
+      os = 'Android';
+    } else if (ua.contains('mac os') || ua.contains('macintosh')) {
+      os = 'macOS';
+    } else if (ua.contains('windows')) {
+      os = 'Windows';
+    } else if (ua.contains('cros')) {
+      os = 'ChromeOS';
+    } else if (ua.contains('linux')) {
+      os = 'Linux';
+    } else {
+      os = 'otro sistema';
+    }
+    return '$browser · $os';
+  }
+
+  /// Documento que se guarda en [commentsCollection]. Solo lleva lo necesario para entender
+  /// el comentario: nada de correo, teléfono ni ubicación.
+  static Map<String, dynamic> buildComment({
+    required String uid,
+    required String message,
+    required String category,
+    required String screen,
+    String? browser,
+    String? viewport,
+    String? language,
+    Map<String, String>? context,
+    Object? createdAt,
+  }) {
+    String clip(String v, int max) => v.length > max ? v.substring(0, max) : v;
+    final ctx = <String, String>{};
+    context?.forEach((k, v) {
+      if (ctx.length >= 8 || k.isEmpty || v.isEmpty) return;
+      ctx[clip(k, 40)] = clip(v, 200);
+    });
+    return {
+      'uid': uid,
+      'message': clip(message.trim(), commentMaxLength),
+      'category': commentCategories.contains(category) ? category : 'other',
+      'screen': clip(screen, 80),
+      'appVersion': kAppVersion,
+      if (browser != null) 'browser': clip(browser, 80),
+      if (viewport != null) 'viewport': clip(viewport, 20),
+      if (language != null) 'language': clip(language, 20),
+      if (ctx.isNotEmpty) 'context': ctx,
+      'createdAt': createdAt ?? FieldValue.serverTimestamp(),
+    };
+  }
+
+  /// Guarda un comentario de la persona con sesión. Lanza si no hay sesión o si falla.
+  /// `screen` dice desde dónde se mandó (p. ej. `onboarding:paso-2`); `context` agrega datos
+  /// útiles y no sensibles (id del trabajo de la IA, paso del planificador).
+  static Future<void> sendComment({
+    required String message,
+    required String category,
+    required String screen,
+    Map<String, String>? context,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('Inicia sesión para enviar comentarios.');
+    String? browser, viewport, language;
+    try {
+      browser = describeBrowser(web.window.navigator.userAgent);
+      viewport = '${web.window.innerWidth}x${web.window.innerHeight}';
+      language = web.window.navigator.language;
+    } catch (_) {}
+    await FirebaseFirestore.instance.collection(commentsCollection).add(buildComment(
+          uid: user.uid,
+          message: message,
+          category: category,
+          screen: screen,
+          browser: browser,
+          viewport: viewport,
+          language: language,
+          context: context,
+        ));
+  }
 
   // ---------------------------------------------------------------------------
   // Cola y envío

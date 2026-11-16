@@ -306,3 +306,18 @@ exports.pushTick = onSchedule(
     }
   }
 );
+
+// ---------------------------------------------------------------------------
+// "Enviar comentarios": cada comentario nuevo se manda por correo al equipo.
+// Ver functions/feedback.js (destinatario en private_config/feedback y extensión Trigger Email).
+// ---------------------------------------------------------------------------
+const feedback = require('./feedback');
+
+exports.feedbackEmail = onDocumentCreated(
+  { document: 'app_feedback/{feedbackId}', region: 'us-central1', memory: '256MiB', maxInstances: 5 },
+  async (event) => {
+    if (!event.data) return;
+    const r = await feedback.handleFeedback(admin.firestore(), event.data, event.params.feedbackId);
+    console.log('[feedback]', event.params.feedbackId, r);
+  }
+);

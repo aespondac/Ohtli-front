@@ -19,6 +19,7 @@ import '../places/places_page.dart';
 import '../../services/profile_directory.dart';
 import '../../services/friend_requests.dart';
 import '../../widgets/ohtli_ui.dart';
+import '../../widgets/feedback_dialog.dart';
 import '../../widgets/phone_verification_field.dart';
 import '../../widgets/two_factor_card.dart';
 
@@ -759,6 +760,14 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                             color: OhtliColors.subtleText,
                           ),
                         ),
+                      ),
+                      const SizedBox(width: 4),
+                      FeedbackButton(
+                        compact: true,
+                        screen: 'onboarding',
+                        contextBuilder: () => {
+                          'paso': '${_currentStep + 1} de $_totalSteps · ${_stepMeta[_currentStep]["label"]}',
+                        },
                       ),
                     ],
                   ),

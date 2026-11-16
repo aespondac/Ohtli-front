@@ -18,6 +18,7 @@ import '../../services/user_private_data.dart';
 import '../../services/feedback_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_sidebar.dart';
+import '../../widgets/feedback_dialog.dart';
 import '../../widgets/ohtli_account_switcher.dart';
 import '../../widgets/image_cropper_dialog.dart';
 import '../../widgets/address_picker_widget.dart' as address_picker;
@@ -1838,6 +1839,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           section: AccountSection.preferences,
           onTap: () => _openSection(AccountSection.preferences),
         ),
+        _SettingsItem(
+          icon: Icons.rate_review_outlined,
+          title: 'Enviar comentarios',
+          subtitle: 'Cuéntanos qué mejorar o qué falló',
+          opensDialog: true,
+          onTap: () => showFeedbackDialog(context, screen: 'mi_cuenta'),
+        ),
       ];
 
   List<_SettingsItem> _adminItems(int pending) => [
@@ -1972,7 +1980,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                       ),
                     ),
                   ),
-                  if (item.section == null)
+                  if (item.section == null && !item.opensDialog)
                     Icon(Icons.open_in_new_rounded, size: 15, color: OhtliColors.subtleText),
                 ],
               ),
@@ -3590,11 +3598,15 @@ class _SettingsItem {
   /// Sección que abre (null si abre otra pantalla, como las de administración).
   final AccountSection? section;
 
+  /// Abre un diálogo en la misma pantalla (sin el ícono de "abre otra pantalla").
+  final bool opensDialog;
+
   const _SettingsItem({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
     this.section,
+    this.opensDialog = false,
   });
 }

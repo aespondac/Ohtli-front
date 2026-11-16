@@ -439,6 +439,34 @@ service cloud.firestore {
         resource.data.get('email', '') == request.auth.token.email;
     }
 
+    // Comentarios de "Enviar comentarios" (lib/widgets/feedback_dialog.dart). Cualquiera con
+    // sesión crea el suyo; nadie los lee ni los cambia desde la app (ni los propios): la Cloud
+    // Function feedbackEmail los manda por correo con el Admin SDK. Ver functions/feedback.js.
+    match /app_feedback/{feedbackId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'message', 'category', 'screen', 'appVersion',
+             'browser', 'viewport', 'language', 'context', 'createdAt'])
+        && request.resource.data.message is string
+        && request.resource.data.message.size() >= 3
+        && request.resource.data.message.size() <= 2000
+        && request.resource.data.category in ['idea', 'bug', 'other']
+        && request.resource.data.screen is string
+        && request.resource.data.screen.size() <= 80
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.size() <= 20
+        && request.resource.data.get('browser', '') is string
+        && request.resource.data.get('browser', '').size() <= 80
+        && request.resource.data.get('viewport', '') is string
+        && request.resource.data.get('viewport', '').size() <= 20
+        && request.resource.data.get('language', '') is string
+        && request.resource.data.get('language', '').size() <= 20
+        && request.resource.data.get('context', {}) is map
+        && request.resource.data.get('context', {}).size() <= 8
+        && request.resource.data.createdAt == request.time;
+      allow read, update, delete: if false;
+    }
+
     // Titles Collection
     match /titles/{titleId} {
       allow read: if true;
