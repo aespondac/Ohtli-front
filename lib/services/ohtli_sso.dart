@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../utils/web_helpers.dart';
+import 'saved_accounts.dart';
 
 /// SSO entre subdominios: una sola sesión de Ohtli para ohtli.quest y lab.ohtli.quest.
 ///
@@ -77,7 +78,7 @@ class OhtliSso {
       if (response.statusCode != 200) throw StateError('HTTP ${response.statusCode}');
       final token = (jsonDecode(response.body.isEmpty ? '{}' : response.body) as Map)['token'];
       if (token is! String || token.isEmpty) return false;
-      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      await FirebaseAuth.instance.setPersistence(SavedAccounts.rememberedPersistence);
       await FirebaseAuth.instance.signInWithCustomToken(token);
       _clearAttempt();
       _setPaused(false);

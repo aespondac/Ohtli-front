@@ -46,9 +46,9 @@ enum SwitchAccountResult { switched, expired, failed }
 /// Firebase Auth tiene una sola sesión activa. Para cambiar sin volver a escribir
 /// la contraseña, al recordar una cuenta se guarda el estado de su sesión tal como
 /// lo persiste el propio SDK (`user.toJSON()`: uid, perfil y tokens). Cambiar de
-/// cuenta = poner ese estado como la sesión guardada de la app (localStorage, donde
-/// la guarda `Persistence.LOCAL`) y recargar: al
-/// arrancar, Firebase la carga y la valida con App Check como cualquier sesión.
+/// cuenta = poner ese estado como la sesión guardada de la app y recargar: al
+/// arrancar, Firebase la carga, la pasa a IndexedDB ([rememberedPersistence]) y la
+/// valida con App Check como cualquier sesión.
 ///
 /// Por qué no se usan apps de Firebase separadas por cuenta: App Check es
 /// obligatorio para Auth en este proyecto y esas apps no tienen App Check, así que
@@ -65,6 +65,13 @@ class SavedAccounts {
   static const String _pendingSwitchKey = 'ohtli_switch_target';
   static const int maxAccounts = 5;
   static const String _logKey = 'ohtli_accounts_log';
+
+  /// Dónde se guarda en web una sesión "recordada": IndexedDB, que es la que el SDK
+  /// elige al arrancar (busca en IndexedDB, luego localStorage y sessionStorage, y mueve
+  /// a IndexedDB lo que encuentre). No usar `Persistence.LOCAL` (localStorage): cada
+  /// pestaña nueva movería la sesión de vuelta a IndexedDB borrándola de localStorage, y
+  /// las pestañas abiertas verían ese borrado como un cierre de sesión.
+  static const Persistence rememberedPersistence = Persistence.INDEXED_DB;
 
   // Persistencia del SDK de Firebase Auth (IndexedDB).
   static const String _dbName = 'firebaseLocalStorageDb';
@@ -210,9 +217,11 @@ class SavedAccounts {
 
   static JSObject _store(JSObject db, JSObject tx) => tx.callMethod<JSObject>('objectStore'.toJS, _dbStore.toJS);
 
-  /// Deja [blob] como la sesión guardada de la app principal. `Persistence.LOCAL`
-  /// en web es localStorage, que es lo primero que revisa el SDK al arrancar; las
-  /// copias en IndexedDB o sessionStorage se borran para que no compitan.
+  /// Deja [blob] como la sesión guardada de la app principal, para la recarga que sigue.
+  /// Se escribe en localStorage y se borran las copias de IndexedDB y sessionStorage:
+  /// al arrancar, el SDK no encuentra nada en IndexedDB, la toma de localStorage y él
+  /// mismo la pasa a IndexedDB con su formato. Las otras pestañas (en IndexedDB) no
+  /// escuchan localStorage, así que esta escritura no las toca.
   static Future<void> _writeDefaultSession(Map<String, dynamic> blob) async {
     final key = _defaultUserKey();
     web.window.localStorage.setItem(key, jsonEncode(blob));
@@ -343,7 +352,7 @@ class SavedAccounts {
         }
       }
 
-      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+      await FirebaseAuth.instance.setPersistence(rememberedPersistence);
       // Cerrar la sesión local evita que el SDK sobrescriba lo que vamos a escribir
       // (no revoca nada en el servidor: la sesión guardada de esta cuenta sigue valiendo).
       await FirebaseAuth.instance.signOut();
