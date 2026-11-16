@@ -10,6 +10,11 @@ import 'package:http/http.dart' as http;
 import '../../theme/colors.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
 import '../../utils/friendly_errors.dart';
+import '../../models/poi_model.dart';
+import '../../services/saved_places.dart';
+import '../../theme/cdmx_photos.dart';
+import '../../widgets/address_picker_widget.dart';
+import '../places/places_page.dart';
 
 class OnboardingWizardPage extends StatefulWidget {
   final VoidCallback onCompleted;
@@ -148,7 +153,7 @@ class OnboardingWizardPage extends StatefulWidget {
 }
 
 class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
-  static const int _totalSteps = 5;
+  static const int _totalSteps = 7;
   int _currentStep = 0;
   bool _isSynthesizing = false;
   String _synthesisMessage = "El motor Yollotl está alineando tus 4 ejes ontológicos...";
@@ -168,10 +173,22 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   // Paso 4: Ritmo, Movilidad, Presupuesto y Accesibilidad
   String _travelPace = "moderado";
   String _transportPref = "caminata";
-  String _budgetTier = "medio";
   String _accessibilityNeeds = "estandar";
 
-  // Paso 5: Bio / Manifiesto libre
+  // Paso 4: gasto promedio por salida (estimado con las respuestas; la persona lo ajusta)
+  double? _avgBudgetOverride;
+
+  // Paso 5: primeros lugares (se guardan en "Mis lugares" y entran al vector de gustos)
+  final List<String> _seedPlaceIds = [];
+  List<Poi> _catalog = const [];
+  bool _catalogLoading = false;
+  String _placeQuery = '';
+
+  // Paso 6: direcciones (casa, hotel, oficina) para empezar rutas desde ahí
+  final List<Map<String, dynamic>> _newAddresses = [];
+  bool _addingAddress = false;
+
+  // Paso 7: Bio / Manifiesto libre
   final TextEditingController _bioController = TextEditingController();
 
   final List<Map<String, dynamic>> _culturalOptions = [
@@ -249,14 +266,19 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           if (profile['transport_preference'] is String) {
             _transportPref = profile['transport_preference'];
           }
-          if (profile['budget_tier'] is String) {
-            _budgetTier = profile['budget_tier'];
-          }
           if (profile['accessibility_needs'] is String) {
             _accessibilityNeeds = profile['accessibility_needs'];
           }
           if (profile['free_bio'] is String) {
             _bioController.text = profile['free_bio'];
+          }
+          if (profile['avg_budget_mxn'] is num) {
+            _avgBudgetOverride = (profile['avg_budget_mxn'] as num).toDouble();
+          }
+          if (profile['seed_poi_ids'] is List) {
+            _seedPlaceIds
+              ..clear()
+              ..addAll((profile['seed_poi_ids'] as List).map((e) => e.toString()));
           }
         });
       }
@@ -341,11 +363,21 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       "discovery_style": _discoveryStyle,
       "preferred_time_window": _preferredTimeWindow,
       "travel_pace": _travelPace,
-      "budget_tier": _budgetTier,
+      "budget_tier": _budgetTierFor(_avgBudget),
+      "avg_budget_mxn": _avgBudget,
+      "seed_poi_ids": List<String>.from(_seedPlaceIds),
       "transport_preference": _transportPref,
       "accessibility_needs": _accessibilityNeeds,
       "free_bio": _bioController.text.trim(),
     };
+
+    // Lugares y direcciones primero: no dependen del motor y no deben perderse si este falla
+    try {
+      await SavedPlaces.addAll(_seedPlaceIds);
+    } catch (e) {
+      debugPrint('[onboarding] no se pudieron guardar los lugares: $e');
+    }
+    await _saveNewAddresses(user.uid);
 
     try {
       final vector = await OnboardingWizardPage.synthesizeAndSaveProfile(
@@ -386,6 +418,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     {"label": "Sabores", "icon": Icons.restaurant_outlined},
     {"label": "Social", "icon": Icons.groups_outlined},
     {"label": "Ritmo", "icon": Icons.directions_walk_rounded},
+    {"label": "Lugares", "icon": Icons.bookmark_add_outlined},
+    {"label": "Direcciones", "icon": Icons.home_work_outlined},
     {"label": "Manifiesto", "icon": Icons.edit_note_rounded},
   ];
 
@@ -393,6 +427,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   void _goToStep(int step) {
     if (step == _currentStep) return;
+    if (step == 4) _ensureCatalog();
     setState(() => _currentStep = step);
     if (_stepScrollController.hasClients) _stepScrollController.jumpTo(0);
   }
@@ -837,6 +872,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       case 3:
         return _buildPaceMobilityStep();
       case 4:
+        return _buildSeedPlacesStep(width);
+      case 5:
+        return _buildAddressesStep();
+      case 6:
         return _buildBioStep(width);
       default:
         return const SizedBox.shrink();
@@ -1094,7 +1133,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       children: [
         _buildStepHeader(
           eyebrow: "Eje 4 · Entorno y filtros",
-          title: "Entorno, Ritmo y Presupuesto",
+          title: "Ritmo, traslados y presupuesto",
           description:
               "La caminabilidad alimenta el Eje 4 de tu vector, mientras que el presupuesto y la accesibilidad operan como restricciones exactas en DEAP y OR-Tools.",
         ),
@@ -1125,17 +1164,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           ],
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("Sensibilidad presupuestal (filtro Knapsack)"),
-        const SizedBox(height: 12),
-        _buildChoiceGroup(
-          value: _budgetTier,
-          onChanged: (v) => _budgetTier = v,
-          options: const [
-            {"value": "economico", "label": "Económico (<\$250)", "icon": Icons.monetization_on_outlined},
-            {"value": "medio", "label": "Medio (<\$500)", "icon": Icons.account_balance_wallet_outlined},
-            {"value": "alto", "label": "Holgado", "icon": Icons.diamond_outlined},
-          ],
-        ),
+        _buildBudgetEstimator(),
         const SizedBox(height: 26),
         _buildGroupLabel("Requerimiento de accesibilidad motriz"),
         const SizedBox(height: 12),
@@ -1146,6 +1175,418 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             {"value": "estandar", "label": "Peatonal Estándar", "icon": Icons.directions_walk_outlined},
             {"value": "accesibilidad_universal", "label": "Accesibilidad Universal / Rampas", "icon": Icons.accessible_outlined},
           ],
+        ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // Presupuesto promedio estimado
+  // ==========================================================
+
+  /// Costo típico por persona (MXN) de comer en cada tipo de lugar.
+  static const Map<String, double> _foodCost = {
+    "cafeterias_especialidad": 140,
+    "cantinas_tradicionales": 320,
+    "mercados_populares": 160,
+    "comida_callejera": 110,
+    "alta_gastronomia": 950,
+    "pulquerias": 170,
+    "panaderias_clasicas": 90,
+  };
+
+  /// Entrada típica de cada vocación cultural (muchos lugares son gratis).
+  static const Map<String, double> _entryCost = {
+    "muralismo": 40,
+    "arqueologia": 95,
+    "museos_arte": 90,
+    "arquitectura_virreinal": 0,
+    "parques_bosques": 0,
+    "teatros_foros": 250,
+    "fotografia_urbana": 30,
+    "librerias_cafes": 0,
+    "mercados_artesanias": 0,
+    "musica_conciertos": 280,
+  };
+
+  static const Map<String, double> _transportCost = {
+    "caminata": 0,
+    "bicicleta": 35,
+    "transporte_publico": 25,
+    "mixto": 90,
+    "auto": 260,
+  };
+
+  static const Map<String, double> _paceFactor = {"relajado": 0.85, "moderado": 1.0, "intensivo": 1.25};
+
+  double _avg(Iterable<String> ids, Map<String, double> table, double fallback) {
+    final values = ids.where(table.containsKey).map((id) => table[id]!).toList();
+    if (values.isEmpty) return fallback;
+    return values.reduce((a, b) => a + b) / values.length;
+  }
+
+  /// (comida, entradas, traslados, total) por salida, redondeado a 50.
+  ({double food, double entries, double transport, double total}) get _budgetEstimate {
+    final pace = _paceFactor[_travelPace] ?? 1.0;
+    final food = _avg(_selectedCulinary, _foodCost, 200) * (_travelPace == 'intensivo' ? 1.5 : 1.0);
+    final entries = _avg(_selectedCultural, _entryCost, 60) * 2; // ~2 recintos por salida
+    final transport = _transportCost[_transportPref] ?? 40;
+    double round50(double v) => (v / 50).round() * 50.0;
+    final total = round50((food + entries + transport) * pace).clamp(150.0, 3000.0);
+    return (food: round50(food), entries: round50(entries), transport: round50(transport), total: total);
+  }
+
+  double get _avgBudget => _avgBudgetOverride ?? _budgetEstimate.total;
+
+  String _budgetTierFor(double amount) => amount < 300 ? "economico" : (amount <= 650 ? "medio" : "alto");
+
+  String _money(double v) => "\$${v.round()}";
+
+  Widget _buildBudgetEstimator() {
+    final est = _budgetEstimate;
+    final value = _avgBudget.clamp(150.0, 3000.0);
+    final adjusted = _avgBudgetOverride != null && (_avgBudgetOverride! - est.total).abs() >= 1;
+    Widget part(IconData icon, String label, double amount) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: OhtliColors.subtleText),
+            const SizedBox(width: 6),
+            Text("$label ${amount <= 0 ? 'gratis' : '~${_money(amount)}'}",
+                style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+          ],
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildGroupLabel("¿Cuánto gastas normalmente en una salida?"),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: OhtliColors.innerCardBg,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: OhtliColors.cardBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _money(value),
+                    style: GoogleFonts.outfit(fontSize: 34, fontWeight: FontWeight.w800, color: OhtliColors.onyx, height: 1),
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text("MXN por persona", style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText)),
+                  ),
+                  const Spacer(),
+                  if (adjusted)
+                    TextButton(
+                      onPressed: () => setState(() => _avgBudgetOverride = null),
+                      child: Text("Usar estimado (${_money(est.total)})",
+                          style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.accentText)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                adjusted
+                    ? "Lo ajustaste tú. Lo usaremos como tope al armar tus rutas."
+                    : "Lo estimamos con lo que elegiste. Muévelo si gastas más o menos.",
+                style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4),
+              ),
+              Slider(
+                value: value,
+                min: 150,
+                max: 3000,
+                divisions: 57,
+                label: _money(value),
+                activeColor: OhtliColors.stormyTeal,
+                onChanged: (v) => setState(() => _avgBudgetOverride = v),
+              ),
+              Wrap(
+                spacing: 16,
+                runSpacing: 6,
+                children: [
+                  part(Icons.restaurant_outlined, "Comida", est.food),
+                  part(Icons.confirmation_number_outlined, "Entradas", est.entries),
+                  part(Icons.directions_transit_outlined, "Traslados", est.transport),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // Primeros lugares
+  // ==========================================================
+
+  /// Categorías del catálogo que corresponden a cada respuesta.
+  static const Map<String, List<String>> _interestCategories = {
+    "muralismo": ["artwork", "arts_centre", "museum"],
+    "arqueologia": ["arqueologia", "museum", "monument"],
+    "museos_arte": ["museum", "gallery"],
+    "arquitectura_virreinal": ["place_of_worship", "monument", "attraction"],
+    "parques_bosques": ["park", "garden", "nature_reserve"],
+    "teatros_foros": ["theatre", "cinema", "arts_centre"],
+    "fotografia_urbana": ["viewpoint", "attraction", "monument"],
+    "librerias_cafes": ["books", "library", "cafe"],
+    "mercados_artesanias": ["marketplace"],
+    "musica_conciertos": ["bar", "pub", "nightclub"],
+    "cafeterias_especialidad": ["cafe", "coffee"],
+    "cantinas_tradicionales": ["cantina", "bar"],
+    "mercados_populares": ["marketplace"],
+    "comida_callejera": ["fast_food"],
+    "alta_gastronomia": ["restaurant"],
+    "pulquerias": ["pulqueria"],
+    "panaderias_clasicas": ["bakery", "pastry"],
+  };
+
+  Future<void> _ensureCatalog() async {
+    if (_catalog.isNotEmpty || _catalogLoading) return;
+    setState(() => _catalogLoading = true);
+    try {
+      final pois = await PlacesPage.loadCatalog();
+      if (mounted) setState(() => _catalog = pois.where((p) => p.isValidCulturalPlace).toList());
+    } catch (e) {
+      debugPrint('[onboarding] catálogo no disponible: $e');
+    } finally {
+      if (mounted) setState(() => _catalogLoading = false);
+    }
+  }
+
+  static String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp('[áà]'), 'a')
+      .replaceAll(RegExp('[éè]'), 'e')
+      .replaceAll(RegExp('[íì]'), 'i')
+      .replaceAll(RegExp('[óò]'), 'o')
+      .replaceAll(RegExp('[úùü]'), 'u');
+
+  /// Sugerencias según las respuestas, alternando categorías para que haya variedad.
+  List<Poi> get _placeSuggestions {
+    final query = _norm(_placeQuery.trim());
+    if (query.isNotEmpty) {
+      return _catalog.where((p) => _norm(p.name).contains(query)).take(18).toList();
+    }
+    final cats = <String>[];
+    for (final id in [..._selectedCultural, ..._selectedCulinary]) {
+      for (final c in _interestCategories[id] ?? const <String>[]) {
+        if (!cats.contains(c)) cats.add(c);
+      }
+    }
+    if (cats.isEmpty) cats.addAll(["museum", "cafe", "park", "restaurant"]);
+    final byCat = <String, List<Poi>>{
+      for (final c in cats) c: _catalog.where((p) => p.category == c && p.imageUrl.isNotEmpty).toList(),
+    };
+    final out = <Poi>[];
+    var round = 0;
+    while (out.length < 18 && byCat.values.any((l) => l.length > round)) {
+      for (final c in cats) {
+        final list = byCat[c]!;
+        if (round < list.length && !out.contains(list[round])) out.add(list[round]);
+        if (out.length >= 18) break;
+      }
+      round++;
+    }
+    return out;
+  }
+
+  Widget _buildSeedPlacesStep(double width) {
+    final suggestions = _placeSuggestions;
+    final columns = width < 420 ? 2 : (width < 700 ? 3 : 4);
+    const spacing = 10.0;
+    final tileWidth = (width - spacing * (columns - 1)) / columns;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepHeader(
+          eyebrow: "Tus primeros lugares",
+          title: "¿Cuáles te gustaría visitar?",
+          description:
+              "Guárdalos en Mis lugares. Además, nos ayudan a entender mejor tu gusto: tus recomendaciones se parecerán a ellos.",
+        ),
+        const SizedBox(height: 18),
+        TextField(
+          onChanged: (v) => setState(() => _placeQuery = v),
+          style: GoogleFonts.inter(color: OhtliColors.onyx),
+          decoration: InputDecoration(
+            hintText: "Busca un lugar que ya conozcas o quieras conocer",
+            hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14),
+            prefixIcon: Icon(Icons.search_rounded, color: OhtliColors.accentText),
+            filled: true,
+            fillColor: OhtliColors.innerCardBg,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: OhtliColors.cardBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: OhtliColors.cardBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: OhtliColors.accentText, width: 1.6),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _buildGroupLabel(
+          _placeQuery.trim().isEmpty ? "Sugeridos para ti" : "Resultados",
+          trailing: _buildSelectionCounter(_seedPlaceIds.length),
+        ),
+        const SizedBox(height: 12),
+        if (_catalogLoading && _catalog.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal)),
+          )
+        else if (suggestions.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              _catalog.isEmpty
+                  ? "No pudimos cargar los lugares. Puedes seguir y guardarlos después desde Lugares."
+                  : "No encontramos lugares con ese nombre.",
+              style: GoogleFonts.inter(color: OhtliColors.subtleText),
+            ),
+          )
+        else
+          Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: [
+              for (final poi in suggestions)
+                SizedBox(
+                  width: tileWidth,
+                  child: _SeedPlaceTile(
+                    poi: poi,
+                    selected: _seedPlaceIds.contains(poi.poiId),
+                    onTap: () => setState(() {
+                      if (!_seedPlaceIds.remove(poi.poiId)) _seedPlaceIds.add(poi.poiId);
+                    }),
+                  ),
+                ),
+            ],
+          ),
+        const SizedBox(height: 12),
+        Text(
+          "Opcional. Elige 3 o más para que tus recomendaciones se ajusten mejor.",
+          style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================================
+  // Direcciones
+  // ==========================================================
+
+  Future<void> _saveNewAddresses(String uid) async {
+    if (_newAddresses.isEmpty || widget.sandbox) return;
+    try {
+      final data = await UserPrivateData.get(uid);
+      final existing = (data['addresses'] is List)
+          ? (data['addresses'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[];
+      await UserPrivateData.save(uid, {'addresses': [...existing, ..._newAddresses]});
+    } catch (e) {
+      debugPrint('[onboarding] no se pudieron guardar las direcciones: $e');
+    }
+  }
+
+  Widget _buildAddressesStep() {
+    if (_addingAddress) {
+      return AddressPickerWidget(
+        existingNames: _newAddresses
+            .map((a) => (a['customName'] as String?) ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList(),
+        onCancel: () => setState(() => _addingAddress = false),
+        onSave: (address) => setState(() {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          _newAddresses.add({
+            ...address,
+            'id': 'addr_${now}_${address['street'].hashCode}',
+            'updatedAt': now,
+          });
+          _addingAddress = false;
+        }),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepHeader(
+          eyebrow: "Tus puntos de partida",
+          title: "¿Desde dónde sueles salir?",
+          description:
+              "Guarda tu casa, tu hotel o la oficina para empezar tus rutas desde ahí con un toque. Puedes cambiarlas después en Cuenta.",
+        ),
+        const SizedBox(height: 20),
+        for (final a in _newAddresses)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+            decoration: BoxDecoration(
+              color: OhtliColors.innerCardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: OhtliColors.cardBorder),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.place_outlined, color: OhtliColors.accentText),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ((a['customName'] as String?)?.isNotEmpty ?? false) ? a['customName'] : (a['category'] ?? 'Dirección'),
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                      ),
+                      Text(
+                        "${a['street'] ?? ''}, ${a['suburb'] ?? ''}",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Quitar dirección',
+                  onPressed: () => setState(() => _newAddresses.remove(a)),
+                  icon: Icon(Icons.close_rounded, size: 18, color: OhtliColors.subtleText),
+                ),
+              ],
+            ),
+          ),
+        SizedBox(
+          height: 50,
+          child: OutlinedButton.icon(
+            onPressed: () => setState(() => _addingAddress = true),
+            icon: const Icon(Icons.add_location_alt_outlined),
+            label: Text(_newAddresses.isEmpty ? "Agregar una dirección" : "Agregar otra"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: OhtliColors.accentText,
+              side: BorderSide(color: OhtliColors.accentText.withValues(alpha: 0.5)),
+              shape: const StadiumBorder(),
+              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          "Opcional. Si prefieres, sigue sin agregar ninguna.",
+          style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText),
         ),
       ],
     );
@@ -1277,6 +1718,99 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           }),
         ),
       ],
+    );
+  }
+}
+
+/// Lugar del catálogo con foto, para elegir los primeros lugares.
+class _SeedPlaceTile extends StatelessWidget {
+  const _SeedPlaceTile({required this.poi, required this.selected, required this.onTap});
+
+  final Poi poi;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: poi.name,
+      child: Material(
+        color: OhtliColors.innerCardBg,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? OhtliColors.accentText : OhtliColors.cardBorder,
+                width: selected ? 2 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(color: OhtliColors.stormyTeal.withValues(alpha: 0.2)),
+                      LayoutBuilder(
+                        builder: (context, c) => Image.network(
+                          CdmxPhotos.sized(poi.imageUrl, c.maxWidth, MediaQuery.devicePixelRatioOf(context)),
+                          fit: BoxFit.cover,
+                          excludeFromSemantics: true,
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: selected ? OhtliColors.stormyTeal : Colors.black.withValues(alpha: 0.45),
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          child: Icon(selected ? Icons.check_rounded : Icons.add_rounded, size: 17, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        poi.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                      ),
+                      Text(
+                        poi.categoryDisplay,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

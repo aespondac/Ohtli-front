@@ -95,6 +95,18 @@ class SavedPlaces {
     return saved;
   }
 
+  /// Agrega varios lugares sin depender de que la lista ya esté cargada (p. ej. al terminar el
+  /// cuestionario de gustos): se suman en Firestore a los que ya hubiera.
+  static Future<void> addAll(Iterable<String> poiIds) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final list = poiIds.where((id) => id.isNotEmpty).toSet().toList();
+    if (uid == null || list.isEmpty) return;
+    await _ref(uid).set({
+      'ids': FieldValue.arrayUnion(list),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   static Future<void> _write(String uid, List<String> list) => _ref(uid).set({
         'ids': list,
         'updatedAt': FieldValue.serverTimestamp(),
