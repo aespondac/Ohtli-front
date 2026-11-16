@@ -111,6 +111,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   // Medio de traslado para el motor (kPlannerModes). Arranca con la preferencia del perfil.
   String _selectedTransportMode = 'walking';
   bool _transportModeTouched = false;
+
+  /// La persona ya movió el presupuesto: el de su perfil ya no lo reemplaza al cargar.
+  bool _budgetTouched = false;
   DateTime _selectedTravelDate = DateTime.now().add(const Duration(days: 1));
 
   String _formatDate(DateTime d) {
@@ -438,6 +441,16 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         if (profile is Map && !_transportModeTouched && mounted) {
           setState(() => _selectedTransportMode =
               plannerModeFromPreference(profile['transport_preference']?.toString()));
+        }
+        // Gasto promedio por salida que estimó en el cuestionario de gustos
+        final avgBudget = profile is Map ? profile['avg_budget_mxn'] : null;
+        if (avgBudget is num && avgBudget > 0 && !_budgetTouched && mounted) {
+          // Al paso del deslizador (150–2000, de 50 en 50)
+          final value = (150.0 + ((avgBudget.toDouble() - 150.0) / 50).round() * 50.0).clamp(150.0, 2000.0);
+          setState(() {
+            _budgetMxn = value;
+            _budgetController.text = value.toStringAsFixed(0);
+          });
         }
         final list = data['addresses'];
         if (list is List) {
@@ -1841,7 +1854,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                             decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12)),
                             onChanged: (v) {
                               final value = double.tryParse(v);
-                              if (value != null && value > 0) setState(() => _budgetMxn = value);
+                              if (value != null && value > 0) {
+                                setState(() {
+                                  _budgetMxn = value;
+                                  _budgetTouched = true;
+                                });
+                              }
                             },
                           ),
                         ),
@@ -1867,6 +1885,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   divisions: 37,
                   onChanged: (val) => setState(() {
                     _budgetMxn = val;
+                    _budgetTouched = true;
                     _budgetController.text = val.toStringAsFixed(0);
                   }),
                 ),
