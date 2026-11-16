@@ -272,6 +272,10 @@ abstract class TripSection {
         return TextImageSection.fromMap(data);
       case 'transfer':
         return TransferSection.fromMap(data);
+      case 'split':
+        return SplitSection.fromMap(data);
+      case 'proposal':
+        return ProposalSection.fromMap(data);
       default:
         // Tipos de versiones futuras: se conservan tal cual para no perderlos al guardar.
         return UnknownSection(data);
@@ -322,6 +326,13 @@ class PlaceSection extends TripSection {
   /// ('nuevo', 'mejora' o 'correccion', ver [kReleaseTags]).
   final String? changeTag;
 
+  /// Rama del grupo a la que pertenece la parada cuando se separan (ver [SplitSection]).
+  /// Sin rama, la parada es de todos.
+  final String? branchId;
+
+  /// Punto de reencuentro: aquí se juntan las ramas que se reencuentran.
+  final bool meetup;
+
   bool get isLinkedToCatalog => poiId != null && poiSource == kPlaceSourceCatalog;
   bool get isSuggestion => poiId != null && poiSource == kPlaceSourceSuggestion;
   bool get isGeneric => !isLinkedToCatalog && !isSuggestion;
@@ -347,6 +358,8 @@ class PlaceSection extends TripSection {
     this.realCost,
     this.coverUrl,
     this.changeTag,
+    this.branchId,
+    this.meetup = false,
   }) : super(type: 'place');
 
   /// Copia la parada conservando todos los campos que no se pasen
@@ -379,6 +392,9 @@ class PlaceSection extends TripSection {
     String? coverUrl,
     bool clearCoverUrl = false,
     String? changeTag,
+    String? branchId,
+    bool clearBranch = false,
+    bool? meetup,
   }) {
     return PlaceSection(
       id: id,
@@ -401,6 +417,8 @@ class PlaceSection extends TripSection {
       realCost: clearRealCost ? null : (realCost ?? this.realCost),
       coverUrl: clearCoverUrl ? null : (coverUrl ?? this.coverUrl),
       changeTag: changeTag ?? this.changeTag,
+      branchId: clearBranch ? null : (branchId ?? this.branchId),
+      meetup: meetup ?? this.meetup,
     );
   }
 
@@ -434,6 +452,8 @@ class PlaceSection extends TripSection {
       realCost: (data['realCost'] as num?)?.toDouble(),
       coverUrl: (data['coverUrl'] as String?)?.trim().isEmpty == true ? null : data['coverUrl'] as String?,
       changeTag: kReleaseTags.containsKey(data['changeTag']) ? data['changeTag'] as String : null,
+      branchId: (data['branchId'] as String?)?.isEmpty == true ? null : data['branchId'] as String?,
+      meetup: data['meetup'] == true,
     );
   }
 
@@ -462,6 +482,8 @@ class PlaceSection extends TripSection {
       if (realCost != null) 'realCost': realCost,
       if (coverUrl != null) 'coverUrl': coverUrl,
       if (changeTag != null) 'changeTag': changeTag,
+      if (branchId != null) 'branchId': branchId,
+      if (meetup) 'meetup': true,
     };
   }
 }
@@ -539,6 +561,9 @@ class TransferSection extends TripSection {
   /// false si los escribió la persona.
   final bool isEstimated;
 
+  /// Rama del grupo por la que va este traslado (ver [SplitSection]). Sin rama, es de todos.
+  final String? branchId;
+
   TransferSection({
     required super.id,
     this.mode = 'walking',
@@ -548,6 +573,7 @@ class TransferSection extends TripSection {
     this.cost = 0.0,
     this.currency = 'MXN',
     this.isEstimated = false,
+    this.branchId,
   }) : super(type: 'transfer');
 
   TransferSection copyWith({
@@ -560,6 +586,7 @@ class TransferSection extends TripSection {
     bool? isEstimated,
     bool clearDuration = false,
     bool clearDistance = false,
+    String? branchId,
   }) {
     return TransferSection(
       id: id,
@@ -570,6 +597,7 @@ class TransferSection extends TripSection {
       cost: cost ?? this.cost,
       currency: currency ?? this.currency,
       isEstimated: isEstimated ?? this.isEstimated,
+      branchId: branchId ?? this.branchId,
     );
   }
 
@@ -583,6 +611,7 @@ class TransferSection extends TripSection {
       cost: (data['cost'] as num?)?.toDouble() ?? 0.0,
       currency: data['currency'] ?? 'MXN',
       isEstimated: data['isEstimated'] ?? false,
+      branchId: (data['branchId'] as String?)?.isEmpty == true ? null : data['branchId'] as String?,
     );
   }
 
@@ -598,8 +627,171 @@ class TransferSection extends TripSection {
       'cost': cost,
       'currency': currency,
       'isEstimated': isEstimated,
+      if (branchId != null) 'branchId': branchId,
     };
   }
+}
+
+/// Una rama del grupo cuando se separan: nombre, quiénes van y si se reencuentran.
+class TripBranch {
+  final String id;
+  final String name;
+  final List<String> memberIds;
+
+  /// false = esta rama termina en su última parada (no llega al reencuentro).
+  final bool rejoins;
+
+  const TripBranch({required this.id, required this.name, this.memberIds = const [], this.rejoins = true});
+
+  TripBranch copyWith({String? name, List<String>? memberIds, bool? rejoins}) => TripBranch(
+        id: id,
+        name: name ?? this.name,
+        memberIds: memberIds ?? this.memberIds,
+        rejoins: rejoins ?? this.rejoins,
+      );
+
+  factory TripBranch.fromMap(Map<String, dynamic> data) => TripBranch(
+        id: (data['id'] ?? '').toString(),
+        name: (data['name'] ?? '').toString(),
+        memberIds: ((data['memberIds'] as List?) ?? const []).map((e) => e.toString()).toList(),
+        rejoins: data['rejoins'] != false,
+      );
+
+  Map<String, dynamic> toMap() => {'id': id, 'name': name, 'memberIds': memberIds, 'rejoins': rejoins};
+}
+
+/// El grupo se separa: desde aquí, las paradas con `branchId` van por su rama. Una parada con
+/// `meetup` junta a las ramas que se reencuentran; las demás terminan en su última parada.
+class SplitSection extends TripSection {
+  final List<TripBranch> branches;
+
+  SplitSection({required super.id, this.branches = const []}) : super(type: 'split');
+
+  SplitSection copyWith({List<TripBranch>? branches}) => SplitSection(id: id, branches: branches ?? this.branches);
+
+  TripBranch? branch(String? id) {
+    for (final b in branches) {
+      if (b.id == id) return b;
+    }
+    return null;
+  }
+
+  factory SplitSection.fromMap(Map<String, dynamic> data) => SplitSection(
+        id: (data['id'] ?? '').toString(),
+        branches: [
+          for (final b in (data['branches'] as List?) ?? const [])
+            if (b is Map) TripBranch.fromMap(Map<String, dynamic>.from(b)),
+        ],
+      );
+
+  @override
+  Map<String, dynamic> toMap() => {'id': id, 'type': type, 'branches': [for (final b in branches) b.toMap()]};
+}
+
+/// Un lugar propuesto en una votación del grupo.
+class ProposalCandidate {
+  final String id;
+  final String title;
+  final String description;
+  final String photoUrl;
+  final double? lat;
+  final double? lng;
+  final double cost;
+  final String? poiId;
+  final String? poiSource;
+  final String proposedBy;
+  final String proposedByName;
+
+  const ProposalCandidate({
+    required this.id,
+    required this.title,
+    this.description = '',
+    this.photoUrl = '',
+    this.lat,
+    this.lng,
+    this.cost = 0,
+    this.poiId,
+    this.poiSource,
+    this.proposedBy = '',
+    this.proposedByName = '',
+  });
+
+  factory ProposalCandidate.fromMap(Map<String, dynamic> d) => ProposalCandidate(
+        id: (d['id'] ?? '').toString(),
+        title: (d['title'] ?? '').toString(),
+        description: (d['description'] ?? '').toString(),
+        photoUrl: (d['photoUrl'] ?? '').toString(),
+        lat: (d['lat'] as num?)?.toDouble(),
+        lng: (d['lng'] as num?)?.toDouble(),
+        cost: (d['cost'] as num?)?.toDouble() ?? 0,
+        poiId: d['poiId']?.toString(),
+        poiSource: d['poiSource']?.toString(),
+        proposedBy: (d['proposedBy'] ?? '').toString(),
+        proposedByName: (d['proposedByName'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'photoUrl': photoUrl,
+        'lat': ?lat,
+        'lng': ?lng,
+        'cost': cost,
+        'poiId': ?poiId,
+        'poiSource': ?poiSource,
+        'proposedBy': proposedBy,
+        'proposedByName': proposedByName,
+      };
+
+  /// La parada que queda si este lugar gana la votación.
+  PlaceSection toPlace(String sectionId, {String? branchId}) => PlaceSection(
+        id: sectionId,
+        title: title,
+        description: description,
+        rating: 0,
+        mainPhotoUrl: photoUrl,
+        secondaryPhotoUrls: const [],
+        cost: cost,
+        lat: lat,
+        lng: lng,
+        poiId: poiId,
+        poiSource: poiId != null ? (poiSource ?? kPlaceSourceCatalog) : null,
+        branchId: branchId,
+      );
+}
+
+/// Votación de lugares dentro del viaje: el grupo propone candidatos y vota cuál se queda.
+/// Los votos viven aparte (users/{dueño}/trips/{id}/votes/{bloque}) para que el guardado
+/// del contenido no los pise.
+class ProposalSection extends TripSection {
+  final String question;
+  final List<ProposalCandidate> candidates;
+  final String? branchId;
+
+  ProposalSection({required super.id, this.question = '', this.candidates = const [], this.branchId}) : super(type: 'proposal');
+
+  ProposalSection copyWith({String? question, List<ProposalCandidate>? candidates}) =>
+      ProposalSection(id: id, question: question ?? this.question, candidates: candidates ?? this.candidates, branchId: branchId);
+
+  factory ProposalSection.fromMap(Map<String, dynamic> data) => ProposalSection(
+        id: (data['id'] ?? '').toString(),
+        question: (data['question'] ?? '').toString(),
+        candidates: [
+          for (final c in (data['candidates'] as List?) ?? const [])
+            if (c is Map) ProposalCandidate.fromMap(Map<String, dynamic>.from(c)),
+        ],
+        branchId: (data['branchId'] as String?)?.isEmpty == true ? null : data['branchId'] as String?,
+      );
+
+  @override
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'type': type,
+        'question': question,
+        'candidates': [for (final c in candidates) c.toMap()],
+        'branchId': ?branchId,
+      };
 }
 
 /// Bloque de un tipo que esta versión de la app no conoce. Se guarda sin cambios.

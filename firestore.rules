@@ -50,6 +50,13 @@ service cloud.firestore {
         request.auth.uid in trip.get('surpriseTargetIds', [])
       );
     }
+    // Quien edita el viaje: el dueño o un coautor (votan en las propuestas de lugares).
+    function isTripEditor(ownerId, tripId) {
+      return request.auth != null && (
+        request.auth.uid == ownerId ||
+        request.auth.uid in get(/databases/$(database)/documents/users/$(ownerId)/trips/$(tripId)).data.get('coAuthorIds', [])
+      );
+    }
     // Viaje publicado y público: cualquiera puede leer su contenido.
     function isPublicTrip(ownerId, tripId) {
       let trip = get(/databases/$(database)/documents/users/$(ownerId)/trips/$(tripId)).data;
@@ -267,6 +274,17 @@ service cloud.firestore {
           allow update: if isTripMember(userId, tripId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid]);
           // Solo el dueño del viaje las borra (p. ej. al reemplazar el contenido del viaje).
+          allow delete: if request.auth != null && request.auth.uid == userId;
+        }
+
+        // Votos de una propuesta de lugares: un documento por propuesta, un campo por persona
+        // (el lugar que eligió). Votan el dueño y los coautores; cada quien solo su voto.
+        match /votes/{proposalId} {
+          allow read: if isTripMember(userId, tripId);
+          allow create: if isTripEditor(userId, tripId)
+            && request.resource.data.keys().hasOnly([request.auth.uid]);
+          allow update: if isTripEditor(userId, tripId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid]);
           allow delete: if request.auth != null && request.auth.uid == userId;
         }
       }
