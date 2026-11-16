@@ -44,6 +44,7 @@ import 'trip_sample.dart';
 import 'trip_traveler_tools.dart';
 import '../../config/admin.dart' show isSuperUser;
 import '../../utils/web_helpers.dart';
+import '../../services/feedback_service.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -555,9 +556,14 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   void _toggleVisited(String id) {
+    final wasVisited = _visited.contains(id);
     setState(() {
       if (!_visited.remove(id)) _visited.add(id);
     });
+    if (!wasVisited) {
+      final p = _sections.whereType<PlaceSection>().where((x) => x.id == id).firstOrNull;
+      if (p != null) FeedbackService.visited(_catalogPoiOf(p), tripId: widget.tripId);
+    }
     _saveVisited();
   }
 
@@ -569,6 +575,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   void _openDirectionsTo(PlaceSection p) {
+    FeedbackService.directions(_catalogPoiOf(p), surface: 'trip');
     final c = _coordsOf(p);
     final dest = c != null
         ? '${c.$1},${c.$2}'
@@ -1499,7 +1506,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   void _scrollSoon(String id) => WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(id));
 
+  /// poiId del catálogo de una parada (retroalimentación); null si es un lugar genérico.
+  String? _catalogPoiOf(PlaceSection p) => (!_isSample && p.isLinkedToCatalog) ? p.poiId : null;
+
   Future<void> _markArrival(PlaceSection p) async {
+    FeedbackService.visited(_catalogPoiOf(p), tripId: widget.tripId);
     final now = _hhmm(DateTime.now());
     setState(() => _visited.add(p.id));
     _saveVisited();
@@ -2283,6 +2294,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   /// Calificar la parada en curso desde el modo viaje.
   Future<void> _rateStop(PlaceSection p, int stars) async {
+    // 4 o 5 estrellas en el lugar mismo: le gustó (no se usa la baja como "no me interesa")
+    if (stars >= 4) FeedbackService.track('poi_like', poiId: _catalogPoiOf(p), tripId: widget.tripId, surface: 'trip');
     await _changeContent((l) => _updatePlace(l, p.id, (x) => x.copyWith(rating: stars)), done: '${p.title}: $stars ${stars == 1 ? 'estrella' : 'estrellas'}');
   }
 

@@ -37,6 +37,7 @@ import '../../services/poi_suggestion_service.dart';
 import '../../widgets/place_details_form.dart';
 import 'package:http/http.dart' as http;
 import '../../utils/web_helpers.dart';
+import '../../services/feedback_service.dart';
 
 class TripEditorPage extends StatefulWidget {
   final Trip trip;
@@ -61,6 +62,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
   List<ErrataEntry> _errataHistory = [];
   
   List<TripSection> _sections = [];
+
+  /// Paradas del catálogo (id de sección -> poiId) en la última versión guardada: al guardar se
+  /// comparan con las actuales para reportar qué se quitó, cambió o agregó (retroalimentación).
+  /// Se compara al guardar y no en cada clic para que "Deshacer" no cuente como cambio.
+  Map<String, String>? _feedbackBaseline;
+  bool _feedbackReorderSent = false;
   // Estado de las sugerencias de lugar usadas en este viaje (id → pending/approved/rejected)
   final Map<String, String> _suggestionStatus = {};
   bool _isLoadingContent = true;
@@ -281,6 +288,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
             _sections = cloudContent.sections;
             _isLoadingContent = false;
           });
+          _feedbackBaseline = _catalogStops(cloudContent.sections);
           _resetErrataBaseline();
         }
       } else {
@@ -676,6 +684,49 @@ class _TripEditorPageState extends State<TripEditorPage> {
     });
   }
 
+  static Map<String, String> _catalogStops(List<TripSection> sections) => {
+        for (final s in sections)
+          if (s is PlaceSection && s.isLinkedToCatalog && s.poiId!.isNotEmpty) s.id: s.poiId!,
+      };
+
+  /// Compara lo guardado antes con lo que se guarda ahora y manda los cambios de paradas.
+  void _reportStopChanges(List<TripSection> saved) {
+    if (_isNotes) return;
+    final now = _catalogStops(saved);
+    final before = _feedbackBaseline;
+    _feedbackBaseline = now;
+    if (before == null) return;
+    final recommended = widget.trip.recommendedPoiIds.toSet();
+    final tripId = widget.trip.id;
+    String origin(String poiId) => recommended.contains(poiId) ? 'engine' : 'manual';
+    final nowPois = now.values.toSet();
+    final beforePois = before.values.toSet();
+    final replacedTargets = <String>{};
+    before.forEach((secId, oldPoi) {
+      final newPoi = now[secId];
+      if (newPoi == oldPoi || nowPois.contains(oldPoi)) return; // sigue en el viaje (quizá en otra parada)
+      if (newPoi != null) {
+        FeedbackService.stopReplaced(oldPoi, newPoi, tripId: tripId, origin: origin(oldPoi));
+        replacedTargets.add(newPoi);
+      } else {
+        FeedbackService.stopRemoved(oldPoi, tripId: tripId, origin: origin(oldPoi));
+      }
+    });
+    for (final poi in nowPois.difference(beforePois)) {
+      // Volver a poner una recomendación (p. ej. tras deshacer) no es un lugar nuevo
+      if (replacedTargets.contains(poi) || recommended.contains(poi)) continue;
+      FeedbackService.stopAdded(poi, tripId: tripId);
+    }
+    if (!_feedbackReorderSent) {
+      final common = [for (final p in before.values) if (nowPois.contains(p)) p];
+      final commonNow = [for (final p in now.values) if (beforePois.contains(p)) p];
+      if (common.length > 1 && common.join('|') != commonNow.join('|')) {
+        _feedbackReorderSent = true;
+        FeedbackService.stopReordered(tripId: tripId);
+      }
+    }
+  }
+
   Future<void> _saveToCloudFirestore() async {
     if (_isSampleEditor) {
       if (mounted) setState(() => _savedEditVersion = _editVersion);
@@ -814,6 +865,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
         TripService().updateTrip(widget.trip.userId, updatedTrip),
         TripService().updateTripContent(widget.trip.userId, widget.trip.id, updatedContent),
       ]);
+
+      _reportStopChanges(updatedSections);
 
       // Dynamic Garbage Collector for Firebase Storage section photos
       await _cleanupStoragePhotos(widget.trip.userId, widget.trip.id, updatedSections);

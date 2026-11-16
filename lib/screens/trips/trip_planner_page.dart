@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
+import '../../services/feedback_service.dart';
 import '../../services/user_private_data.dart';
 import '../../services/saved_places.dart';
 import 'dart:async';
@@ -44,6 +45,10 @@ class TripPlannerPage extends StatefulWidget {
   final VoidCallback? onManualPlanSelected;
   final List<Map<String, dynamic>>? initialGeneratedOptions;
   final String? initialActiveJobId;
+
+  /// Trabajo del que vienen [initialGeneratedOptions] (al abrir un plan listo desde la lista):
+  /// sirve para marcarlo como elegido y para la retroalimentación.
+  final String? optionsJobId;
   final String? originName;
 
   const TripPlannerPage({
@@ -52,6 +57,7 @@ class TripPlannerPage extends StatefulWidget {
     this.onManualPlanSelected,
     this.initialGeneratedOptions,
     this.initialActiveJobId,
+    this.optionsJobId,
     this.originName,
   });
 
@@ -61,6 +67,7 @@ class TripPlannerPage extends StatefulWidget {
     VoidCallback? onManualPlanSelected,
     List<Map<String, dynamic>>? initialGeneratedOptions,
     String? initialActiveJobId,
+    String? optionsJobId,
     String? originName,
   }) {
     Navigator.of(context).push(
@@ -70,6 +77,7 @@ class TripPlannerPage extends StatefulWidget {
           onManualPlanSelected: onManualPlanSelected,
           initialGeneratedOptions: initialGeneratedOptions,
           initialActiveJobId: initialActiveJobId,
+          optionsJobId: optionsJobId,
           originName: originName,
         ),
       ),
@@ -402,10 +410,18 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       _listenToBlackboardJob(widget.initialActiveJobId!);
     } else if (widget.initialGeneratedOptions != null && widget.initialGeneratedOptions!.isNotEmpty) {
       _generatedOptions = widget.initialGeneratedOptions!;
+      _activeJobId = widget.optionsJobId;
       _selectedOriginName = widget.originName ?? 'CDMX';
       _currentStep = PlannerStep.routeTriadCarousel;
       _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
+      _reportOptionShown();
     }
+  }
+
+  /// Retroalimentación: qué opción generada vio la persona.
+  void _reportOptionShown() {
+    if (_activeCarouselIndex < 0 || _activeCarouselIndex >= _generatedOptions.length) return;
+    FeedbackService.itineraryShown(_activeJobId, _activeCarouselIndex, _generatedOptions[_activeCarouselIndex]);
   }
 
   @override
@@ -626,6 +642,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   Future<void> _launchBlackboardJob() async {
+    // Volver a generar con opciones en pantalla = no le convenció ninguna
+    if (_generatedOptions.isNotEmpty) {
+      FeedbackService.itineraryDiscarded(_activeJobId, reason: 'regenerar');
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -766,6 +786,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                 _generatedOptions = rawOptions.map((e) => Map<String, dynamic>.from(e as Map)).toList();
                 _currentStep = PlannerStep.routeTriadCarousel;
                 _activeCarouselIndex = _generatedOptions.length > 2 ? 1 : 0;
+                _reportOptionShown();
                 _triadPageController?.dispose();
                 _triadPageController = null;
                 _isDetailExpanded = false;
@@ -931,6 +952,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       context,
       fullPoi,
       isSaved: false,
+      surface: 'itinerary',
     );
   }
 
@@ -954,6 +976,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         chosenOption: option,
         defaultTitle: 'Ruta Ohtli IA',
         travelDate: _selectedTravelDate,
+        jobId: _activeJobId,
+        optionIndex: _activeCarouselIndex,
       );
 
       if (_activeJobId != null) {
@@ -2550,6 +2574,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           onPageChanged: (idx) {
             _hoverTilt.value = Offset.zero;
             setState(() => _activeCarouselIndex = idx);
+            _reportOptionShown();
           },
           itemBuilder: (context, index) {
             final isFocused = _activeCarouselIndex == index;
