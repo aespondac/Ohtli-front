@@ -71,8 +71,9 @@ class GroupTrip {
 
   bool get isManual => kind == kGroupKindManual;
 
-  /// Quiénes votan: los que cuentan en el plan (el organizador y quienes aceptaron).
-  List<String> get voters => participantIds.isNotEmpty ? participantIds : [hostId, ...acceptedIds];
+  /// Quiénes votan: el organizador y quienes aceptaron, como cuenta el motor al cerrar
+  /// (también quien aceptó tarde, aunque sus gustos ya no entraran en las rutas).
+  List<String> get voters => {hostId, ...acceptedIds}.toList();
 
   List<String> votersFor(int option) => [
         for (final u in voters)
