@@ -2,14 +2,24 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Solo imágenes de hasta 10 MB (la app sube JPEG ya recortados y comprimidos)
-    function isOwnerImageUpload(userId) {
-      return request.auth != null && request.auth.uid == userId
-        && request.resource != null
+    function isImageUpload() {
+      return request.resource != null
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
     function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
+    }
+    function isOwnerImageUpload(userId) {
+      return isOwner(userId) && isImageUpload();
+    }
+    // Quien edita el viaje: el dueño o un coautor (coAuthorIds del viaje en Firestore, igual que
+    // isTripEditor en firestore.rules). Regla entre servicios: el agente de Storage necesita el rol
+    // roles/firebaserules.firestoreServiceAgent. El dueño no gasta la lectura de Firestore; si el
+    // viaje no existe, get() da null y se niega.
+    function isTripEditor(userId, tripId) {
+      return isOwner(userId) || (request.auth != null
+        && request.auth.uid in firestore.get(/databases/(default)/documents/users/$(userId)/trips/$(tripId)).data.get('coAuthorIds', []));
     }
 
     // Denegar accesos por defecto
@@ -36,9 +46,21 @@ service firebase.storage {
     match /users/{userId}/trips/{tripId}/{allPaths=**} {
       // Lectura pública de fotos de viaje para compartición en redes y visitantes
       allow read: if true;
-      // Sólo el dueño puede subir, modificar o borrar
+      // El dueño sube, modifica o borra cualquier cosa del viaje
       allow create, update: if isOwnerImageUpload(userId);
       allow delete: if isOwner(userId);
+    }
+
+    // Lo que guarda el editor de viajes, que los coautores también usan (si no pueden subir, sus
+    // fotos se quedan en base64 en details/content y el documento pasa de 1 MB). Solo la portada
+    // y las fotos de los bloques: la portada se reemplaza pero no se borra; en sections/ el editor
+    // borra las fotos que ya no usa. viajeros/ y lo demás siguen siendo solo del dueño.
+    match /users/{userId}/trips/{tripId}/cover.jpg {
+      allow create, update: if isImageUpload() && isTripEditor(userId, tripId);
+    }
+    match /users/{userId}/trips/{tripId}/sections/{fileName} {
+      allow create, update: if isImageUpload() && isTripEditor(userId, tripId);
+      allow delete: if isTripEditor(userId, tripId);
     }
   }
 }

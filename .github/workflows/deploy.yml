@@ -142,6 +142,11 @@ jobs:
           # Deploy firestore rules to ensure pois security rules are active
           firebase deploy --only firestore:rules --project=othli-497404 --force || echo "Firestore rules deploy skipped."
 
+          # Reglas de Storage (fotos de viajes). Usan firestore.get() para dejar subir a los coautores:
+          # el agente de Storage necesita roles/firebaserules.firestoreServiceAgent, que se da una
+          # sola vez a mano (la cuenta de CI no puede cambiar IAM; aquí el CLI no lo pide).
+          firebase deploy --only storage --project=othli-497404 --force || echo "::warning::No se desplegaron las reglas de Storage."
+
           # Deploy firestore indexes (p. ej. viajes públicos por status/visibility para Explorar)
           firebase deploy --only firestore:indexes --project=othli-497404 --non-interactive || echo "Firestore indexes deploy skipped."
           
