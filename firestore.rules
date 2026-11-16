@@ -274,6 +274,32 @@ service cloud.firestore {
 
     // Friend Requests Collection: Authenticated users can read/write requests where they are sender or receiver.
     // Solo el remitente y el destinatario ven o modifican la solicitud.
+    // Usertags (@nombre) únicos: cualquiera consulta uno exacto; nadie lista la colección.
+    // Solo puedes reservar uno libre a tu nombre y liberar el tuyo.
+    match /usertags/{tag} {
+      allow get: if true;
+      allow list: if false;
+      // Reservados (Ohtli, personal, autoridades) y prohibidos (groserías, odio, delitos…):
+      // la misma lista básica que lib/services/profile_directory.dart.
+      allow create: if request.auth != null
+        && tag.matches('^[a-z0-9._]{3,20}$')
+        && !tag.matches('.*(ohtli|admin|soporte|support|oficial|official|staff|moderador|moderator).*')
+        && !(tag in ['root', 'system', 'sistema', 'api', 'www', 'app', 'labs', 'null', 'undefined', 'help', 'ayuda', 'equipo', 'team', 'seguridad', 'security', 'gob', 'gobierno', 'cdmx', 'presidencia', 'policia', 'sat', 'imss', 'ine', 'verificado', 'verified', 'mod', 'info', 'contacto', 'contact', 'legal'])
+        && !tag.matches('.*(puta|puto|pendej|verga|chinga|culero|mierda|cabron|pinche|joto|maricon|nazi|hitler|kkk|fuck|shit|bitch|nigg|porn|pedofil|pederast|violador|narco|sicario|terroris).*')
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt']);
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // Correo y teléfono de perfiles públicos, solo como hash (sha256): se consulta uno exacto,
+    // nunca se lista. Solo la función contactDirectory escribe (con datos verificados por
+    // Firebase Auth: teléfono por SMS y correo verificado), así nadie registra los de otro.
+    match /contact_directory/{hash} {
+      allow get: if request.auth != null;
+      allow list, write: if false;
+    }
+
     match /friend_requests/{requestId} {
       allow read: if request.auth != null &&
         request.auth.uid in [resource.data.get('senderId', ''), resource.data.get('receiverId', '')];

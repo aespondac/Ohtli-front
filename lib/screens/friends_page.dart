@@ -9,6 +9,8 @@ import '../theme/colors.dart';
 import '../utils/friendly_errors.dart';
 import 'account/public_profile_page.dart'; // To visit their profile!
 import 'friends_feed.dart';
+import '../services/profile_directory.dart';
+import '../services/friend_requests.dart';
 import '../widgets/ohtli_ui.dart';
 
 class FriendsPage extends StatefulWidget {
@@ -138,21 +140,35 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
   }
 
   // Búsqueda por prefijo en el servidor (tal cual y con mayúscula inicial)
+  /// Busca perfiles públicos por nombre, @usertag, correo o teléfono.
   Future<void> _searchServer(String q) async {
     setState(() => _searchingServer = true);
-    final variants = <String>{q, q[0].toUpperCase() + q.substring(1)};
     final ids = <String>[];
+    final kind = ProfileDirectory.classify(q);
     try {
-      for (final v in variants) {
-        final snap = await FirebaseFirestore.instance
-            .collection('users')
-            .where('displayName', isGreaterThanOrEqualTo: v)
-            .where('displayName', isLessThan: '$v\uf8ff')
-            .limit(20)
-            .get();
-        for (final d in snap.docs) {
-          _userCache[d.id] = d;
-          ids.add(d.id);
+      if (kind != null && kind.kind != 'name') {
+        // Usertag, correo o teléfono exactos (correo y teléfono van cifrados en el directorio)
+        final uid = await ProfileDirectory.lookup(kind.kind, kind.value);
+        if (uid != null) {
+          final d = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+          if (d.exists) {
+            _userCache[d.id] = d;
+            ids.add(d.id);
+          }
+        }
+      } else {
+        final variants = <String>{q, q[0].toUpperCase() + q.substring(1)};
+        for (final v in variants) {
+          final snap = await FirebaseFirestore.instance
+              .collection('users')
+              .where('displayName', isGreaterThanOrEqualTo: v)
+              .where('displayName', isLessThan: '$v\uf8ff')
+              .limit(20)
+              .get();
+          for (final d in snap.docs) {
+            _userCache[d.id] = d;
+            ids.add(d.id);
+          }
         }
       }
     } catch (e) {
@@ -160,9 +176,23 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     }
     if (!mounted || _searchQuery.trim() != q) return;
     setState(() {
-      _searchResultIds = ids;
+      // Solo perfiles públicos (los privados no se pueden encontrar buscando).
+      _searchResultIds = ids.where((id) => (_userCache[id]?.data() as Map<String, dynamic>?)?['profilePrivate'] != true).toList();
       _searchingServer = false;
     });
+  }
+
+  /// ¿La persona coincide con lo que se escribió? Por nombre o @usertag; si se buscó un
+  /// correo o teléfono, vale el resultado del directorio.
+  bool _matchesQuery(String id, Map<String, dynamic>? data) {
+    final q = _searchQuery.trim();
+    if (q.isEmpty) return true;
+    final kind = ProfileDirectory.classify(q);
+    if (kind != null && (kind.kind == 'email' || kind.kind == 'phone')) return _searchResultIds.contains(id);
+    final name = (data?['displayName'] ?? '').toString().toLowerCase();
+    final tag = (data?['usertag'] ?? '').toString().toLowerCase();
+    final needle = q.toLowerCase().replaceFirst('@', '');
+    return name.contains(needle) || (tag.isNotEmpty && tag.startsWith(needle)) || _searchResultIds.contains(id);
   }
 
   Future<void> _toggleFriendStatus(String targetUserId, String action) async {
@@ -322,70 +352,18 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
 
   Future<void> _sendFriendRequest(String targetUserId, String targetName, String? targetPhoto) async {
     if (_currentUser == null) return;
-
     try {
-      final firestore = FirebaseFirestore.instance;
-
-      // Check if there is already a friend request between these two users to avoid duplicates
-      final existingRequests = await firestore
-          .collection('friend_requests')
-          .where('senderId', isEqualTo: _currentUser.uid)
-          .where('receiverId', isEqualTo: targetUserId)
-          .where('status', isEqualTo: 'pending')
-          .get();
-
-      final existingIncoming = await firestore
-          .collection('friend_requests')
-          .where('senderId', isEqualTo: targetUserId)
-          .where('receiverId', isEqualTo: _currentUser.uid)
-          .where('status', isEqualTo: 'pending')
-          .get();
-
-      if (existingRequests.docs.isNotEmpty || existingIncoming.docs.isNotEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ya existe una solicitud de amistad pendiente.', style: GoogleFonts.inter()),
-              backgroundColor: OhtliColors.xoconostle,
-            ),
-          );
-        }
-        return;
-      }
-
-      // 1. Create a top-level friend request
-      final docRef = await firestore.collection('friend_requests').add({
-        'senderId': _currentUser.uid,
-        'senderName': _currentUser.displayName ?? 'Un viajero',
-        'senderPhoto': _currentUser.photoURL,
-        'receiverId': targetUserId,
-        'status': 'pending',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      // 2. Add notification inside target user's private subcollection
-      await firestore
-          .collection('users')
-          .doc(targetUserId)
-          .collection('notifications')
-          .doc(docRef.id)
-          .set({
-        'type': 'friend_request',
-        'senderId': _currentUser.uid,
-        'senderName': _currentUser.displayName ?? 'Un viajero',
-        'senderPhoto': _currentUser.photoURL,
-        'status': 'pending',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('¡Solicitud de amistad enviada a $targetName!', style: GoogleFonts.inter()),
-            backgroundColor: OhtliColors.stormyTeal,
+      final result = await FriendRequests.send(targetUserId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result == FriendRequestResult.alreadyPending ? 'Ya existe una solicitud de amistad pendiente.' : '¡Solicitud de amistad enviada a $targetName!',
+            style: GoogleFonts.inter(),
           ),
-        );
-      }
+          backgroundColor: result == FriendRequestResult.alreadyPending ? OhtliColors.xoconostle : OhtliColors.stormyTeal,
+        ),
+      );
     } catch (e) {
       debugPrint("Error sending friend request: $e");
     }
@@ -480,10 +458,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                     ..sort((a, b) => (incomingPendingMap.containsKey(b.id) ? 1 : 0) - (incomingPendingMap.containsKey(a.id) ? 1 : 0));
 
                   if (_searchQuery.isNotEmpty) {
-                    bool matches(DocumentSnapshot doc) {
-                      final name = (doc.data() as Map<String, dynamic>)['displayName'] ?? '';
-                      return name.toString().toLowerCase().contains(_searchQuery.toLowerCase());
-                    }
+                    bool matches(DocumentSnapshot doc) => _matchesQuery(doc.id, doc.data() as Map<String, dynamic>?);
 
                     friendUsers = friendUsers.where(matches).toList();
                     suggestedUsers = suggestedUsers.where(matches).toList();
@@ -537,11 +512,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                   final List<String> followers = social?.followers ?? const [];
                   if (social != null) _ensureUsers([...following, ...followers]);
 
-                  bool matchesId(String id) {
-                    if (_searchQuery.isEmpty) return true;
-                    final name = ((users[id]?.data() as Map<String, dynamic>?)?['displayName'] ?? '').toString();
-                    return name.toLowerCase().contains(_searchQuery.toLowerCase());
-                  }
+                  bool matchesId(String id) => _matchesQuery(id, users[id]?.data() as Map<String, dynamic>?);
 
                   final people = _PeopleData(
                     closeFriends: friendIds.where((id) => closeFriends.contains(id) && matchesId(id)).toList(),
@@ -699,7 +670,7 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
         onChanged: _onSearchChanged,
         style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14.5),
         decoration: InputDecoration(
-          hintText: 'Buscar viajeros por nombre',
+          hintText: 'Busca por nombre, @usertag, correo o teléfono',
           hintStyle: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 14.5),
           prefixIcon: Padding(
             padding: const EdgeInsets.only(left: 18, right: 10),
@@ -956,7 +927,9 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                     children: [
                       Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(color: OhtliColors.onyx, fontWeight: FontWeight.w800, fontSize: 15.5)),
                       const SizedBox(height: 2),
-                      if (subtitle != null)
+                      if (subtitle == null && (data?['usertag'] as String?)?.isNotEmpty == true)
+                        Text('@${data!['usertag']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 12.5, fontWeight: FontWeight.w600))
+                      else if (subtitle != null)
                         Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: OhtliColors.accentText, fontSize: 12.5, fontWeight: FontWeight.w700))
                       else
                         StreamBuilder<DocumentSnapshot>(

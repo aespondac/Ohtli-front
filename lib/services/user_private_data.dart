@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import 'profile_directory.dart';
+
 /// Datos personales del usuario que NO deben ser públicos (contacto, direcciones,
 /// privacidad y perfil de gustos).
 ///
@@ -24,6 +26,11 @@ class UserPrivateData {
     'privacy_share',
     'privacy_notifications',
     'privacy_public',
+    // Dejar que me encuentren por correo o teléfono (si el perfil es público) y los
+    // hashes que publiqué en contact_directory (para retirarlos)
+    'contact_discoverable',
+    'phone_verified',
+    'directory_hashes',
     // Perfil de gustos (onboarding + vector de 768 dimensiones del motor Yollotl)
     'cultural_profile',
     'taste_axes',
@@ -83,6 +90,10 @@ class UserPrivateData {
       }, SetOptions(merge: true)));
     }
     await Future.wait(futures);
+    // Correo y teléfono en el directorio solo mientras el perfil sea público y se permita.
+    if (data.containsKey('phone') || data.containsKey('privacy_public') || data.containsKey('contact_discoverable')) {
+      unawaited(ProfileDirectory.sync(uid));
+    }
   }
 
   /// Lee una sola vez el documento privado (con respaldo en los campos antiguos).

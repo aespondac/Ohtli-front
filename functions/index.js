@@ -223,3 +223,6 @@ exports.apiGateway = functions.https.onRequest(async (req, res) => {
 // SSO entre subdominios (ohtli.quest → lab.ohtli.quest). Ver functions/sso.js.
 exports.ssoBridge = functions.https.onRequest(require('./sso').makeHandler(admin));
 
+// Directorio de contactos verificados de perfiles públicos. Ver functions/directory.js.
+exports.contactDirectory = functions.https.onRequest(require('./directory').makeHandler(admin));
+
