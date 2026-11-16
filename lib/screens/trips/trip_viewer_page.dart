@@ -40,6 +40,8 @@ import '../../theme/cdmx_photos.dart';
 import '../../theme/release_tags.dart';
 import '../../services/place_locator.dart';
 import '../../services/trip_changes.dart';
+import '../../services/trip_follow.dart';
+import '../../services/live_location.dart';
 import 'trip_sample.dart';
 import 'trip_traveler_tools.dart';
 import '../../config/admin.dart' show isSuperUser;
@@ -109,6 +111,14 @@ class _TripViewerPageState extends State<TripViewerPage> {
   // Modo "estoy en el viaje" (V4): paradas visitadas en este dispositivo
   bool _tripMode = false;
   Set<String> _visited = {};
+
+  // Seguir el viaje con la ubicación: llegada y salida automáticas y avisos para salir.
+  final TripFollower _follower = TripFollower();
+  LiveLocation? _live;
+  bool _following = false;
+  LocationProblem? _locationProblem;
+  Timer? _followTimer;
+  Set<String> _leaveAlertsSent = {};
 
   // Reseña después del viaje (T5)
   bool _isSavingReview = false;
@@ -249,6 +259,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   @override
   void dispose() {
+    _live?.stop();
+    _followTimer?.cancel();
     _notesSub?.cancel();
     _reactionsSub?.cancel();
     _scrollController.dispose();
@@ -548,11 +560,318 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   void _setTripMode(bool on) {
     if (on) _loadVisited();
+    if (!on) _stopFollow();
     setState(() => _tripMode = on);
     if (on) {
       final next = _nextStop;
       if (next != null) WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBlock(next.id));
+      _maybeResumeFollow();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Seguir el viaje con la ubicación
+  // ---------------------------------------------------------------------------
+  String get _followPrefKey => 'ohtli_trip_follow_${_trip?.id ?? ''}';
+  String get _leaveAlertsKey => 'ohtli_trip_leave_alerts_${_trip?.id ?? ''}';
+
+  bool get _canFollow => _canEditContent && _phase == TripPhase.durante && !_isNotes;
+
+  /// Donde están: llegaron y aún no salen.
+  PlaceSection? get _hereStop {
+    for (final p in _sections.whereType<PlaceSection>().toList().reversed) {
+      if (p.arrivedAt != null && p.leftAt == null) return p;
+    }
+    return null;
+  }
+
+  /// Paradas a las que aún no llegan, en orden (sin la actual).
+  List<PlaceSection> get _pendingStops {
+    final here = _hereStop;
+    return [
+      for (final p in _sections.whereType<PlaceSection>())
+        if (p.arrivedAt == null && !_visited.contains(p.id) && !identical(p, here)) p,
+    ];
+  }
+
+  void _saveFollowPref(bool on) {
+    try {
+      web.window.localStorage.setItem(_followPrefKey, on ? '1' : '0');
+    } catch (_) {}
+  }
+
+  void _loadLeaveAlerts() {
+    // En la muestra los avisos se repiten en cada visita.
+    if (_isSample) {
+      _leaveAlertsSent = {};
+      return;
+    }
+    try {
+      final raw = web.window.localStorage.getItem(_leaveAlertsKey);
+      _leaveAlertsSent = raw == null ? {} : (jsonDecode(raw) as List).map((e) => e.toString()).toSet();
+    } catch (_) {
+      _leaveAlertsSent = {};
+    }
+  }
+
+  void _saveLeaveAlerts() {
+    if (_isSample) return;
+    try {
+      web.window.localStorage.setItem(_leaveAlertsKey, jsonEncode(_leaveAlertsSent.toList()));
+    } catch (_) {}
+  }
+
+  /// Si ya lo tenían encendido en este viaje y el navegador ya dio permiso, se retoma solo.
+  Future<void> _maybeResumeFollow() async {
+    if (_following || !_canFollow) return;
+    String? pref;
+    try {
+      pref = web.window.localStorage.getItem(_followPrefKey);
+    } catch (_) {}
+    if (pref != '1') return;
+    if (!await LiveLocation.granted()) return;
+    if (!mounted || !_tripMode || _following) return;
+    _startFollow();
+  }
+
+  Future<void> _toggleFollow() async {
+    if (_following) {
+      _stopFollow();
+      _saveFollowPref(false);
+      _notice('Ya no se sigue tu ubicación. Marca tu llegada y salida a mano.');
+      return;
+    }
+    if (!LiveLocation.supported) {
+      _notice('Este navegador no comparte la ubicación.');
+      return;
+    }
+    // Los dos permisos se piden con el toque: avisos y ubicación.
+    final notify = WebNotify.ask();
+    _startFollow();
+    _saveFollowPref(true);
+    final canNotify = await notify;
+    if (!mounted) return;
+    _notice(canNotify
+        ? 'Ohtli sigue tu viaje mientras esté abierto: marca tu llegada y tu salida y te avisa cuándo salir.'
+        : 'Ohtli sigue tu viaje mientras esté abierto. Sin permiso de notificaciones, los avisos para salir solo se ven aquí.');
+  }
+
+  void _startFollow() {
+    _live ??= LiveLocation(onFix: _onFix, onProblem: _onLocationProblem);
+    _follower.reset();
+    _locationProblem = null;
+    _loadLeaveAlerts();
+    _live!.start();
+    _followTimer?.cancel();
+    // Quien no se mueve casi no recibe lecturas: el reloj confirma llegadas, salidas y avisos.
+    _followTimer = Timer.periodic(const Duration(seconds: 20), (_) => _followTick());
+    setState(() => _following = true);
+  }
+
+  void _stopFollow() {
+    _live?.stop();
+    _followTimer?.cancel();
+    _followTimer = null;
+    if (_following && mounted) {
+      setState(() => _following = false);
+    } else {
+      _following = false;
+    }
+  }
+
+  void _onFix(GeoFix fix) {
+    if (!mounted) return;
+    _locationProblem = null;
+    _followTick(fix: fix);
+  }
+
+  void _onLocationProblem(LocationProblem p) {
+    if (!mounted) return;
+    setState(() => _locationProblem = p);
+  }
+
+  FollowStop? _followStopOf(PlaceSection p) {
+    final c = _coordsOf(p);
+    return c == null ? null : FollowStop(p.id, c.$1, c.$2);
+  }
+
+  Future<void> _followTick({GeoFix? fix}) async {
+    if (!mounted || !_following) return;
+    if (!_tripMode || !_canFollow) {
+      _stopFollow();
+      return;
+    }
+    final here = _hereStop;
+    final events = _follower.step(
+      now: DateTime.now(),
+      fix: fix,
+      pending: [for (final p in _pendingStops) ?_followStopOf(p)],
+      here: here == null ? null : _followStopOf(here),
+    );
+    setState(() {});
+    for (final e in events) {
+      await _applyFollowEvent(e);
+    }
+    _checkLeaveAlert();
+  }
+
+  PlaceSection? _placeById(String id) {
+    for (final p in _sections.whereType<PlaceSection>()) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  Future<void> _applyFollowEvent(FollowEvent e) async {
+    final p = _placeById(e.stopId);
+    if (p == null || !mounted) return;
+    final at = _hhmm(e.at);
+    final name = p.title.trim().isEmpty ? 'la parada' : p.title.trim();
+    if (e.kind == FollowEventKind.arrive) {
+      // Si otra parada seguía abierta, se cierra a la hora en que llegaron aquí.
+      final open = _hereStop;
+      final String? closed = (open != null && open.id != p.id) ? open.id : null;
+      setState(() => _visited.add(p.id));
+      _saveVisited();
+      final ok = await _changeContent((l) {
+        var out = l;
+        if (closed != null) out = _updatePlace(out, closed, (x) => x.leftAt == null ? x.copyWith(leftAt: at) : x);
+        return _updatePlace(out, p.id, (x) => x.arrivedAt == null ? x.copyWith(arrivedAt: at) : x);
+      });
+      if (!ok) return;
+      _scrollSoon(p.id);
+      _followNotice('Llegaste a $name', 'Ohtli marcó tu llegada a las $at.',
+          tag: 'arrive-${p.id}', undo: () => _undoAutoArrival(p.id, closed: closed));
+    } else {
+      final ok = await _changeContent((l) => _updatePlace(l, p.id, (x) => x.leftAt == null ? x.copyWith(leftAt: at) : x));
+      if (!ok) return;
+      _followNotice('Saliste de $name', 'Ohtli marcó tu salida a las $at.', tag: 'leave-${p.id}', undo: () => _undoAutoLeave(p.id));
+    }
+  }
+
+  /// "Deshacer": no estaban ahí. Esa parada ya no se marca sola; queda el botón "Llegué".
+  Future<void> _undoAutoArrival(String id, {String? closed}) async {
+    setState(() => _visited.remove(id));
+    _saveVisited();
+    await _changeContent((l) {
+      var out = _updatePlace(l, id, (x) => x.copyWith(clearArrivedAt: true, clearLeftAt: true));
+      if (closed != null) out = _updatePlace(out, closed, (x) => x.copyWith(clearLeftAt: true));
+      return out;
+    }, done: 'Llegada deshecha');
+  }
+
+  Future<void> _undoAutoLeave(String id) async {
+    await _changeContent((l) => _updatePlace(l, id, (x) => x.copyWith(clearLeftAt: true)), done: 'Salida deshecha');
+  }
+
+  /// En pantalla, un aviso con "Deshacer"; con Ohtli en segundo plano, también una notificación.
+  void _followNotice(String title, String body, {String tag = '', Future<void> Function()? undo, SnackBarAction? action}) {
+    if (!WebNotify.pageVisible) WebNotify.show(title, body, tag: tag);
+    if (!mounted) return;
+    // El más reciente reemplaza al anterior y se va solo aunque tenga botón.
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('$title. $body', style: GoogleFonts.inter()),
+        duration: const Duration(seconds: 8),
+        persist: false,
+        action: undo != null ? SnackBarAction(label: 'Deshacer', onPressed: () => undo()) : action,
+      ));
+  }
+
+  /// Cuándo salir de [here] para llegar a tiempo a la siguiente parada.
+  LeavePlan? _leavePlanFor(PlaceSection here) {
+    final pending = _pendingStops;
+    final next = pending.isEmpty ? null : pending.first;
+    final mins = next == null ? null : travelMinutesTo(_sections, next, from: here, fix: _following ? _follower.lastFix : null);
+    return leavePlanFor(day: DateTime.now(), here: here, next: next, travelMins: mins);
+  }
+
+  void _checkLeaveAlert() {
+    final here = _hereStop;
+    if (here == null) return;
+    final plan = _leavePlanFor(here);
+    if (plan == null) return;
+    final now = DateTime.now();
+    final alert = leaveAlertAt(now, plan.leaveBy);
+    if (alert == null) return;
+    final key = '${alert.name}:${here.id}';
+    if (_leaveAlertsSent.contains(key) || _leaveAlertsSent.contains('now:${here.id}')) return;
+    _leaveAlertsSent.add(key);
+    _saveLeaveAlerts();
+    final name = here.title.trim().isEmpty ? 'esta parada' : here.title.trim();
+    final next = plan.next;
+    final nextName = next == null ? '' : (next.title.trim().isEmpty ? 'la siguiente parada' : next.title.trim());
+    String body;
+    if (next != null && plan.arriveBy != null) {
+      final mode = transferModeOf(transferBefore(_sections, _sections.indexOf(next))?.mode ?? 'walking');
+      final trip = plan.travelMins != null ? ' (unos ${formatDuration(plan.travelMins!)}${mode.verb.isEmpty ? '' : ' ${mode.verb}'})' : '';
+      body = 'Para llegar a $nextName a las ${_hhmm(plan.arriveBy!)}$trip.';
+    } else {
+      body = 'El plan era salir a las ${_hhmm(plan.leaveBy)}${next != null ? ' rumbo a $nextName' : ''}.';
+    }
+    final String title;
+    if (alert == LeaveAlert.soon) {
+      final mins = math.max(1, (plan.leaveBy.difference(now).inSeconds / 60).ceil());
+      title = 'Sal en $mins min de $name';
+    } else {
+      title = 'Es hora de salir de $name';
+    }
+    _followNotice(title, body,
+        tag: 'leave-alert-${here.id}',
+        action: next == null ? null : SnackBarAction(label: 'Cómo llegar', onPressed: () => _openDirectionsTo(next)));
+  }
+
+  String _followStatus(PlaceSection? here, PlaceSection? next) {
+    if (_locationProblem == LocationProblem.denied) {
+      return 'Sin permiso de ubicación: actívalo en tu navegador. Los avisos para salir siguen funcionando.';
+    }
+    final fix = _follower.lastFix;
+    if (fix == null) {
+      return _locationProblem == LocationProblem.unavailable ? 'Aún no encontramos tu ubicación…' : 'Buscando tu ubicación…';
+    }
+    if (here != null) {
+      return _coordsOf(here) == null
+          ? 'Esta parada no tiene ubicación: marca tu salida a mano.'
+          : 'Tu salida se marca sola cuando te alejes.';
+    }
+    if (next != null) {
+      final c = _coordsOf(next);
+      if (c == null) return 'Esta parada no tiene ubicación: marca tu llegada a mano.';
+      return 'A ${formatMeters(distanceMeters(fix.lat, fix.lng, c.$1, c.$2))} · tu llegada se marca sola';
+    }
+    return 'Siguiendo tu ubicación.';
+  }
+
+  Widget _buildFollowPill(bool isDark) {
+    final bool on = _following;
+    final Color teal = OhtliColors.stormyTeal;
+    final Color fg = on ? Colors.white : (isDark ? Color.lerp(teal, Colors.white, 0.5)! : teal);
+    return Tooltip(
+      message: on
+          ? 'Dejar de seguir tu ubicación'
+          : 'Con tu ubicación, Ohtli marca tu llegada y tu salida y te avisa cuándo salir (mientras esté abierto)',
+      child: Material(
+        color: on ? teal : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: on ? teal : teal.withValues(alpha: 0.55))),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: _toggleFollow,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(on ? Icons.my_location_rounded : Icons.location_searching_rounded, size: 14, color: fg),
+                const SizedBox(width: 5),
+                Text(on ? 'Siguiendo' : 'Seguir mi viaje',
+                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: fg)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _toggleVisited(String id) {
@@ -731,12 +1050,36 @@ class _TripViewerPageState extends State<TripViewerPage> {
           style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: fg),
         ),
       ));
+      final LeavePlan? leave = here != null ? _leavePlanFor(here) : null;
+      final bool timed = leave != null && leave.next != null && leave.arriveBy != null;
       body.add(Text(
         here != null
-            ? 'Llegaron a las ${here.arrivedAt}${here.departureTime != null ? ' · el plan era salir a las ${here.departureTime}' : ''}'
+            ? 'Llegaron a las ${here.arrivedAt}${!timed && here.departureTime != null ? ' · el plan era salir a las ${here.departureTime}' : ''}'
             : (next!.arrivalTime != null ? 'En el plan: ${next.arrivalTime}' : 'Sin hora en el plan'),
         style: GoogleFonts.inter(fontSize: 12, color: sub),
       ));
+      if (timed) {
+        final bool late = !DateTime.now().isBefore(leave.leaveBy);
+        final Color c = late ? OhtliColors.cempasuchil : (isDark ? Color.lerp(OhtliColors.stormyTeal, Colors.white, 0.45)! : OhtliColors.stormyTeal);
+        final String nextName = leave.next!.title.trim().isEmpty ? 'la siguiente' : leave.next!.title.trim();
+        body.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              Icon(late ? Icons.alarm_on_rounded : Icons.schedule_rounded, size: 14, color: c),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  late
+                      ? 'Ya es hora de salir para llegar a $nextName a las ${_hhmm(leave.arriveBy!)}'
+                      : 'Sal a las ${_hhmm(leave.leaveBy)} para llegar a $nextName a las ${_hhmm(leave.arriveBy!)}',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: c),
+                ),
+              ),
+            ],
+          ),
+        ));
+      }
       body.add(const SizedBox(height: 10));
     }
 
@@ -885,6 +1228,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 Expanded(
                   child: Text(headline, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: here != null ? OhtliColors.cempasuchil : OhtliColors.stormyTeal)),
                 ),
+                if (_canFollow && (here != null || next != null)) ...[
+                  _buildFollowPill(isDark),
+                  const SizedBox(width: 10),
+                ],
                 Text('$done/${places.length}', style: GoogleFonts.inter(fontSize: 12, color: sub)),
                 IconButton(
                   tooltip: 'Salir del modo viaje',
@@ -903,6 +1250,17 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 color: OhtliColors.stormyTeal,
               ),
             ),
+            if (_following && (here != null || next != null)) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(_locationProblem == LocationProblem.denied ? Icons.location_disabled_rounded : Icons.near_me_rounded,
+                      size: 13, color: _locationProblem == LocationProblem.denied ? OhtliColors.cempasuchil : sub),
+                  const SizedBox(width: 5),
+                  Expanded(child: Text(_followStatus(here, next), style: GoogleFonts.inter(fontSize: 11.5, color: sub))),
+                ],
+              ),
+            ],
             const SizedBox(height: 10),
             ...body,
           ],
@@ -992,6 +1350,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     _sampleNotes = false;
     // El modo viaje solo existe durante el viaje.
     _tripMode = stage == SampleStage.durante;
+    if (!_tripMode) _stopFollow();
     _loadSample();
   }
 
@@ -2139,6 +2498,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
         'updatedAt': Timestamp.fromDate(now),
       });
       if (!mounted) return;
+      _stopFollow();
       setState(() {
         _tripMode = false;
         _trip = Trip.fromMap({...t.toMap(), 'finishedAt': Timestamp.fromDate(now)}, t.id);
