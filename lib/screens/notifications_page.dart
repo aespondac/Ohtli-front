@@ -13,6 +13,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'trips/trip_screens.dart' deferred as trips;
 import '../widgets/deferred_view.dart';
 import '../widgets/group_trip_sheet.dart' show openGroupTrip;
+import '../widgets/push_toggle.dart' show PushInviteBanner;
 import 'account/public_profile_page.dart';
 import '../utils/friendly_errors.dart';
 
@@ -288,6 +289,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   large: true,
                 ),
                 const SizedBox(height: 20),
+                const PushInviteBanner(),
               ],
             ),
           );

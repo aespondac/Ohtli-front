@@ -42,6 +42,8 @@ import '../../services/place_locator.dart';
 import '../../services/trip_changes.dart';
 import '../../services/trip_follow.dart';
 import '../../services/live_location.dart';
+import '../../services/push_service.dart';
+import '../../services/trip_follow_remote.dart';
 import 'trip_sample.dart';
 import 'trip_traveler_tools.dart';
 import '../../config/admin.dart' show isSuperUser;
@@ -645,15 +647,21 @@ class _TripViewerPageState extends State<TripViewerPage> {
       _notice('Este navegador no comparte la ubicación.');
       return;
     }
-    // Los dos permisos se piden con el toque: avisos y ubicación.
-    final notify = WebNotify.ask();
+    // Los dos permisos se piden con el toque: avisos (también push, para avisar con Ohtli
+    // cerrado) y ubicación.
+    final notify = PushService.instance.enableFromTap();
     _startFollow();
     _saveFollowPref(true);
     final canNotify = await notify;
     if (!mounted) return;
-    _notice(canNotify
+    final push = PushService.instance.status.value;
+    _notice(!canNotify
+        ? (push == PushStatus.needsInstall
+            ? 'Ohtli sigue tu viaje mientras esté abierto. En iPhone, agrega Ohtli a tu pantalla de inicio para que los avisos para salir lleguen con la app cerrada.'
+            : 'Ohtli sigue tu viaje mientras esté abierto. Sin permiso de notificaciones, los avisos para salir solo se ven aquí.')
+        : push == PushStatus.unsupported
         ? 'Ohtli sigue tu viaje mientras esté abierto: marca tu llegada y tu salida y te avisa cuándo salir.'
-        : 'Ohtli sigue tu viaje mientras esté abierto. Sin permiso de notificaciones, los avisos para salir solo se ven aquí.');
+        : 'Ohtli marca tu llegada y tu salida mientras esté abierto, y te avisa cuándo salir aunque lo cierres.');
   }
 
   void _startFollow() {
@@ -666,9 +674,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
     // Quien no se mueve casi no recibe lecturas: el reloj confirma llegadas, salidas y avisos.
     _followTimer = Timer.periodic(const Duration(seconds: 20), (_) => _followTick());
     setState(() => _following = true);
+    // El servidor sigue avisando cuándo salir aunque cierren Ohtli (push). Se juntan los avisos
+    // que ya dio, para no repetirlos aquí.
+    final t = _trip;
+    if (!_isSample && t != null) {
+      TripFollowRemote.start(tripId: t.id, ownerId: t.userId).then((sent) {
+        if (sent.isEmpty || !mounted) return;
+        _leaveAlertsSent.addAll(sent);
+        _saveLeaveAlerts();
+      });
+    }
   }
 
   void _stopFollow() {
+    final wasFollowing = _following;
     _live?.stop();
     _followTimer?.cancel();
     _followTimer = null;
@@ -677,6 +696,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     } else {
       _following = false;
     }
+    final t = _trip;
+    if (wasFollowing && !_isSample && t != null) TripFollowRemote.stop(t.id);
   }
 
   void _onFix(GeoFix fix) {
@@ -799,25 +820,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
     if (_leaveAlertsSent.contains(key) || _leaveAlertsSent.contains('now:${here.id}')) return;
     _leaveAlertsSent.add(key);
     _saveLeaveAlerts();
-    final name = here.title.trim().isEmpty ? 'esta parada' : here.title.trim();
+    if (!_isSample && _trip != null) TripFollowRemote.markSent(_trip!.id, key);
     final next = plan.next;
-    final nextName = next == null ? '' : (next.title.trim().isEmpty ? 'la siguiente parada' : next.title.trim());
-    String body;
-    if (next != null && plan.arriveBy != null) {
-      final mode = transferModeOf(transferBefore(_sections, _sections.indexOf(next))?.mode ?? 'walking');
-      final trip = plan.travelMins != null ? ' (unos ${formatDuration(plan.travelMins!)}${mode.verb.isEmpty ? '' : ' ${mode.verb}'})' : '';
-      body = 'Para llegar a $nextName a las ${_hhmm(plan.arriveBy!)}$trip.';
-    } else {
-      body = 'El plan era salir a las ${_hhmm(plan.leaveBy)}${next != null ? ' rumbo a $nextName' : ''}.';
-    }
-    final String title;
-    if (alert == LeaveAlert.soon) {
-      final mins = math.max(1, (plan.leaveBy.difference(now).inSeconds / 60).ceil());
-      title = 'Sal en $mins min de $name';
-    } else {
-      title = 'Es hora de salir de $name';
-    }
-    _followNotice(title, body,
+    final text = leaveAlertText(sections: _sections, here: here, plan: plan, alert: alert, now: now);
+    _followNotice(text.title, text.body,
         tag: 'leave-alert-${here.id}',
         action: next == null ? null : SnackBarAction(label: 'Cómo llegar', onPressed: () => _openDirectionsTo(next)));
   }
@@ -850,7 +856,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     return Tooltip(
       message: on
           ? 'Dejar de seguir tu ubicación'
-          : 'Con tu ubicación, Ohtli marca tu llegada y tu salida y te avisa cuándo salir (mientras esté abierto)',
+          : 'Con tu ubicación, Ohtli marca tu llegada y tu salida (mientras esté abierto) y te avisa cuándo salir',
       child: Material(
         color: on ? teal : Colors.transparent,
         shape: StadiumBorder(side: BorderSide(color: on ? teal : teal.withValues(alpha: 0.55))),

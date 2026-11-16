@@ -26,6 +26,7 @@ import '../admin/place_suggestions_page.dart';
 import '../admin/explore_featured_page.dart';
 import '../trips/trip_screens.dart' deferred as trips;
 import '../../widgets/deferred_view.dart';
+import '../../widgets/push_toggle.dart' show PushSettingTile;
 import '../../config/admin.dart';
 import '../../services/poi_suggestion_service.dart';
 import '../../utils/web_helpers.dart';
@@ -3075,6 +3076,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   });
                 },
               ),
+              // Push con Ohtli cerrado (por dispositivo).
+              const PushSettingTile(),
               Divider(height: 32, color: OhtliColors.cardBorder),
 
               // Switch 3: Perfil público

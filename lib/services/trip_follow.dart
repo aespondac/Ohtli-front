@@ -215,5 +215,37 @@ LeaveAlert? leaveAlertAt(DateTime now, DateTime leaveBy,
   return null;
 }
 
+String _clock(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+/// Título y cuerpo del aviso para salir de [here]. Con Ohtli cerrado, el mismo texto lo arma el
+/// servidor (functions/trip_follow.js); test/fixtures/leave_alert_cases.dart prueba los dos.
+({String title, String body}) leaveAlertText({
+  required List<TripSection> sections,
+  required PlaceSection here,
+  required LeavePlan plan,
+  required LeaveAlert alert,
+  required DateTime now,
+}) {
+  final name = here.title.trim().isEmpty ? 'esta parada' : here.title.trim();
+  final next = plan.next;
+  final nextName = next == null ? '' : (next.title.trim().isEmpty ? 'la siguiente parada' : next.title.trim());
+  final String body;
+  if (next != null && plan.arriveBy != null) {
+    final mode = transferModeOf(transferBefore(sections, sections.indexOf(next))?.mode ?? 'walking');
+    final trip = plan.travelMins != null ? ' (unos ${formatDuration(plan.travelMins!)}${mode.verb.isEmpty ? '' : ' ${mode.verb}'})' : '';
+    body = 'Para llegar a $nextName a las ${_clock(plan.arriveBy!)}$trip.';
+  } else {
+    body = 'El plan era salir a las ${_clock(plan.leaveBy)}${next != null ? ' rumbo a $nextName' : ''}.';
+  }
+  final String title;
+  if (alert == LeaveAlert.soon) {
+    final mins = math.max(1, (plan.leaveBy.difference(now).inSeconds / 60).ceil());
+    title = 'Sal en $mins min de $name';
+  } else {
+    title = 'Es hora de salir de $name';
+  }
+  return (title: title, body: body);
+}
+
 /// "350 m" o "1.2 km".
 String formatMeters(double m) => m < 1000 ? '${(m / 10).round() * 10} m' : '${(m / 1000).toStringAsFixed(1)} km';

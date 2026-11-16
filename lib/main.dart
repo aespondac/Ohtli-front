@@ -38,6 +38,7 @@ import 'services/ohtli_sso.dart';
 import 'services/app_route.dart';
 import 'services/app_url.dart';
 import 'services/saved_accounts.dart';
+import 'services/push_service.dart';
 import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
 import 'screens/trips/trip_screens.dart' deferred as trips;
@@ -114,6 +115,8 @@ void main() async {
       } catch (e) {
         print("Firebase Auth persistence initialization error: $e");
       }
+      // Avisos push (FCM): renueva el token de quien ya los activó y lo suelta al cambiar de cuenta.
+      PushService.instance.start();
     }
   } catch (e) {
     print("Firebase initialization error: $e");

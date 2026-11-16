@@ -190,6 +190,17 @@ service cloud.firestore {
       match /private/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // Tokens de avisos push (FCM), uno por dispositivo: solo su dueño. Las Cloud Functions los
+      // leen con el Admin SDK para mandar cada aviso (functions/push.js).
+      match /push_tokens/{token} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(['token', 'platform', 'standalone', 'updatedAt'])
+          && request.resource.data.token == token
+          && request.resource.data.platform is string
+          && request.resource.data.updatedAt == request.time;
+      }
       
       // Notifications Subcollection: Users can see their own notifications.
       // Anyone authenticated can create notifications (for sending friend requests).
@@ -288,6 +299,41 @@ service cloud.firestore {
           allow delete: if request.auth != null && request.auth.uid == userId;
         }
       }
+    }
+
+    // «Seguir mi viaje» en el servidor (avisos para salir con Ohtli cerrado; functions/trip_follow.js).
+    // Un documento por viaje y persona, id "{tripId}_{uid}": solo lo lee y escribe esa persona, y
+    // solo para un viaje que puede editar (dueño o coautor). El servidor también lo revisa.
+    match /trip_follows/{followId} {
+      function followOwnId() {
+        return request.auth != null && followId.matches('.+_' + request.auth.uid);
+      }
+      function canEditTrip(ownerId, tripId) {
+        return request.auth.uid == ownerId || (
+          exists(/databases/$(database)/documents/users/$(ownerId)/trips/$(tripId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/users/$(ownerId)/trips/$(tripId)).data.get('coAuthorIds', [])
+        );
+      }
+      allow read, delete: if followOwnId() && (resource == null || resource.data.uid == request.auth.uid);
+      allow create: if followOwnId()
+        && request.resource.data.uid == request.auth.uid
+        && followId == request.resource.data.tripId + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'ownerId', 'tripId', 'day', 'tz', 'tzOffsetMin', 'enabled', 'sent', 'updatedAt'])
+        && request.resource.data.enabled is bool
+        && canEditTrip(request.resource.data.ownerId, request.resource.data.tripId);
+      allow update: if followOwnId()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.tripId == resource.data.tripId
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.enabled is bool
+        && request.resource.data.get('sent', []).size() <= 100
+        && request.resource.data.keys().hasOnly(['uid', 'ownerId', 'tripId', 'day', 'tz', 'tzOffsetMin', 'enabled', 'sent', 'updatedAt', 'endedBy', 'lastAlertAt']);
+    }
+
+    // Avisos con fecha en el futuro (planes sorpresa) esperando su push: solo las Cloud Functions.
+    match /push_queue/{id} {
+      allow read, write: if false;
     }
 
     // Friend Requests Collection: Authenticated users can read/write requests where they are sender or receiver.

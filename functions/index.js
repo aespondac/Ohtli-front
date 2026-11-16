@@ -226,3 +226,83 @@ exports.ssoBridge = functions.https.onRequest(require('./sso').makeHandler(admin
 // Directorio de contactos verificados de perfiles públicos. Ver functions/directory.js.
 exports.contactDirectory = functions.https.onRequest(require('./directory').makeHandler(admin));
 
+// ---------------------------------------------------------------------------
+// Avisos push (FCM): llegan aunque Ohtli esté cerrado. Ver functions/push.js,
+// functions/trip_follow.js, lib/services/push_service.dart y web/ohtli_sw.js.
+// ---------------------------------------------------------------------------
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { Timestamp } = require('firebase-admin/firestore');
+const push = require('./push');
+const tripFollow = require('./trip_follow');
+
+// Un aviso con fecha en el futuro (plan sorpresa que se abre después) espera aquí su hora.
+const PUSH_QUEUE = 'push_queue';
+
+async function sendNotificationPush(db, uid, notifId, data) {
+  const { title, body } = push.describePush(data);
+  const payload = push.pushPayload({
+    title,
+    body,
+    url: push.urlForNotification(uid, data),
+    tag: `n-${notifId}`,
+    kind: String(data.type || ''),
+  });
+  return push.sendToUser(db, admin.messaging(), uid, payload);
+}
+
+// Cada aviso nuevo de la campana (users/{uid}/notifications) se manda también como push.
+exports.pushOnNotification = onDocumentCreated(
+  { document: 'users/{uid}/notifications/{notifId}', region: 'us-central1', memory: '256MiB', maxInstances: 10 },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data() || {};
+    const { uid, notifId } = event.params;
+    if (data.read === true || data.push === false) return;
+    const db = admin.firestore();
+    const ts = data.timestamp;
+    if (ts instanceof Timestamp && ts.toMillis() > Date.now() + 60 * 1000) {
+      await db.collection(PUSH_QUEUE).doc(`${uid}_${notifId}`).set({ uid, notifId, sendAt: ts });
+      console.log('[push] en espera', uid, notifId, ts.toDate().toISOString());
+      return;
+    }
+    const res = await sendNotificationPush(db, uid, notifId, data);
+    console.log('[push] aviso', data.type, uid, notifId, JSON.stringify(res));
+  }
+);
+
+// Cada 5 minutos: avisos de «hora de salir» del modo viaje y avisos en espera que ya tocan.
+exports.pushTick = onSchedule(
+  { schedule: 'every 5 minutes', region: 'us-central1', memory: '256MiB', timeoutSeconds: 120, maxInstances: 1, retryCount: 0 },
+  async () => {
+    const db = admin.firestore();
+    const now = new Date();
+
+    const follows = await db.collection('trip_follows').where('enabled', '==', true).limit(500).get();
+    for (const doc of follows.docs) {
+      try {
+        const r = await tripFollow.checkFollow(db, admin.messaging(), doc, now, push);
+        if (r !== 'nada que avisar' && r !== 'sin parada abierta') console.log('[push] seguir viaje', doc.id, r);
+      } catch (e) {
+        console.error('[push] seguir viaje', doc.id, e);
+      }
+    }
+
+    const due = await db.collection(PUSH_QUEUE).where('sendAt', '<=', Timestamp.fromDate(now)).limit(200).get();
+    for (const q of due.docs) {
+      const { uid, notifId } = q.data();
+      try {
+        const n = await db.collection('users').doc(uid).collection('notifications').doc(notifId).get();
+        // Si ya la borraron o la leyeron, no se manda.
+        if (n.exists && n.get('read') !== true) {
+          const res = await sendNotificationPush(db, uid, notifId, n.data());
+          console.log('[push] aviso en espera', uid, notifId, JSON.stringify(res));
+        }
+        await q.ref.delete();
+      } catch (e) {
+        console.error('[push] aviso en espera', q.id, e);
+      }
+    }
+  }
+);
