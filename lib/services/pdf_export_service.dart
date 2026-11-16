@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -5,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../models/poi_model.dart';
 import '../models/trip_model.dart';
 import 'trip_pdf_builder.dart';
 
@@ -62,13 +64,43 @@ class PdfExportService {
     }
   }
 
-  /// Genera los bytes del PDF.
+  static const String _apiUrl = String.fromEnvironment('yollotlApiUrl', defaultValue: 'https://api.ohtli.quest');
+
+  /// "Cerca de ahí": lugares del catálogo del motor a ~10 minutos caminando.
+  static Future<List<TripPdfNearby>> _nearby(double lat, double lng) async {
+    try {
+      final uri = Uri.parse('$_apiUrl/v1/pois').replace(queryParameters: {
+        'near': '$lat,$lng',
+        'radius': '800',
+        'limit': '10',
+      });
+      final res = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return const [];
+      final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+      if (decoded is! Map || decoded['pois'] is! List) return const [];
+      final out = <TripPdfNearby>[];
+      for (final raw in decoded['pois'] as List) {
+        if (raw is! Map) continue;
+        final poi = Poi.fromMap(Map<String, dynamic>.from(raw));
+        final meters = (raw['distance_m'] as num?)?.toDouble();
+        if (meters == null || meters < 25 || !poi.isValidCulturalPlace) continue; // < 25 m: es la misma parada
+        out.add(TripPdfNearby(name: poi.name, kind: poi.categoryDisplay, meters: meters));
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Genera los bytes del PDF. Sin [edition], antes y durante el viaje sale la guía de
+  /// bolsillo y después, la crónica.
   static Future<Uint8List> generateTripPdf({
     required Trip trip,
     required List<TripSection> sections,
     String? authorName,
     List<String>? coAuthors,
     String? qrBaseUrl,
+    TripPdfEdition? edition,
   }) async {
     return TripPdfBuilder.build(
       trip: trip,
@@ -78,6 +110,8 @@ class PdfExportService {
       authorName: authorName,
       coAuthors: coAuthors,
       qrUrl: qrBaseUrl,
+      edition: edition,
+      nearby: _nearby,
     );
   }
 
@@ -98,8 +132,9 @@ class PdfExportService {
     );
     final clean = trip.title.trim().isNotEmpty
         ? trip.title.trim().replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(RegExp(r'\s+'), '_')
-        : 'Guia_de_ruta';
-    await Printing.sharePdf(bytes: bytes, filename: '${clean}_Ohtli.pdf');
+        : 'Viaje';
+    final kind = TripPdfBuilder.editionFor(trip) == TripPdfEdition.guide ? 'Guia' : 'Cronica';
+    await Printing.sharePdf(bytes: bytes, filename: '${clean}_${kind}_Ohtli.pdf');
   }
 
   /// Abre el diálogo de impresión con la vista previa del PDF.

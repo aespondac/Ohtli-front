@@ -35,10 +35,42 @@ class TripPdfFonts {
 /// Descarga los bytes de una imagen (null si no se pudo).
 typedef TripPdfFetcher = Future<Uint8List?> Function(String url);
 
+/// Qué versión del PDF: guía de bolsillo para hacer el viaje o crónica para recordarlo.
+enum TripPdfEdition { guide, memory }
+
+/// Lugar cercano a una parada ("Cerca de ahí").
+class TripPdfNearby {
+  const TripPdfNearby({required this.name, required this.kind, required this.meters});
+  final String name;
+  final String kind;
+  final double meters;
+}
+
+/// Busca lugares cerca de un punto (los más cercanos primero).
+typedef TripPdfNearbyFinder = Future<List<TripPdfNearby>> Function(double lat, double lng);
+
 /// Guía de ruta imprimible de un viaje, al estilo de un atlas de calles:
 /// portada, mapa con cuadrícula, itinerario parada por parada e índice final.
 class TripPdfBuilder {
-  TripPdfBuilder._(this.trip, this.sections, this.fonts, this.fetch, this.authorLine, this.qrUrl);
+  TripPdfBuilder._(this.trip, this.sections, this.fonts, this.fetch, this.authorLine, this.qrUrl, this.edition,
+      this.nearbyFinder);
+
+  final TripPdfEdition edition;
+  final TripPdfNearbyFinder? nearbyFinder;
+  final Map<int, List<TripPdfNearby>> _nearby = {};
+
+  bool get _isGuide => edition == TripPdfEdition.guide;
+
+  /// Igual que el visor del viaje: terminado o con fecha pasada es "después" (crónica).
+  static TripPdfEdition editionFor(Trip trip, {DateTime? now}) {
+    if (trip.finishedAt != null) return TripPdfEdition.memory;
+    final d = trip.travelDate;
+    if (d == null) return TripPdfEdition.guide;
+    final n = now ?? DateTime.now();
+    return DateTime(d.year, d.month, d.day).isBefore(DateTime(n.year, n.month, n.day))
+        ? TripPdfEdition.memory
+        : TripPdfEdition.guide;
+  }
 
   final Trip trip;
   final List<TripSection> sections;
@@ -97,6 +129,10 @@ class TripPdfBuilder {
     if (start == null) return null;
     return end == null || end == start ? start : '$start – $end';
   }
+
+  /// Lo que de verdad se gastó (solo si se registró en alguna parada).
+  double? get _realSpent =>
+      places.any((p) => p.realCost != null) ? places.fold<double>(0, (a, p) => a + (p.realCost ?? 0)) : null;
 
   double get _placesCost => places.fold(0.0, (a, p) => a + p.cost);
   double get _transfersCost => transfers.fold(0.0, (a, t) => a + t.cost);
@@ -183,6 +219,8 @@ class TripPdfBuilder {
     String? authorName,
     List<String>? coAuthors,
     String? qrUrl,
+    TripPdfEdition? edition,
+    TripPdfNearbyFinder? nearby,
   }) async {
     final authors = [
       if (authorName != null && authorName.trim().isNotEmpty) authorName.trim() else 'Viajero Ohtli',
@@ -195,22 +233,42 @@ class TripPdfBuilder {
       fetch,
       authors.join(', '),
       (qrUrl != null && qrUrl.isNotEmpty) ? qrUrl : 'https://ohtli.quest/?tripId=${trip.id}&authorId=${trip.userId}',
+      edition ?? editionFor(trip),
+      nearby,
     );
     return b._build();
   }
 
   Future<Uint8List> _build() async {
-    // Descargas en paralelo: portada, fotos de cada parada y el mapa base
+    final stopNames = places.map((p) => _title(p).toLowerCase()).toSet();
     final loads = <Future<void>>[
-      _loadImage('cover', _sized(_coverUrl, 1280)),
+      if (!_isGuide) _loadImage('cover', _sized(_coverUrl, 1280)),
       for (var i = 0; i < places.length; i++)
-        _loadImage('place$i', _sized((places[i].coverUrl?.isNotEmpty ?? false) ? places[i].coverUrl! : places[i].mainPhotoUrl, 500)),
-      for (final s in sections.whereType<TextImageSection>()) _loadImage('img:${s.id}', _sized(s.imageUrl, 500)),
+        _loadImage('place$i', _sized(_photoOf(places[i]), _isGuide ? 330 : 500)),
+      if (!_isGuide) ...[
+        for (final s in sections.whereType<TextImageSection>()) _loadImage('img:${s.id}', _sized(s.imageUrl, 500)),
+        for (final (key, url) in _albumUrls) _loadImage(key, _sized(url, 500)),
+      ],
+      // "Cerca de ahí": lugares del catálogo a unos pasos de cada parada (sin repetir paradas)
+      if (_isGuide && nearbyFinder != null)
+        for (var i = 0; i < places.length; i++)
+          if (places[i].lat != null && places[i].lng != null)
+            () async {
+              try {
+                final found = await nearbyFinder!(places[i].lat!, places[i].lng!);
+                _nearby[i] = found.where((n) => !_sameAsAStop(n.name, stopNames)).take(4).toList();
+              } catch (_) {}
+            }(),
     ];
     if (mappable.isNotEmpty) {
-      // El mapa ocupa lo que deja la leyenda (dos columnas, ~22 pt por renglón)
-      final legendRows = (places.length / 2).ceil();
-      final mapHeight = (640.0 - 64 - legendRows * 22).clamp(400.0, 580.0);
+      double mapHeight;
+      if (_isGuide) {
+        mapHeight = 300;
+      } else {
+        // El mapa ocupa lo que deja la leyenda (dos columnas, ~22 pt por renglón)
+        final legendRows = (places.length / 2).ceil();
+        mapHeight = (640.0 - 64 - legendRows * 22).clamp(400.0, 580.0);
+      }
       _map = _AtlasMap(mappable.map((p) => (p.lat!, p.lng!)).toList(), width: 520, height: mapHeight);
       loads.add(_map!.loadTiles(fetch));
     }
@@ -219,7 +277,7 @@ class TripPdfBuilder {
     final doc = pw.Document(
       title: 'Ohtli · ${trip.title.isNotEmpty ? trip.title : 'Guía de ruta'}',
       author: authorLine,
-      subject: 'Guía de ruta por la Ciudad de México',
+      subject: _isGuide ? 'Guía de bolsillo para recorrer la ruta' : 'Crónica del viaje',
       creator: 'Ohtli (ohtli.quest)',
       theme: pw.ThemeData.withFont(
         base: fonts.body,
@@ -229,11 +287,436 @@ class TripPdfBuilder {
       ),
     );
 
-    doc.addPage(_coverPage());
-    if (_map != null) doc.addPage(_mapPage());
-    doc.addPage(_itineraryPages());
-    doc.addPage(_closingPage());
+    if (_isGuide) {
+      doc.addPage(_guidePages());
+    } else {
+      doc.addPage(_coverPage());
+      if (_map != null) doc.addPage(_mapPage());
+      doc.addPage(_itineraryPages());
+      if (_albumKeys.length >= 3) doc.addPage(_albumPage());
+      doc.addPage(_closingPage());
+    }
     return doc.save();
+  }
+
+  static String _key(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp('[áà]'), 'a')
+      .replaceAll(RegExp('[éè]'), 'e')
+      .replaceAll(RegExp('[íì]'), 'i')
+      .replaceAll(RegExp('[óò]'), 'o')
+      .replaceAll(RegExp('[úü]'), 'u')
+      .replaceAll(RegExp(r'[^a-z0-9ñ ]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  /// "Museo del Palacio de Bellas Artes" junto a la parada "Palacio de Bellas Artes" es el
+  /// mismo lugar: no va en "Cerca de ahí".
+  static bool _sameAsAStop(String name, Set<String> stops) {
+    final n = _key(name);
+    return stops.map(_key).any((s) => s.isNotEmpty && (n.contains(s) || s.contains(n)));
+  }
+
+  String _photoOf(PlaceSection p) => (p.coverUrl?.isNotEmpty ?? false) ? p.coverUrl! : p.mainPhotoUrl;
+
+  /// Fotos del álbum (crónica): la principal y las secundarias de cada parada, hasta 12.
+  late final List<(String, String)> _albumUrls = () {
+    final out = <(String, String)>[];
+    for (var i = 0; i < places.length && out.length < 12; i++) {
+      final urls = {_photoOf(places[i]), places[i].mainPhotoUrl, ...places[i].secondaryPhotoUrls}..removeWhere((u) => u.isEmpty);
+      var k = 0;
+      for (final u in urls) {
+        if (out.length >= 12) break;
+        out.add(('album:$i:${k++}', u));
+      }
+    }
+    return out;
+  }();
+
+  List<String> get _albumKeys => _albumUrls.map((e) => e.$1).where(_images.containsKey).take(10).toList();
+
+  // ───────────────────────── Guía de bolsillo (antes y durante) ─────────────────────────
+  pw.MultiPage _guidePages() {
+    final time = _timeWindow;
+    final total = _placesCost + _transfersCost;
+    final km = _distanceKm;
+    var placeIndex = -1;
+    final body = <pw.Widget>[];
+    for (final s in sections) {
+      if (s is PlaceSection) {
+        placeIndex++;
+        body.add(_guideStop(s, placeIndex));
+      } else if (s is TransferSection) {
+        body.add(_guideTransfer(s));
+      } else if (s is TextSection) {
+        body.addAll(_guideNotes(s.markdownText));
+      } else if (s is TextImageSection) {
+        body.addAll(_guideNotes(s.markdownText));
+      }
+    }
+
+    return pw.MultiPage(
+      pageFormat: PdfPageFormat.letter,
+      margin: const pw.EdgeInsets.fromLTRB(36, 28, 36, 24),
+      header: (context) => context.pageNumber == 1 ? pw.SizedBox() : _runningHeader(),
+      footer: (context) => _runningFooter(context),
+      build: (context) => [
+        // Encabezado de la guía
+        pw.Container(
+          padding: const pw.EdgeInsets.fromLTRB(16, 14, 14, 14),
+          decoration: pw.BoxDecoration(
+            color: tealDeep,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(14)),
+          ),
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Row(children: [
+                      pw.SvgImage(svg: _logoSvg('#FFFFFF'), width: 52),
+                      pw.SizedBox(width: 10),
+                      _eyebrow('Guía de bolsillo · $_dateText', color: PdfColor.fromHex('#F5A55C')),
+                    ]),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      trip.title.isNotEmpty ? trip.title : 'Mi ruta por la ciudad',
+                      maxLines: 2,
+                      style: _t(22, font: fonts.display, color: PdfColors.white, height: 1.5),
+                    ),
+                    pw.SizedBox(height: 10),
+                    pw.Row(children: [
+                      _coverStat('${places.length}', places.length == 1 ? 'parada' : 'paradas'),
+                      if (time != null) _coverStat(time, 'horario'),
+                      _coverStat(total > 0 ? money(total) : 'Gratis', 'por persona'),
+                      if (km != null) _coverStat('${km.toStringAsFixed(1)} km', 'recorrido'),
+                    ]),
+                  ],
+                ),
+              ),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(5),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.white,
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                ),
+                child: pw.Column(children: [
+                  pw.BarcodeWidget(
+                      barcode: pw.Barcode.qrCode(), data: qrUrl, width: 66, height: 66, color: tealDeep, drawText: false),
+                  pw.SizedBox(height: 3),
+                  pw.Text('Mapa en vivo', style: _t(6.5, font: fonts.bodySemiBold, color: tealDeep)),
+                ]),
+              ),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 12),
+        // Mapa y horario lado a lado no caben en carta: mapa completo y debajo el resumen
+        if (_map != null) ...[
+          _map!.widget(
+            pins: [
+              for (var i = 0; i < mappable.length; i++) (mappable[i].lat!, mappable[i].lng!, places.indexOf(mappable[i])),
+            ],
+            colorFor: colorFor,
+            labelStyle: _t(8.5, font: fonts.bodyBold, color: PdfColors.white),
+            gridStyle: _t(7, font: fonts.bodyBold, color: muted),
+            smallStyle: _t(6, color: muted),
+          ),
+          pw.SizedBox(height: 12),
+        ],
+        _eyebrow('El día de un vistazo'),
+        pw.SizedBox(height: 5),
+        pw.Table(
+          columnWidths: const {
+            0: pw.FixedColumnWidth(22),
+            1: pw.FixedColumnWidth(70),
+            2: pw.FlexColumnWidth(),
+            3: pw.FixedColumnWidth(36),
+            4: pw.FixedColumnWidth(56),
+          },
+          border: pw.TableBorder(horizontalInside: pw.BorderSide(color: line, width: 0.5)),
+          children: [
+            for (var i = 0; i < places.length; i++)
+              pw.TableRow(
+                verticalAlignment: pw.TableCellVerticalAlignment.middle,
+                children: [
+                  pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 3), child: _pinBadge(i, 14)),
+                  pw.Text(
+                    [places[i].arrivalTime, places[i].departureTime].where((t) => t != null && t.isNotEmpty).join('–'),
+                    style: _t(8.5, font: fonts.bodySemiBold),
+                  ),
+                  pw.Text(_title(places[i]), maxLines: 1, style: _t(8.5)),
+                  pw.Text(places[i].lat != null ? _gridOf(places[i]) : '', style: _t(8, font: fonts.bodyBold, color: muted)),
+                  pw.Text(places[i].cost > 0 ? money(places[i].cost) : 'Libre',
+                      textAlign: pw.TextAlign.right, style: _t(8.5)),
+                ],
+              ),
+          ],
+        ),
+        pw.NewPage(),
+        _eyebrow('Parada por parada'),
+        pw.SizedBox(height: 6),
+        ...body,
+        pw.SizedBox(height: 10),
+        _guideUseful(),
+      ],
+    );
+  }
+
+  pw.Widget _guideStop(PlaceSection p, int index) {
+    final color = colorFor(index);
+    final photo = _images['place$index'];
+    final time = [p.arrivalTime, p.departureTime].where((t) => t != null && t.isNotEmpty).join(' – ');
+    final grid = p.lat != null ? _gridOf(p) : '';
+    final description = _plain(p.description);
+    final near = _nearby[index] ?? const <TripPdfNearby>[];
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 4),
+      padding: const pw.EdgeInsets.fromLTRB(10, 9, 10, 9),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        // Esquinas rectas: la librería no permite redondear un borde con un lado más grueso
+        border: pw.Border(
+          left: pw.BorderSide(color: color, width: 4),
+          top: pw.BorderSide(color: line, width: 0.6),
+          right: pw.BorderSide(color: line, width: 0.6),
+          bottom: pw.BorderSide(color: line, width: 0.6),
+        ),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _pinBadge(index, 22),
+          pw.SizedBox(width: 9),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Expanded(child: pw.Text(_title(p), style: _t(12.5, font: fonts.heading, height: 1.4))),
+                    // Casilla para palomear en papel
+                    pw.Row(children: [
+                      pw.Container(
+                        width: 10,
+                        height: 10,
+                        decoration: pw.BoxDecoration(border: pw.Border.all(color: muted, width: 0.8)),
+                      ),
+                      pw.SizedBox(width: 3),
+                      pw.Text('Visitado', style: _t(7, color: muted)),
+                    ]),
+                  ],
+                ),
+                pw.SizedBox(height: 3),
+                pw.Wrap(children: [
+                  if (time.isNotEmpty) _chip(time, fill: color, color: PdfColors.white, font: fonts.bodyBold),
+                  if (grid.isNotEmpty) _chip('Mapa $grid'),
+                  _chip(p.cost > 0 ? '${money(p.cost)} ${p.currency}' : 'Entrada libre',
+                      color: p.cost > 0 ? onyx : PdfColor.fromHex('#2E6B3A'),
+                      fill: p.cost > 0 ? cream : PdfColor.fromHex('#E3F1E2')),
+                ]),
+                if (description.isNotEmpty)
+                  pw.Text(description, maxLines: 3, style: _t(8.5, color: PdfColor.fromHex('#2C2A27'), height: 1.8)),
+                if (near.isNotEmpty) ...[
+                  pw.SizedBox(height: 5),
+                  pw.Container(
+                    padding: const pw.EdgeInsets.fromLTRB(8, 5, 8, 5),
+                    decoration: pw.BoxDecoration(
+                      color: paper,
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('CERCA DE AHÍ', style: _t(6.5, font: fonts.bodyBold, color: color, spacing: 1.2)),
+                        pw.SizedBox(height: 2),
+                        pw.Wrap(
+                          spacing: 12,
+                          runSpacing: 2,
+                          children: [
+                            for (final n in near)
+                              pw.RichText(
+                                text: pw.TextSpan(children: [
+                                  pw.TextSpan(text: n.name, style: _t(8, font: fonts.bodySemiBold)),
+                                  pw.TextSpan(
+                                    text: '  ${n.kind} · ${_walk(n.meters)}',
+                                    style: _t(7.5, color: muted),
+                                  ),
+                                ]),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (photo != null) ...[
+            pw.SizedBox(width: 9),
+            pw.ClipRRect(
+              horizontalRadius: 6,
+              verticalRadius: 6,
+              child: pw.SizedBox(width: 78, height: 58, child: pw.Image(photo, fit: pw.BoxFit.cover)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _walk(double m) {
+    final minutes = (m / 80).ceil();
+    final dist = m < 1000 ? '${(m / 10).round() * 10} m' : '${(m / 1000).toStringAsFixed(1)} km';
+    return '$dist, $minutes min a pie';
+  }
+
+  pw.Widget _guideTransfer(TransferSection t) {
+    final parts = <String>[
+      _modeLabel(t.mode.toLowerCase()),
+      if ((t.durationMins ?? 0) > 0) '${t.durationMins} min',
+      if ((t.distanceKm ?? 0) > 0) '${t.distanceKm!.toStringAsFixed(t.distanceKm! < 10 ? 1 : 0)} km',
+      if (t.cost > 0) money(t.cost),
+    ];
+    final notes = _plain(t.notes);
+    return pw.Padding(
+      padding: const pw.EdgeInsets.fromLTRB(20, 1, 0, 5),
+      child: pw.RichText(
+        text: pw.TextSpan(children: [
+          pw.TextSpan(text: 'Siguiente: ', style: _t(8, font: fonts.bodyBold, color: muted)),
+          pw.TextSpan(text: parts.join(' · '), style: _t(8, font: fonts.bodyBold, color: teal)),
+          if (notes.isNotEmpty) pw.TextSpan(text: '  —  $notes', style: _t(8, color: muted)),
+        ]),
+      ),
+    );
+  }
+
+  /// En la guía solo van los consejos y avisos (lo útil en la calle), compactos.
+  List<pw.Widget> _guideNotes(String md) {
+    final out = <pw.Widget>[];
+    final lines = md.split('\n');
+    var i = 0;
+    while (i < lines.length) {
+      final l = lines[i].trim();
+      if (l.startsWith('>')) {
+        final type = RegExp(r'\[!(\w+)\]').firstMatch(l)?.group(1)?.toUpperCase() ?? 'NOTE';
+        final body = <String>[];
+        final first = l.replaceFirst(RegExp(r'^>\s*(\[!\w+\])?\s*'), '');
+        if (first.isNotEmpty) body.add(first);
+        i++;
+        while (i < lines.length && lines[i].trim().startsWith('>')) {
+          body.add(lines[i].trim().replaceFirst(RegExp(r'^>\s*'), ''));
+          i++;
+        }
+        final color = type == 'WARNING' || type == 'CAUTION' ? PdfColor.fromHex('#B3261E') : cempasuchil;
+        out.add(pw.Padding(
+          padding: const pw.EdgeInsets.fromLTRB(20, 0, 0, 6),
+          child: pw.RichText(
+            text: pw.TextSpan(children: [
+              pw.TextSpan(
+                text: '${type == 'WARNING' || type == 'CAUTION' ? 'OJO' : 'TIP'}  ',
+                style: _t(7, font: fonts.bodyBold, color: color, spacing: 1),
+              ),
+              pw.TextSpan(text: _plain(body.join(' ')), style: _t(8, height: 1.6)),
+            ]),
+          ),
+        ));
+        continue;
+      }
+      i++;
+    }
+    return out;
+  }
+
+  pw.Widget _guideUseful() => pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(
+            child: pw.Container(
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(
+                color: cream,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  _eyebrow('Útil durante el día'),
+                  pw.SizedBox(height: 6),
+                  for (final (k, v) in const [
+                    ('Emergencias', '911'),
+                    ('Locatel CDMX (información y extravíos)', '55 5658 1111'),
+                    ('Cambios a la ruta', 'Escanea el QR de arriba'),
+                  ])
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(bottom: 3),
+                      child: pw.Row(children: [
+                        pw.Expanded(child: pw.Text(k, style: _t(8.5, color: muted))),
+                        pw.Text(v, style: _t(8.5, font: fonts.bodyBold)),
+                      ]),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 12),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                _eyebrow('Notas'),
+                for (var k = 0; k < 4; k++)
+                  pw.Container(
+                    height: 18,
+                    decoration: pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: line, width: 0.7))),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      );
+
+  // ───────────────────────── Álbum (crónica) ─────────────────────────
+  pw.Page _albumPage() {
+    final keys = _albumKeys;
+    int stopOf(String key) => int.parse(key.split(':')[1]);
+    return pw.Page(
+      pageFormat: PdfPageFormat.letter,
+      margin: const pw.EdgeInsets.fromLTRB(40, 34, 40, 30),
+      build: (context) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionHeading('Álbum', 'Lo que vimos'),
+          pw.SizedBox(height: 12),
+          pw.Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var k = 0; k < keys.length; k++)
+                pw.SizedBox(
+                  width: k == 0 ? 532 : 172,
+                  height: k == 0 ? 230 : 128,
+                  child: pw.Stack(
+                    fit: pw.StackFit.expand,
+                    children: [
+                      pw.ClipRRect(
+                        horizontalRadius: 8,
+                        verticalRadius: 8,
+                        child: pw.Image(_images[keys[k]]!, fit: pw.BoxFit.cover),
+                      ),
+                      pw.Positioned(left: 6, bottom: 6, child: _pinBadge(stopOf(keys[k]), 16)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   // ───────────────────────── 1. Portada ─────────────────────────
@@ -278,7 +761,7 @@ class TripPdfBuilder {
                       color: cempasuchil,
                       borderRadius: const pw.BorderRadius.all(pw.Radius.circular(20)),
                     ),
-                    child: pw.Text('GUÍA DE RUTA', style: _t(8.5, font: fonts.bodyBold, color: PdfColors.white, spacing: 1.6)),
+                    child: pw.Text('CRÓNICA DEL VIAJE', style: _t(8.5, font: fonts.bodyBold, color: PdfColors.white, spacing: 1.6)),
                   ),
                 ),
               ],
@@ -293,7 +776,7 @@ class TripPdfBuilder {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  _eyebrow('Ciudad de México · $_dateText', color: PdfColor.fromHex('#F5A55C')),
+                  _eyebrow('Así fue · Ciudad de México · $_dateText', color: PdfColor.fromHex('#F5A55C')),
                   pw.SizedBox(height: 10),
                   pw.Text(
                     trip.title.isNotEmpty ? trip.title : 'Mi ruta por la ciudad',
@@ -319,7 +802,10 @@ class TripPdfBuilder {
                             pw.Row(children: [
                               _coverStat('${places.length}', places.length == 1 ? 'parada' : 'paradas'),
                               if (time != null) _coverStat(time, 'horario'),
-                              _coverStat(total > 0 ? money(total) : 'Gratis', 'presupuesto aprox.'),
+                              if (_realSpent != null)
+                                _coverStat(money(_realSpent!), 'gastado')
+                              else
+                                _coverStat(total > 0 ? money(total) : 'Gratis', 'presupuesto aprox.'),
                               if (km != null) _coverStat('${km.toStringAsFixed(1)} km', 'recorrido'),
                             ]),
                             pw.SizedBox(height: 16),
@@ -519,7 +1005,7 @@ class TripPdfBuilder {
             pw.Expanded(
               child: pw.Text(trip.title, maxLines: 1, style: _t(8, font: fonts.bodySemiBold, color: muted)),
             ),
-            pw.Text(_dateText, style: _t(8, color: muted)),
+            pw.Text('${_isGuide ? 'Guía de bolsillo' : 'Crónica'} · $_dateText', style: _t(8, color: muted)),
           ],
         ),
       );
@@ -555,9 +1041,11 @@ class TripPdfBuilder {
   pw.Widget _stopCard(PlaceSection p, int index) {
     final color = colorFor(index);
     final photo = _images['place$index'];
-    final time = [p.arrivalTime, p.departureTime].where((t) => t != null && t.isNotEmpty).join(' – ');
+    final real = [p.arrivedAt, p.leftAt].where((t) => t != null && t.isNotEmpty).join(' – ');
+    final time = real.isNotEmpty ? real : [p.arrivalTime, p.departureTime].where((t) => t != null && t.isNotEmpty).join(' – ');
     final grid = p.lat != null ? _gridOf(p) : '';
     final description = _plain(p.description);
+    final spent = p.realCost;
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 6),
       child: pw.Row(
@@ -598,10 +1086,14 @@ class TripPdfBuilder {
                             children: [
                               pw.Wrap(children: [
                                 if (time.isNotEmpty) _chip(time, fill: color, color: PdfColors.white, font: fonts.bodyBold),
+                                if (p.unplanned) _chip('Desvío', fill: xoconostle, color: PdfColors.white, font: fonts.bodyBold),
                                 if (grid.isNotEmpty) _chip('Mapa $grid'),
-                                _chip(p.cost > 0 ? '${money(p.cost)} ${p.currency}' : 'Entrada libre',
-                                    color: p.cost > 0 ? onyx : PdfColor.fromHex('#2E6B3A'),
-                                    fill: p.cost > 0 ? cream : PdfColor.fromHex('#E3F1E2')),
+                                if (spent != null)
+                                  _chip('Gastaron ${money(spent)}')
+                                else
+                                  _chip(p.cost > 0 ? '${money(p.cost)} ${p.currency}' : 'Entrada libre',
+                                      color: p.cost > 0 ? onyx : PdfColor.fromHex('#2E6B3A'),
+                                      fill: p.cost > 0 ? cream : PdfColor.fromHex('#E3F1E2')),
                               ]),
                               pw.SizedBox(height: 3),
                               pw.Text(_title(p), style: _t(16, font: fonts.heading, height: 1.5)),
@@ -867,7 +1359,12 @@ class TripPdfBuilder {
                       child: pw.Text(_title(places[i]), maxLines: 1, style: _t(9, font: fonts.bodySemiBold)),
                     ),
                     pw.Text(
-                      [places[i].arrivalTime, places[i].departureTime].where((t) => t != null && t.isNotEmpty).join('–'),
+                      () {
+                        final real = [places[i].arrivedAt, places[i].leftAt].where((t) => t != null && t.isNotEmpty).join('–');
+                        return real.isNotEmpty
+                            ? real
+                            : [places[i].arrivalTime, places[i].departureTime].where((t) => t != null && t.isNotEmpty).join('–');
+                      }(),
                       style: _t(8.5, color: muted),
                     ),
                     pw.Text(places[i].lat != null ? _gridOf(places[i]) : '—', style: _t(8.5, font: fonts.bodyBold, color: muted)),
@@ -895,6 +1392,9 @@ class TripPdfBuilder {
                       pw.SizedBox(height: 8),
                       _budgetRow('Entradas y consumo', _placesCost),
                       _budgetRow('Traslados', _transfersCost),
+                      if (places.any((p) => p.realCost != null))
+                        _budgetRow('Lo que de verdad gastaron',
+                            places.fold(0.0, (a, p) => a + (p.realCost ?? 0))),
                       pw.Divider(color: line, thickness: 0.7),
                       pw.Row(children: [
                         pw.Text('Total aproximado', style: _t(10, font: fonts.bodyBold)),
@@ -933,7 +1433,7 @@ class TripPdfBuilder {
             ],
           ),
           pw.SizedBox(height: 18),
-          _eyebrow('Notas del viaje'),
+          _eyebrow('Para recordar'),
           pw.SizedBox(height: 4),
           pw.Expanded(
             child: pw.LayoutBuilder(builder: (context, c) {

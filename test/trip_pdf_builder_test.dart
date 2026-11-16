@@ -15,16 +15,33 @@ TripPdfFonts _fallbackFonts() => TripPdfFonts(
     );
 
 void main() {
-  test('la guía de ruta se genera aunque no haya red (sin mapa base ni fotos)', () async {
-    final bytes = await TripPdfBuilder.build(
-      trip: TripSample.trip(SampleStage.antes),
-      sections: TripSample.sections(SampleStage.antes),
-      fonts: _fallbackFonts(),
-      fetch: (_) async => null,
-      authorName: 'Ana López',
-    );
-    expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
-    expect(bytes.length, greaterThan(10000));
+  for (final (stage, edition) in [
+    (SampleStage.antes, TripPdfEdition.guide),
+    (SampleStage.despues, TripPdfEdition.memory),
+  ]) {
+    test('${edition.name}: se genera aunque no haya red (sin mapa base ni fotos)', () async {
+      final bytes = await TripPdfBuilder.build(
+        trip: TripSample.trip(stage),
+        sections: TripSample.sections(stage),
+        fonts: _fallbackFonts(),
+        fetch: (_) async => null,
+        authorName: 'Ana López',
+        edition: edition,
+        nearby: (lat, lng) async => const [
+          TripPdfNearby(name: 'Café de prueba', kind: 'Cafetería', meters: 120),
+        ],
+      );
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+      expect(bytes.length, greaterThan(10000));
+    });
+  }
+
+  test('guía antes y durante el viaje, crónica después', () {
+    final now = DateTime(2026, 11, 15, 12);
+    expect(TripPdfBuilder.editionFor(TripSample.trip(SampleStage.antes), now: DateTime(2000)), TripPdfEdition.guide);
+    final despues = TripSample.trip(SampleStage.despues);
+    expect(TripPdfBuilder.editionFor(despues, now: despues.travelDate!.add(const Duration(days: 2))), TripPdfEdition.memory);
+    expect(now.year, 2026);
   });
 
   test('un viaje sin paradas también produce PDF', () async {
