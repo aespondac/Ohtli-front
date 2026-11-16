@@ -37,6 +37,9 @@ class ItineraryBlackboardService {
     String? transportMode,
     // 'presupuesto' (usar entre 80 % y 100 %) o 'ahorro' (gastar lo menos posible).
     String? budgetStrategy,
+    // Qué limita el plan: 'budget' (presupuesto, por defecto) o 'places' (número de lugares).
+    String? limitBy,
+    int? maxPlaces,
     List<double>? customTasteVector,
     DateTime? travelDate,
     // Plan sorpresa para un mejor amigo mutuo: el motor promedia sus gustos con los tuyos
@@ -91,6 +94,8 @@ class ItineraryBlackboardService {
       // del perfil cultural.
       'transport_mode': ?transportMode,
       'budget_strategy': ?budgetStrategy,
+      'limit_by': ?limitBy,
+      'max_places': ?maxPlaces,
       'surprise_target_id': ?surpriseTargetId,
       'created_at': nowUtc.toIso8601String(),
     };

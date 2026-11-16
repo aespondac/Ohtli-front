@@ -140,7 +140,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   double _budgetMxn = 450.0;
   // Cómo usar el presupuesto: 'presupuesto' (entre 80 % y 100 %) o 'ahorro' (lo menos posible).
   String _budgetStrategy = 'presupuesto';
-  String _selectedMood = 'Bohemio y Cafés';
+  // Qué limita el plan: el presupuesto por persona o cuántos lugares visitar.
+  String _limitBy = 'budget';
+  int _maxPlaces = 4;
+  // Estilo del día: el texto libre manda; las etiquetas se detectan en él o se eligen.
+  final Set<String> _pickedTags = {};
+  final Set<String> _dismissedTags = {};
   String _selectedTopology = 'anillo'; // anillo (ida y vuelta) o radio (abierta)
   // Ruta abierta: qué extremos fija la persona (inicio, fin o ambos).
   String _openEnds = 'inicio';
@@ -407,14 +412,66 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     },
   ];
 
-  final List<String> _moodPresets = [
-    'Bohemio y Cafés',
-    'Muralismo e Historia',
-    'Cantinas Tradicionales',
-    'Senderos Verdes y Calma',
-    'Gastronomía y Mercados',
-    'Arquitectura y Museos',
-  ];
+  /// Etiquetas del estilo del día y las palabras que las delatan en el texto (sin acentos).
+  static const Map<String, List<String>> _moodTagKeywords = {
+    'Cafés': ['cafe', 'cafeter', 'espresso', 'capuch', 'cafe de olla'],
+    'Murales': ['mural', 'rivera', 'orozco', 'siqueiros'],
+    'Historia': ['historia', 'histori', 'colonial', 'prehispan', 'centro historico', 'palacio'],
+    'Museos': ['museo'],
+    'Arquitectura': ['arquitect', 'edificio', 'barragan'],
+    'Arte': ['arte', 'galeria', 'exposic', 'artist'],
+    'Librerías': ['libreri', 'libro', 'leer', 'lectura'],
+    'Cantinas': ['cantina', 'botana'],
+    'Mezcal y pulque': ['mezcal', 'pulque', 'pulqueria', 'tequila', 'cerveza', 'trago'],
+    'Mercados': ['mercado', 'tianguis'],
+    'Antojitos': ['antojit', 'taco', 'torta', 'quesadill', 'tamal', 'garnacha', 'fonda', 'comida', 'comer'],
+    'Postres': ['postre', 'pan dulce', 'helado', 'nieve', 'dulce', 'churro'],
+    'Naturaleza': ['parque', 'bosque', 'jardin', 'lago', 'naturaleza', 'vivero', 'aire libre', 'verde'],
+    'Miradores': ['mirador', 'vista', 'terraza', 'azotea', 'rooftop'],
+    'Música en vivo': ['musica', 'concierto', 'jazz', 'mariachi', 'en vivo', 'son jarocho'],
+    'Compras': ['compra', 'tienda', 'boutique', 'vinilo', 'diseño', 'artesan'],
+    'Vida nocturna': ['noche', 'nocturn', 'bar ', 'bares', 'antro', 'fiesta'],
+    'Tranquilo': ['tranquil', 'calma', 'relaj', 'sin prisa', 'desconect', 'pausa'],
+    'Fotografía': ['foto', 'instagram'],
+    'En familia': ['niño', 'nino', 'familia', 'hijos'],
+  };
+
+  static String _fold(String s) {
+    const from = 'áéíóúüñÁÉÍÓÚÜÑ';
+    const to = 'aeiouunaeiouun';
+    final b = StringBuffer();
+    for (final ch in s.toLowerCase().split('')) {
+      final i = from.indexOf(ch);
+      b.write(i >= 0 ? to[i] : ch);
+    }
+    return b.toString();
+  }
+
+  /// Etiquetas que aparecen en lo que escribió la persona.
+  Set<String> get _detectedTags {
+    final text = ' ${_fold(_customMoodController.text)} ';
+    if (text.trim().isEmpty) return {};
+    return {
+      for (final e in _moodTagKeywords.entries)
+        if (e.value.any((k) => text.contains(_fold(k)))) e.key,
+    };
+  }
+
+  /// Etiquetas activas, en el orden del catálogo: las detectadas (salvo las que se quitaron) y las elegidas.
+  List<String> get _activeTags {
+    final detected = _detectedTags.difference(_dismissedTags);
+    return [for (final t in _moodTagKeywords.keys) if (detected.contains(t) || _pickedTags.contains(t)) t];
+  }
+
+  /// Lo que se manda al motor como intención: el texto y, aparte, las etiquetas.
+  String get _moodForEngine {
+    final text = _customMoodController.text.trim();
+    final tags = _activeTags;
+    if (text.isEmpty && tags.isEmpty) return 'Conocer lo mejor de la Ciudad de México';
+    if (tags.isEmpty) return text;
+    if (text.isEmpty) return 'Intereses: ${tags.join(', ')}';
+    return '$text\nIntereses: ${tags.join(', ')}';
+  }
 
   @override
   void initState() {
@@ -719,29 +776,38 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     return cards;
   }
 
+  /// Puntos de partida en una sola fila: en escritorio caben seis; si hay más, o en móvil,
+  /// la fila se desliza de lado en vez de partirse en una cuadrícula descuadrada.
   Widget _buildOriginGrid(bool isMobile, List<Widget> cards) {
-    final cols = isMobile ? 2 : 6;
     const gap = 10.0;
-    return Column(
-      children: [
-        for (int r = 0; r * cols < cards.length; r++) ...[
-          if (r > 0) const SizedBox(height: gap),
-          SizedBox(
-            height: 56,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (int c = 0; c < cols; c++) ...[
-                  if (c > 0) const SizedBox(width: gap),
-                  Expanded(child: r * cols + c < cards.length ? cards[r * cols + c] : const SizedBox.shrink()),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ],
+    const height = 58.0;
+    if (!isMobile && cards.length <= 6) {
+      return SizedBox(
+        height: height,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (int i = 0; i < 6; i++) ...[
+              if (i > 0) const SizedBox(width: gap),
+              Expanded(child: i < cards.length ? cards[i] : const SizedBox.shrink()),
+            ],
+          ],
+        ),
+      );
+    }
+    return SizedBox(
+      height: height,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        physics: const BouncingScrollPhysics(),
+        itemCount: cards.length,
+        separatorBuilder: (_, _) => const SizedBox(width: gap),
+        itemBuilder: (_, i) => SizedBox(width: isMobile ? 196 : 210, child: cards[i]),
+      ),
     );
   }
+
 
   /// Lo que el motor necesita de la ruta: origen, forma (anillo, radio, fin o elipse, como en
   /// core/topology.py), destino e intención. Si falta el punto final, avisa y devuelve null.
@@ -761,7 +827,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final topology = _selectedTopology == 'anillo'
         ? 'anillo'
         : (_openEnds == 'fin' ? 'fin' : (_openEnds == 'ambos' ? 'elipse' : 'radio'));
-    final mood = _customMoodController.text.trim().isNotEmpty ? _customMoodController.text.trim() : _selectedMood;
+    final mood = _moodForEngine;
     final originName = !_fixesOrigin && _destinationName.isNotEmpty
         ? _destinationName
         : (_originSearchController.text.trim().isNotEmpty
@@ -808,6 +874,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           'mood_text': route.mood,
           'transport_mode': _selectedTransportMode,
           'budget_strategy': _budgetStrategy,
+          'limit_by': _limitBy,
+          if (_limitBy == 'places') 'max_places': _maxPlaces,
           'travel_date': d.toIso8601String(),
         },
         invitees: invitees,
@@ -882,6 +950,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         travelDate: _selectedTravelDate,
         transportMode: _selectedTransportMode,
         budgetStrategy: _budgetStrategy,
+        limitBy: _limitBy,
+        maxPlaces: _limitBy == 'places' ? _maxPlaces : null,
         // Sorpresa para un mejor amigo mutuo: el motor suma sus gustos a los tuyos.
         surpriseTargetId: _companions == 'sorpresa' ? _surpriseTargetId : null,
       );
@@ -1767,27 +1837,25 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       children: [
         Text('TIPO DE RUTA', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildTopologyOption(
-                key: 'anillo',
-                title: 'Ida y vuelta',
-                desc: 'Empiezas y terminas en el mismo punto',
-                icon: Icons.loop_rounded,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _buildTopologyOption(
-                key: 'radio',
-                title: 'Abierta',
-                desc: 'No vuelves al inicio; tú eliges qué puntos fijar',
-                icon: Icons.trending_flat_rounded,
-              ),
-            ),
-          ],
-        ),
+        LayoutBuilder(builder: (context, c) {
+          final ring = _buildTopologyOption(
+            key: 'anillo',
+            title: 'Ida y vuelta',
+            desc: 'Empiezas y terminas en el mismo punto',
+            icon: Icons.loop_rounded,
+          );
+          final open = _buildTopologyOption(
+            key: 'radio',
+            title: 'Abierta',
+            desc: 'No vuelves al inicio; tú eliges qué puntos fijar',
+            icon: Icons.trending_flat_rounded,
+          );
+          // En pantallas angostas, una debajo de otra para que se lea completa la descripción
+          if (c.maxWidth < 520) {
+            return Column(children: [ring, const SizedBox(height: 10), open]);
+          }
+          return Row(children: [Expanded(child: ring), const SizedBox(width: 14), Expanded(child: open)]);
+        }),
         if (_selectedTopology == 'radio') ...[
           const SizedBox(height: 18),
           Text('¿QUÉ PUNTOS QUIERES FIJAR?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
@@ -2487,8 +2555,29 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         _buildTravelDateSurface(),
         const SizedBox(height: 28),
 
-        // Presupuesto
-        label('PRESUPUESTO POR PERSONA'),
+        // Qué limita el plan: presupuesto o número de lugares
+        label('¿QUÉ LIMITA TU PLAN?'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OhtliChoiceChip(
+              label: 'Presupuesto',
+              icon: Icons.payments_outlined,
+              selected: _limitBy == 'budget',
+              onTap: () => setState(() => _limitBy = 'budget'),
+            ),
+            OhtliChoiceChip(
+              label: 'Número de lugares',
+              icon: Icons.place_outlined,
+              selected: _limitBy == 'places',
+              onTap: () => setState(() => _limitBy = 'places'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (_limitBy == 'budget') ...[
+          label('PRESUPUESTO POR PERSONA'),
         OhtliSurface(
           radius: 22,
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
@@ -2570,8 +2659,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Económico · \$150', style: OhtliUi.body(size: 12)),
-                  Text('Premium · \$2,000', style: OhtliUi.body(size: 12)),
+                  Text('Casual · \$150', style: OhtliUi.body(size: 12)),
+                  Text('Serio · \$2,000', style: OhtliUi.body(size: 12)),
                 ],
               ),
               const SizedBox(height: 10),
@@ -2623,74 +2712,15 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             ],
           ),
         ),
+        ] else
+          _buildPlacesLimitSurface(),
+        const SizedBox(height: 10),
+        _plannerNote(Icons.traffic_outlined, 'Las rutas consideran el tráfico del día de tu visita.'),
         const SizedBox(height: 28),
 
-        // Estilo / mood
+        // Estilo del día: el texto manda; las etiquetas se suman solas al detectarse o al elegirse
         label('ESTILO DEL DÍA'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _moodPresets.map((mood) {
-            final isSelected = _selectedMood == mood;
-            return OhtliChoiceChip(
-              label: mood,
-              selected: isSelected,
-              onTap: () => setState(() {
-                final hadIdea = _moodIdeas.values.any((l) => l.contains(_customMoodController.text));
-                _selectedMood = mood;
-                // Si el texto era una idea generada, se sustituye por la del nuevo estilo
-                if (hadIdea && _customMoodController.text.isNotEmpty) {
-                  _ideaIndex = 0;
-                  _customMoodController.text = (_moodIdeas[mood] ?? const [''])[0];
-                }
-              }),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.fromLTRB(18, 4, 8, 4),
-          decoration: BoxDecoration(
-            color: OhtliColors.cardBg,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: OhtliColors.cardBorder),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Icon(Icons.edit_note_rounded, size: 20, color: OhtliColors.accentText),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _customMoodController,
-                  minLines: 1,
-                  maxLines: 3,
-                  style: GoogleFonts.inter(fontSize: 14, color: OhtliColors.onyx, height: 1.45),
-                  cursorColor: OhtliColors.stormyTeal,
-                  decoration: InputDecoration(
-                    hintText: 'Describe tu día ideal o pide una idea',
-                    hintStyle: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.subtleText),
-                    border: InputBorder.none,
-                  ),
-                  onChanged: (val) => setState(() {}),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton.icon(
-                onPressed: _giveMoodIdea,
-                icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                label: const Text('Dame una idea'),
-                style: TextButton.styleFrom(
-                  foregroundColor: OhtliColors.accentText,
-                  backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.10),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  shape: const StadiumBorder(),
-                  textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-        ),
+        _buildMoodComposer(isMobile),
         const SizedBox(height: 28),
 
         // Lanzar generación con IA
@@ -2705,6 +2735,173 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           ),
         ),
       ],
+    );
+  }
+
+  Widget _plannerNote(IconData icon, String text) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: OhtliColors.subtleText),
+          const SizedBox(width: 6),
+          Expanded(child: Text(text, style: OhtliUi.body(size: 12))),
+        ],
+      );
+
+  Widget _buildPlacesLimitSurface() {
+    Widget stepButton(IconData icon, VoidCallback? onTap, String semantics) => IconButton.filledTonal(
+          onPressed: onTap,
+          tooltip: semantics,
+          icon: Icon(icon, size: 20),
+          style: IconButton.styleFrom(
+            backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.10),
+            foregroundColor: OhtliColors.accentText,
+          ),
+        );
+    return OhtliSurface(
+      radius: 22,
+      padding: const EdgeInsets.fromLTRB(20, 16, 14, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('¿Cuántos lugares quieres visitar?',
+                        style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                    const SizedBox(height: 2),
+                    Text('Sin tope de gasto; el costo estimado se muestra en cada opción.', style: OhtliUi.body(size: 12.5)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              stepButton(Icons.remove_rounded, _maxPlaces > 2 ? () => setState(() => _maxPlaces--) : null, 'Menos lugares'),
+              SizedBox(
+                width: 40,
+                child: Text('$_maxPlaces',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w800, color: OhtliColors.accentText)),
+              ),
+              stepButton(Icons.add_rounded, _maxPlaces < 8 ? () => setState(() => _maxPlaces++) : null, 'Más lugares'),
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: _maxPlaces > 4
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: _plannerNote(Icons.info_outline_rounded, 'Más de 4 lugares puede restar precisión a la recomendación.'),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Estilo del día: un solo campo para escribir la idea; debajo, las etiquetas que se
+  /// detectan en el texto (o que se eligen) y sugerencias en una fila que se desliza.
+  Widget _buildMoodComposer(bool isMobile) {
+    final active = _activeTags;
+    final suggestions = [for (final t in _moodTagKeywords.keys) if (!active.contains(t)) t];
+    return OhtliSurface(
+      radius: 22,
+      padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _customMoodController,
+            minLines: isMobile ? 3 : 2,
+            maxLines: 6,
+            style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.onyx, height: 1.5),
+            cursorColor: OhtliColors.stormyTeal,
+            decoration: InputDecoration(
+              hintText: 'Cuéntanos tu día ideal: qué quieres ver, comer o sentir…',
+              hintStyle: GoogleFonts.inter(fontSize: 14.5, color: OhtliColors.subtleText),
+              border: InputBorder.none,
+              isDense: true,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  active.isEmpty ? 'Las etiquetas aparecen solas al escribir, o elige abajo.' : 'Tu día incluye',
+                  style: OhtliUi.body(size: 12),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _giveMoodIdea,
+                icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                label: const Text('Dame una idea'),
+                style: TextButton.styleFrom(
+                  foregroundColor: OhtliColors.accentText,
+                  backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: const StadiumBorder(),
+                  textStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          if (active.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final t in active)
+                  InputChip(
+                    label: Text(t),
+                    selected: true,
+                    showCheckmark: false,
+                    labelStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: OhtliColors.accentText),
+                    selectedColor: OhtliColors.stormyTeal.withValues(alpha: 0.14),
+                    side: BorderSide(color: OhtliColors.stormyTeal.withValues(alpha: 0.35)),
+                    shape: const StadiumBorder(),
+                    deleteIcon: const Icon(Icons.close_rounded, size: 15),
+                    deleteIconColor: OhtliColors.accentText,
+                    deleteButtonTooltipMessage: 'Quitar $t',
+                    onDeleted: () => setState(() {
+                      _pickedTags.remove(t);
+                      _dismissedTags.add(t);
+                    }),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 36,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              itemCount: suggestions.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 6),
+              itemBuilder: (_, i) {
+                final t = suggestions[i];
+                return ActionChip(
+                  avatar: Icon(Icons.add_rounded, size: 15, color: OhtliColors.subtleText),
+                  label: Text(t),
+                  labelStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+                  backgroundColor: OhtliColors.innerCardBg,
+                  side: BorderSide(color: OhtliColors.cardBorder),
+                  shape: const StadiumBorder(),
+                  onPressed: () => setState(() {
+                    _dismissedTags.remove(t);
+                    _pickedTags.add(t);
+                  }),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2760,12 +2957,22 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   };
 
   void _giveMoodIdea() {
-    final ideas = _moodIdeas[_selectedMood] ?? _moodIdeas.values.first;
+    final all = [for (final l in _moodIdeas.values) ...l];
+    // Primero las ideas que hablan de lo que ya marcó la persona
+    final related = _activeTags.isEmpty
+        ? all
+        : all.where((idea) {
+            final f = _fold(idea);
+            return _activeTags.any((t) => _moodTagKeywords[t]!.any((k) => f.contains(_fold(k))));
+          }).toList();
+    final pool = related.isEmpty ? all : related;
     setState(() {
-      _customMoodController.text = ideas[_ideaIndex % ideas.length];
+      _customMoodController.text = pool[_ideaIndex % pool.length];
       _ideaIndex++;
+      _dismissedTags.clear();
     });
   }
+
 
   Widget _buildTopologyOption({
     required String key,
