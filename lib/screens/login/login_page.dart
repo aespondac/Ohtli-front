@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/two_factor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -143,10 +144,21 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _loadingEmail = true);
     try {
       await _setPersistence();
-      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      UserCredential credential;
+      try {
+        credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+      } on FirebaseAuthMultiFactorException catch (e) {
+        // Verificación en dos pasos: el código por SMS termina el inicio de sesión.
+        final resolved = await TwoFactor.resolve(context, e);
+        if (resolved == null) {
+          if (mounted) setState(() => _error = 'Para entrar necesitas el código que llega a tu teléfono.');
+          return;
+        }
+        credential = resolved;
+      }
       // Avisa al gestor de contraseñas del navegador que el acceso funcionó
       TextInput.finishAutofillContext();
       // Con "Recordar sesión", la cuenta queda disponible para cambiar desde el menú.
@@ -181,7 +193,17 @@ class _LoginPageState extends State<LoginPage> {
     });
     try {
       await _setPersistence();
-      final credential = await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
+      UserCredential credential;
+      try {
+        credential = await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
+      } on FirebaseAuthMultiFactorException catch (e) {
+        final resolved = await TwoFactor.resolve(context, e);
+        if (resolved == null) {
+          if (mounted) setState(() => _error = 'Para entrar necesitas el código que llega a tu teléfono.');
+          return;
+        }
+        credential = resolved;
+      }
       if (_rememberSession && credential.user != null) {
         await SavedAccounts.remember(credential.user!);
       }

@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/two_factor.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -144,7 +145,17 @@ class _RegisterPageState extends State<RegisterPage> {
       _loadingGoogle = true;
     });
     try {
-      final credential = await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
+      UserCredential credential;
+      try {
+        credential = await FirebaseAuth.instance.signInWithPopup(GoogleAuthProvider());
+      } on FirebaseAuthMultiFactorException catch (e) {
+        final resolved = await TwoFactor.resolve(context, e);
+        if (resolved == null) {
+          if (mounted) setState(() => _error = 'Para entrar necesitas el código que llega a tu teléfono.');
+          return;
+        }
+        credential = resolved;
+      }
       final user = credential.user;
       if (user != null) {
         try {

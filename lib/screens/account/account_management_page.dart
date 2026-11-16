@@ -8,6 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/two_factor.dart';
+import '../../widgets/phone_verification_field.dart';
+import '../../widgets/two_factor_card.dart';
+import '../../widgets/usertag_settings.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../services/user_private_data.dart';
@@ -824,7 +828,6 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           await UserPrivateData.save(user.uid, {
                 'displayName': newName,
                 'email': user.email ?? '',
-                'phone': phoneText,
                 'updatedAt': FieldValue.serverTimestamp(),
               });
           print("Successfully synced profile changes to Firestore.");
@@ -906,7 +909,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             email: user.email!,
             password: currentPassword,
           );
-          await user.reauthenticateWithCredential(credential);
+          await TwoFactor.reauthenticate(context, user, credential);
         }
         
         await user.updatePassword(newPassword);
@@ -1117,9 +1120,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                 email: user.email!,
                                 password: deletePasswordController.text,
                               );
-                              await user.reauthenticateWithCredential(
-                                credential,
-                              );
+                              await TwoFactor.reauthenticate(context, user, credential);
 
                             // Delete local storage keys securely
                             web.window.localStorage.removeItem(
@@ -2270,32 +2271,11 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Teléfono
-                TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  style: GoogleFonts.inter(
-                    color: OhtliColors.onyx,
-                    fontSize: 14,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Teléfono (opcional)',
-                    labelStyle: GoogleFonts.inter(
-                      color: OhtliColors.onyx.withValues(alpha: 0.5),
-                    ),
-                    prefixIcon: const Icon(
-                      Icons.phone_outlined,
-                      color: OhtliColors.stormyTeal,
-                      size: 20,
-                    ),
-                    filled: true,
-                    fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
+                // Teléfono: se verifica por SMS (habilita la verificación en dos pasos y que
+                // te encuentren por él si tu perfil es público).
+                Text('Teléfono (opcional)', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx, fontSize: 14)),
+                const SizedBox(height: 8),
+                const PhoneVerificationField(),
                 const SizedBox(height: 28),
 
                 // Botones
@@ -2381,6 +2361,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+              const TwoFactorCard(),
+              const SizedBox(height: 24),
                 Text(
                   hasPassword
                       ? 'Por seguridad, requerimos verificar tu contraseña actual antes de actualizarla.'
@@ -3121,6 +3103,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                   });
                 },
               ),
+              Divider(height: 32, color: OhtliColors.cardBorder),
+
+              // Usertag y que te encuentren por correo o teléfono
+              const UsertagSettings(),
               Divider(height: 32, color: OhtliColors.cardBorder),
 
               // DANGER ZONE: ACCOUNT DELETION
