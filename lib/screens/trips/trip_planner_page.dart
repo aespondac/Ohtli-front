@@ -549,7 +549,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   String _chooseLabel(Map<String, dynamic> option, double cost, {bool compact = false}) {
     if (widget.groupTripId != null) {
       final voted = _myVote != null && _myVote == _generatedOptions.indexOf(option);
-      if (voted) return compact ? '✓ Tu voto' : '✓ Votaste por esta ruta';
+      if (voted) return compact ? 'Tu voto' : 'Votaste por esta ruta';
       return compact ? 'Votar' : 'Votar por esta ruta';
     }
     if (_isSavingTrip) return compact ? 'Creando…' : 'Creando viaje…';
@@ -879,8 +879,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           'travel_date': d.toIso8601String(),
         },
         invitees: invitees,
-        respondWindow: Duration(hours: _respondHours),
-        voteWindow: Duration(hours: _voteHours),
+        respondWindow: Duration(hours: _groupDeadlines.$1),
+        voteWindow: Duration(hours: _groupDeadlines.$2),
       );
       if (!mounted) return;
       setState(() => _isSavingTrip = false);
@@ -2355,7 +2355,51 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     );
   }
 
-  Widget _buildDeadlineRow(String label, int hours, ValueChanged<int> onPick) {
+  // --- Plazos del plan con IA en grupo ---
+  // Responder y votar tienen que terminar antes del día del plan (a más tardar a las 8:00),
+  // si no el plan ocurriría antes de que el grupo vote.
+  static const List<int> _deadlineChoices = [1, 6, 24];
+
+  DateTime get _groupCloseLimit => DateTime(_selectedTravelDate.year, _selectedTravelDate.month, _selectedTravelDate.day, 8);
+
+  int get _groupHoursAvailable => _groupCloseLimit.difference(DateTime.now()).inMinutes ~/ 60;
+
+  /// Plazos que sí caben antes del día del plan: si no caben los elegidos, se acorta primero el mayor.
+  (int, int) get _groupDeadlines {
+    var r = _respondHours;
+    var v = _voteHours;
+    final avail = _groupHoursAvailable;
+    int smaller(int h) => _deadlineChoices.lastWhere((c) => c < h, orElse: () => h);
+    while (r + v > avail) {
+      final nr = r >= v ? smaller(r) : r;
+      final nv = r >= v ? v : smaller(v);
+      if (nr == r && nv == v) {
+        // El mayor ya es el mínimo: se acorta el otro
+        final r2 = smaller(r), v2 = smaller(v);
+        if (r2 == r && v2 == v) break;
+        r = r2;
+        v = v2;
+      } else {
+        r = nr;
+        v = nv;
+      }
+    }
+    return (r, v);
+  }
+
+  bool get _groupDeadlinesFit {
+    final (r, v) = _groupDeadlines;
+    return r + v <= _groupHoursAvailable;
+  }
+
+  String _shortWhen(DateTime d) {
+    const days = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    final hh = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    return '${days[d.weekday - 1]} ${d.day}, $hh';
+  }
+
+  Widget _buildDeadlineRow(String label, int hours, int other, ValueChanged<int> onPick) {
+    final avail = _groupHoursAvailable;
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 8,
@@ -2363,8 +2407,53 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       children: [
         SizedBox(width: 118, child: Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx))),
         for (final o in const [(1, '1 hora'), (6, '6 horas'), (24, '1 día')])
-          OhtliChoiceChip(label: o.$2, selected: hours == o.$1, onTap: () => onPick(o.$1)),
+          Opacity(
+            // Opción que no cabe antes del día del plan
+            opacity: o.$1 + other <= avail ? 1 : 0.4,
+            child: OhtliChoiceChip(
+              label: o.$2,
+              selected: hours == o.$1,
+              onTap: () {
+                if (o.$1 + other <= avail) onPick(o.$1);
+              },
+            ),
+          ),
       ],
+    );
+  }
+
+  /// Plazos del plan en grupo, debajo de la fecha: primero el día del plan y luego cuánto tienen
+  /// para responder y votar, siempre antes de ese día.
+  Widget _buildGroupDeadlines() {
+    final (r, v) = _groupDeadlines;
+    final fits = _groupDeadlinesFit;
+    final now = DateTime.now();
+    final respondBy = now.add(Duration(hours: r));
+    final voteBy = respondBy.add(Duration(hours: v));
+    return OhtliSurface(
+      radius: 22,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDeadlineRow('Para responder', r, v, (h) => setState(() {
+                _respondHours = h;
+                _voteHours = v;
+              })),
+          const SizedBox(height: 10),
+          _buildDeadlineRow('Para votar', v, r, (h) => setState(() {
+                _voteHours = h;
+                _respondHours = r;
+              })),
+          const SizedBox(height: 12),
+          fits
+              ? _plannerNote(Icons.event_available_rounded,
+                  'Responden hasta el ${_shortWhen(respondBy)} y votan hasta el ${_shortWhen(voteBy)}, antes del día del plan. '
+                  'Si todos responden o votan antes, no esperamos al plazo.')
+              : _plannerNote(Icons.warning_amber_rounded,
+                  'No da tiempo de responder y votar antes del día del plan. Elige una fecha más adelante.'),
+        ],
+      ),
     );
   }
 
@@ -2409,16 +2498,6 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           Text(surprise ? '¿PARA QUIÉN ES LA SORPRESA?' : '¿A QUIÉN INVITAS?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
           const SizedBox(height: 12),
           _buildFriendPicker(),
-          if (friends && !_manualMode) ...[
-            const SizedBox(height: 22),
-            Text('PLAZOS', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
-            const SizedBox(height: 10),
-            _buildDeadlineRow('Para responder', _respondHours, (h) => setState(() => _respondHours = h)),
-            const SizedBox(height: 10),
-            _buildDeadlineRow('Para votar', _voteHours, (h) => setState(() => _voteHours = h)),
-            const SizedBox(height: 10),
-            Text('Si todos responden o votan antes, no esperamos al plazo.', style: OhtliUi.body(size: 12.5)),
-          ],
           if (surprise) ...[
             const SizedBox(height: 10),
             Text(
@@ -2551,6 +2630,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         // Fecha del viaje
         label('FECHA DEL VIAJE'),
         _buildTravelDateSurface(),
+        if (_isAiGroup) ...[
+          const SizedBox(height: 18),
+          label('PLAZOS DEL GRUPO'),
+          _buildGroupDeadlines(),
+        ],
         const SizedBox(height: 28),
 
         // Qué limita el plan: presupuesto o número de lugares
@@ -2729,7 +2813,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             icon: _isAiGroup ? Icons.groups_rounded : Icons.auto_awesome_rounded,
             highlight: true,
             loading: _isAiGroup && _isSavingTrip,
-            onPressed: _isAiGroup ? (_isSavingTrip ? null : _createAiGroup) : _launchBlackboardJob,
+            onPressed: _isAiGroup ? (_isSavingTrip || !_groupDeadlinesFit ? null : _createAiGroup) : _launchBlackboardJob,
           ),
         ),
       ],
@@ -3609,7 +3693,12 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       onPressed: _isSavingTrip ? null : () => _chooseRouteAndCreateTrip(option),
       icon: _isSavingTrip
           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: fg))
-          : Icon(Icons.alt_route_rounded, color: fg, size: compact ? 17 : 19),
+          : Icon(
+              widget.groupTripId == null
+                  ? Icons.alt_route_rounded
+                  : (_myVote != null && _myVote == _generatedOptions.indexOf(option) ? Icons.check_rounded : Icons.how_to_vote_rounded),
+              color: fg,
+              size: compact ? 17 : 19),
       label: Text(
         _chooseLabel(option, cost, compact: compact),
         style: GoogleFonts.outfit(fontSize: compact ? 13.5 : (isMobile ? 14 : 15), fontWeight: FontWeight.w800, color: fg),

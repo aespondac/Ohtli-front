@@ -67,7 +67,18 @@ function describePush(data) {
     case 'group_trip_accepted':
       return { title: 'Se sumó a tu plan', body: `${sender} se sumó a tu plan "${trip}".` };
     case 'group_trip_declined':
-      return { title: 'No podrá ir', body: `${sender} no podrá ir a "${trip}".` };
+    case 'group_trip_left': {
+      const reason = str(d.reason);
+      const what = type === 'group_trip_left' ? 'se retiró de' : 'no podrá ir a';
+      return {
+        title: type === 'group_trip_left' ? 'Se retiró del plan' : 'No podrá ir',
+        body: `${sender} ${what} "${trip}"${reason ? `: ${reason}.` : '.'}`,
+      };
+    }
+    case 'group_trip_remind_respond':
+      return { title: 'Queda 1 hora para responder', body: message || `Responde la invitación a "${trip}" antes de que cierre.` };
+    case 'group_trip_remind_vote':
+      return { title: 'Queda 1 hora para votar', body: message || `Vota por tu ruta favorita de "${trip}" antes de que cierre.` };
     case 'group_trip_ready':
       return { title: 'Ya pueden votar', body: message || `Las rutas de "${trip}" están listas: vota por tu favorita.` };
     case 'group_trip_created':

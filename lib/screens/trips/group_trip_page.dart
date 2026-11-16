@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -26,22 +28,28 @@ class _GroupTripPageState extends State<GroupTripPage> {
 
   static const _months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
-  String _when(DateTime d) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(d.year, d.month, d.day);
-    final hh = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    if (day == today) return 'hoy a las $hh';
-    if (day == today.add(const Duration(days: 1))) return 'mañana a las $hh';
-    return 'el ${d.day} de ${_months[d.month - 1]} a las $hh';
-  }
-
   Future<void> _run(Future<bool> Function() action, String failure) async {
     setState(() => _busy = true);
     final ok = await action();
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure)));
+  }
+
+  Future<void> _leave(GroupTrip g) async {
+    final reason = await askDeclineReason(context, leaving: true, hostName: g.hostName);
+    if (reason == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await GroupTripService.respond(g, accept: false, reason: reason);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Te retiraste de «${g.title}». Le avisamos a ${g.hostName}.')));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo registrar tu salida. Intenta de nuevo.')));
+    }
   }
 
   void _openVoting(GroupTrip g) {
@@ -64,6 +72,39 @@ class _GroupTripPageState extends State<GroupTripPage> {
             : null,
       );
 
+  /// Burbuja de una persona con su estado en la votación: ✓ votó, reloj pendiente.
+  Widget _voteBubble(GroupTrip g, String uid, {double radius = 18}) {
+    final voted = g.votes.containsKey(uid);
+    final photo = uid == g.hostId ? g.hostPhoto : g.members[uid]?.photo;
+    final badge = voted ? OhtliColors.stormyTeal : OhtliColors.subtleText;
+    return Tooltip(
+      message: '${g.nameOf(uid)} · ${voted ? 'ya votó' : 'falta su voto'}',
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: voted ? OhtliColors.stormyTeal : OhtliColors.cardBorder, width: 2),
+            ),
+            child: Opacity(opacity: voted ? 1 : 0.55, child: _avatar(g.nameOf(uid), photo, radius: radius)),
+          ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(color: badge, shape: BoxShape.circle, border: Border.all(color: OhtliColors.cardBg, width: 2)),
+              child: Icon(voted ? Icons.check_rounded : Icons.schedule_rounded, size: 11, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _statusCard(GroupTrip g, String uid) {
     final isHost = uid == g.hostId;
     final mine = g.responseOf(uid);
@@ -78,9 +119,7 @@ class _GroupTripPageState extends State<GroupTripPage> {
         icon = Icons.hourglass_top_rounded;
         color = OhtliColors.accent;
         title = 'Esperando respuestas';
-        text = g.respondBy != null
-            ? 'Las rutas se arman cuando todos respondan o ${_when(g.respondBy!)}, con los gustos de quienes acepten.'
-            : 'Las rutas se arman cuando todos respondan, con los gustos de quienes acepten.';
+        text = 'Las rutas se arman cuando todos respondan o al terminar el tiempo, con los gustos de quienes acepten.';
         if (!isHost && mine != 'accepted') {
           actions.add(OhtliPrimaryButton(
             label: mine == 'declined' ? 'Cambiar mi respuesta' : 'Responder',
@@ -108,18 +147,20 @@ class _GroupTripPageState extends State<GroupTripPage> {
         color = OhtliColors.accent;
         title = 'Votación abierta';
         final voted = g.voters.where(g.votes.containsKey).length;
-        text = 'Votaron $voted de ${g.voters.length}.${g.voteBy != null ? ' Cierra ${_when(g.voteBy!)} o cuando voten todos.' : ''}';
+        text = 'Votaron $voted de ${g.voters.length}. Se cierra cuando voten todos o al terminar el tiempo'
+            '${isHost ? '; tú, como organizador, puedes cerrarla antes.' : '.'}';
         if (g.voters.contains(uid)) {
           actions.add(OhtliPrimaryButton(
             label: g.votes.containsKey(uid) ? 'Ver las rutas y mi voto' : 'Ver las rutas y votar',
-            icon: Icons.alt_route_rounded,
+            icon: g.votes.containsKey(uid) ? Icons.check_rounded : Icons.how_to_vote_rounded,
             highlight: !g.votes.containsKey(uid),
             onPressed: () => _openVoting(g),
           ));
         }
+        // Solo quien creó el plan puede cerrar antes de tiempo (el motor también lo exige)
         if (isHost) {
           actions.add(OhtliSecondaryButton(
-            label: 'Cerrar la votación',
+            label: 'Cerrar la votación ya',
             onPressed: _busy ? null : () => _run(() => GroupTripService.close(g.id), 'No se pudo cerrar la votación. Intenta de nuevo.'),
           ));
         }
@@ -145,6 +186,15 @@ class _GroupTripPageState extends State<GroupTripPage> {
         text = '';
     }
 
+    if (!isHost && mine == 'accepted' && g.status != 'cancelled') {
+      actions.add(OhtliSecondaryButton(label: 'Ya no puedo ir', onPressed: _busy ? null : () => _leave(g)));
+    }
+    final deadline = switch (g.status) {
+      'inviting' => g.respondBy,
+      'voting' => g.voteBy,
+      _ => null,
+    };
+
     return OhtliSurface(
       radius: 22,
       padding: const EdgeInsets.all(18),
@@ -160,9 +210,26 @@ class _GroupTripPageState extends State<GroupTripPage> {
               if (g.status == 'generating') const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: OhtliColors.stormyTeal)),
             ],
           ),
+          if (deadline != null) ...[
+            const SizedBox(height: 14),
+            _Countdown(
+              until: deadline,
+              label: g.status == 'voting' ? 'La votación cierra en' : 'Tiempo para responder',
+              endedLabel: g.status == 'voting' ? 'Cerrando la votación…' : 'Armando las rutas…',
+              color: color,
+            ),
+          ],
           if (text.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(text, style: OhtliUi.body(size: 13.5)),
+          ],
+          if (g.status == 'voting' && g.voters.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [for (final u in g.voters) _voteBubble(g, u, radius: 17)],
+            ),
           ],
           if (actions.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -184,13 +251,14 @@ class _GroupTripPageState extends State<GroupTripPage> {
       _ => ('Sin responder', OhtliColors.accent),
     };
     final intention = g.intentions[uid];
-    final voted = g.status == 'voting' && g.votes.containsKey(uid);
+    final reason = answer == 'declined' ? g.declineReasons[uid] : null;
+    final votes = g.status == 'voting' && g.voters.contains(uid);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _avatar(name, photo),
+          votes ? _voteBubble(g, uid) : _avatar(name, photo),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -202,13 +270,23 @@ class _GroupTripPageState extends State<GroupTripPage> {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text('«$intention»', style: GoogleFonts.inter(fontSize: 12.5, fontStyle: FontStyle.italic, color: OhtliColors.subtleText)),
                   ),
+                if (reason != null && reason.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(reason, style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
+                  ),
+                if (votes)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(g.votes.containsKey(uid) ? 'Ya votó' : 'Falta su voto',
+                        style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: g.votes.containsKey(uid) ? OhtliColors.stormyTeal : OhtliColors.subtleText)),
+                  ),
               ],
             ),
           ),
-          if (voted) ...[
-            Icon(Icons.how_to_vote_rounded, size: 15, color: OhtliColors.accent),
-            const SizedBox(width: 8),
-          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
             decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
@@ -278,6 +356,78 @@ class _GroupTripPageState extends State<GroupTripPage> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Cuenta regresiva en vivo hasta [until] (días, horas, minutos y segundos).
+class _Countdown extends StatefulWidget {
+  const _Countdown({required this.until, required this.label, required this.endedLabel, required this.color});
+  final DateTime until;
+  final String label;
+  final String endedLabel;
+  final Color color;
+
+  @override
+  State<_Countdown> createState() => _CountdownState();
+}
+
+class _CountdownState extends State<_Countdown> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final left = widget.until.difference(DateTime.now());
+    if (left.isNegative) {
+      _timer?.cancel();
+      return Text(widget.endedLabel, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: widget.color));
+    }
+    final parts = <(int, String)>[
+      if (left.inDays > 0) (left.inDays, 'd'),
+      (left.inHours % 24, 'h'),
+      (left.inMinutes % 60, 'min'),
+      if (left.inDays == 0) (left.inSeconds % 60, 's'),
+    ];
+    Widget unit((int, String) p) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(color: widget.color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(10)),
+          child: Text.rich(TextSpan(children: [
+            TextSpan(
+              text: p.$1.toString().padLeft(2, '0'),
+              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: OhtliColors.onyx,
+                  fontFeatures: const [FontFeature.tabularFigures()]),
+            ),
+            TextSpan(text: ' ${p.$2}', style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, color: OhtliColors.subtleText)),
+          ])),
+        );
+    return Semantics(
+      label: '${widget.label} ${parts.map((p) => '${p.$1} ${p.$2}').join(' ')}',
+      child: ExcludeSemantics(
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            Text(widget.label, style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+            const SizedBox(width: 2),
+            for (final p in parts) unit(p),
+          ],
+        ),
       ),
     );
   }

@@ -750,7 +750,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                                 padding: EdgeInsets.symmetric(horizontal: padding, vertical: 16),
                                 children: [
                                   if (activeGroups.isNotEmpty) ...[
-                                    _buildGroupTripsSection(activeGroups, currentUid ?? ''),
+                                    _buildGroupTripsSection(activeGroups, currentUid ?? '', width, padding),
                                     const SizedBox(height: 24),
                                   ],
                                   if (aiJobs.isNotEmpty) ...[
@@ -819,7 +819,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     ];
   }
 
-  Widget _buildGroupTripsSection(List<GroupTrip> groups, String uid) {
+  Widget _buildGroupTripsSection(List<GroupTrip> groups, String uid, double width, double padding) {
     Widget row(GroupTrip g) {
       final pendingForMe = g.hostId != uid && g.responseOf(uid) == 'pending';
       final (IconData icon, Color color, String status) = pendingForMe
@@ -871,7 +871,8 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           leading: const Icon(Icons.groups_rounded, size: 18, color: OhtliColors.stormyTeal),
           trailing: _countBadge(groups.length, OhtliColors.stormyTeal),
         ),
-        for (final g in groups) row(g),
+        // Mismo ancho que las tarjetas de rutas en preparación, no de lado a lado
+        _jobCardsWrap(width, padding, [for (final g in groups) row(g)]),
       ],
     );
   }

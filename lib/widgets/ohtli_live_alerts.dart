@@ -172,7 +172,7 @@ class _OhtliLiveAlertsState extends State<OhtliLiveAlerts> {
     final groupTripId = data['groupTripId'] as String?;
     if (type == 'itinerary_ready' || type == 'itinerary_failed') {
       OhtliAlerts.openTab(context, 1);
-    } else if (groupTripId != null && (type ?? '').startsWith('group_trip_') && type != 'group_trip_declined') {
+    } else if (groupTripId != null && (type ?? '').startsWith('group_trip_') && type != 'group_trip_declined' && type != 'group_trip_left') {
       openGroupTrip(context, groupTripId);
     } else if (tripId != null) {
       final owner =

@@ -126,11 +126,25 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
         message: 'se sumó a tu plan "$tripTitle".',
       );
     case 'group_trip_declined':
+    case 'group_trip_left':
+      final reason = (data['reason'] ?? '').toString().trim();
+      final left = data['type'] == 'group_trip_left';
       return NotificationLook(
         sender: sender,
         icon: Icons.person_off_rounded,
         color: OhtliColors.subtleText,
-        message: 'no podrá ir a "$tripTitle".',
+        message: '${left ? 'se retiró de' : 'no podrá ir a'} "$tripTitle"${reason.isEmpty ? '.' : ': $reason.'}',
+      );
+    case 'group_trip_remind_respond':
+    case 'group_trip_remind_vote':
+      return NotificationLook(
+        sender: 'Ohtli',
+        fromSystem: true,
+        icon: Icons.alarm_rounded,
+        color: OhtliColors.stormyTeal,
+        message: data['type'] == 'group_trip_remind_vote'
+            ? 'Queda 1 hora para votar la ruta de "$tripTitle".'
+            : 'Queda 1 hora para responder la invitación a "$tripTitle".',
       );
     case 'group_trip_ready':
       return NotificationLook(

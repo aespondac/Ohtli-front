@@ -19,6 +19,133 @@ const List<String> kIntentionIdeas = [
   'Vida nocturna',
 ];
 
+/// Razones rápidas para no ir a un plan en grupo.
+const List<String> kDeclineReasons = [
+  'Tengo otro compromiso',
+  'No me queda la fecha',
+  'Se sale de mi presupuesto',
+  'No me late el plan',
+  'Me siento mal',
+];
+
+/// Pide la razón para no ir (al rechazar la invitación o al retirarse). null si se cancela.
+Future<String?> askDeclineReason(BuildContext context, {required bool leaving, required String hostName}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _DeclineReasonSheet(leaving: leaving, hostName: hostName),
+  );
+}
+
+class _DeclineReasonSheet extends StatefulWidget {
+  const _DeclineReasonSheet({required this.leaving, required this.hostName});
+  final bool leaving;
+  final String hostName;
+
+  @override
+  State<_DeclineReasonSheet> createState() => _DeclineReasonSheetState();
+}
+
+class _DeclineReasonSheetState extends State<_DeclineReasonSheet> {
+  final TextEditingController _other = TextEditingController();
+  String? _picked;
+
+  @override
+  void dispose() {
+    _other.dispose();
+    super.dispose();
+  }
+
+  String get _reason {
+    final extra = _other.text.trim();
+    if (_picked == null) return extra;
+    return extra.isEmpty ? _picked! : '$_picked. $extra';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Container(
+        decoration: BoxDecoration(
+          color: OhtliColors.cardBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: OhtliColors.cardBorder, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(widget.leaving ? '¿Por qué te retiras?' : '¿Por qué no puedes ir?',
+                    style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                const SizedBox(height: 6),
+                Text(
+                  widget.leaving
+                      ? 'Le avisamos a ${widget.hostName} y al grupo. Tu voto y tus gustos dejan de contar.'
+                      : 'Le avisamos a ${widget.hostName} y al grupo con esta razón.',
+                  style: OhtliUi.body(size: 13.5),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final r in kDeclineReasons)
+                      OhtliChoiceChip(
+                        label: r,
+                        selected: _picked == r,
+                        onTap: () => setState(() => _picked = _picked == r ? null : r),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _other,
+                  maxLength: 140,
+                  maxLines: 2,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: _picked == null ? 'U otra razón' : 'Algo más (opcional)',
+                    filled: true,
+                    fillColor: OhtliColors.cloudDancer,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    OhtliSecondaryButton(label: 'Cancelar', onPressed: () => Navigator.of(context).pop()),
+                    OhtliPrimaryButton(
+                      label: widget.leaving ? 'Retirarme' : 'Enviar',
+                      icon: Icons.person_off_rounded,
+                      onPressed: _reason.isEmpty ? null : () => Navigator.of(context).pop(_reason),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Abre lo que toca de una solicitud de viaje en grupo: responder la invitación o, si ya
 /// existe el viaje y eres parte, el viaje.
 Future<void> openGroupTrip(BuildContext context, String groupId) async {
@@ -96,9 +223,16 @@ class _GroupInviteSheetState extends State<GroupInviteSheet> {
   }
 
   Future<void> _respond(GroupTrip g, bool accept) async {
+    String reason = '';
+    if (!accept) {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final r = await askDeclineReason(context, leaving: g.responseOf(uid) == 'accepted', hostName: g.hostName);
+      if (r == null || !mounted) return;
+      reason = r;
+    }
     setState(() => _sending = true);
     try {
-      await GroupTripService.respond(g, accept: accept, intention: _intention.text);
+      await GroupTripService.respond(g, accept: accept, intention: _intention.text, reason: reason);
       if (!mounted) return;
       final nav = Navigator.of(context);
       final messenger = ScaffoldMessenger.of(context);
@@ -106,7 +240,7 @@ class _GroupInviteSheetState extends State<GroupInviteSheet> {
       messenger.showSnackBar(SnackBar(
         content: Text(accept
             ? (g.isManual ? 'Te sumaste a «${g.title}». Ya puedes editarlo.' : 'Te sumaste. Te avisamos cuando estén las rutas para votar.')
-            : 'Le avisamos a ${g.hostName} que no puedes ir.'),
+            : 'Le avisamos a ${g.hostName} que no vas.'),
       ));
       if (accept && g.isManual && g.tripId != null) openGroupTripTrip(nav.context, g);
       if (accept && !g.isManual) openGroupTripLobby(nav.context, g.id);
@@ -243,9 +377,13 @@ class _GroupInviteSheetState extends State<GroupInviteSheet> {
                     ],
                     const SizedBox(height: 18),
                     if (answer == 'accepted')
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: g.tripId != null
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          OhtliSecondaryButton(label: 'Ya no puedo ir', onPressed: _sending ? null : () => _respond(g, false)),
+                          g.tripId != null
                             ? OhtliPrimaryButton(
                                 label: 'Abrir el plan',
                                 icon: Icons.arrow_forward_rounded,
@@ -255,7 +393,8 @@ class _GroupInviteSheetState extends State<GroupInviteSheet> {
                                   openGroupTripTrip(nav.context, g);
                                 },
                               )
-                            : OhtliSecondaryButton(label: 'Listo', onPressed: () => Navigator.of(context).pop()),
+                            : OhtliPrimaryButton(label: 'Listo', onPressed: () => Navigator.of(context).pop()),
+                        ],
                       )
                     else
                       Wrap(

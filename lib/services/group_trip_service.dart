@@ -35,6 +35,8 @@ class GroupTrip {
   final Map<String, String> responses;
   final Map<String, String> intentions;
   final Map<String, int> votes;
+  /// Por qué no va cada quien (al rechazar la invitación o al retirarse después de aceptar).
+  final Map<String, String> declineReasons;
   final DateTime? respondBy;
   final DateTime? voteBy;
 
@@ -60,6 +62,7 @@ class GroupTrip {
     this.responses = const {},
     this.intentions = const {},
     this.votes = const {},
+    this.declineReasons = const {},
     this.respondBy,
     this.voteBy,
     this.options = const [],
@@ -134,6 +137,7 @@ class GroupTrip {
       responses: _strings(d['responses']),
       intentions: _strings(d['intentions']),
       votes: votes,
+      declineReasons: _strings(d['declineReasons']),
       respondBy: _date(d['respondBy']),
       voteBy: _date(d['voteBy']),
       options: [
@@ -355,21 +359,46 @@ class GroupTripService {
     }
   }
 
-  /// Responder la invitación. En un plan a mano, aceptar te suma como coautor del viaje.
-  static Future<void> respond(GroupTrip g, {required bool accept, String intention = ''}) async {
+  /// Responder la invitación o retirarse después de aceptar. Para no ir hace falta [reason]
+  /// (se le muestra al grupo). En un plan a mano, aceptar te suma como coautor del viaje y
+  /// retirarte te quita; en uno con IA, retirarte quita tu voto e intención.
+  static Future<void> respond(GroupTrip g, {required bool accept, String intention = '', String reason = ''}) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final mine = await me();
     final answer = accept ? 'accepted' : 'declined';
+    final wasAccepted = g.responseOf(uid) == 'accepted';
     final text = intention.trim();
+    final why = reason.trim();
+    if (!accept && why.isEmpty) throw ArgumentError('Falta la razón para no ir.');
     await _col.doc(g.id).update({
       'responses.$uid': answer,
       if (accept && text.isNotEmpty) 'intentions.$uid': text,
+      if (accept) 'declineReasons.$uid': FieldValue.delete(),
+      if (!accept) 'declineReasons.$uid': why.length > 200 ? why.substring(0, 200) : why,
+      if (!accept && g.intentions.containsKey(uid)) 'intentions.$uid': FieldValue.delete(),
+      if (!accept && g.votes.containsKey(uid)) 'votes.$uid': FieldValue.delete(),
     });
     if (accept && g.isManual && g.tripId != null) {
       await _db.collection('users').doc(g.hostId).collection('trips').doc(g.tripId).update({
         'coAuthorIds': FieldValue.arrayUnion([uid]),
         'coAuthorNames': FieldValue.arrayUnion([mine.name]),
       });
+    }
+    // Retirarse de un viaje ya creado: deja de ser coautor
+    if (!accept && wasAccepted && g.tripId != null) {
+      try {
+        await _db.collection('users').doc(g.hostId).collection('trips').doc(g.tripId).update({
+          'coAuthorIds': FieldValue.arrayRemove([uid]),
+          'coAuthorNames': FieldValue.arrayRemove([mine.name]),
+        });
+      } catch (_) {}
+    }
+    // Si al irte ya votaron todos los que quedan, se cierra la votación.
+    if (!accept && !g.isManual && g.status == 'voting') {
+      try {
+        final fresh = await get(g.id);
+        if (fresh != null && fresh.status == 'voting' && fresh.everyoneVoted) unawaited(close(g.id));
+      } catch (_) {}
     }
     // Plan con IA: si con esta respuesta ya respondieron todos, se generan las rutas.
     if (!g.isManual) {
@@ -387,8 +416,10 @@ class GroupTripService {
     } catch (_) {}
     // Y quien organiza se entera.
     try {
-      await _db.collection('users').doc(g.hostId).collection('notifications').doc('group_${g.id}_${answer}_$uid').set({
-        'type': accept ? 'group_trip_accepted' : 'group_trip_declined',
+      final type = accept ? 'group_trip_accepted' : (wasAccepted ? 'group_trip_left' : 'group_trip_declined');
+      await _db.collection('users').doc(g.hostId).collection('notifications').doc('group_${g.id}_${type.substring(11)}_$uid').set({
+        'type': type,
+        if (!accept) 'reason': why,
         'senderId': uid,
         'senderName': mine.name,
         'senderPhoto': ?mine.photo,
