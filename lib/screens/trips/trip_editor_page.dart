@@ -370,30 +370,56 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   bool get _othersEditing => _othersHere.isNotEmpty;
 
+  // Un listener de Firestore se detiene para siempre si falla (p. ej. la sesión se cayó un
+  // momento): se vuelve a conectar con espera creciente (5 s, 10 s… hasta 60 s).
+  Timer? _liveRetryTimer;
+  int _liveRetries = 0;
+
   void _startLive() {
     if (_isSampleEditor || _myUid.isEmpty || _contentSub != null) return;
     final service = TripService();
     final owner = widget.trip.userId, id = widget.trip.id;
-    _contentSub = service.watchTripContent(owner, id).listen(_onContentSnapshot, onError: (e) => debugPrint('Editor en vivo (contenido): $e'));
-    _tripSub = service.watchTripDoc(owner, id).listen(_onTripSnapshot, onError: (e) => debugPrint('Editor en vivo (viaje): $e'));
+    _contentSub = service.watchTripContent(owner, id).listen((s) {
+      _liveRetries = 0;
+      _onContentSnapshot(s);
+    }, onError: (e) => _onLiveError('contenido', e));
+    _tripSub = service.watchTripDoc(owner, id).listen(_onTripSnapshot, onError: (e) => _onLiveError('viaje', e));
     _presenceSub = service.watchPresence(owner, id).listen((list) {
       if (mounted) setState(() => _presence = list);
     }, onError: (e) => debugPrint('Editor en vivo (presencia): $e'));
     _sendPresence();
     // Latido: dice que sigo aquí y, de paso, retira a quien dejó de latir.
-    _presenceTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+    _presenceTimer ??= Timer.periodic(const Duration(seconds: 20), (_) {
       _sendPresence();
       if (mounted) setState(() {});
     });
   }
 
+  void _onLiveError(String what, Object e) {
+    debugPrint('Editor en vivo ($what): $e');
+    if (!mounted || _liveRetryTimer?.isActive == true) return;
+    final seconds = math.min(60, 5 << math.min(_liveRetries, 4));
+    _liveRetries++;
+    _liveRetryTimer = Timer(Duration(seconds: seconds), () {
+      if (!mounted) return;
+      _contentSub?.cancel();
+      _tripSub?.cancel();
+      _presenceSub?.cancel();
+      _contentSub = _tripSub = null;
+      _presenceSub = null;
+      _startLive();
+    });
+  }
+
   void _stopLive() {
+    final wasLive = _contentSub != null;
     _contentSub?.cancel();
     _tripSub?.cancel();
     _presenceSub?.cancel();
     _presenceTimer?.cancel();
     _presenceDebounce?.cancel();
-    if (_contentSub != null && _myUid.isNotEmpty) {
+    _liveRetryTimer?.cancel();
+    if (wasLive && _myUid.isNotEmpty) {
       TripService().clearPresence(widget.trip.userId, widget.trip.id, _myUid).catchError((_) {});
     }
   }
