@@ -431,7 +431,7 @@ class TripPdfBuilder {
               pw.TableRow(
                 verticalAlignment: pw.TableCellVerticalAlignment.middle,
                 children: [
-                  pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 3), child: _pinBadge(i, 14)),
+                  pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 3), child: pw.Align(alignment: pw.Alignment.centerLeft, child: _pinBadge(i, 14))),
                   pw.Text(
                     [places[i].arrivalTime, places[i].departureTime].where((t) => t != null && t.isNotEmpty).join('–'),
                     style: _t(8.5, font: fonts.bodySemiBold),
@@ -1314,7 +1314,7 @@ class TripPdfBuilder {
                 pw.TableRow(
                   verticalAlignment: pw.TableCellVerticalAlignment.middle,
                   children: [
-                    pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 5), child: _pinBadge(i, 15)),
+                    pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 5), child: pw.Align(alignment: pw.Alignment.centerLeft, child: _pinBadge(i, 15))),
                     pw.Padding(
                       padding: const pw.EdgeInsets.only(left: 4),
                       child: pw.Text(_title(places[i]), maxLines: 1, style: _t(9, font: fonts.bodySemiBold)),
