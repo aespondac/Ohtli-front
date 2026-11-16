@@ -9,7 +9,8 @@ class TripPlannerDialog {
   static Future<void> show(
     BuildContext context, {
     Poi? initialOriginPoi,
-    VoidCallback? onManualPlanSelected,
+    // Empieza en el plan hecho a mano (forma de ruta, con quién y fecha).
+    bool startManual = false,
     List<Map<String, dynamic>>? initialGeneratedOptions,
     String? initialActiveJobId,
     String? optionsJobId,
@@ -21,7 +22,7 @@ class TripPlannerDialog {
     trips.TripPlannerPage.open(
       context,
       initialOriginPoi: initialOriginPoi,
-      onManualPlanSelected: onManualPlanSelected,
+      startManual: startManual,
       initialGeneratedOptions: initialGeneratedOptions,
       initialActiveJobId: initialActiveJobId,
       optionsJobId: optionsJobId,

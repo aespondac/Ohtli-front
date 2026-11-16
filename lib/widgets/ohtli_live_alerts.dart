@@ -9,6 +9,7 @@ import '../screens/trips/trip_screens.dart' deferred as trips;
 import '../services/notification_text.dart';
 import '../theme/colors.dart';
 import 'deferred_view.dart';
+import 'group_trip_sheet.dart' show openGroupTrip;
 import 'ohtli_ui.dart';
 
 /// Pide cambiar de pestaña desde cualquier pantalla (HomePage la escucha).
@@ -171,8 +172,11 @@ class _OhtliLiveAlertsState extends State<OhtliLiveAlerts> {
     final type = data['type'] as String?;
     FirebaseFirestore.instance.collection('users').doc(widget.uid).collection('notifications').doc(item.id).update({'read': true}).catchError((_) {});
     final tripId = data['tripId'] as String?;
+    final groupTripId = data['groupTripId'] as String?;
     if (type == 'itinerary_ready' || type == 'itinerary_failed') {
       OhtliAlerts.openTab(context, 1);
+    } else if (groupTripId != null && (type ?? '').startsWith('group_trip_') && type != 'group_trip_declined') {
+      openGroupTrip(context, groupTripId);
     } else if (tripId != null) {
       final owner =
           (data['tripOwnerId'] as String?) ??
@@ -199,6 +203,13 @@ class _OhtliLiveAlertsState extends State<OhtliLiveAlerts> {
         return 'Responder';
       case 'surprise_plan':
         return 'Abrir sorpresa';
+      case 'group_trip_invite':
+        return data['status'] == 'pending' ? 'Responder' : 'Ver plan';
+      case 'group_trip_ready':
+        return 'Votar';
+      case 'group_trip_accepted':
+      case 'group_trip_created':
+        return 'Abrir plan';
       case 'itinerary_ready':
         return 'Ver propuestas';
       case 'itinerary_failed':

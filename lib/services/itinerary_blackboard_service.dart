@@ -36,6 +36,9 @@ class ItineraryBlackboardService {
     String? budgetStrategy,
     List<double>? customTasteVector,
     DateTime? travelDate,
+    // Plan sorpresa para un mejor amigo mutuo: el motor promedia sus gustos con los tuyos
+    // (solo si de verdad son mejores amigos mutuos).
+    String? surpriseTargetId,
   }) async {
     final jobId = 'job_${const Uuid().v4()}';
     final nowUtc = DateTime.now().toUtc();
@@ -85,6 +88,7 @@ class ItineraryBlackboardService {
       // del perfil cultural.
       'transport_mode': ?transportMode,
       'budget_strategy': ?budgetStrategy,
+      'surprise_target_id': ?surpriseTargetId,
       'created_at': nowUtc.toIso8601String(),
     };
 
@@ -252,6 +256,9 @@ class ItineraryBlackboardService {
     DateTime? travelDate,
     String? jobId,
     int? optionIndex,
+    String? surpriseTargetId,
+    String? surpriseTargetName,
+    String? routeShape,
   }) async {
     final tripId = const Uuid().v4();
     final now = DateTime.now();
@@ -372,6 +379,11 @@ class ItineraryBlackboardService {
       createdAt: now,
       updatedAt: now,
       travelDate: travelDate ?? now,
+      isSurprise: surpriseTargetId != null,
+      surpriseTargetIds: surpriseTargetId != null ? [surpriseTargetId] : const [],
+      surpriseTargetNames: surpriseTargetId != null ? [surpriseTargetName ?? 'Viajero Ohtli'] : const [],
+      unlockOnPublish: surpriseTargetId != null,
+      routeShape: routeShape,
     );
 
     // 1. Crear documento principal del viaje

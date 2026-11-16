@@ -80,6 +80,55 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
         color: OhtliColors.cempasuchil,
         message: data['tripId'] != null ? 'te felicitó por tu viaje "$tripTitle". 🎉' : 'te saludó. 👋',
       );
+    case 'group_trip_invite':
+      return NotificationLook(
+        sender: sender,
+        icon: Icons.groups_rounded,
+        color: OhtliColors.stormyTeal,
+        message: status == 'accepted'
+            ? 'te invitó a planear "$tripTitle" (aceptaste).'
+            : status == 'declined'
+            ? 'te invitó a planear "$tripTitle" (no vas).'
+            : 'te invitó a planear juntos "$tripTitle".',
+      );
+    case 'group_trip_accepted':
+      return NotificationLook(
+        sender: sender,
+        icon: Icons.how_to_reg_rounded,
+        color: OhtliColors.stormyTeal,
+        message: 'se sumó a tu plan "$tripTitle".',
+      );
+    case 'group_trip_declined':
+      return NotificationLook(
+        sender: sender,
+        icon: Icons.person_off_rounded,
+        color: OhtliColors.subtleText,
+        message: 'no podrá ir a "$tripTitle".',
+      );
+    case 'group_trip_ready':
+      return NotificationLook(
+        sender: 'Ohtli',
+        fromSystem: true,
+        icon: Icons.how_to_vote_rounded,
+        color: OhtliColors.cempasuchil,
+        message: (data['message'] as String?) ?? 'Las rutas de "$tripTitle" están listas: vota por tu favorita.',
+      );
+    case 'group_trip_created':
+      return NotificationLook(
+        sender: 'Ohtli',
+        fromSystem: true,
+        icon: Icons.event_available_rounded,
+        color: OhtliColors.stormyTeal,
+        message: (data['message'] as String?) ?? 'El plan "$tripTitle" quedó listo: ya pueden editarlo juntos.',
+      );
+    case 'group_trip_cancelled':
+      return NotificationLook(
+        sender: 'Ohtli',
+        fromSystem: true,
+        icon: Icons.event_busy_rounded,
+        color: OhtliColors.xoconostle,
+        message: (data['message'] as String?) ?? 'Se canceló el plan "$tripTitle": nadie aceptó a tiempo.',
+      );
     case 'itinerary_ready':
       return NotificationLook(
         sender: 'Ohtli',

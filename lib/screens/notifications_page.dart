@@ -12,6 +12,7 @@ import '../widgets/ohtli_live_alerts.dart' show OhtliAlerts;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'trips/trip_screens.dart' deferred as trips;
 import '../widgets/deferred_view.dart';
+import '../widgets/group_trip_sheet.dart' show openGroupTrip;
 import 'account/public_profile_page.dart';
 import '../utils/friendly_errors.dart';
 
@@ -190,7 +191,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'friends':
         return type == 'friend_request' || type == 'cheer';
       case 'trips':
-        return type == 'new_publication' || type == 'co_author_added' || type == 'trip_comment' || type == 'trip_reaction';
+        return type == 'new_publication' ||
+            type == 'co_author_added' ||
+            type == 'trip_comment' ||
+            type == 'trip_reaction' ||
+            type.startsWith('group_trip_');
       case 'surprises':
         return type == 'surprise_plan';
       case 'ai':
@@ -555,6 +560,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
       'trip_comment' when isClickable => [OhtliPrimaryButton(compact: true, label: 'Responder', icon: Icons.reply_rounded, onPressed: openTrip)],
       'trip_reaction' when isClickable => [
         OhtliSecondaryButton(compact: true, label: 'Ver viaje', icon: Icons.arrow_forward_rounded, onPressed: openTrip),
+      ],
+      'group_trip_invite' when data['groupTripId'] != null => [
+        if (status == 'pending')
+          OhtliPrimaryButton(compact: true, label: 'Responder', icon: Icons.how_to_reg_rounded, onPressed: () => openGroupTrip(context, data['groupTripId']))
+        else
+          OhtliSecondaryButton(compact: true, label: 'Ver plan', icon: Icons.arrow_forward_rounded, onPressed: () => openGroupTrip(context, data['groupTripId'])),
+      ],
+      'group_trip_accepted' || 'group_trip_created' when data['groupTripId'] != null => [
+        OhtliPrimaryButton(compact: true, label: 'Abrir plan', icon: Icons.edit_note_rounded, onPressed: () => openGroupTrip(context, data['groupTripId'])),
+      ],
+      'group_trip_ready' when data['groupTripId'] != null => [
+        OhtliPrimaryButton(compact: true, highlight: true, label: 'Votar', icon: Icons.how_to_vote_rounded, onPressed: () => openGroupTrip(context, data['groupTripId'])),
       ],
       'itinerary_ready' => [
         OhtliPrimaryButton(

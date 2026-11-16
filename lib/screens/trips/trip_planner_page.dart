@@ -19,6 +19,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../services/itinerary_blackboard_service.dart';
+import '../../services/friend_options.dart';
+import '../../services/group_trip_service.dart';
+import '../../services/manual_plan.dart';
+import '../../services/trip_service.dart';
 import '../../services/trip_transfers.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
@@ -36,6 +40,7 @@ import 'trip_editor_page.dart';
 enum PlannerStep {
   bifurcation,
   startingPoint,
+  companions,
   preferences,
   blackboardProcessing,
   routeTriadCarousel,
@@ -43,7 +48,9 @@ enum PlannerStep {
 
 class TripPlannerPage extends StatefulWidget {
   final Poi? initialOriginPoi;
-  final VoidCallback? onManualPlanSelected;
+
+  /// Empieza directo en el plan hecho a mano (forma de ruta y puntos), sin la bifurcación.
+  final bool startManual;
   final List<Map<String, dynamic>>? initialGeneratedOptions;
   final String? initialActiveJobId;
 
@@ -55,7 +62,7 @@ class TripPlannerPage extends StatefulWidget {
   const TripPlannerPage({
     super.key,
     this.initialOriginPoi,
-    this.onManualPlanSelected,
+    this.startManual = false,
     this.initialGeneratedOptions,
     this.initialActiveJobId,
     this.optionsJobId,
@@ -65,7 +72,7 @@ class TripPlannerPage extends StatefulWidget {
   static void open(
     BuildContext context, {
     Poi? initialOriginPoi,
-    VoidCallback? onManualPlanSelected,
+    bool startManual = false,
     List<Map<String, dynamic>>? initialGeneratedOptions,
     String? initialActiveJobId,
     String? optionsJobId,
@@ -75,7 +82,7 @@ class TripPlannerPage extends StatefulWidget {
       MaterialPageRoute(
         builder: (context) => TripPlannerPage(
           initialOriginPoi: initialOriginPoi,
-          onManualPlanSelected: onManualPlanSelected,
+          startManual: startManual,
           initialGeneratedOptions: initialGeneratedOptions,
           initialActiveJobId: initialActiveJobId,
           optionsJobId: optionsJobId,
@@ -100,6 +107,16 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   int _ideaIndex = 0;
 
   PlannerStep _currentStep = PlannerStep.bifurcation;
+
+  // Plan hecho a mano: pasa por la forma de ruta, con quién y la fecha, y abre el editor.
+  bool _manualMode = false;
+
+  // ¿Con quién vas? 'solo', 'amigos' o 'sorpresa' (solo para un mejor amigo mutuo).
+  String _companions = 'solo';
+  List<FriendOption>? _friendOptions;
+  bool _friendsLoading = false;
+  final Set<String> _invitedIds = {};
+  String? _surpriseTargetId;
 
   // Form State
   String _selectedOriginName = '';
@@ -404,6 +421,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       _originSearchController.text = _selectedOriginName;
     }
 
+    if (widget.startManual) {
+      _manualMode = true;
+      _currentStep = PlannerStep.startingPoint;
+    }
+
     if (widget.initialActiveJobId != null && widget.initialActiveJobId!.isNotEmpty) {
       _activeJobId = widget.initialActiveJobId;
       _selectedOriginName = widget.originName ?? 'CDMX';
@@ -704,6 +726,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         travelDate: _selectedTravelDate,
         transportMode: _selectedTransportMode,
         budgetStrategy: _budgetStrategy,
+        // Sorpresa para un mejor amigo mutuo: el motor suma sus gustos a los tuyos.
+        surpriseTargetId: _companions == 'sorpresa' ? _surpriseTargetId : null,
       );
 
       _activeJobId = jobId;
@@ -979,6 +1003,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         travelDate: _selectedTravelDate,
         jobId: _activeJobId,
         optionIndex: _activeCarouselIndex,
+        surpriseTargetId: _companions == 'sorpresa' ? _surpriseTarget?.uid : null,
+        surpriseTargetName: _companions == 'sorpresa' ? _surpriseTarget?.name : null,
+        routeShape: routeShapeOf(_selectedTopology, _openEnds),
       );
 
       if (_activeJobId != null) {
@@ -1013,31 +1040,125 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     }
   }
 
-  void _handleManualPlanSelected() {
-    Navigator.of(context).pop();
-    if (widget.onManualPlanSelected != null) {
-      widget.onManualPlanSelected!();
-    } else {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        // Con id propio: sin él, el editor no tiene dónde guardar ("Sin guardar")
-        final newTrip = Trip(
-          id: const Uuid().v4(),
-          userId: user.uid,
-          title: 'Nuevo Viaje',
-          description: '',
-          coverUrl: '',
-          status: 'draft',
-          visibility: 'private',
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => TripEditorPage(trip: newTrip),
-          ),
+  FriendOption? get _surpriseTarget {
+    for (final f in _friendOptions ?? const <FriendOption>[]) {
+      if (f.uid == _surpriseTargetId) return f;
+    }
+    return null;
+  }
+
+  List<FriendOption> get _invitedFriends => [
+        for (final f in _friendOptions ?? const <FriendOption>[])
+          if (_invitedIds.contains(f.uid)) f,
+      ];
+
+  Future<void> _loadFriendOptions() async {
+    if (_friendOptions != null || _friendsLoading) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => _friendOptions = const []);
+      return;
+    }
+    setState(() => _friendsLoading = true);
+    try {
+      final list = await loadFriendOptions(user.uid);
+      if (mounted) setState(() => _friendOptions = list);
+    } catch (e) {
+      debugPrint('[Planner] no se cargaron los amigos: $e');
+      if (mounted) setState(() => _friendOptions = const []);
+    } finally {
+      if (mounted) setState(() => _friendsLoading = false);
+    }
+  }
+
+  /// Plan hecho a mano: crea el viaje con el punto de partida (y el regreso o el punto de
+  /// llegada, según la forma de la ruta), la fecha y con quién va, y abre el editor.
+  Future<void> _createManualPlan() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Inicia sesión para crear tu plan.', style: GoogleFonts.inter()), backgroundColor: OhtliColors.xoconostle),
+      );
+      return;
+    }
+    setState(() => _isSavingTrip = true);
+    try {
+      final now = DateTime.now();
+      final shape = routeShapeOf(_selectedTopology, _openEnds);
+      int n = 0;
+      final sections = manualPlanSections(
+        routeShape: shape,
+        originName: _selectedOriginName,
+        origin: _selectedOriginCoords,
+        destinationName: _destinationName,
+        destination: _destinationCoords,
+        originPoi: widget.initialOriginPoi,
+        newId: (tag) => 'sec_${now.millisecondsSinceEpoch}_${n++}_$tag',
+      );
+      final title = manualPlanTitle(routeShape: shape, originName: _selectedOriginName, destinationName: _destinationName);
+      final surprise = _companions == 'sorpresa' ? _surpriseTarget : null;
+      final invitees = _companions == 'amigos' ? _invitedFriends : const <FriendOption>[];
+      final groupId = invitees.isNotEmpty ? GroupTripService.newId() : null;
+      final poi = widget.initialOriginPoi;
+      final cover = (poi != null && poi.name == _selectedOriginName.trim() && poi.imageUrl.isNotEmpty)
+          ? poi.imageUrl
+          : CdmxPhotos.cover(title.hashCode);
+      // Con id propio: sin él, el editor no tiene dónde guardar ("Sin guardar").
+      final trip = Trip(
+        id: const Uuid().v4(),
+        userId: user.uid,
+        title: title,
+        description: '',
+        coverUrl: cover,
+        status: 'draft',
+        visibility: 'private',
+        createdAt: now,
+        updatedAt: now,
+        travelDate: _selectedTravelDate,
+        isSurprise: surprise != null,
+        surpriseTargetIds: surprise != null ? [surprise.uid] : const [],
+        surpriseTargetNames: surprise != null ? [surprise.name] : const [],
+        unlockOnPublish: surprise != null,
+        routeShape: shape,
+        groupTripId: groupId,
+      );
+      final service = TripService();
+      await service.createTrip(user.uid, trip);
+      await service.updateTripContent(user.uid, trip.id, TripContent(sections: sections));
+      if (groupId != null) {
+        await GroupTripService.createManual(
+          id: groupId,
+          tripId: trip.id,
+          title: title,
+          travelDate: _selectedTravelDate,
+          invitees: invitees,
         );
       }
+      if (!mounted) return;
+      setState(() => _isSavingTrip = false);
+      if (invitees.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            invitees.length == 1
+                ? 'Invitamos a ${invitees.first.name}: cuando acepte, podrá editar contigo.'
+                : 'Invitamos a ${invitees.length} amigos: quien acepte podrá editar contigo.',
+            style: GoogleFonts.inter(),
+          ),
+          backgroundColor: OhtliColors.stormyTeal,
+        ));
+      }
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => TripEditorPage(trip: trip)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSavingTrip = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlyError(e, fallback: 'No pudimos crear tu plan. Intenta de nuevo.'), style: GoogleFonts.inter()),
+          backgroundColor: OhtliColors.xoconostle,
+        ),
+      );
     }
   }
 
@@ -1059,8 +1180,10 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               _expandLockUntil = DateTime.fromMillisecondsSinceEpoch(0);
               _setDetailExpanded(false);
             } else if (_currentStep == PlannerStep.preferences) {
+              setState(() => _currentStep = PlannerStep.companions);
+            } else if (_currentStep == PlannerStep.companions) {
               setState(() => _currentStep = PlannerStep.startingPoint);
-            } else if (_currentStep == PlannerStep.startingPoint) {
+            } else if (_currentStep == PlannerStep.startingPoint && !widget.startManual) {
               setState(() => _currentStep = PlannerStep.bifurcation);
             } else {
               Navigator.of(context).pop();
@@ -1097,7 +1220,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                 Text(
                   _currentStep == PlannerStep.routeTriadCarousel
                       ? '3 multirutas temáticas calculadas por IA'
-                      : 'Diseño inteligente de experiencias en CDMX',
+                      : (_manualMode && _currentStep != PlannerStep.bifurcation
+                          ? 'Tu plan, armado por ti'
+                          : 'Diseño inteligente de experiencias en CDMX'),
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     color: OhtliColors.subtleText,
@@ -1187,6 +1312,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         return _buildBifurcationStep(isMobile);
       case PlannerStep.startingPoint:
         return _buildStartingPointStep(isMobile);
+      case PlannerStep.companions:
+        return _buildCompanionsStep(isMobile);
       case PlannerStep.preferences:
         return _buildPreferencesStep(isMobile);
       case PlannerStep.blackboardProcessing:
@@ -1321,6 +1448,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           accentColor: OhtliColors.stormyTeal,
           onTap: () {
             setState(() {
+              _manualMode = false;
               _currentStep = PlannerStep.startingPoint;
             });
           },
@@ -1330,10 +1458,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         // Tarjeta 2: Quiero hacerlo por mi cuenta
         _buildBifurcationCard(
           title: 'Quiero hacerlo por mi cuenta',
-          subtitle: 'Crea un borrador en blanco para agregar lugares, fotos, notas personales y ajustar tus paradas de forma 100% manual.',
+          subtitle: 'Eliges la forma de la ruta, el inicio y con quién vas; las paradas, fotos y notas las agregas tú en el editor.',
           icon: Icons.edit_note_rounded,
           accentColor: const Color(0xFF6C5CE7),
-          onTap: _handleManualPlanSelected,
+          onTap: () => setState(() {
+            _manualMode = true;
+            _currentStep = PlannerStep.startingPoint;
+          }),
         ),
       ],
     );
@@ -1755,12 +1886,232 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         Align(
           alignment: Alignment.centerRight,
           child: OhtliPrimaryButton(
-            label: 'Continuar a preferencias',
+            label: 'Continuar',
             icon: Icons.arrow_forward_rounded,
             onPressed: (_fixesOrigin && _selectedOriginName.trim().isEmpty) ||
                     (_fixesDestination && _destinationCoords == null)
                 ? null
-                : () => setState(() => _currentStep = PlannerStep.preferences),
+                : () => setState(() => _currentStep = PlannerStep.companions),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // PASO 1.5: ¿CON QUIÉN VAS?
+  // ==========================================
+  Widget _buildCompanionOption({
+    required String key,
+    required IconData icon,
+    required String title,
+    required String desc,
+    bool enabled = true,
+    String? badge,
+  }) {
+    final selected = _companions == key;
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: OhtliSurface(
+        radius: 20,
+        padding: const EdgeInsets.all(16),
+        selected: selected,
+        accent: selected ? OhtliColors.stormyTeal : null,
+        onTap: enabled
+            ? () {
+                setState(() => _companions = key);
+                if (key != 'solo') _loadFriendOptions();
+              }
+            : null,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            OhtliServiceIcon(icon: icon, color: selected ? OhtliColors.stormyTeal : OhtliColors.subtleText, size: 42, soft: true),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(title, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                      ),
+                      if (badge != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: OhtliColors.cempasuchil.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(badge, style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: OhtliColors.cempasuchil)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(desc, style: OhtliUi.body(size: 12.5)),
+                ],
+              ),
+            ),
+            if (selected) const Icon(Icons.check_circle_rounded, color: OhtliColors.stormyTeal, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFriendTile(FriendOption f, {required bool selected, required VoidCallback onTap, bool radio = false}) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.15),
+              backgroundImage: f.photoUrl != null ? NetworkImage(f.photoUrl!) : null,
+              child: f.photoUrl == null
+                  ? Text(f.initials, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal))
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(f.name, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+            ),
+            if (f.isMutualCloseFriend) ...[
+              const Icon(Icons.favorite_rounded, size: 14, color: OhtliColors.xoconostle),
+              const SizedBox(width: 4),
+              Text('Mejor amigo', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+              const SizedBox(width: 10),
+            ],
+            Icon(
+              radio
+                  ? (selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded)
+                  : (selected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded),
+              color: selected ? OhtliColors.stormyTeal : OhtliColors.subtleText,
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFriendPicker() {
+    final surprise = _companions == 'sorpresa';
+    final all = _friendOptions;
+    if (_friendsLoading || all == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal)),
+      );
+    }
+    final list = surprise ? all.where((f) => f.isMutualCloseFriend).toList() : all;
+    if (list.isEmpty) {
+      return OhtliSurface(
+        radius: 18,
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(surprise ? Icons.favorite_border_rounded : Icons.people_outline_rounded, color: OhtliColors.subtleText),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                surprise
+                    ? 'Las sorpresas son solo para mejores amigos mutuos (los dos se tienen como mejor amigo en Amigos).'
+                    : 'Aún no tienes amigos en Ohtli. Agrégalos desde Amigos para planear juntos.',
+                style: OhtliUi.body(size: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return OhtliSurface(
+      radius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Column(
+        children: [
+          for (final f in list)
+            _buildFriendTile(
+              f,
+              radio: surprise,
+              selected: surprise ? _surpriseTargetId == f.uid : _invitedIds.contains(f.uid),
+              onTap: () => setState(() {
+                if (surprise) {
+                  _surpriseTargetId = _surpriseTargetId == f.uid ? null : f.uid;
+                } else if (!_invitedIds.remove(f.uid)) {
+                  _invitedIds.add(f.uid);
+                }
+              }),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompanionsStep(bool isMobile) {
+    final surprise = _companions == 'sorpresa';
+    final friends = _companions == 'amigos';
+    // En el plan con IA, el grupo vota entre las 3 rutas: llega con el motor del grupo.
+    final groupAvailable = _manualMode;
+    final options = [
+      _buildCompanionOption(key: 'solo', icon: Icons.person_rounded, title: 'Solo yo', desc: 'El plan es para ti.'),
+      _buildCompanionOption(
+        key: 'amigos',
+        icon: Icons.groups_rounded,
+        title: 'Con amigos',
+        desc: _manualMode
+            ? 'Los invitas y quien acepte edita el plan contigo.'
+            : 'Cada quien acepta y suma su intención; las rutas salen de los gustos del grupo y votan.',
+        enabled: groupAvailable,
+        badge: groupAvailable ? null : 'PRONTO',
+      ),
+      _buildCompanionOption(
+        key: 'sorpresa',
+        icon: Icons.card_giftcard_rounded,
+        title: 'Sorpresa',
+        desc: 'Para una ocasión especial con un mejor amigo: una cita, un cumpleaños…',
+      ),
+    ];
+    final ready = _companions == 'solo' || (friends && _invitedIds.isNotEmpty) || (surprise && _surpriseTargetId != null);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('¿Con quién vas?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
+        const SizedBox(height: 6),
+        Text(
+          _manualMode
+              ? 'Planea solo, con amigos que editen contigo o prepara una sorpresa.'
+              : 'Las rutas se arman con tus gustos; en una sorpresa, también con los de tu mejor amigo.',
+          style: OhtliUi.body(size: 14),
+        ),
+        const SizedBox(height: 24),
+        for (final o in options) ...[o, const SizedBox(height: 12)],
+        if (friends || surprise) ...[
+          const SizedBox(height: 12),
+          Text(surprise ? '¿PARA QUIÉN ES LA SORPRESA?' : '¿A QUIÉN INVITAS?', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+          const SizedBox(height: 12),
+          _buildFriendPicker(),
+          if (surprise) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Es una sorpresa: no le avisamos hasta que la publiques. Como son mejores amigos, el plan puede tomar en cuenta sus gustos.',
+              style: OhtliUi.body(size: 12.5),
+            ),
+          ],
+        ],
+        const SizedBox(height: 32),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OhtliPrimaryButton(
+            label: 'Continuar',
+            icon: Icons.arrow_forward_rounded,
+            onPressed: ready ? () => setState(() => _currentStep = PlannerStep.preferences) : null,
           ),
         ),
       ],
@@ -1770,23 +2121,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   // ==========================================
   // PASO 2: PREFERENCIAS & PRESUPUESTO
   // ==========================================
-  Widget _buildPreferencesStep(bool isMobile) {
-    Widget label(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(text, style: OhtliUi.eyebrow(OhtliColors.subtleText)),
-        );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('¿Cuál es la vibra y el presupuesto de tu día?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
-        const SizedBox(height: 6),
-        Text('Cuéntanos qué te late hoy y cuánto quieres gastar. Con eso te proponemos varias rutas para elegir.',
-            style: OhtliUi.body(size: 14)),
-        const SizedBox(height: 28),
-
-        // Fecha del viaje
-        label('FECHA DEL VIAJE'),
-        OhtliSurface(
+  /// Fecha del viaje con atajos (hoy, mañana, fin de semana, en una semana).
+  Widget _buildTravelDateSurface() {
+    return OhtliSurface(
           radius: 22,
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -1833,7 +2170,65 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               ),
             ],
           ),
+        );
+  }
+
+  /// Plan hecho a mano: solo la fecha; las paradas se agregan en el editor.
+  Widget _buildManualDateStep(bool isMobile) {
+    final group = _companions == 'amigos' && _invitedIds.isNotEmpty;
+    final surprise = _companions == 'sorpresa' ? _surpriseTarget : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('¿Cuándo es tu viaje?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
+        const SizedBox(height: 6),
+        Text(
+          surprise != null
+              ? 'Elige la fecha de la sorpresa para ${surprise.name}. Las paradas las agregas tú en el editor.'
+              : (group
+                  ? 'Elige la fecha. Al crear el plan invitamos a tus amigos; quien acepte podrá editarlo contigo.'
+                  : 'Elige la fecha. Las paradas, fotos y notas las agregas tú en el editor.'),
+          style: OhtliUi.body(size: 14),
         ),
+        const SizedBox(height: 28),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text('FECHA DEL VIAJE', style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+        ),
+        _buildTravelDateSurface(),
+        const SizedBox(height: 36),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OhtliPrimaryButton(
+            label: group ? 'Crear plan e invitar' : 'Crear mi plan',
+            icon: Icons.edit_note_rounded,
+            highlight: true,
+            loading: _isSavingTrip,
+            onPressed: _isSavingTrip ? null : _createManualPlan,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPreferencesStep(bool isMobile) {
+    if (_manualMode) return _buildManualDateStep(isMobile);
+    Widget label(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(text, style: OhtliUi.eyebrow(OhtliColors.subtleText)),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('¿Cuál es la vibra y el presupuesto de tu día?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
+        const SizedBox(height: 6),
+        Text('Cuéntanos qué te late hoy y cuánto quieres gastar. Con eso te proponemos varias rutas para elegir.',
+            style: OhtliUi.body(size: 14)),
+        const SizedBox(height: 28),
+
+        // Fecha del viaje
+        label('FECHA DEL VIAJE'),
+        _buildTravelDateSurface(),
         const SizedBox(height: 28),
 
         // Presupuesto

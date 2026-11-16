@@ -11,10 +11,8 @@ import 'package:web/web.dart' as web;
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:uuid/uuid.dart';
 import '../theme/colors.dart';
 import '../models/poi_model.dart';
-import '../models/trip_model.dart';
 import '../utils/friendly_errors.dart';
 import '../services/saved_places.dart';
 import '../services/feedback_service.dart';
@@ -24,6 +22,7 @@ import 'poi_status_badge.dart';
 import '../screens/places/places_page.dart';
 import '../screens/trips/trip_screens.dart' deferred as trips;
 import 'deferred_view.dart';
+import 'trip_planner_dialog.dart';
 
 class PoiDetailDialog extends StatefulWidget {
   final Poi poi;
@@ -95,7 +94,6 @@ class PoiDetailDialog extends StatefulWidget {
 
 class _PoiDetailDialogState extends State<PoiDetailDialog> {
   late bool _isSaved;
-  bool _isCreatingTrip = false;
   List<Map<String, dynamic>> _matchingPublicTrips = [];
   bool _isLoadingTrips = true;
 
@@ -230,98 +228,12 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       return;
     }
 
-    setState(() => _isCreatingTrip = true);
-
-    try {
-      final tripId = const Uuid().v4();
-      final now = DateTime.now();
-      final poi = widget.poi;
-
-      final initialPlace = PlaceSection(
-        id: 'sec_${now.millisecondsSinceEpoch}_0',
-        title: poi.name,
-        description: poi.cleanNarrative,
-        rating: 5,
-        mainPhotoUrl: poi.imageUrl,
-        secondaryPhotoUrls: [],
-        cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),
-        currency: 'MXN',
-        lat: poi.location.isValid ? poi.location.lat : null,
-        lng: poi.location.isValid ? poi.location.lng : null,
-        poiId: poi.poiId.isNotEmpty ? poi.poiId : null,
-        poiSource: poi.poiId.isNotEmpty ? kPlaceSourceCatalog : null,
-      );
-
-      final newTrip = Trip(
-        id: tripId,
-        userId: user.uid,
-        title: 'Ruta desde ${poi.name}',
-        description: 'Itinerario cultural comenzando en ${poi.name}, ${poi.coloniaAlcaldiaDisplay}.',
-        coverUrl: poi.imageUrl,
-        status: 'draft',
-        visibility: 'private',
-        createdAt: now,
-        updatedAt: now,
-      );
-
-      final content = TripContent(sections: [initialPlace]);
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('trips')
-          .doc(tripId)
-          .set(newTrip.toMap());
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('trips')
-          .doc(tripId)
-          .collection('details')
-          .doc('content')
-          .set(content.toMap());
-
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Ruta creada. Abriendo editor...',
-              style: GoogleFonts.inter(color: Colors.white),
-            ),
-            backgroundColor: OhtliColors.cempasuchil,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripEditorPage(trip: newTrip)),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isCreatingTrip = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(friendlyError(e, fallback: 'No pudimos crear la ruta. Intenta de nuevo.')),
-            backgroundColor: OhtliColors.xoconostle,
-          ),
-        );
-      }
-    }
+    // Todo plan sale del asistente: empieza con este lugar como punto de partida.
+    final nav = Navigator.of(context);
+    nav.pop();
+    await TripPlannerDialog.show(nav.context, initialOriginPoi: widget.poi);
   }
 
-  // ==========================================
-  // DISEÑO DEL MODAL (línea visual de Lugares)
-  // - Escritorio: contenido a la izquierda (galería, datos, reseñas, cercanos) y un
-  //   panel lateral fijo con el mapa, la dirección y las acciones.
-  // - Móvil: hoja inferior en una sola columna, con el mapa dentro y acciones fijas abajo.
-  // ==========================================
   bool _isNarrativeExpanded = false;
   final PageController _gallery = PageController();
   int _photoIndex = 0;
@@ -1141,10 +1053,9 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                   const SizedBox(height: 10),
                 ],
                 OhtliPrimaryButton(
-                  label: _isCreatingTrip ? 'Creando ruta...' : 'Crear ruta desde aquí',
+                  label: 'Crear ruta desde aquí',
                   icon: Icons.alt_route_rounded,
-                  onPressed: _isCreatingTrip ? null : _createRouteFromThisPlace,
-                  loading: _isCreatingTrip,
+                  onPressed: _createRouteFromThisPlace,
                   highlight: true,
                   expand: true,
                 ),
@@ -1536,10 +1447,9 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
           const SizedBox(width: 10),
           Expanded(
             child: OhtliPrimaryButton(
-              label: _isCreatingTrip ? 'Creando ruta...' : 'Crear ruta desde aquí',
+              label: 'Crear ruta desde aquí',
               icon: Icons.alt_route_rounded,
-              onPressed: _isCreatingTrip ? null : _createRouteFromThisPlace,
-              loading: _isCreatingTrip,
+              onPressed: _createRouteFromThisPlace,
               highlight: true,
               expand: true,
             ),

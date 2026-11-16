@@ -15,17 +15,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:uuid/uuid.dart';
 import '../../theme/colors.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../models/poi_model.dart';
-import '../../models/trip_model.dart';
 import '../../widgets/poi_card.dart';
 import '../../widgets/poi_detail_dialog.dart';
 import '../../widgets/trip_planner_dialog.dart';
 import '../../utils/friendly_errors.dart';
-import '../../screens/trips/trip_screens.dart' deferred as trips;
-import '../../widgets/deferred_view.dart';
 
 class PlacesPage extends StatefulWidget {
   final VoidCallback? onBack;
@@ -568,96 +564,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       return;
     }
 
-    TripPlannerDialog.show(
-      context,
-      initialOriginPoi: poi,
-      onManualPlanSelected: () => _createManualRouteFromPlace(poi),
-    );
-  }
-
-  Future<void> _createManualRouteFromPlace(Poi poi) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      final tripId = const Uuid().v4();
-      final now = DateTime.now();
-
-      final initialPlace = PlaceSection(
-        id: 'sec_${now.millisecondsSinceEpoch}_0',
-        title: poi.name,
-        description: poi.cleanNarrative,
-        rating: 5,
-        mainPhotoUrl: poi.imageUrl,
-        secondaryPhotoUrls: [],
-        cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),
-        currency: 'MXN',
-        lat: poi.location.isValid ? poi.location.lat : null,
-        lng: poi.location.isValid ? poi.location.lng : null,
-        poiId: poi.poiId.isNotEmpty ? poi.poiId : null,
-        poiSource: poi.poiId.isNotEmpty ? kPlaceSourceCatalog : null,
-      );
-
-      final newTrip = Trip(
-        id: tripId,
-        userId: user.uid,
-        title: 'Ruta desde ${poi.name}',
-        description: 'Itinerario cultural comenzando en ${poi.name}, ${poi.coloniaAlcaldiaDisplay}.',
-        coverUrl: poi.imageUrl,
-        status: 'draft',
-        visibility: 'private',
-        createdAt: now,
-        updatedAt: now,
-      );
-
-      final content = TripContent(sections: [initialPlace]);
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('trips')
-          .doc(tripId)
-          .set(newTrip.toMap());
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('trips')
-          .doc(tripId)
-          .collection('details')
-          .doc('content')
-          .set(content.toMap());
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Ruta creada. Abriendo editor...',
-              style: GoogleFonts.inter(color: Colors.white),
-            ),
-            backgroundColor: OhtliColors.cempasuchil,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DeferredView(load: trips.loadLibrary, builder: (_) => trips.TripEditorPage(trip: newTrip)),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al crear la ruta: $e'),
-            backgroundColor: OhtliColors.xoconostle,
-          ),
-        );
-      }
-    }
+    TripPlannerDialog.show(context, initialOriginPoi: poi);
   }
 
   void _clearAllFilters() {

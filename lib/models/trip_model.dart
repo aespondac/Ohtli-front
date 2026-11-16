@@ -104,6 +104,14 @@ class Trip {
   final List<String> recommendedPoiIds;
   final String? recommendationJobId;
 
+  /// Forma de la ruta elegida en el asistente: 'anillo' (ida y vuelta) o, en la abierta,
+  /// qué extremos se fijaron ('inicio', 'fin' o 'ambos').
+  final String? routeShape;
+
+  /// Solicitud de viaje en grupo de la que salió (group_trips/{id}): con ella los invitados
+  /// que aceptan se suman como coautores.
+  final String? groupTripId;
+
   Trip({
     required this.id,
     required this.userId,
@@ -130,6 +138,8 @@ class Trip {
     this.version,
     this.recommendedPoiIds = const [],
     this.recommendationJobId,
+    this.routeShape,
+    this.groupTripId,
   });
 
   factory Trip.fromMap(Map<String, dynamic> data, String documentId) {
@@ -190,6 +200,8 @@ class Trip {
           : const [],
       recommendationJobId:
           data['recommendation'] is Map ? (data['recommendation'] as Map)['job_id']?.toString() : null,
+      routeShape: data['routeShape']?.toString(),
+      groupTripId: data['groupTripId']?.toString(),
     );
   }
 
@@ -218,6 +230,9 @@ class Trip {
       if (finishedAt != null) 'finishedAt': Timestamp.fromDate(finishedAt!),
       'kind': kind,
       'version': version,
+      // Solo si existen: el editor guarda con merge y no debe borrarlos.
+      if (routeShape != null) 'routeShape': routeShape,
+      if (groupTripId != null) 'groupTripId': groupTripId,
     };
   }
 }
