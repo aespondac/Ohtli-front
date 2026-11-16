@@ -60,11 +60,20 @@ function fakeDb(config) {
 }
 const snap = (d) => ({ data: () => d });
 
-test('sin destinatario no se manda nada', async () => {
+test('sin configuración llega al correo de privacidad', async () => {
   const db = fakeDb(null);
   const r = await fb.handleFeedback(db, snap({ uid: 'u', message: 'hola' }), 'f1');
-  assert.match(r, /sin destinatario/);
-  assert.equal(Object.keys(db.store).length, 0);
+  assert.equal(r, 'correo en cola');
+  assert.deepEqual(db.store['mail/feedback_f1'].to, [fb.DEFAULT_TO]);
+});
+
+test('el destinatario es el mismo que LegalInfo.privacyEmail de la app', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dart = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'screens', 'legal', 'legal_content.dart'), 'utf8');
+  const m = dart.match(/static const privacyEmail = '([^']+)'/);
+  assert.ok(m, 'no se encontró LegalInfo.privacyEmail');
+  assert.equal(fb.DEFAULT_TO, m[1]);
 });
 
 test('con destinatario deja el correo en la cola de la extensión', async () => {

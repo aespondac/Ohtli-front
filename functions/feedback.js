@@ -8,10 +8,15 @@
 // procesa la extensión oficial "Trigger Email from Firestore" (firebase/firestore-send-email),
 // que tiene la conexión SMTP guardada en Secret Manager. Así no hay contraseñas en el repo.
 //
-// A quién llega se lee de private_config/feedback (Firestore, sin acceso desde la app):
+// Llega al correo de privacidad de Ohtli (DEFAULT_TO). Debe ser el mismo que
+// LegalInfo.privacyEmail en lib/screens/legal/legal_content.dart: functions/ no puede importar
+// Dart, así que test/feedback.test.js compara los dos y falla si se separan.
+// Para cambiarlo sin desplegar, private_config/feedback (Firestore, sin acceso desde la app):
 //   { to: "correo@dominio"  |  ["uno@…", "otro@…"],  mailCollection?: "mail" }
-// Si ese documento no existe, el comentario se queda guardado y no se manda correo.
+// El destinatario nunca viene de la app: así nadie puede usar esto para mandar correos a otros.
 // ---------------------------------------------------------------------------
+
+const DEFAULT_TO = 'privacidad@ohtli.quest';
 
 const CATEGORY_LABELS = { idea: 'Idea', bug: 'Algo falla', other: 'Otro' };
 
@@ -91,8 +96,8 @@ async function handleFeedback(db, snap, id, nowMs = Date.now()) {
 
   const configSnap = await db.collection('private_config').doc('feedback').get();
   const config = configSnap.exists ? configSnap.data() : null;
-  const to = recipientsOf(config);
-  if (to.length === 0) return 'sin destinatario (crea private_config/feedback con el campo to)';
+  const configured = recipientsOf(config);
+  const to = configured.length > 0 ? configured : [DEFAULT_TO];
 
   const rateRef = db.collection('feedback_rate').doc(uid);
   const allowed = await db.runTransaction(async (tx) => {
@@ -114,4 +119,4 @@ async function handleFeedback(db, snap, id, nowMs = Date.now()) {
   return 'correo en cola';
 }
 
-module.exports = { buildFeedbackMail, recipientsOf, nextRate, handleFeedback, escapeHtml, RATE_LIMIT, RATE_WINDOW_MS };
+module.exports = { DEFAULT_TO, buildFeedbackMail, recipientsOf, nextRate, handleFeedback, escapeHtml, RATE_LIMIT, RATE_WINDOW_MS };
