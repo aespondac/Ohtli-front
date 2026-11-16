@@ -1445,7 +1445,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                     child: Align(
                       alignment: Alignment.topCenter,
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 760),
+                        // Direcciones lleva el mapa al lado de los campos: 150 px más ancha.
+                        constraints: BoxConstraints(maxWidth: _currentSection == AccountSection.addresses ? 910 : 760),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(40, 36, 40, 24),
                           child: content,

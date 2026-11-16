@@ -8,6 +8,8 @@ import 'dart:js_interop_unsafe';
 import 'dart:ui_web' as ui_web;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/semantics.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../theme/colors.dart';
@@ -65,6 +67,19 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   Timer? _debounceTimer;
   String? _autocompleteError;
   String? _cdmxBoundaryError;
+
+  /// Buscando la ubicación del dispositivo.
+  bool _locating = false;
+  String? _locateError;
+
+  /// Después del primer intento de guardar, los campos se validan mientras se escriben.
+  bool _triedSubmit = false;
+
+  /// Para llevar la vista al primer campo con error al intentar guardar.
+  final GlobalKey _streetKey = GlobalKey();
+  final GlobalKey _suburbKey = GlobalKey();
+  final GlobalKey _zipKey = GlobalKey();
+  final GlobalKey _cityKey = GlobalKey();
 
   static const List<String> _blacklistedMunicipalities = [
     'atizapán',
@@ -522,6 +537,21 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
           }, 100);
         };
 
+        // Centra el mapa en la ubicación del dispositivo y llena los campos como si la
+        // persona lo hubiera movido. cb recibe 'ok', 'denied', 'unavailable' o 'nomap'.
+        window.locateOhtliAddressMap = function(cb) {
+          if (!navigator.geolocation) { cb('unavailable'); return; }
+          navigator.geolocation.getCurrentPosition((pos) => {
+            const map = window.ohtliCurrentMap;
+            if (!map) { cb('nomap'); return; }
+            window.ohtliMapUserMoved = true;
+            window.ohtliMapProgrammaticPanning = false;
+            map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            map.setZoom(17);
+            cb('ok');
+          }, (err) => cb(err && err.code === 1 ? 'denied' : 'unavailable'), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+        };
+
         window.panOhtliAddressMapToLatLng = function(lat, lng) {
           if (!window.ohtliCurrentMap) { window.ohtliPendingCenter = { lat: lat, lng: lng }; return; }
           window.ohtliMapProgrammaticPanning = true;
@@ -722,13 +752,42 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     }
   }
 
-  Widget _buildMapPickerWidget(bool isMobile) {
+  void _useMyLocation() {
+    if (!kIsWeb || _locating) return;
+    if (!globalContext.has('locateOhtliAddressMap')) {
+      setState(() => _locateError = 'El mapa aún no está listo. Intenta en un momento.');
+      return;
+    }
+    setState(() {
+      _locating = true;
+      _locateError = null;
+    });
+    globalContext.callMethodVarArgs('locateOhtliAddressMap'.toJS, <JSAny?>[
+      ((JSString status) {
+        if (!mounted) return;
+        final st = status.toDart;
+        setState(() {
+          _locating = false;
+          _locateError = switch (st) {
+            'ok' => null,
+            'denied' => 'Tu navegador no dio permiso de ubicación. Actívalo o busca la dirección.',
+            'nomap' => 'El mapa aún no está listo. Intenta en un momento.',
+            _ => 'No pudimos saber dónde estás. Busca la dirección o mueve el mapa.',
+          };
+        });
+      }).toJS,
+    ]);
+  }
+
+  Widget _buildMapPickerWidget(bool isMobile, {double? height}) {
     if (!kIsWeb) {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      height: isMobile ? 260 : 320,
+    return Semantics(
+      label: 'Mapa de la dirección. Arrastra para mover el pin; también puedes buscar la dirección o usar tu ubicación.',
+      child: Container(
+      height: height ?? (isMobile ? 260 : 320),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: OhtliColors.cardBorder, width: 1),
@@ -748,10 +807,14 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
               ),
             ),
 
+            // Arriba: abajo se encimaba con los créditos de Google.
             Positioned(
-              bottom: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Center(
+                child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: OhtliColors.cloudDancer.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(20),
@@ -762,19 +825,25 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.touch_app_outlined, size: 14, color: OhtliColors.stormyTeal),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Mueve el mapa para poner el pin en la entrada',
-                      style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+                    const Icon(Icons.pan_tool_alt_outlined, size: 16, color: OhtliColors.stormyTeal),
+                    const SizedBox(width: 7),
+                    Flexible(
+                      child: Text(
+                        'Arrastra el mapa para poner el pin en la entrada',
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx, height: 1.3),
+                      ),
                     ),
                   ],
                 ),
+              ),
               ),
             ),
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -813,6 +882,8 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     FormFieldValidator<String>? validator,
     ValueChanged<String>? onChanged,
     Iterable<String>? autofillHints,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLength,
   }) {
     OutlineInputBorder border(Color c, double w) => OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
@@ -822,20 +893,30 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+        ExcludeSemantics(
+          child: Text(
+            label,
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
+          ),
         ),
         const SizedBox(height: 6),
-        TextFormField(
+        Semantics(
+          label: label,
+          textField: true,
+          child: TextFormField(
           controller: controller,
           keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
+          maxLength: maxLength,
           validator: validator,
           onChanged: onChanged,
           autofillHints: autofillHints,
           style: GoogleFonts.inter(color: OhtliColors.onyx, fontSize: 14.5),
           cursorColor: OhtliColors.accentText,
           decoration: InputDecoration(
+            // El lector de pantalla anuncia el nombre del campo (la etiqueta visible está arriba).
+            semanticCounterText: '',
+            counterText: '',
             hintText: hint,
             hintStyle: GoogleFonts.inter(color: OhtliColors.onyx.withValues(alpha: 0.4), fontSize: 14.5),
             prefixIcon: icon == null ? null : Icon(icon, color: OhtliColors.accentText, size: 20),
@@ -849,6 +930,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
             errorBorder: border(OhtliColors.xoconostle, 1.2),
             focusedErrorBorder: border(OhtliColors.xoconostle, 1.6),
           ),
+        ),
         ),
       ],
     );
@@ -885,7 +967,21 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
   }
 
   void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_triedSubmit) setState(() => _triedSubmit = true);
+    if (!_formKey.currentState!.validate()) {
+      SemanticsService.sendAnnouncement(View.of(context), 'Revisa los campos marcados.', TextDirection.ltr);
+      final firstBad = <(GlobalKey, bool)>[
+        (_streetKey, _streetController.text.trim().isEmpty),
+        (_suburbKey, _suburbController.text.trim().isEmpty),
+        (_zipKey, !_isValidCDMXZip(_zipController.text)),
+        (_cityKey, _cityController.text.trim().isEmpty),
+      ].where((e) => e.$2).map((e) => e.$1).firstOrNull;
+      final ctx = firstBad?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic, alignment: 0.2);
+      }
+      return;
+    }
 
     final bool isCoordsInCDMX = _isCoordinateInCDMX(_selectedLat, _selectedLng);
     final bool isStateCDMX = _isOfficialCDMX(_googleState);
@@ -934,19 +1030,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
     final requiredText = (String msg) =>
         (String? v) => v == null || v.trim().isEmpty ? msg : null;
 
-    return Card(
-      elevation: 0,
-      color: OhtliColors.cardBg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: OhtliColors.cardBorder),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(isMobile ? 18 : 26),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
+    final content = Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -961,106 +1045,186 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                 ),
                 const SizedBox(height: 22),
 
-                // 1. Buscar
-                _field(
-                  label: 'Busca la dirección',
-                  controller: _searchController,
-                  hint: 'Calle, número y colonia',
-                  icon: Icons.search_rounded,
-                  onChanged: _onAddressInputChanged,
-                ),
-                // Sugerencias y avisos en un solo bloque: el mapa no cambia de lugar
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_isSearchingPredictions) ...[
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        minHeight: 2,
-                        color: OhtliColors.accentText,
-                        backgroundColor: Colors.transparent,
-                      ),
-                    ],
-                    if (_predictions.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Container(
-                        constraints: const BoxConstraints(maxHeight: 220),
-                        decoration: BoxDecoration(
-                          color: OhtliColors.cloudDancer,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: OhtliColors.cardBorder),
-                        ),
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          itemCount: _predictions.length,
-                          itemBuilder: (context, idx) {
-                            final pred = _predictions[idx];
-                            return ListTile(
-                              dense: true,
-                              leading: Icon(Icons.location_on_outlined, color: OhtliColors.accentText, size: 18),
-                              title: Text(
-                                pred['description'] ?? '',
-                                style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx),
+                // 1-3. Buscar y datos, con el mapa al lado cuando hay ancho (o debajo del
+                // buscador si no). El mapa siempre es el 3er hijo del mismo Flex: así no
+                // cambia de lugar en el árbol y no se queda en blanco al cambiar de ancho.
+                LayoutBuilder(
+                  builder: (context, box) {
+                    final wide = box.maxWidth >= 700;
+                    final searchBlock = Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                          _field(
+                            label: 'Busca la dirección',
+                            controller: _searchController,
+                            hint: 'Calle, número y colonia',
+                            icon: Icons.search_rounded,
+                            onChanged: _onAddressInputChanged,
+                          ),
+                          // Sugerencias y avisos en un solo bloque: el mapa no cambia de lugar
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (kIsWeb) ...[
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _locating ? null : _useMyLocation,
+                                    icon: _locating
+                                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: OhtliColors.stormyTeal))
+                                        : const Icon(Icons.my_location_rounded, size: 18),
+                                    label: Text(_locating ? 'Buscando dónde estás…' : 'Usar mi ubicación'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: OhtliColors.accentText,
+                                      minimumSize: const Size(0, 44),
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      side: BorderSide(color: OhtliColors.accentText.withValues(alpha: 0.4)),
+                                      shape: const StadiumBorder(),
+                                      textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                ),
+                                if (_locateError != null) ...[const SizedBox(height: 8), _notice(_locateError!, icon: Icons.location_off_rounded)],
+                              ],
+                              if (_isSearchingPredictions) ...[
+                                const SizedBox(height: 8),
+                                LinearProgressIndicator(
+                                  minHeight: 2,
+                                  color: OhtliColors.accentText,
+                                  backgroundColor: Colors.transparent,
+                                ),
+                              ],
+                              if (_predictions.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  constraints: const BoxConstraints(maxHeight: 220),
+                                  decoration: BoxDecoration(
+                                    color: OhtliColors.cloudDancer,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: OhtliColors.cardBorder),
+                                  ),
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    itemCount: _predictions.length,
+                                    itemBuilder: (context, idx) {
+                                      final pred = _predictions[idx];
+                                      return ListTile(
+                                        dense: true,
+                                        leading: Icon(Icons.location_on_outlined, color: OhtliColors.accentText, size: 18),
+                                        title: Text(
+                                          pred['description'] ?? '',
+                                          style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx),
+                                        ),
+                                        onTap: () => _selectPrediction(pred),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                              if (_autocompleteError != null) ...[
+                                const SizedBox(height: 8),
+                                _notice(
+                                  'No pudimos buscar direcciones en este momento. Mueve el mapa hasta el lugar o escribe los datos abajo.',
+                                  icon: Icons.wifi_off_rounded,
+                                ),
+                              ],
+                            ],
+                          ),
+                      ],
+                    );
+                    final dataBlock = Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                          _sectionTitle('Datos de la dirección'),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: Text(
+                              'Se llenan solos al buscar, usar tu ubicación o mover el mapa. Corrígelos si hace falta.',
+                              style: GoogleFonts.inter(fontSize: 13, height: 1.4, color: OhtliColors.subtleText),
+                            ),
+                          ),
+                          KeyedSubtree(key: _streetKey, child: _field(
+                            label: 'Calle y número',
+                            controller: _streetController,
+                            hint: 'Ej. Av. Insurgentes Sur 1234',
+                            icon: Icons.signpost_outlined,
+                            autofillHints: const [AutofillHints.streetAddressLine1],
+                            validator: requiredText('Escribe la calle y el número.'),
+                          )),
+                          const SizedBox(height: 14),
+                          KeyedSubtree(key: _suburbKey, child: _field(label: 'Colonia', controller: _suburbController, hint: 'Ej. Roma Sur', validator: requiredText('Escribe la colonia.'))),
+                          const SizedBox(height: 14),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: KeyedSubtree(key: _zipKey, child: _field(
+                                  label: 'Código postal',
+                                  controller: _zipController,
+                                  hint: 'Ej. 06760',
+                                  keyboardType: TextInputType.number,
+                                  autofillHints: const [AutofillHints.postalCode],
+                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                  maxLength: 5,
+                                  validator: (v) {
+                                    final t = (v ?? '').trim();
+                                    if (t.isEmpty) return 'Falta el C.P.';
+                                    if (t.length != 5) return 'Son 5 números.';
+                                    if (!_isValidCDMXZip(t)) return 'No es de la CDMX.';
+                                    return null;
+                                  },
+                                )),
                               ),
-                              onTap: () => _selectPrediction(pred),
-                            );
-                          },
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 3,
+                                child: KeyedSubtree(key: _cityKey, child: _field(
+                                  label: 'Alcaldía',
+                                  controller: _cityController,
+                                  hint: 'Ej. Cuauhtémoc',
+                                  validator: requiredText('Falta la alcaldía.'),
+                                )),
+                              ),
+                            ],
+                          ),
+                      ],
+                    );
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flex(
+                          direction: wide ? Axis.horizontal : Axis.vertical,
+                          crossAxisAlignment: wide ? CrossAxisAlignment.start : CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              flex: wide ? 1 : 0,
+                              fit: wide ? FlexFit.tight : FlexFit.loose,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [searchBlock, if (wide) ...[const SizedBox(height: 22), dataBlock]],
+                              ),
+                            ),
+                            SizedBox(width: wide ? 22 : 0, height: wide ? 0 : 14),
+                            SizedBox(
+                              width: wide ? (box.maxWidth * 0.42).clamp(300.0, 400.0) : null,
+                              child: KeyedSubtree(key: _mapKey, child: _buildMapPickerWidget(isMobile, height: wide ? 330 : null)),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                    if (_autocompleteError != null) ...[
-                      const SizedBox(height: 8),
-                      _notice(
-                        'No pudimos buscar direcciones en este momento. Mueve el mapa hasta el lugar o escribe los datos abajo.',
-                        icon: Icons.wifi_off_rounded,
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 14),
-
-                // 2. Mapa
-                KeyedSubtree(key: _mapKey, child: _buildMapPickerWidget(isMobile)),
-                if (_cdmxBoundaryError != null) ...[const SizedBox(height: 12), _notice(_cdmxBoundaryError!)],
-                const SizedBox(height: 24),
-
-                // 3. Datos
-                _sectionTitle('Datos de la dirección'),
-                _field(
-                  label: 'Calle y número',
-                  controller: _streetController,
-                  icon: Icons.signpost_outlined,
-                  autofillHints: const [AutofillHints.streetAddressLine1],
-                  validator: requiredText('Escribe la calle y el número.'),
-                ),
-                const SizedBox(height: 14),
-                _field(label: 'Colonia', controller: _suburbController, validator: requiredText('Escribe la colonia.')),
-                const SizedBox(height: 14),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: _field(
-                        label: 'Código postal',
-                        controller: _zipController,
-                        keyboardType: TextInputType.number,
-                        autofillHints: const [AutofillHints.postalCode],
-                        validator: requiredText('Falta el C.P.'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 3,
-                      child: _field(
-                        label: 'Alcaldía',
-                        controller: _cityController,
-                        validator: requiredText('Falta la alcaldía.'),
-                      ),
-                    ),
-                  ],
+                        if (_cdmxBoundaryError != null) ...[const SizedBox(height: 12), _notice(_cdmxBoundaryError!)],
+                        if (!wide) ...[const SizedBox(height: 24), dataBlock],
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
 
@@ -1092,10 +1256,12 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                     _buildCategoryChip('Otro', Icons.location_on_rounded),
                   ],
                 ),
-                const SizedBox(height: 28),
+              ],
+            );
 
-                // 5. Acciones
-                Row(
+    // 5. Acciones: siempre a la vista abajo cuando hay alto definido (Cuenta);
+    // dentro de un scroll (cuestionario) van al final del contenido.
+    final actions = Row(
                   children: [
                     Expanded(
                       child: SizedBox(
@@ -1124,15 +1290,49 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                             shape: const StadiumBorder(),
                             textStyle: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700),
                           ),
-                          child: Text(isNew ? 'Guardar dirección' : 'Guardar cambios'),
+                          child: Text(screenSize.width < 480 ? 'Guardar' : (isNew ? 'Guardar dirección' : 'Guardar cambios')),
                         ),
                       ),
                     ),
                   ],
+                );
+
+    return Card(
+      elevation: 0,
+      color: OhtliColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: OhtliColors.cardBorder),
+      ),
+      child: Form(
+        key: _formKey,
+        autovalidateMode: _triedSubmit ? AutovalidateMode.onUserInteraction : AutovalidateMode.disabled,
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final pad = EdgeInsets.all(isMobile ? 18 : 26);
+            if (!box.maxHeight.isFinite) {
+              return Padding(
+                padding: pad,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [content, const SizedBox(height: 28), actions],
+                ),
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: SingleChildScrollView(padding: pad, child: content)),
+                Container(
+                  padding: EdgeInsets.fromLTRB(pad.left, 14, pad.right, isMobile ? 16 : 20),
+                  decoration: BoxDecoration(border: Border(top: BorderSide(color: OhtliColors.cardBorder))),
+                  child: actions,
                 ),
               ],
-            ),
-          ),
+            );
+          },
         ),
       ),
     );
