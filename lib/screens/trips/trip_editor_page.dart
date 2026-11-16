@@ -33,6 +33,9 @@ import '../../services/trip_changes.dart';
 import '../../services/proposal_votes.dart';
 import '../../widgets/ohtli_ui.dart';
 import 'widgets/proposal_block.dart';
+import 'widgets/trip_branch_ui.dart';
+import 'trip_sample.dart' show TripSample, kSampleMyUid, kSampleMyName;
+import '../../services/trip_branches.dart';
 import '../../widgets/transfer_mode_picker.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../config/editorial.dart';
@@ -558,6 +561,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (s is TextSection) return {s.id: s.markdownText};
     if (s is TextImageSection) return {s.id: s.markdownText};
     if (s is ProposalSection) return {'${s.id}_question': s.question};
+    if (s is SplitSection) return {for (final b in s.branches) '${s.id}_branch_${b.id}': b.name};
     if (s is TransferSection) {
       return {
         '${s.id}_mins': s.durationMins?.toString() ?? '',
@@ -1495,6 +1499,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       } else {
         _sections.add(added.first);
       }
+      _assignDefaultBranch(id);
       _forceNewUndoStep = true;
       _onDataChanged();
     });
@@ -1551,6 +1556,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
         add(TransferSection(id: id));
       } else if (type == 'proposal') {
         add(ProposalSection(id: id, question: ''));
+      } else if (type == 'split') {
+        final stamp = DateTime.now().microsecondsSinceEpoch;
+        add(SplitSection(id: id, branches: [
+          TripBranch(id: 'br_${stamp}_1', name: 'Grupo 1'),
+          TripBranch(id: 'br_${stamp}_2', name: 'Grupo 2'),
+        ]));
       }
     }
   }
@@ -1603,6 +1614,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
   void _duplicateBlock(int index) {
     final map = Map<String, dynamic>.from(_sections[index].toMap());
     map['id'] = 'sec_${DateTime.now().millisecondsSinceEpoch}_${_sections.length}';
+    if (map['type'] == 'split' && map['branches'] is List) {
+      final stamp = DateTime.now().microsecondsSinceEpoch;
+      final list = map['branches'] as List;
+      map['branches'] = [for (int k = 0; k < list.length; k++) {...Map<String, dynamic>.from(list[k] as Map), 'id': 'br_${stamp}_$k'}];
+    }
     setState(() {
       _sections.insert(index + 1, TripSection.fromMap(map));
       _forceNewUndoStep = true;
@@ -1644,6 +1660,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
     if (s is ProposalSection) {
       return (s.question.trim().isEmpty ? 'Propuesta de lugares' : s.question.trim(), Icons.how_to_vote_rounded);
+    }
+    if (s is SplitSection) {
+      final names = [for (int i = 0; i < s.branches.length; i++) branchName(s.branches[i], i)];
+      return (names.isEmpty ? 'El grupo se separa' : 'Se separan: ${names.join(' · ')}', Icons.call_split_rounded);
     }
     // Cualquier otro tipo que no sea texto se nombra genérico (no truena con bloques nuevos).
     if (s is! TextSection && s is! TextImageSection) return ('Bloque', Icons.article_outlined);
@@ -3631,27 +3651,30 @@ class _TripEditorPageState extends State<TripEditorPage> {
         final x = _sections[i];
         if (x is PlaceSection && !x.unplanned) n++;
       }
+      final lane = _branchAt(index);
       marker = Container(
         width: 26,
         height: 26,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: OhtliColors.stormyTeal,
+          color: lane != null ? _branchColorOf(lane) : OhtliColors.stormyTeal,
           shape: BoxShape.circle,
           border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
         ),
         child: Text('$n', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
       );
     } else if (section is TransferSection) {
+      final lane = _branchAt(index);
+      final Color c = lane != null ? _branchColorOf(lane) : OhtliColors.stormyTeal;
       marker = Container(
         width: 26,
         height: 26,
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E22) : Colors.white,
           shape: BoxShape.circle,
-          border: Border.all(color: OhtliColors.stormyTeal.withValues(alpha: 0.5)),
+          border: Border.all(color: c.withValues(alpha: lane != null ? 0.8 : 0.5)),
         ),
-        child: Icon(transferModeOf(section.mode).icon, size: 14, color: OhtliColors.stormyTeal),
+        child: Icon(transferModeOf(section.mode).icon, size: 14, color: lane != null ? branchInk(c, isDark) : OhtliColors.stormyTeal),
       );
     } else if (section is ProposalSection) {
       marker = Container(
@@ -3663,6 +3686,17 @@ class _TripEditorPageState extends State<TripEditorPage> {
           border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
         ),
         child: const Icon(Icons.how_to_vote_rounded, size: 13, color: Colors.white),
+      );
+    } else if (section is SplitSection) {
+      marker = Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: OhtliColors.xoconostle,
+          shape: BoxShape.circle,
+          border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
+        ),
+        child: const Icon(Icons.call_split_rounded, size: 13, color: Colors.white),
       );
     } else {
       marker = Container(
@@ -3850,6 +3884,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         ('place', Icons.place_rounded, 'Parada', 'Un lugar del recorrido'),
         ('transfer', Icons.route_rounded, 'Traslado', 'Cómo van de un lugar a otro'),
         ('proposal', Icons.how_to_vote_rounded, 'Propuesta de lugares', 'El grupo propone lugares y vota cuál se queda'),
+        ('split', Icons.call_split_rounded, 'Separar al grupo', 'Cada quien por su lado; se reencuentran si quieren'),
       ],
       ('text', Icons.notes_rounded, 'Texto', _isNotes ? 'Cuenta algo de la versión' : 'Cuenta algo del viaje'),
       ('text_image', Icons.image_rounded, 'Imagen', 'Una foto con texto al lado'),
@@ -4094,6 +4129,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
       typeLabel = "Propuesta de lugares";
       typeIcon = Icons.how_to_vote_rounded;
       blockContent = _buildProposalEditor(section, isDark);
+    } else if (section is SplitSection) {
+      typeLabel = "Separar al grupo";
+      typeIcon = Icons.call_split_rounded;
+      blockContent = _buildSplitEditor(section, isDark);
     } else if (section is UnknownSection) {
       typeLabel = "Bloque no compatible";
       typeIcon = Icons.help_outline_rounded;
@@ -4173,6 +4212,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
       final bool post = !_isNotes && (_isPostTrip || section.rating > 0 || section.realCost != null || section.arrivedAt != null || section.unplanned);
       final Color fgP = isDark ? Colors.white : const Color(0xFF1F2A2A);
       final Color subP = isDark ? Colors.white60 : OhtliColors.subtleText;
+      // Después de separarse, cada parada dice quién va (o si es el reencuentro).
+      final SplitSection? splitHere = splitBefore(_sections, index);
 
       final Widget photos = Column(
         mainAxisSize: MainAxisSize.min,
@@ -4330,6 +4371,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               ],
               const SizedBox(height: 10),
               chips,
+              if (!_isNotes && splitHere != null) _buildWhoGoes(section.id, splitHere, section.branchId, isDark),
             ],
           );
         },
@@ -4556,6 +4598,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
 
     final Color fgLabel = isDark ? Colors.white60 : OhtliColors.subtleText;
+    // Rama del bloque cuando el grupo va separado, o el punto de reencuentro.
+    final TripBranch? lane = _branchAt(index);
+    final Widget? laneTag = lane != null
+        ? BranchTag(label: _branchLabel(lane), color: _branchColorOf(lane), isDark: isDark)
+        : (_isMeetupAt(index) ? BranchTag(label: 'Reencuentro', icon: Icons.call_merge_rounded, color: OhtliColors.stormyTeal, isDark: isDark) : null);
     // Quién más está escribiendo en este bloque (presencia).
     final editingHere = [for (final p in _othersHere) if (p.blockId == section.id) p];
     final Color? editingColor = editingHere.isEmpty ? null : _presenceColor(editingHere.first.uid);
@@ -4608,6 +4655,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 Icon(typeIcon, size: 15, color: OhtliColors.stormyTeal),
                 const SizedBox(width: 6),
                 Text(typeLabel, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.2, color: fgLabel)),
+                if (laneTag != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(child: laneTag),
+                ],
                 if (editingHere.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Flexible(child: _buildEditingBadge(editingHere, isDark)),
@@ -4871,6 +4922,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   List<(String, String)> get _editorPeople {
     final owner = widget.trip.userId;
     String ownerName() {
+      if (_isSampleEditor) return (TripSample.author['displayName'] ?? 'Ana').toString();
       if (owner == _myUid) return _myName;
       if (_ownerName != null) return _ownerName!;
       for (final p in _presence) {
@@ -4892,8 +4944,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
     ];
   }
 
-  /// Quien vota desde este editor (en la muestra, sin sesión, vota «la muestra»).
-  String get _voterUid => _myUid.isNotEmpty ? _myUid : 'muestra';
+  /// Quien vota y se reparte desde este editor (en la muestra, «Tú», el coautor de muestra).
+  String get _voterUid => _isSampleEditor ? kSampleMyUid : (_myUid.isNotEmpty ? _myUid : 'anonimo');
+  String get _voterName => _isSampleEditor ? kSampleMyName : _myName;
 
   void _watchVotes(String proposalId) {
     if (_isSampleEditor || _myUid.isEmpty || _voteSubs.containsKey(proposalId)) return;
@@ -4964,7 +5017,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         poiId: result.id,
         poiSource: kPlaceSourceSuggestion,
         proposedBy: _voterUid,
-        proposedByName: _myName,
+        proposedByName: _voterName,
       );
     } else {
       final poi = choice as Poi;
@@ -4979,7 +5032,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         poiId: poi.poiId,
         poiSource: kPlaceSourceCatalog,
         proposedBy: _voterUid,
-        proposedByName: _myName,
+        proposedByName: _voterName,
       );
     }
     final i = _idx(sectionId);
@@ -5056,6 +5109,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
     final bool everyone = everyoneVotedOn(votes, editors);
     final winner = proposalWinner(section.candidates, votes, tieBreakerUid: widget.trip.userId);
     final bool canPick = winner != null && (isOwner || everyone);
+    final int at = _idx(sid);
+    final SplitSection? proposalSplit = at >= 0 ? splitBefore(_sections, at) : null;
     final String pickHint = winner == null
         ? 'Elige cuando haya votos'
         : (canPick ? 'Se queda ${winner.title.trim().isEmpty ? 'el más votado' : winner.title.trim()}' : 'Cuando voten todos, cualquiera puede elegirlo');
@@ -5128,7 +5183,338 @@ class _TripEditorPageState extends State<TripEditorPage> {
             if (section.candidates.isNotEmpty) Tooltip(message: pickHint, child: pickButton),
           ],
         ),
+        if (proposalSplit != null) _buildWhoGoes(sid, proposalSplit, section.branchId, isDark),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Separarse en ramas: cada quien por su lado y, si quieren, se reencuentran
+  // ---------------------------------------------------------------------------
+  /// Rama del bloque en [index] cuando el grupo va separado (null si va con todos).
+  TripBranch? _branchAt(int index) {
+    if (index < 0 || index >= _sections.length) return null;
+    final split = splitBefore(_sections, index);
+    if (split == null) return null;
+    final lane = laneOf(_sections[index]);
+    return split.branch(lane.isEmpty ? null : lane);
+  }
+
+  /// ¿La parada en [index] es donde el grupo se reencuentra?
+  bool _isMeetupAt(int index) {
+    if (index < 0 || index >= _sections.length) return false;
+    final s = _sections[index];
+    if (s is! PlaceSection) return false;
+    final split = splitBefore(_sections, index);
+    return split != null && split.branch(s.branchId) == null;
+  }
+
+  Color _branchColorOf(TripBranch b) => branchColor(branchIndexes(_sections)[b.id] ?? 0);
+
+  String _branchLabel(TripBranch b) => branchName(b, branchIndexes(_sections)[b.id] ?? 0);
+
+  /// Lo nuevo que se agrega después de separarse sigue la rama de lo anterior (o la primera);
+  /// un traslado toma la de la parada a la que llega. Se llama dentro de setState.
+  void _assignDefaultBranch(String id) {
+    final i = _idx(id);
+    if (i < 0) return;
+    final s = _sections[i];
+    final split = splitBefore(_sections, i);
+    if (split == null || split.branches.isEmpty) return;
+    if (s is TransferSection) {
+      final lane = transferBranchFor(_sections, i);
+      if (lane != null) _sections[i] = s.copyWith(branchId: lane);
+      return;
+    }
+    String lane = split.branches.first.id;
+    for (int j = i - 1; j >= 0; j--) {
+      final x = _sections[j];
+      if (identical(x, split)) break;
+      final l = laneOf(x);
+      if (l.isNotEmpty && split.branch(l) != null) {
+        lane = l;
+        break;
+      }
+    }
+    if (s is PlaceSection && !s.unplanned) _sections[i] = s.copyWith(branchId: lane);
+    if (s is ProposalSection) _sections[i] = s.copyWith(branchId: lane);
+  }
+
+  /// «¿Quién va?»: pone la rama de una parada, propuesta o traslado (null = punto de
+  /// reencuentro). Los traslados que llegan a la parada se van con ella.
+  void _setBlockBranch(String id, String? branchId) {
+    if (_applyingRemote) return;
+    final i = _idx(id);
+    if (i < 0) return;
+    final s = _sections[i];
+    final draft = List<TripSection>.of(_sections);
+    if (s is PlaceSection) {
+      draft[i] = branchId == null ? s.copyWith(clearBranch: true, meetup: true) : s.copyWith(branchId: branchId, meetup: false);
+      for (int j = i - 1; j >= 0 && draft[j] is TransferSection; j--) {
+        final t = draft[j] as TransferSection;
+        // Rumbo a una rama: van por ella. Rumbo al reencuentro: cada uno sale de su rama.
+        final String? lane = branchId ?? t.branchId ?? transferBranchFor(draft, j);
+        if (lane != t.branchId) draft[j] = lane == null ? t.copyWith(clearBranch: true) : t.copyWith(branchId: lane);
+      }
+    } else if (s is ProposalSection) {
+      draft[i] = s.copyWith(branchId: branchId, clearBranch: branchId == null);
+    } else if (s is TransferSection) {
+      draft[i] = s.copyWith(branchId: branchId, clearBranch: branchId == null);
+    } else {
+      return;
+    }
+    // Al cambiar una parada puede cambiar cuál es el reencuentro: los traslados sin rama que
+    // quedan dentro de la separación toman la de la parada a la que llegan (o de la que salen).
+    for (int k = 0; k < draft.length; k++) {
+      final t = draft[k];
+      if (t is! TransferSection || t.branchId != null || splitBefore(draft, k) == null) continue;
+      final lane = transferBranchFor(draft, k);
+      if (lane != null) draft[k] = t.copyWith(branchId: lane);
+    }
+    final changed = [for (int k = 0; k < draft.length; k++) if (!identical(draft[k], _sections[k])) k];
+    if (changed.isEmpty) return;
+    setState(() {
+      for (final k in changed) {
+        _sections[k] = draft[k];
+      }
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+  }
+
+  void _updateBranch(String splitId, String branchId, TripBranch Function(TripBranch) change, {bool structural = true}) {
+    _replaceSection<SplitSection>(
+      splitId,
+      (s) => s.copyWith(branches: [for (final b in s.branches) b.id == branchId ? change(b) : b]),
+      structural: structural,
+    );
+  }
+
+  /// Una persona va en un solo grupo: al ponerla en uno sale de los demás.
+  void _toggleBranchMember(String splitId, String branchId, String uid) {
+    _replaceSection<SplitSection>(splitId, (s) {
+      final already = s.branch(branchId)?.memberIds.contains(uid) ?? false;
+      return s.copyWith(branches: [
+        for (final b in s.branches)
+          if (b.id == branchId)
+            b.copyWith(memberIds: already ? [for (final m in b.memberIds) if (m != uid) m] : [...b.memberIds, uid])
+          else if (b.memberIds.contains(uid))
+            b.copyWith(memberIds: [for (final m in b.memberIds) if (m != uid) m])
+          else
+            b,
+      ]);
+    });
+  }
+
+  void _addBranch(String splitId) {
+    _replaceSection<SplitSection>(splitId, (s) {
+      final used = {for (final b in s.branches) b.name.trim()};
+      int n = s.branches.length + 1;
+      while (used.contains('Grupo $n')) {
+        n++;
+      }
+      return s.copyWith(branches: [...s.branches, TripBranch(id: 'br_${DateTime.now().microsecondsSinceEpoch}_$n', name: 'Grupo $n')]);
+    });
+  }
+
+  /// Quita una rama (siempre quedan al menos dos). Lo que iba por ella se queda sin grupo.
+  void _removeBranch(String splitId, String branchId) {
+    if (_applyingRemote) return;
+    final i = _idx(splitId);
+    if (i < 0 || _sections[i] is! SplitSection) return;
+    final split = _sections[i] as SplitSection;
+    final gone = split.branch(branchId);
+    if (gone == null || split.branches.length <= 2) return;
+    final name = branchName(gone, split.branches.indexOf(gone));
+    setState(() {
+      _sections[i] = split.copyWith(branches: [for (final b in split.branches) if (b.id != branchId) b]);
+      for (int k = 0; k < _sections.length; k++) {
+        final s = _sections[k];
+        if (s is PlaceSection && s.branchId == branchId) {
+          _sections[k] = s.copyWith(clearBranch: true);
+        } else if (s is TransferSection && s.branchId == branchId) {
+          _sections[k] = s.copyWith(clearBranch: true);
+        } else if (s is ProposalSection && s.branchId == branchId) {
+          _sections[k] = s.copyWith(clearBranch: true);
+        }
+      }
+      _forceNewUndoStep = true;
+      _onDataChanged();
+    });
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Quitaste $name. Sus paradas quedaron sin grupo: elige «¿Quién va?» en cada una.', style: GoogleFonts.inter()),
+      backgroundColor: OhtliColors.onyx,
+      duration: const Duration(seconds: 6),
+      action: SnackBarAction(label: 'Deshacer', textColor: OhtliColors.cempasuchil, onPressed: _undo),
+    ));
+  }
+
+  /// «¿Quién va?» con un chip por rama y, en paradas, el punto de reencuentro.
+  Widget _buildWhoGoes(String id, SplitSection split, String? current, bool isDark, {bool allowMeetup = true, double top = 12}) {
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final bool none = split.branch(current) == null;
+    return Padding(
+      padding: EdgeInsets.only(top: top),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 2),
+            child: Text('¿Quién va?', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: sub)),
+          ),
+          for (int i = 0; i < split.branches.length; i++)
+            BranchChoiceChip(
+              label: branchName(split.branches[i], i),
+              color: branchColor(i),
+              selected: current == split.branches[i].id,
+              isDark: isDark,
+              onTap: () => _setBlockBranch(id, split.branches[i].id),
+            ),
+          if (allowMeetup)
+            Tooltip(
+              message: 'Aquí se juntan los grupos que se reencuentran',
+              child: BranchChoiceChip(
+                label: 'Punto de reencuentro',
+                icon: Icons.call_merge_rounded,
+                color: OhtliColors.stormyTeal,
+                selected: none,
+                isDark: isDark,
+                onTap: () => _setBlockBranch(id, null),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSplitEditor(SplitSection section, bool isDark) {
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final people = _editorPeople;
+    final assigned = {for (final b in section.branches) ...b.memberIds};
+    final unassigned = [for (final p in people) if (!assigned.contains(p.$1)) p.$1 == _voterUid ? 'tú' : p.$2];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Cada quien por su lado. Reparte al grupo y luego, en cada parada de abajo, elige «¿Quién va?». '
+          'La primera parada de todo el grupo es el punto de reencuentro.',
+          style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: sub),
+        ),
+        const SizedBox(height: 12),
+        for (int bi = 0; bi < section.branches.length; bi++) _buildBranchEditor(section, bi, people, isDark),
+        if (unassigned.isNotEmpty && people.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              'Sin grupo: ${unassigned.join(', ')}. En el modo viaje ve${unassigned.length == 1 ? '' : 'n'} todas las ramas.',
+              style: GoogleFonts.inter(fontSize: 12, color: sub),
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OhtliSecondaryButton(
+            compact: true,
+            icon: Icons.group_add_rounded,
+            label: 'Agregar grupo',
+            onPressed: () => _addBranch(section.id),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBranchEditor(SplitSection section, int bi, List<(String, String)> people, bool isDark) {
+    final b = section.branches[bi];
+    final color = branchColor(bi);
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
+    final sid = section.id;
+    final bid = b.id;
+    final nameController = _blockControllers.putIfAbsent('${sid}_branch_$bid', () {
+      final c = TextEditingController(text: b.name);
+      c.addListener(() => _updateBranch(sid, bid, (x) => x.copyWith(name: c.text), structural: false));
+      return c;
+    });
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: ColoredBox(
+          color: color.withValues(alpha: isDark ? 0.12 : 0.06),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 6, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: nameController,
+                            focusNode: _getFocusNode('${sid}_branch_$bid'),
+                            style: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.bold, color: branchInk(color, isDark)),
+                            decoration: InputDecoration(
+                              hintText: 'Grupo ${bi + 1}',
+                              hintStyle: GoogleFonts.outfit(fontSize: 16.5, fontWeight: FontWeight.bold, color: branchInk(color, isDark).withValues(alpha: 0.5)),
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              border: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                        if (section.branches.length > 2)
+                          IconButton(
+                            tooltip: 'Quitar este grupo',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _removeBranch(sid, bid),
+                            icon: Icon(Icons.close_rounded, size: 18, color: sub),
+                          ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final p in people)
+                          OhtliChoiceChip(
+                            label: p.$1 == _voterUid && p.$2 != 'Tú' ? '${p.$2} (tú)' : p.$2,
+                            icon: b.memberIds.contains(p.$1) ? Icons.check_rounded : Icons.person_outline_rounded,
+                            selected: b.memberIds.contains(p.$1),
+                            onTap: () => _toggleBranchMember(sid, bid, p.$1),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Switch(
+                          value: b.rejoins,
+                          onChanged: (v) => _updateBranch(sid, bid, (x) => x.copyWith(rejoins: v)),
+                          activeThumbColor: Colors.white,
+                          activeTrackColor: OhtliColors.stormyTeal,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            b.rejoins ? 'Se reencuentran con el grupo' : 'No se reencuentran: terminan por su lado',
+                            style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: fg),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(left: 0, top: 0, bottom: 0, width: 4, child: ColoredBox(color: color)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -5150,23 +5536,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   /// Paradas vecinas de un traslado (la anterior y la siguiente en la bitácora).
-  (PlaceSection?, PlaceSection?) _placesAround(int index) {
-    PlaceSection? before;
-    PlaceSection? after;
-    for (int i = index - 1; i >= 0; i--) {
-      if (_sections[i] is PlaceSection) {
-        before = _sections[i] as PlaceSection;
-        break;
-      }
-    }
-    for (int i = index + 1; i < _sections.length; i++) {
-      if (_sections[i] is PlaceSection) {
-        after = _sections[i] as PlaceSection;
-        break;
-      }
-    }
-    return (before, after);
-  }
+  /// Si el grupo va separado, la anterior es la de la misma rama.
+  (PlaceSection?, PlaceSection?) _placesAround(int index) => transferEnds(_sections, index);
 
   void _estimateTransfer(String id) {
     final i = _idx(id);
@@ -5189,10 +5560,13 @@ class _TripEditorPageState extends State<TripEditorPage> {
   void _insertTransferBefore(String placeId) {
     final i = _idx(placeId);
     if (i < 0) return;
-    final (prev, _) = _placesAround(i);
     final place = _sections[i] as PlaceSection;
     final id = _newSectionId();
-    final t = (prev != null ? estimateTransfer(prev, place, 'walking', id: id) : null) ?? TransferSection(id: id);
+    // Se calcula sobre la lista con el traslado ya puesto: así sale de la parada de su rama.
+    final draft = List<TripSection>.of(_sections)..insert(i, TransferSection(id: id));
+    final lane = transferBranchFor(draft, i);
+    final (prev, _) = transferEnds(draft, i);
+    final t = ((prev != null ? estimateTransfer(prev, place, 'walking', id: id) : null) ?? TransferSection(id: id)).copyWith(branchId: lane);
     setState(() {
       _sections.insert(i, t);
       _forceNewUndoStep = true;
@@ -5225,7 +5599,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
       ),
     );
     if (mode == null || !mounted) return;
-    final (list, added) = fillMissingTransfers(_sections, mode, _newSectionId);
+    // Ids únicos aunque se creen varios en el mismo milisegundo.
+    int k = 0;
+    String nextId() => '${_newSectionId()}_${k++}';
+    final (list, added) = hasBranches(_sections)
+        ? fillMissingTransfersByBranch(_sections, mode, nextId)
+        : fillMissingTransfers(_sections, mode, nextId);
     if (added > 0) {
       setState(() {
         _sections = list;
@@ -5268,7 +5647,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
       start = _formatTime(picked);
     }
     setState(() {
-      _sections = recalculateSchedule(_sections, startTime: start);
+      _sections = hasBranches(_sections)
+          ? recalculateScheduleByBranch(_sections, startTime: start)
+          : recalculateSchedule(_sections, startTime: start);
       _forceNewUndoStep = true;
       _onDataChanged();
     });
@@ -5370,6 +5751,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
     final i = _idx(sid);
     final (a, b) = i >= 0 ? _placesAround(i) : (null, null);
+    final SplitSection? transferSplit = i >= 0 ? splitBefore(_sections, i) : null;
     final mode = transferModeOf(t.mode);
 
     // Elegir modo: si el tramo era estimado, se vuelve a estimar con el nuevo modo.
@@ -5389,6 +5771,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (transferSplit != null)
+          Padding(padding: const EdgeInsets.only(bottom: 10), child: _buildWhoGoes(sid, transferSplit, t.branchId, isDark, allowMeetup: false, top: 0)),
         if (a != null || b != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),

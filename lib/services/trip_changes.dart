@@ -36,6 +36,7 @@ String _firstLine(String md) {
 String _what(TripSection s, {bool definite = false}) {
   if (s is PlaceSection) return s.unplanned ? 'el desvío ${_name(s)}' : 'la parada ${_name(s)}';
   if (s is TransferSection) return 'el traslado ${describeTransfer(s)}';
+  if (s is SplitSection) return definite ? 'la separación del grupo' : 'una separación del grupo';
   if (s is ProposalSection) {
     final q = s.question.trim();
     return q.isEmpty ? (definite ? 'la propuesta de lugares' : 'una propuesta de lugares') : 'la propuesta «$q»';
@@ -79,6 +80,31 @@ List<String> _placeChanges(PlaceSection a, PlaceSection b) {
   if ((a.coverUrl ?? '') != (b.coverUrl ?? '')) out.add((b.coverUrl ?? '').isEmpty ? 'Se quitó la portada de $n' : 'Cambió la portada de $n');
   if (a.lat != b.lat || a.lng != b.lng) out.add('Se cambió la ubicación de $n');
   if (a.unplanned != b.unplanned) out.add(b.unplanned ? '$n pasó a ser un desvío' : '$n pasó a ser una parada del plan');
+  if (a.branchId != b.branchId) out.add('Cambió quién va a $n');
+  if (a.meetup != b.meetup && b.meetup) out.add('$n es ahora el punto de reencuentro');
+  return out;
+}
+
+List<String> _splitChanges(SplitSection a, SplitSection b) {
+  final out = <String>[];
+  String name(TripBranch x) => x.name.trim().isEmpty ? 'un grupo' : '«${x.name.trim()}»';
+  final before = {for (final x in a.branches) x.id: x};
+  final after = {for (final x in b.branches) x.id: x};
+  for (final x in b.branches) {
+    final old = before[x.id];
+    if (old == null) {
+      out.add('Se agregó el grupo ${name(x)}');
+      continue;
+    }
+    if (old.name.trim() != x.name.trim()) out.add('Se renombró el grupo ${name(old)} como ${name(x)}');
+    if (old.memberIds.toSet().difference(x.memberIds.toSet()).isNotEmpty || x.memberIds.toSet().difference(old.memberIds.toSet()).isNotEmpty) {
+      out.add('Cambió quién va en ${name(x)}');
+    }
+    if (old.rejoins != x.rejoins) out.add(x.rejoins ? '${name(x)} se reencuentra con el grupo' : '${name(x)} ya no se reencuentra con el grupo');
+  }
+  for (final x in a.branches) {
+    if (!after.containsKey(x.id)) out.add('Se quitó el grupo ${name(x)}');
+  }
   return out;
 }
 
@@ -124,6 +150,8 @@ List<String> describeTripChanges(List<TripSection> before, List<TripSection> aft
       if (old.markdownText != s.markdownText) out.add('Se editó ${_what(s, definite: true)}');
     } else if (s is ProposalSection && old is ProposalSection) {
       out.addAll(_proposalChanges(old, s));
+    } else if (s is SplitSection && old is SplitSection) {
+      out.addAll(_splitChanges(old, s));
     }
   }
   for (final s in before) {

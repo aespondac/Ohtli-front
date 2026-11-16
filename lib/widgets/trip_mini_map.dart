@@ -16,6 +16,9 @@ class MiniMapStop {
   /// Desvío (lugar no previsto): punto pequeño sin número.
   final bool unplanned;
 
+  /// Color de la rama cuando el grupo se separa (null = turquesa, todo el grupo).
+  final Color? color;
+
   const MiniMapStop({
     required this.lat,
     required this.lng,
@@ -23,7 +26,17 @@ class MiniMapStop {
     this.visited = false,
     this.isNext = false,
     this.unplanned = false,
+    this.color,
   });
+}
+
+/// Tramo de la ruta entre dos paradas (posiciones en la lista de paradas).
+class MiniMapSegment {
+  final int from;
+  final int to;
+  final Color? color;
+
+  const MiniMapSegment(this.from, this.to, {this.color});
 }
 
 /// Mapa estático con teselas de OpenStreetMap, la ruta punteada y las paradas numeradas.
@@ -36,7 +49,11 @@ class TripMiniMap extends StatelessWidget {
   static const double _defaultLat = 19.4326;
   static const double _defaultLng = -99.1332;
 
-  const TripMiniMap({super.key, required this.stops, this.isDark = false});
+  /// Tramos a dibujar. Sin ellos, la ruta une las paradas en orden; con ramas, cada una
+  /// lleva su línea de su color.
+  final List<MiniMapSegment>? segments;
+
+  const TripMiniMap({super.key, required this.stops, this.isDark = false, this.segments});
 
   static const double _tile = 256;
 
@@ -146,7 +163,7 @@ class TripMiniMap extends StatelessWidget {
               child: ColoredBox(color: (isDark ? Colors.black : Colors.white).withValues(alpha: isDark ? 0.18 : 0.22)),
             ),
             Positioned.fill(
-              child: CustomPaint(painter: _RoutePainter(points: points, stops: stops, isDark: isDark)),
+              child: CustomPaint(painter: _RoutePainter(points: points, stops: stops, isDark: isDark, segments: segments)),
             ),
             Positioned(
               left: 6,
@@ -172,27 +189,31 @@ class _RoutePainter extends CustomPainter {
   final List<Offset> points;
   final List<MiniMapStop> stops;
   final bool isDark;
+  final List<MiniMapSegment>? segments;
 
-  _RoutePainter({required this.points, required this.stops, required this.isDark});
+  _RoutePainter({required this.points, required this.stops, required this.isDark, this.segments});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty) return;
     const teal = OhtliColors.stormyTeal;
-    final line = Paint()
-      ..color = teal
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
     final halo = Paint()
       ..color = Colors.white.withValues(alpha: isDark ? 0.35 : 0.9)
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    for (int i = 0; i + 1 < points.length; i++) {
-      final a = points[i];
-      final b = points[i + 1];
+    final tramos = segments ??
+        [for (int i = 0; i + 1 < points.length; i++) MiniMapSegment(i, i + 1)];
+    for (final seg in tramos) {
+      if (seg.from < 0 || seg.to < 0 || seg.from >= points.length || seg.to >= points.length) continue;
+      final line = Paint()
+        ..color = seg.color ?? teal
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+      final a = points[seg.from];
+      final b = points[seg.to];
       final d = b - a;
       final len = d.distance;
       if (len < 1) continue;
@@ -214,21 +235,22 @@ class _RoutePainter extends CustomPainter {
         canvas.drawCircle(p, 4.5, Paint()..color = OhtliColors.cempasuchil);
         continue;
       }
-      final Color fill = s.isNext ? OhtliColors.cempasuchil : (s.visited ? teal : Colors.white);
+      final Color tone = s.color ?? teal;
+      final Color fill = s.isNext ? OhtliColors.cempasuchil : (s.visited ? tone : Colors.white);
       canvas.drawCircle(p + const Offset(0, 1.5), 12.5, Paint()..color = Colors.black.withValues(alpha: 0.18));
       canvas.drawCircle(p, 12, Paint()..color = fill);
       canvas.drawCircle(
         p,
         12,
         Paint()
-          ..color = s.visited || s.isNext ? Colors.white : teal
+          ..color = s.visited || s.isNext ? Colors.white : tone
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2,
+          ..strokeWidth = s.color != null ? 3 : 2,
       );
       final tp = TextPainter(
         text: TextSpan(
           text: '${s.number}',
-          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: s.visited || s.isNext ? Colors.white : teal),
+          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: s.visited || s.isNext ? Colors.white : tone),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
@@ -237,5 +259,6 @@ class _RoutePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RoutePainter old) => old.points != points || old.isDark != isDark || old.stops != stops;
+  bool shouldRepaint(covariant _RoutePainter old) =>
+      old.points != points || old.isDark != isDark || old.stops != stops || old.segments != segments;
 }

@@ -587,6 +587,7 @@ class TransferSection extends TripSection {
     bool clearDuration = false,
     bool clearDistance = false,
     String? branchId,
+    bool clearBranch = false,
   }) {
     return TransferSection(
       id: id,
@@ -597,7 +598,7 @@ class TransferSection extends TripSection {
       cost: cost ?? this.cost,
       currency: currency ?? this.currency,
       isEstimated: isEstimated ?? this.isEstimated,
-      branchId: branchId ?? this.branchId,
+      branchId: clearBranch ? null : (branchId ?? this.branchId),
     );
   }
 
@@ -771,8 +772,12 @@ class ProposalSection extends TripSection {
 
   ProposalSection({required super.id, this.question = '', this.candidates = const [], this.branchId}) : super(type: 'proposal');
 
-  ProposalSection copyWith({String? question, List<ProposalCandidate>? candidates}) =>
-      ProposalSection(id: id, question: question ?? this.question, candidates: candidates ?? this.candidates, branchId: branchId);
+  ProposalSection copyWith({String? question, List<ProposalCandidate>? candidates, String? branchId, bool clearBranch = false}) => ProposalSection(
+        id: id,
+        question: question ?? this.question,
+        candidates: candidates ?? this.candidates,
+        branchId: clearBranch ? null : (branchId ?? this.branchId),
+      );
 
   factory ProposalSection.fromMap(Map<String, dynamic> data) => ProposalSection(
         id: (data['id'] ?? '').toString(),

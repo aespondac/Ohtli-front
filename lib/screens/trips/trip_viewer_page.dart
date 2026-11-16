@@ -52,6 +52,8 @@ import '../../services/feedback_service.dart';
 import '../../services/proposal_votes.dart';
 import '../../widgets/ohtli_ui.dart';
 import 'widgets/proposal_block.dart';
+import 'widgets/trip_branch_ui.dart';
+import '../../services/trip_branches.dart';
 
 class TripViewerPage extends StatefulWidget {
   final Trip? trip;
@@ -438,6 +440,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
     if (s is UnknownSection) return 'Bloque';
     if (s is PlaceSection) return s.title.trim().isEmpty ? 'Lugar sin nombre' : s.title.trim();
     if (s is ProposalSection) return s.question.trim().isEmpty ? 'Propuesta de lugares' : s.question.trim();
+    if (s is SplitSection) {
+      final names = [for (int i = 0; i < s.branches.length; i++) branchName(s.branches[i], i)];
+      return names.isEmpty ? 'El grupo se separa' : 'Se separan: ${names.join(' · ')}';
+    }
     // Cualquier otro tipo que no sea texto se nombra genérico (no truena con bloques nuevos).
     if (s is! TextSection && s is! TextImageSection) return 'Bloque';
     final String md = s is TextSection ? s.markdownText : (s as TextImageSection).markdownText;
@@ -455,6 +461,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   /// Ícono de un bloque que no es parada en el índice.
   IconData _indexIcon(TripSection s) {
     if (s is ProposalSection) return Icons.how_to_vote_rounded;
+    if (s is SplitSection) return Icons.call_split_rounded;
     return Icons.notes_rounded;
   }
 
@@ -597,9 +604,17 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   bool get _canFollow => _canEditContent && _phase == TripPhase.durante && !_isNotes;
 
+  /// Las paradas que sigue quien usa el modo viaje: si el grupo se separa, las de todos y las
+  /// de su rama (quien no está en ninguna rama ve todas).
+  List<PlaceSection> get _myStops {
+    final uid = _myUid;
+    if (uid == null || !hasBranches(_sections)) return _sections.whereType<PlaceSection>().toList();
+    return placesFor(_sections, uid);
+  }
+
   /// Donde están: llegaron y aún no salen.
   PlaceSection? get _hereStop {
-    for (final p in _sections.whereType<PlaceSection>().toList().reversed) {
+    for (final p in _myStops.reversed) {
       if (p.arrivedAt != null && p.leftAt == null) return p;
     }
     return null;
@@ -609,7 +624,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   List<PlaceSection> get _pendingStops {
     final here = _hereStop;
     return [
-      for (final p in _sections.whereType<PlaceSection>())
+      for (final p in _myStops)
         if (p.arrivedAt == null && !_visited.contains(p.id) && !identical(p, here)) p,
     ];
   }
@@ -911,7 +926,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   PlaceSection? get _nextStop {
-    for (final p in _sections.whereType<PlaceSection>()) {
+    for (final p in _myStops) {
       if (!_visited.contains(p.id)) return p;
     }
     return null;
@@ -932,20 +947,11 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Widget _buildTransferViewer(TransferSection t, bool isDark) {
     final mode = transferModeOf(t.mode);
     final i = _sections.indexOf(t);
-    PlaceSection? from;
-    PlaceSection? to;
-    for (int k = i - 1; k >= 0; k--) {
-      if (_sections[k] is PlaceSection) {
-        from = _sections[k] as PlaceSection;
-        break;
-      }
-    }
-    for (int k = i + 1; k < _sections.length; k++) {
-      if (_sections[k] is PlaceSection) {
-        to = _sections[k] as PlaceSection;
-        break;
-      }
-    }
+    // Si el grupo va separado, el tramo sale de la parada anterior de su misma rama.
+    final (PlaceSection? from, PlaceSection? to) = i < 0 ? (null, null) : transferEnds(_sections, i);
+    final bv = BranchView.of(_sections);
+    final lane = bv.branchOf(t.id);
+    final Color tint = lane == null ? OhtliColors.stormyTeal : branchColor(bv.indexOf(lane.id));
     String loc(PlaceSection p) =>
         (p.lat != null && p.lng != null) ? '${p.lat},${p.lng}' : Uri.encodeComponent('${p.title}, Ciudad de México');
     final String? routeUrl = (from != null && to != null)
@@ -960,17 +966,17 @@ class _TripViewerPageState extends State<TripViewerPage> {
           width: 44,
           child: Column(
             children: [
-              Container(width: 2, height: 10, color: OhtliColors.stormyTeal.withValues(alpha: 0.3)),
+              Container(width: 2, height: 10, color: tint.withValues(alpha: 0.3)),
               Container(
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: OhtliColors.stormyTeal.withValues(alpha: isDark ? 0.25 : 0.1),
+                  color: tint.withValues(alpha: isDark ? 0.25 : 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(mode.icon, size: 19, color: OhtliColors.stormyTeal),
+                child: Icon(mode.icon, size: 19, color: lane == null ? OhtliColors.stormyTeal : branchInk(tint, isDark)),
               ),
-              Container(width: 2, height: 10, color: OhtliColors.stormyTeal.withValues(alpha: 0.3)),
+              Container(width: 2, height: 10, color: tint.withValues(alpha: 0.3)),
             ],
           ),
         ),
@@ -998,6 +1004,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                         message: 'Calculado por Ohtli a partir de la ubicación de las paradas',
                         child: Text('· estimado', style: GoogleFonts.inter(fontSize: 12, color: sub)),
                       ),
+                    if (lane != null) BranchTag(label: branchName(lane, bv.indexOf(lane.id)), color: tint, isDark: isDark),
                   ],
                 ),
                 if (t.notes.trim().isNotEmpty) ...[
@@ -1026,7 +1033,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   /// Modo viaje: cambia según el momento. Rumbo a una parada: "Llegué", cómo llegar, traslado,
   /// desvío. En una parada: "Ya me voy", calificarla, foto, gasto, texto, imagen, tabla y nota.
   Widget _buildTripModePanel(bool isDark, {bool embedded = false}) {
-    final places = _sections.whereType<PlaceSection>().toList();
+    final places = _myStops;
     final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
     final Color sub = isDark ? Colors.white60 : OhtliColors.subtleText;
     final bool edit = _canEditContent;
@@ -1826,7 +1833,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   /// Parada en curso: donde ya llegaron y aún no salen; si no, la siguiente por visitar.
   PlaceSection? get _currentStop {
-    final places = _sections.whereType<PlaceSection>().toList();
+    final places = _myStops;
     for (final p in places.reversed) {
       if (p.arrivedAt != null && p.leftAt == null) return p;
     }
@@ -4874,6 +4881,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
       blockContent = _buildTextImageBlockViewer(section, isDark, isDesktop);
     } else if (section is ProposalSection) {
       blockContent = _buildProposalViewer(section, isDark);
+    } else if (section is SplitSection) {
+      blockContent = SplitForkView(split: section, names: _memberNames, myUid: _myUid, isDark: isDark);
     }
 
     final bool highlighted = _highlightedId == section.id;
@@ -5054,6 +5063,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
     if (_useTimeline && section is PlaceSection && section.unplanned) {
       const double shift = 30;
       final double toSpine = _spineIndent - _spineX;
+      final tags = _placeBranchTags(section, BranchView.of(_sections), isDark);
+      if (tags.isNotEmpty) {
+        block = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(padding: const EdgeInsets.only(bottom: 8), child: Wrap(spacing: 8, runSpacing: 4, children: tags)),
+            block,
+          ],
+        );
+      }
       block = Stack(
         clipBehavior: Clip.none,
         children: [
@@ -5072,6 +5091,18 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ),
               ),
             ),
+          ),
+        ],
+      );
+    } else if (_useTimeline && !_isNotes && section is SplitSection) {
+      block = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          block,
+          Positioned(
+            left: -(_spineIndent - _spineX) - 12,
+            top: 14,
+            child: _spineBadge(Icons.call_split_rounded, OhtliColors.xoconostle, isDark),
           ),
         ],
       );
@@ -5178,6 +5209,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
       final n = places.indexOf(section) + 1;
       final visited = _visited.contains(section.id);
       final time = section.arrivalTime != null && section.arrivalTime!.trim().isNotEmpty ? '${section.arrivalTime!.trim()} · ' : '';
+      // Si el grupo se separa: de qué rama es, dónde se reencuentran y dónde termina cada quien.
+      final bv = BranchView.of(_sections);
+      final lane = bv.branchOf(section.id);
+      final Color? laneColor = lane == null ? null : branchColor(bv.indexOf(lane.id));
       block = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -5186,14 +5221,22 @@ class _TripViewerPageState extends State<TripViewerPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: Text(
-                  '${time}Parada $n de ${places.length}',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.2,
-                    color: isDark ? Colors.white54 : OhtliColors.subtleText,
-                  ),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      '${time}Parada $n de ${places.length}',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                        color: isDark ? Colors.white54 : OhtliColors.subtleText,
+                      ),
+                    ),
+                    ..._placeBranchTags(section, bv, isDark),
+                  ],
                 ),
               ),
               Positioned(
@@ -5204,7 +5247,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                   height: 18,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: visited || n == 1 ? OhtliColors.stormyTeal : (isDark ? const Color(0xFF3A3A3E) : OhtliColors.cantera),
+                    color: laneColor ?? (visited || n == 1 ? OhtliColors.stormyTeal : (isDark ? const Color(0xFF3A3A3E) : OhtliColors.cantera)),
                     border: Border.all(color: isDark ? const Color(0xFF121214) : OhtliColors.cloudDancer, width: 3),
                   ),
                 ),
@@ -5445,6 +5488,23 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final next = _nextStop;
     final withCoords = places.where((p) => _coordsOf(p) != null).toList();
     final missing = places.length - withCoords.length;
+    // Con ramas: cada parada del color de su rama y una línea por rama (el tramo toma el color
+    // de la rama a la que llega o, rumbo al reencuentro, de la que sale).
+    final bv = BranchView.of(_sections);
+    Color? laneColor(String id) {
+      final b = bv.branchOf(id);
+      return b == null ? null : branchColor(bv.indexOf(b.id));
+    }
+
+    List<MiniMapSegment>? segments;
+    if (bv.active) {
+      final pos = {for (int k = 0; k < withCoords.length; k++) withCoords[k].id: k};
+      segments = [
+        for (final p in withCoords)
+          for (final f in bv.layout.from[p.id] ?? const <String>[])
+            if (pos[f] != null) MiniMapSegment(pos[f]!, pos[p.id]!, color: laneColor(p.id) ?? laneColor(f)),
+      ];
+    }
     return Material(
       color: isDark ? const Color(0xFF1E1E22) : const Color(0xFFF1F4F3),
       borderRadius: BorderRadius.circular(16),
@@ -5458,6 +5518,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
               Positioned.fill(
                 child: TripMiniMap(
                   isDark: isDark,
+                  segments: segments,
                   stops: [
                     for (final p in withCoords)
                       MiniMapStop(
@@ -5467,6 +5528,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                         unplanned: p.unplanned,
                         visited: _visited.contains(p.id),
                         isNext: _tripMode && identical(p, next),
+                        color: laneColor(p.id),
                       ),
                   ],
                 ),
@@ -5522,7 +5584,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       if (s is TransferSection || s is UnknownSection) continue;
       final bool isPlace = s is PlaceSection;
       final bool detour = s is PlaceSection && s.unplanned;
-      final bool special = s is ProposalSection;
+      final bool special = s is ProposalSection || s is SplitSection;
       if (isPlace && !detour) n++;
       final visited = _visited.contains(s.id);
       final highlighted = _highlightedId == s.id;
@@ -5560,7 +5622,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
                 ),
                 const SizedBox(width: 10),
               ] else if (special) ...[
-                SizedBox(width: 22, child: Icon(_indexIcon(s), size: 15, color: OhtliColors.cempasuchil)),
+                SizedBox(width: 22, child: Icon(_indexIcon(s), size: 15, color: s is SplitSection ? branchInk(OhtliColors.xoconostle, isDark) : OhtliColors.cempasuchil)),
                 const SizedBox(width: 10),
               ],
               Expanded(
@@ -6037,6 +6099,18 @@ class _TripViewerPageState extends State<TripViewerPage> {
   }
 
   /// Nota, consejo o aviso: tarjeta tintada con franja de color, ícono y etiqueta.
+  /// Etiquetas de una parada cuando el grupo se separa: su rama, si es el reencuentro y si es
+  /// un punto de llegada. Vacías en un viaje sin ramas.
+  List<Widget> _placeBranchTags(PlaceSection p, BranchView bv, bool isDark) {
+    final lane = bv.branchOf(p.id);
+    final Color? color = lane == null ? null : branchColor(bv.indexOf(lane.id));
+    return [
+      if (lane != null) BranchTag(label: branchName(lane, bv.indexOf(lane.id)), color: color!, isDark: isDark),
+      if (bv.isMeetup(p.id)) BranchTag(label: 'Reencuentro', icon: Icons.call_merge_rounded, color: OhtliColors.stormyTeal, isDark: isDark),
+      if (bv.isEnd(p.id)) BranchTag(label: 'Llegada', icon: Icons.flag_rounded, color: color ?? OhtliColors.stormyTeal, isDark: isDark),
+    ];
+  }
+
   /// Punto con ícono sobre la línea de tiempo (propuestas, separaciones).
   Widget _spineBadge(IconData icon, Color color, bool isDark) => Container(
         width: 24,

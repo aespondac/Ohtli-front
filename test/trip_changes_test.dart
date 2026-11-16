@@ -77,4 +77,31 @@ void main() {
     expect(c, contains('Se quitó «Tacos El Güero» de la propuesta «¿Dónde comemos?»'));
     expect(describeTripChanges(const [], before), contains('Se agregó una propuesta de lugares'));
   });
+
+  test('describe la separación del grupo y quién va a cada parada', () {
+    final before = [
+      SplitSection(id: 's', branches: const [
+        TripBranch(id: 'a', name: 'Grupo 1', memberIds: ['ana']),
+        TripBranch(id: 'b', name: 'Grupo 2'),
+      ]),
+      place('p', 'Museo'),
+      place('q', 'Café'),
+    ];
+    final after = [
+      SplitSection(id: 's', branches: const [
+        TripBranch(id: 'a', name: 'Museos', memberIds: ['ana', 'beto']),
+        TripBranch(id: 'c', name: 'Mercado', rejoins: false),
+      ]),
+      PlaceSection(id: 'p', title: 'Museo', description: '', rating: 0, mainPhotoUrl: '', secondaryPhotoUrls: const [], branchId: 'a'),
+      PlaceSection(id: 'q', title: 'Café', description: '', rating: 0, mainPhotoUrl: '', secondaryPhotoUrls: const [], meetup: true),
+    ];
+    final c = describeTripChanges(before, after);
+    expect(c, contains('Se renombró el grupo «Grupo 1» como «Museos»'));
+    expect(c, contains('Cambió quién va en «Museos»'));
+    expect(c, contains('Se agregó el grupo «Mercado»'));
+    expect(c, contains('Se quitó el grupo «Grupo 2»'));
+    expect(c, contains('Cambió quién va a «Museo»'));
+    expect(c, contains('«Café» es ahora el punto de reencuentro'));
+    expect(describeTripChanges(const [], [before.first]), contains('Se agregó una separación del grupo'));
+  });
 }

@@ -251,28 +251,3 @@ class ProposalCandidateList extends StatelessWidget {
         child: const Icon(Icons.place_rounded, size: 24, color: OhtliColors.stormyTeal),
       );
 }
-
-/// «3 de 4 ya votaron», con quién falta.
-String proposalTally(Map<String, String> votes, List<String> editors, Map<String, String> names, {String? myUid}) {
-  final voted = editors.where(votes.containsKey).length;
-  if (editors.isEmpty) return '${votes.length} ${votes.length == 1 ? 'voto' : 'votos'}';
-  if (voted == editors.length) return 'Ya votaron todos';
-  final others = [
-    for (final e in editors)
-      if (!votes.containsKey(e) && e != myUid) names[e]?.trim().isNotEmpty == true ? names[e]!.trim().split(' ').first : 'alguien',
-  ];
-  final bool meMissing = myUid != null && editors.contains(myUid) && !votes.containsKey(myUid);
-  String falta = '';
-  if (meMissing && others.isEmpty) {
-    falta = ' · falta tu voto';
-  } else if (others.length + (meMissing ? 1 : 0) <= 3) {
-    final all = [...others, if (meMissing) 'tú'];
-    falta = ' · falta${all.length == 1 ? '' : 'n'} ${_joinNames(all)}';
-  }
-  return '$voted de ${editors.length} ya votaron$falta';
-}
-
-String _joinNames(List<String> xs) {
-  if (xs.length <= 1) return xs.join();
-  return '${xs.take(xs.length - 1).join(', ')} y ${xs.last}';
-}

@@ -252,3 +252,166 @@ List<PlaceSection> placesFor(List<TripSection> sections, String uid) {
   }
   return out;
 }
+
+/// La separación que rige al bloque en [index]: la última antes de él que sigue abierta, es
+/// decir, sin una parada de todo el grupo en medio (esa parada es el reencuentro y la cierra).
+/// Null si el bloque no va después de una separación.
+SplitSection? splitBefore(List<TripSection> sections, int index) {
+  SplitSection? active;
+  for (int i = 0; i < index && i < sections.length; i++) {
+    final s = sections[i];
+    if (s is SplitSection) {
+      active = s;
+    } else if (s is PlaceSection && active != null && active.branch(s.branchId) == null) {
+      active = null;
+    }
+  }
+  return active;
+}
+
+/// ¿El viaje tiene alguna separación?
+bool hasBranches(List<TripSection> sections) => sections.any((s) => s is SplitSection);
+
+/// Posición de cada rama dentro de su separación (para darle un color estable).
+Map<String, int> branchIndexes(List<TripSection> sections) => {
+      for (final s in sections.whereType<SplitSection>())
+        for (int i = 0; i < s.branches.length; i++) s.branches[i].id: i,
+    };
+
+/// Todas las ramas del viaje por id.
+Map<String, TripBranch> branchesById(List<TripSection> sections) => {
+      for (final s in sections.whereType<SplitSection>())
+        for (final b in s.branches) b.id: b,
+    };
+
+/// Rama que le toca al traslado en [index]: la de la parada a la que llega; si llega al
+/// reencuentro, la de la parada de la que sale. Null si va con todo el grupo.
+String? transferBranchFor(List<TripSection> sections, int index) {
+  final split = splitBefore(sections, index);
+  if (split == null) return null;
+  for (int i = index + 1; i < sections.length; i++) {
+    final s = sections[i];
+    if (s is PlaceSection) {
+      if (split.branch(s.branchId) != null) return s.branchId;
+      break;
+    }
+  }
+  for (int i = index - 1; i >= 0; i--) {
+    final s = sections[i];
+    if (identical(s, split)) return null;
+    if (s is PlaceSection) return split.branch(s.branchId) != null ? s.branchId : null;
+  }
+  return null;
+}
+
+/// Las paradas que une el traslado en [index]: la siguiente y la anterior de su misma rama
+/// (si la rama aún no tiene paradas, el punto donde se separaron). Sin ramas, las vecinas.
+(PlaceSection?, PlaceSection?) transferEnds(List<TripSection> sections, int index) {
+  PlaceSection? next;
+  for (int i = index + 1; i < sections.length; i++) {
+    final s = sections[i];
+    if (s is PlaceSection) {
+      next = s;
+      break;
+    }
+  }
+  PlaceSection? flatPrev() {
+    for (int i = index - 1; i >= 0; i--) {
+      final s = sections[i];
+      if (s is PlaceSection) return s;
+    }
+    return null;
+  }
+
+  final split = splitBefore(sections, index);
+  if (split == null) return (flatPrev(), next);
+  final self = index < sections.length ? sections[index] : null;
+  final String? own = self is TransferSection && split.branch(self.branchId) != null ? self.branchId : null;
+  final lane = own ?? transferBranchFor(sections, index);
+  if (lane == null) return (flatPrev(), next);
+  for (int i = index - 1; i >= 0; i--) {
+    final s = sections[i];
+    if (s is PlaceSection && s.branchId == lane) return (s, next);
+    if (identical(s, split)) {
+      for (int j = i - 1; j >= 0; j--) {
+        final x = sections[j];
+        if (x is PlaceSection) return (x, next);
+      }
+      return (null, next);
+    }
+  }
+  return (flatPrev(), next);
+}
+
+/// La rama que de verdad aplica a cada bloque (paradas, traslados y propuestas), por id. Los
+/// que van con todo el grupo no aparecen. Una parada con `branchId` fuera de una separación,
+/// o de una rama que ya no existe, es de todo el grupo.
+Map<String, String> blockLanes(List<TripSection> sections) {
+  final out = <String, String>{};
+  SplitSection? active;
+  for (final s in sections) {
+    if (s is SplitSection) {
+      active = s;
+      continue;
+    }
+    final lane = laneOf(s);
+    final branch = active?.branch(lane.isEmpty ? null : lane);
+    if (branch != null) {
+      out[s.id] = branch.id;
+    } else if (s is PlaceSection && active != null) {
+      active = null;
+    }
+  }
+  return out;
+}
+
+/// Las paradas donde el grupo se reencuentra: la primera de todo el grupo tras separarse.
+Set<String> meetupIds(List<TripSection> sections) {
+  final out = <String>{};
+  SplitSection? active;
+  for (final s in sections) {
+    if (s is SplitSection) {
+      active = s;
+    } else if (s is PlaceSection && active != null && active.branch(s.branchId) == null) {
+      out.add(s.id);
+      active = null;
+    }
+  }
+  return out;
+}
+
+/// Todo lo que la interfaz necesita para pintar las ramas de un viaje.
+class BranchView {
+  /// ¿El viaje se separa en algún momento?
+  final bool active;
+  final BranchLayout layout;
+  final Map<String, String> lanes;
+  final Map<String, int> _index;
+  final Map<String, TripBranch> _byId;
+  final Set<String> meetups;
+
+  BranchView._(this.active, this.layout, this.lanes, this._index, this._byId, this.meetups);
+
+  factory BranchView.of(List<TripSection> sections) => BranchView._(
+        hasBranches(sections),
+        branchLayout(sections),
+        blockLanes(sections),
+        branchIndexes(sections),
+        branchesById(sections),
+        meetupIds(sections),
+      );
+
+  /// Rama del bloque [id], o null si va con todo el grupo.
+  TripBranch? branchOf(String id) {
+    final lane = lanes[id];
+    return lane == null ? null : _byId[lane];
+  }
+
+  /// Posición de la rama dentro de su separación (para el color).
+  int indexOf(String branchId) => _index[branchId] ?? 0;
+
+  bool isMeetup(String placeId) => meetups.contains(placeId);
+
+  /// Punto de llegada (solo se marca en viajes que se separan).
+  bool isEnd(String placeId) => active && layout.endIds.contains(placeId);
+}

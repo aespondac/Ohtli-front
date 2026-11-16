@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:othli_front/models/trip_model.dart';
 import 'package:othli_front/services/proposal_votes.dart';
 import 'package:othli_front/services/trip_branches.dart';
-import 'package:othli_front/screens/trips/widgets/proposal_block.dart';
 
 PlaceSection p(String id, {String? branch, bool meetup = false, String? from, String? to, double lat = 19.43, double lng = -99.13}) =>
     PlaceSection(
@@ -113,6 +112,69 @@ void main() {
       expect(placesFor(s, 'nadie').map((x) => x.id), ['inicio', 'a1', 'b1', 'juntos']);
     });
 
+    test('qué separación rige cada bloque y de qué rama es cada traslado', () {
+      final s = [p('inicio'), split(), t('ta', 10), p('a1', branch: 'a'), t('tb', 5), p('b1', branch: 'b'), t('tj', 5), p('juntos', meetup: true), t('tf', 5), p('fin')];
+      expect(splitBefore(s, 0), isNull);
+      expect(splitBefore(s, 3)?.id, 'split');
+      // El reencuentro cierra la separación, pero él mismo todavía elige «¿quién va?».
+      expect(splitBefore(s, 7)?.id, 'split');
+      expect(splitBefore(s, 9), isNull);
+      expect(transferBranchFor(s, 2), 'a');
+      expect(transferBranchFor(s, 4), 'b');
+      // Rumbo al reencuentro: el traslado es de la rama de la que sale.
+      expect(transferBranchFor(s, 6), 'b');
+      expect(transferBranchFor(s, 8), isNull);
+      expect(branchIndexes(s), {'a': 0, 'b': 1});
+      expect(branchesById(s)['b']!.name, 'Mercado');
+      expect(hasBranches(s), isTrue);
+      expect(hasBranches([p('x')]), isFalse);
+    });
+
+    test('la rama de cada bloque, los reencuentros y las llegadas', () {
+      final s = [
+        p('inicio', branch: 'a'), // con rama pero antes de separarse: es de todos
+        split(bRejoins: false),
+        t('ta', 5, branch: 'a'),
+        p('a1', branch: 'a'),
+        p('b1', branch: 'b'),
+        p('juntos', meetup: true),
+        p('fin', branch: 'b'), // ya se reencontraron: es de todos
+      ];
+      expect(blockLanes(s), {'ta': 'a', 'a1': 'a', 'b1': 'b'});
+      expect(meetupIds(s), {'juntos'});
+      final v = BranchView.of(s);
+      expect(v.branchOf('a1')!.name, 'Museos');
+      expect(v.branchOf('inicio'), isNull);
+      expect(v.indexOf('b'), 1);
+      expect(v.isMeetup('juntos'), isTrue);
+      // b no se reencuentra: termina en b1; el resto, en la última parada.
+      expect(v.isEnd('b1'), isTrue);
+      expect(v.isEnd('fin'), isTrue);
+      expect(v.isEnd('a1'), isFalse);
+      // Sin separarse no se marca ninguna llegada.
+      expect(BranchView.of([p('x'), p('y')]).isEnd('y'), isFalse);
+    });
+
+    test('las puntas de un traslado siguen su rama', () {
+      final s = [
+        p('inicio'),
+        split(),
+        p('a1', branch: 'a'),
+        t('tb', 5, branch: 'b'),
+        p('b1', branch: 'b'),
+        t('ta', 5, branch: 'a'),
+        t('tb2', 5, branch: 'b'),
+        p('juntos', meetup: true),
+      ];
+      String ends((PlaceSection?, PlaceSection?) e) => '${e.$1?.id}→${e.$2?.id}';
+      // b todavía no tiene paradas: sale de donde se separaron.
+      expect(ends(transferEnds(s, 3)), 'inicio→b1');
+      expect(ends(transferEnds(s, 5)), 'a1→juntos');
+      expect(ends(transferEnds(s, 6)), 'b1→juntos');
+      // Sin ramas, las vecinas de siempre.
+      expect(ends(transferEnds([p('x'), t('t', 5), p('y')], 1)), 'x→y');
+    });
+
     test('los bloques nuevos se guardan y se leen igual', () {
       final s = split(bRejoins: false);
       final back = TripSection.fromMap(s.toMap()) as SplitSection;
@@ -176,7 +238,7 @@ void main() {
       expect(proposalTally({'dueno': 'x', 'b': 'y', 'c': 'x'}, ['dueno', 'b', 'c'], names), 'Ya votaron todos');
       expect(proposalTally({'dueno': 'x'}, ['dueno', 'b', 'c'], names, myUid: 'dueno'), '1 de 3 ya votaron · faltan Beto y Caro');
       expect(proposalTally({'b': 'x', 'c': 'x'}, ['dueno', 'b', 'c'], names, myUid: 'dueno'), '2 de 3 ya votaron · falta tu voto');
-      expect(proposalTally({'c': 'x'}, ['dueno', 'b', 'c'], names, myUid: 'b'), '1 de 3 ya votaron · faltan Ana y tú');
+      expect(proposalTally({'c': 'x'}, ['dueno', 'b', 'c'], names, myUid: 'b'), '1 de 3 ya votaron · faltan Ana López y tú');
     });
   });
 }
