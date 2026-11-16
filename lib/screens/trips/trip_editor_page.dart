@@ -76,7 +76,38 @@ class _TripEditorPageState extends State<TripEditorPage> {
   bool _isPublishing = false;
   
   Timer? _debounceTimer;
-  
+
+  // --- Edición en vivo: el dueño y los coautores editan a la vez ---
+  // Lo último sincronizado con la nube (la "base" del merge a 3 vías): lo que este editor
+  // vio por última vez allá. Lo local es _sections y el estado de los campos del viaje.
+  List<TripSection> _baseSections = [];
+  late Map<String, dynamic> _baseTrip = TripService.editorTripFields(widget.trip);
+  // Último documento del viaje visto en la nube (campos que el editor no edita, como
+  // quién abrió la sorpresa, se toman de aquí y no del viaje con el que se abrió).
+  late Trip _liveTrip = widget.trip;
+  // Revisión de lo sincronizado: los avisos del listener con una revisión menor son viejos.
+  int _contentRev = 0;
+  int _tripRev = 0;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _contentSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _tripSub;
+  StreamSubscription<List<EditorPresence>>? _presenceSub;
+  // Avisos que llegaron mientras se guardaba: se aplican al terminar.
+  DocumentSnapshot<Map<String, dynamic>>? _pendingContentSnap;
+  DocumentSnapshot<Map<String, dynamic>>? _pendingTripSnap;
+  // Al aplicar cambios ajenos, los listeners de los controladores no cuentan como edición.
+  bool _applyingRemote = false;
+  // Bloques donde los dos cambiaron lo mismo y se quedó la versión local
+  // (id → versión ajena; null = el otro lo borró) y quién hizo el otro cambio.
+  final Map<String, TripSection?> _conflicts = {};
+  final Map<String, String> _conflictBy = {};
+  // Generación de cada bloque: al cambiar desde fuera se recrean sus editores.
+  final Map<String, int> _blockGen = {};
+  // Bloque donde está el foco (también se publica en la presencia).
+  String? _focusedBlockId;
+  List<EditorPresence> _presence = [];
+  Timer? _presenceTimer;
+  Timer? _presenceDebounce;
+
   // Persistent TextEditingControllers for text inputs to avoid cursor jumps
   final Map<String, TextEditingController> _blockControllers = {};
 
@@ -128,7 +159,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   bool get _isPostTrip {
     if (_isNotes) return false;
-    if (widget.trip.finishedAt != null) return true;
+    if (_liveTrip.finishedAt != null) return true;
     final d = _travelDate;
     if (d == null) return false;
     final now = DateTime.now();
@@ -175,6 +206,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     super.initState();
     _titleController = TextEditingController(text: widget.trip.title);
     _descriptionController = MarkdownRichTextController(text: widget.trip.description, context: context);
+    _rememberDescription(widget.trip.description);
     _visibility = widget.trip.visibility;
     _status = widget.trip.status;
     _coverUrl = widget.trip.coverUrl;
@@ -254,6 +286,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _stopLive();
     _versionController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
@@ -287,6 +320,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         if (mounted) {
           setState(() {
             _sections = cloudContent.sections;
+            _baseSections = List.of(cloudContent.sections);
             _isLoadingContent = false;
           });
           _feedbackBaseline = _catalogStops(cloudContent.sections);
@@ -305,6 +339,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       // Check browser localStorage for newer local cache
       _checkLocalCache();
       _syncSuggestionStatuses();
+      if (mounted) _startLive();
     } catch (e) {
       print("Error loading cloud content: $e");
       if (mounted) {
@@ -314,6 +349,418 @@ class _TripEditorPageState extends State<TripEditorPage> {
       }
       _checkLocalCache();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edición en vivo: cambios de los demás, conflictos y presencia
+  // ---------------------------------------------------------------------------
+  String get _myUid => FirebaseAuth.instance.currentUser?.uid ?? '';
+
+  String get _myName {
+    final u = FirebaseAuth.instance.currentUser;
+    final name = (u?.displayName ?? '').trim().isNotEmpty ? u!.displayName!.trim() : ((u?.email ?? '').split('@').first);
+    return name.isEmpty ? 'Viajero' : name;
+  }
+
+  /// Los demás que tienen el editor abierto ahora.
+  List<EditorPresence> get _othersHere {
+    final now = DateTime.now();
+    return [for (final p in _presence) if (p.uid != _myUid && p.isActive(now)) p];
+  }
+
+  bool get _othersEditing => _othersHere.isNotEmpty;
+
+  void _startLive() {
+    if (_isSampleEditor || _myUid.isEmpty || _contentSub != null) return;
+    final service = TripService();
+    final owner = widget.trip.userId, id = widget.trip.id;
+    _contentSub = service.watchTripContent(owner, id).listen(_onContentSnapshot, onError: (e) => debugPrint('Editor en vivo (contenido): $e'));
+    _tripSub = service.watchTripDoc(owner, id).listen(_onTripSnapshot, onError: (e) => debugPrint('Editor en vivo (viaje): $e'));
+    _presenceSub = service.watchPresence(owner, id).listen((list) {
+      if (mounted) setState(() => _presence = list);
+    }, onError: (e) => debugPrint('Editor en vivo (presencia): $e'));
+    _sendPresence();
+    // Latido: dice que sigo aquí y, de paso, retira a quien dejó de latir.
+    _presenceTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _sendPresence();
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _stopLive() {
+    _contentSub?.cancel();
+    _tripSub?.cancel();
+    _presenceSub?.cancel();
+    _presenceTimer?.cancel();
+    _presenceDebounce?.cancel();
+    if (_contentSub != null && _myUid.isNotEmpty) {
+      TripService().clearPresence(widget.trip.userId, widget.trip.id, _myUid).catchError((_) {});
+    }
+  }
+
+  void _sendPresence() {
+    if (_isSampleEditor || _myUid.isEmpty) return;
+    TripService()
+        .setPresence(widget.trip.userId, widget.trip.id, _myUid,
+            name: _myName, photo: FirebaseAuth.instance.currentUser?.photoURL, blockId: _focusedBlockId)
+        .catchError((e) => debugPrint('Presencia: $e'));
+  }
+
+  void _setFocusedBlock(String? id) {
+    if (_focusedBlockId == id) return;
+    _focusedBlockId = id;
+    _presenceDebounce?.cancel();
+    _presenceDebounce = Timer(const Duration(milliseconds: 400), _sendPresence);
+  }
+
+  void _onContentSnapshot(DocumentSnapshot<Map<String, dynamic>> snap) {
+    if (!mounted || snap.metadata.hasPendingWrites) return;
+    final data = snap.data();
+    if (data == null) return;
+    final rev = (data['rev'] as num?)?.toInt();
+    if (rev != null && rev < _contentRev) return; // aviso viejo: ya está incorporado
+    if (_isSavingCloud) {
+      _pendingContentSnap = snap;
+      return;
+    }
+    if (rev != null) _contentRev = rev;
+    final who = data['updatedBy'] == _myUid ? '' : (data['updatedByName'] ?? '').toString();
+    _syncAllTables();
+    final remote = TripContent.fromMap(data).sections;
+    final oldBase = _baseSections;
+    final m = mergeSections(oldBase, _sections, remote);
+    _baseSections = remote;
+    _rebaseHistory(oldBase, remote);
+    _applyMerge(m, who: who);
+  }
+
+  void _onTripSnapshot(DocumentSnapshot<Map<String, dynamic>> snap) {
+    if (!mounted || snap.metadata.hasPendingWrites) return;
+    final data = snap.data();
+    if (data == null) return;
+    final rev = (data['editRev'] as num?)?.toInt();
+    if (rev != null && rev < _tripRev) return;
+    if (_isSavingCloud) {
+      _pendingTripSnap = snap;
+      return;
+    }
+    if (rev != null) _tripRev = rev;
+    final remote = TripService.editorTripFieldsFromDoc(data, widget.trip.id);
+    final oldBase = _baseTrip;
+    final local = TripService.editorTripFields(_buildCurrentTrip());
+    final m = mergeFields(oldBase, local, remote);
+    _baseTrip = remote;
+    _rebaseHistoryTrip(oldBase, remote);
+    if (!deepEquals(m.value, local)) _applyTripFields(m.value);
+    _offerTripConflicts(m.conflicts, remote, data['editedBy'] == _myUid ? '' : (data['editedByName'] ?? '').toString());
+  }
+
+  /// Aplica a la pantalla el resultado de un merge de bloques.
+  void _applyMerge(SectionMergeResult m, {required String who}) {
+    final sections = List<TripSection>.of(m.sections);
+    final conflicts = Map<String, TripSection?>.of(m.conflicts);
+    // Si se está escribiendo con acento (composición del teclado) en un bloque que cambió
+    // fuera, no se le cambia el texto bajo el cursor: se queda lo local y se marca.
+    final changed = Set<String>.of(m.changedIds);
+    for (final id in changed.where(_blockIsComposing).toList()) {
+      final i = sections.indexWhere((s) => s.id == id);
+      final j = _idx(id);
+      if (i >= 0 && j >= 0) {
+        conflicts[id] = sections[i];
+        sections[i] = _sections[j];
+        changed.remove(id);
+      }
+    }
+    if (!m.touchesLocal && conflicts.isEmpty && m.deletedHereChangedThere.isEmpty) return;
+    _applyingRemote = true;
+    try {
+      setState(() {
+        _sections = sections;
+        for (final e in conflicts.entries) {
+          _conflicts[e.key] = e.value;
+          _conflictBy[e.key] = who;
+        }
+        for (final id in m.removedIds) {
+          _conflicts.remove(id);
+        }
+      });
+      for (final id in changed) {
+        _refreshBlockEditors(id);
+      }
+      for (final id in m.removedIds) {
+        _dropBlockEditors(id);
+      }
+    } finally {
+      _applyingRemote = false;
+    }
+    _currentSnapshot = _buildSnapshot();
+    if (m.deletedHereChangedThere.isNotEmpty) _offerRestore(m.deletedHereChangedThere, who);
+  }
+
+  bool _blockIsComposing(String id) {
+    if (_focusedBlockId != id) return false;
+    for (final e in _blockControllers.entries) {
+      if (e.key == id || e.key.startsWith('${id}_')) {
+        final c = e.value.value.composing;
+        if (c.isValid && !c.isCollapsed) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Textos que deben mostrar los editores de un bloque (llave del controlador → texto).
+  Map<String, String> _blockTexts(TripSection s) {
+    String num(double v, {bool fixed = false}) =>
+        v > 0 ? (fixed ? v.toStringAsFixed(v % 1 == 0 ? 0 : 2) : v.toString()) : '';
+    if (s is PlaceSection) {
+      return {'${s.id}_title': s.title, '${s.id}_desc': s.description, '${s.id}_cost': num(s.cost)};
+    }
+    if (s is TextSection) return {s.id: s.markdownText};
+    if (s is TextImageSection) return {s.id: s.markdownText};
+    if (s is TransferSection) {
+      return {
+        '${s.id}_mins': s.durationMins?.toString() ?? '',
+        '${s.id}_km': s.distanceKm?.toString() ?? '',
+        '${s.id}_cost': num(s.cost, fixed: true),
+        '${s.id}_notes': s.notes,
+      };
+    }
+    return const {};
+  }
+
+  static bool _isNumericKey(String key) => key.endsWith('_cost') || key.endsWith('_mins') || key.endsWith('_km');
+
+  /// Pone [text] en un controlador sin mover el cursor de lugar (si alguien escribe antes
+  /// del cursor, el cursor se recorre con el texto).
+  void _setControllerText(TextEditingController c, String text, {bool numeric = false}) {
+    final current = c is MarkdownRichTextController ? c.markdownText : c.text;
+    if (current == text) return;
+    if (numeric && double.tryParse(current) == double.tryParse(text)) return;
+    final oldPlain = c.text;
+    final sel = c.selection;
+    c.text = text;
+    final newPlain = c.text;
+    if (sel.isValid) {
+      int map(int o) => mapTextOffset(oldPlain, newPlain, o).clamp(0, newPlain.length);
+      c.selection = TextSelection(baseOffset: map(sel.baseOffset), extentOffset: map(sel.extentOffset));
+    }
+  }
+
+  /// Un bloque cambió fuera: si no tiene el foco se recrean sus editores con el contenido
+  /// nuevo; si lo tiene, se actualiza el texto en su lugar sin mover el cursor.
+  void _refreshBlockEditors(String id) {
+    final i = _idx(id);
+    if (i < 0) return;
+    if (_focusedBlockId == id) {
+      _blockTexts(_sections[i]).forEach((key, text) {
+        final c = _blockControllers[key];
+        if (c != null) _setControllerText(c, text, numeric: _isNumericKey(key));
+      });
+    } else {
+      _dropBlockEditors(id);
+      _blockGen[id] = (_blockGen[id] ?? 0) + 1;
+    }
+  }
+
+  void _dropBlockEditors(String id) {
+    final keys = [for (final k in _blockControllers.keys) if (k == id || k.startsWith('${id}_')) k];
+    final old = [for (final k in keys) _blockControllers.remove(k)!];
+    if (old.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final c in old) {
+        c.dispose();
+      }
+    });
+  }
+
+  /// Los cambios ajenos (de [oldBase] a [remote]) también entran en el historial para
+  /// deshacer, en la referencia de la fe de erratas y en la de retroalimentación: así
+  /// "Deshacer" no borra lo que escribió otro ni se atribuyen sus cambios a quien edita aquí.
+  void _rebaseHistory(List<TripSection> oldBase, List<TripSection> remote) {
+    if (deepEquals([for (final s in oldBase) s.toMap()], [for (final s in remote) s.toMap()])) return;
+    String rebase(String snap) {
+      final d = jsonDecode(snap) as Map<String, dynamic>;
+      final secs = [for (final m in (d['sections'] as List)) TripSection.fromMap(Map<String, dynamic>.from(m as Map))];
+      d['sections'] = [for (final s in mergeSections(oldBase, secs, remote).sections) s.toMap()];
+      return jsonEncode(d);
+    }
+
+    for (int i = 0; i < _undoStack.length; i++) {
+      _undoStack[i] = rebase(_undoStack[i]);
+    }
+    for (int i = 0; i < _redoStack.length; i++) {
+      _redoStack[i] = rebase(_redoStack[i]);
+    }
+    if (_errataBaseline != null) _errataBaseline = mergeSections(oldBase, _errataBaseline!, remote).sections;
+    final baseline = _feedbackBaseline;
+    if (baseline != null) {
+      final before = _catalogStops(oldBase), after = _catalogStops(remote);
+      for (final id in {...before.keys, ...after.keys}) {
+        if (before[id] == after[id]) continue;
+        if (after[id] == null) {
+          baseline.remove(id);
+        } else {
+          baseline[id] = after[id]!;
+        }
+      }
+    }
+  }
+
+  void _rebaseHistoryTrip(Map<String, dynamic> oldBase, Map<String, dynamic> remote) {
+    const keys = ['title', 'description', 'coverUrl'];
+    if (keys.every((k) => deepEquals(oldBase[k], remote[k]))) return;
+    String rebase(String snap) {
+      final d = jsonDecode(snap) as Map<String, dynamic>;
+      for (final k in keys) {
+        final l = d[k] ?? '', b = oldBase[k] ?? '', r = remote[k] ?? '';
+        d[k] = (k == 'coverUrl') ? (l == b ? r : l) : mergeText(b.toString(), l.toString(), r.toString()).text;
+      }
+      return jsonEncode(d);
+    }
+
+    for (int i = 0; i < _undoStack.length; i++) {
+      _undoStack[i] = rebase(_undoStack[i]);
+    }
+    for (int i = 0; i < _redoStack.length; i++) {
+      _redoStack[i] = rebase(_redoStack[i]);
+    }
+    final baseTrip = _errataBaselineTrip;
+    if (baseTrip != null) {
+      final m = mergeFields(oldBase, TripService.editorTripFields(baseTrip), remote);
+      _errataBaselineTrip = Trip.fromMap({...baseTrip.toMap(), ...m.value}, baseTrip.id);
+    }
+  }
+
+  /// Pone en el editor los campos del viaje combinados (título, descripción, fecha, portada…).
+  void _applyTripFields(Map<String, dynamic> fields) {
+    final t = Trip.fromMap({..._liveTrip.toMap(), ...fields}, widget.trip.id);
+    _applyingRemote = true;
+    try {
+      setState(() {
+        _liveTrip = t;
+        _setControllerText(_titleController, t.title);
+        if (t.description != _descriptionMarkdown) {
+          _setControllerText(_descriptionController, t.description);
+          _rememberDescription(t.description);
+        }
+        if (_isNotes && (t.version ?? '').isNotEmpty) _setControllerText(_versionController, t.version!);
+        _coverUrl = t.coverUrl;
+        _travelDate = t.travelDate;
+        _status = t.status;
+        _visibility = t.visibility;
+        _errataHistory = List.of(t.errataHistory);
+        _coAuthorIds = List.of(t.coAuthorIds);
+        _coAuthorNames = List.of(t.coAuthorNames);
+        _isSurprise = t.isSurprise;
+        _surpriseTargetIds = List.of(t.surpriseTargetIds);
+        _surpriseTargetNames = List.of(t.surpriseTargetNames);
+        _surpriseUnlockDates = Map.of(t.surpriseUnlockDates);
+        _unlockOnPublish = t.unlockOnPublish;
+      });
+    } finally {
+      _applyingRemote = false;
+    }
+    _currentSnapshot = _buildSnapshot();
+  }
+
+  // El editor enriquecido puede escribir el mismo markdown de otra forma. Mientras la
+  // descripción no se toque, se reporta tal como vino (si no, contaría como cambio local
+  // y le ganaría a lo que otro escriba en ella).
+  String _descLoadedFrom = '';
+  String _descLoadedAs = '';
+
+  void _rememberDescription(String markdown) {
+    _descLoadedFrom = markdown;
+    _descLoadedAs = _descriptionController.markdownText;
+  }
+
+  String get _descriptionMarkdown {
+    final md = _descriptionController.markdownText;
+    return md == _descLoadedAs ? _descLoadedFrom : md;
+  }
+
+  static const Map<String, String> _tripFieldLabels = {
+    'title': 'el título',
+    'description': 'la descripción',
+    'travelDate': 'la fecha',
+    'coverUrl': 'la portada',
+  };
+
+  /// Los dos cambiaron el mismo dato del viaje: se quedó el de aquí; se ofrece tomar el otro.
+  void _offerTripConflicts(Set<String> conflicts, Map<String, dynamic>? remote, String who) {
+    final keys = [for (final k in _tripFieldLabels.keys) if (conflicts.contains(k)) k];
+    if (keys.isEmpty || remote == null || !mounted) return;
+    final name = who.isEmpty ? 'Otra persona' : who;
+    final what = keys.map((k) => _tripFieldLabels[k]!).join(' y ');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$name también cambió $what al mismo tiempo. Se quedó lo tuyo.', style: GoogleFonts.inter()),
+        backgroundColor: OhtliColors.onyx,
+        duration: const Duration(seconds: 12),
+        action: SnackBarAction(
+          label: 'Usar lo suyo',
+          textColor: OhtliColors.cempasuchil,
+          onPressed: () {
+            if (!mounted) return;
+            final local = TripService.editorTripFields(_buildCurrentTrip());
+            _applyTripFields({...local, for (final k in keys) k: remote[k]});
+            _forceNewUndoStep = true;
+            _onDataChanged();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _offerRestore(Map<String, TripSection> deleted, String who) {
+    if (!mounted) return;
+    final n = deleted.length;
+    final name = who.isEmpty ? 'Otra persona' : who;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          n == 1 ? 'Borraste un bloque que $name acababa de cambiar.' : 'Borraste $n bloques que $name acababa de cambiar.',
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: OhtliColors.onyx,
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(
+          label: 'Restaurar',
+          textColor: OhtliColors.cempasuchil,
+          onPressed: () {
+            if (!mounted) return;
+            setState(() {
+              for (final s in deleted.values) {
+                if (_idx(s.id) < 0) _sections.add(s);
+              }
+              _forceNewUndoStep = true;
+            });
+            _onDataChanged();
+          },
+        ),
+      ),
+    );
+  }
+
+  /// "Usar la suya": cambia el bloque por la versión de la otra persona.
+  void _resolveConflict(String id, {required bool useTheirs}) {
+    final theirs = _conflicts[id];
+    setState(() {
+      _conflicts.remove(id);
+      _conflictBy.remove(id);
+      if (!useTheirs) return;
+      final i = _idx(id);
+      if (i < 0) return;
+      if (theirs == null) {
+        _sections.removeAt(i);
+      } else {
+        _sections[i] = theirs;
+      }
+      _dropBlockEditors(id);
+      _blockGen[id] = (_blockGen[id] ?? 0) + 1;
+      _forceNewUndoStep = true;
+    });
+    if (useTheirs) _onDataChanged();
   }
 
   void _checkLocalCache() {
@@ -404,6 +851,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
       if (cache['trip'] != null) {
         _titleController.text = cache['trip']['title'] ?? _titleController.text;
         _descriptionController.text = cache['trip']['description'] ?? _descriptionController.markdownText;
+        _rememberDescription(cache['trip']['description'] ?? '');
         _coverUrl = cache['trip']['coverUrl'] ?? _coverUrl;
         _visibility = cache['trip']['visibility'] ?? _visibility;
         _status = cache['trip']['status'] ?? _status;
@@ -462,6 +910,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
   // Local caching & debounced auto-save triggers
   void _onDataChanged() {
+    if (_applyingRemote) return;
     _saveToLocalCache();
     _recordUndoStep();
   }
@@ -471,7 +920,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // ---------------------------------------------------------------------------
   String _buildSnapshot() => jsonEncode({
         'title': _titleController.text,
-        'description': _descriptionController.markdownText,
+        'description': _descriptionMarkdown,
         'coverUrl': _coverUrl,
         'sections': _sections.map((s) => s.toMap()).toList(),
       });
@@ -528,6 +977,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     setState(() {
       _titleController.text = data['title'] ?? '';
       _descriptionController.text = data['description'] ?? '';
+      _rememberDescription(data['description'] ?? '');
       _coverUrl = data['coverUrl'] ?? '';
       _sections = (data['sections'] as List<dynamic>)
           .map((m) => TripSection.fromMap(Map<String, dynamic>.from(m as Map)))
@@ -558,11 +1008,11 @@ class _TripEditorPageState extends State<TripEditorPage> {
       id: widget.trip.id,
       userId: widget.trip.userId,
       title: _titleController.text,
-      description: _descriptionController.markdownText,
+      description: _descriptionMarkdown,
       coverUrl: coverUrl ?? _coverUrl,
       status: _status,
       visibility: _visibility,
-      createdAt: widget.trip.createdAt,
+      createdAt: _liveTrip.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
       travelDate: _travelDate,
       errataHistory: _errataHistory,
@@ -574,9 +1024,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
       surpriseTargetNames: _surpriseTargetNames,
       surpriseUnlockDates: _surpriseUnlockDates,
       unlockOnPublish: _unlockOnPublish,
-      surpriseOpenedBy: widget.trip.surpriseOpenedBy,
-      reviewedAt: widget.trip.reviewedAt,
-      finishedAt: widget.trip.finishedAt,
+      surpriseOpenedBy: _liveTrip.surpriseOpenedBy,
+      reviewedAt: _liveTrip.reviewedAt,
+      finishedAt: _liveTrip.finishedAt,
       kind: _kind,
       version: _kind == kTripKindReleaseNotes && _versionController.text.trim().isNotEmpty
           ? _versionController.text.trim()
@@ -651,7 +1101,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
         'updatedAt': now.millisecondsSinceEpoch,
         'trip': {
           'title': _titleController.text,
-          'description': _descriptionController.markdownText,
+          'description': _descriptionMarkdown,
           'coverUrl': _coverUrl,
           'visibility': _visibility,
           'status': _status,
@@ -680,7 +1130,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
         if (mounted) setState(() {});
       });
     }
-    _debounceTimer = Timer(const Duration(seconds: 4), () {
+    // Con alguien más en el editor se guarda casi enseguida, para que vea los cambios en vivo.
+    _debounceTimer = Timer(Duration(milliseconds: _othersEditing ? 1000 : 4000), () {
       _saveToCloudFirestore();
     });
   }
@@ -858,34 +1309,65 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
 
     final updatedTrip = _buildCurrentTrip(coverUrl: finalCoverUrl, updatedAt: now);
-
-    final updatedContent = TripContent(sections: updatedSections);
+    final tripFieldsSent = TripService.editorTripFields(updatedTrip);
+    final baseSectionsAtStart = _baseSections;
+    final baseTripAtStart = _baseTrip;
 
     try {
-      await Future.wait([
-        TripService().updateTrip(widget.trip.userId, updatedTrip),
-        TripService().updateTripContent(widget.trip.userId, widget.trip.id, updatedContent),
-      ]);
+      // Transacción: lee lo que hay en la nube, lo combina con lo local y escribe el
+      // resultado (antes era un set() completo y ganaba el último en guardar).
+      final r = await TripService().saveTripLive(
+        ownerId: widget.trip.userId,
+        localTrip: updatedTrip,
+        baseTrip: baseTripAtStart,
+        baseSections: baseSectionsAtStart,
+        localSections: updatedSections,
+        baseRev: math.max(_contentRev, _tripRev),
+        editorUid: _myUid,
+        editorName: _myName,
+      );
+      _contentRev = math.max(_contentRev, r.rev);
+      _tripRev = math.max(_tripRev, r.rev);
 
-      _reportStopChanges(updatedSections);
+      // Lo que otros habían guardado y entró en esta escritura también va al historial
+      // para deshacer y a las referencias (fe de erratas, retroalimentación).
+      _rebaseHistory(baseSectionsAtStart, r.remoteSections);
+      if (r.remoteTripFields != null) _rebaseHistoryTrip(baseTripAtStart, r.remoteTripFields!);
+      _reportStopChanges(r.sections);
 
-      // Dynamic Garbage Collector for Firebase Storage section photos
-      await _cleanupStoragePhotos(widget.trip.userId, widget.trip.id, updatedSections);
+      // De Storage solo se borran las fotos que quitó este editor, nunca las de otros.
+      await _cleanupStoragePhotos(widget.trip.userId, widget.trip.id,
+          photosRemovedHere(base: baseSectionsAtStart, local: updatedSections, written: r.sections));
 
       if (mounted) {
+        final who = r.remoteEditorUid == _myUid ? '' : r.remoteEditorName;
         setState(() {
           // Solo se cambian las fotos recién subidas; los textos editados durante el guardado se quedan.
           _sections = mergeUploadedPhotos(_sections, sectionsAtStart, updatedSections);
           if (_coverUrl == coverAtStart) _coverUrl = finalCoverUrl;
+          _baseSections = r.sections;
+          _baseTrip = r.tripFields;
+          for (final e in r.conflicts.entries) {
+            _conflicts[e.key] = e.value;
+            _conflictBy[e.key] = who;
+          }
           _isSavingCloud = false;
           _lastSavedCloudTime = now;
           _cloudSaveError = null;
           // Si hubo fotos sin subir, el cambio sigue pendiente para reintentarlo
           _savedEditVersion = _failedUploads > 0 ? versionAtStart - 1 : versionAtStart;
         });
+        // Lo que entró de otros al escribir se muestra, sin tocar lo editado mientras tanto.
+        _applyMerge(mergeSections(updatedSections, _sections, r.sections), who: who);
+        final localFields = TripService.editorTripFields(_buildCurrentTrip());
+        final tm = mergeFields(tripFieldsSent, localFields, r.tripFields);
+        if (!deepEquals(tm.value, localFields)) _applyTripFields(tm.value);
+        _offerTripConflicts({...r.tripConflicts, ...tm.conflicts}, r.remoteTripFields, who);
+        if (r.deletedHereChangedThere.isNotEmpty) _offerRestore(r.deletedHereChangedThere, who);
+        _drainPendingSnapshots();
         // Lo que se editó mientras se guardaba se sube enseguida en otro guardado.
         if (_editVersion != versionAtStart && _debounceTimer?.isActive != true) {
-          _debounceTimer = Timer(const Duration(seconds: 2), _saveToCloudFirestore);
+          _debounceTimer = Timer(Duration(seconds: _othersEditing ? 1 : 2), _saveToCloudFirestore);
         }
         if (_failedUploads > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -908,50 +1390,41 @@ class _TripEditorPageState extends State<TripEditorPage> {
           _isSavingCloud = false;
           _cloudSaveError = message;
         });
+        _drainPendingSnapshots();
       }
     }
   }
 
-  Future<void> _cleanupStoragePhotos(String userId, String tripId, List<TripSection> finalSections) async {
-    try {
-      final storageRef = FirebaseStorage.instance.ref('users/$userId/trips/$tripId/sections');
-      final listResult = await storageRef.listAll();
-      
-      // Gather all referenced URLs
-      final Set<String> referencedUrls = {};
-      for (var sec in finalSections) {
-        if (sec is PlaceSection) {
-          if (sec.mainPhotoUrl.isNotEmpty) {
-            referencedUrls.add(sec.mainPhotoUrl);
-          }
-          for (var url in sec.secondaryPhotoUrls) {
-            if (url.isNotEmpty) {
-              referencedUrls.add(url);
-            }
-          }
-          if ((sec.coverUrl ?? '').isNotEmpty) referencedUrls.add(sec.coverUrl!);
-        } else if (sec is TextImageSection) {
-          if (sec.imageUrl.isNotEmpty) {
-            referencedUrls.add(sec.imageUrl);
-          }
-        }
-      }
+  /// Aplica los avisos del listener que llegaron mientras se guardaba.
+  void _drainPendingSnapshots() {
+    final c = _pendingContentSnap, t = _pendingTripSnap;
+    _pendingContentSnap = null;
+    _pendingTripSnap = null;
+    if (c != null) _onContentSnapshot(c);
+    if (t != null) _onTripSnapshot(t);
+  }
 
-      // Check each file in storage sections folder
-      for (var item in listResult.items) {
-        final filename = item.name;
-        bool isReferenced = false;
-        for (var url in referencedUrls) {
-          // If the referenced url contains the filename, it is in use
-          if (url.contains(filename)) {
-            isReferenced = true;
-            break;
-          }
-        }
-        if (!isReferenced) {
-          print("Deleting orphaned storage section photo: ${item.name}");
-          await item.delete();
-        }
+  /// Nombre del archivo en Storage de una URL de descarga de Firebase (o null si no es de Storage).
+  static String? _storageFileName(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.host.contains('firebasestorage')) return null;
+    // pathSegments ya viene decodificado: el último es "users/…/sections/archivo.jpg".
+    final name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last.split('/').last;
+    return name.isEmpty ? null : name;
+  }
+
+  /// Borra de Storage las fotos de bloques que quitó este editor ([removedUrls], ver
+  /// [photosRemovedHere]). Las que no conoce (p. ej. las que acaba de subir otro coautor)
+  /// nunca se tocan, aunque todavía no lleguen a esta pantalla.
+  Future<void> _cleanupStoragePhotos(String userId, String tripId, Set<String> removedUrls) async {
+    final names = {for (final u in removedUrls) _storageFileName(u)}..remove(null);
+    if (names.isEmpty) return;
+    try {
+      final listResult = await FirebaseStorage.instance.ref('users/$userId/trips/$tripId/sections').listAll();
+      for (final item in listResult.items) {
+        if (!names.contains(item.name)) continue;
+        debugPrint("Borrando foto quitada en este editor: ${item.name}");
+        await item.delete();
       }
     } catch (e) {
       // Ignore safe errors (such as directory not existing)
@@ -1151,6 +1624,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   // Horarios y ubicación de la parada (E3)
   // ---------------------------------------------------------------------------
   void _replacePlace(String sectionId, PlaceSection Function(PlaceSection) change, {bool resetEditors = false}) {
+    if (_applyingRemote) return;
     final i = _idx(sectionId);
     if (i < 0 || _sections[i] is! PlaceSection) return;
     setState(() {
@@ -1422,6 +1896,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
     double? cost,
     String? currency,
   }) {
+    if (_applyingRemote) return;
     if (index < 0 || index >= _sections.length || _sections[index] is! PlaceSection) return;
     final current = _sections[index] as PlaceSection;
     
@@ -1504,6 +1979,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   void _updateTextBlock(int index, {String? markdown}) {
+    if (_applyingRemote) return;
     if (index < 0 || index >= _sections.length || _sections[index] is! TextSection) return;
     final current = _sections[index] as TextSection;
     if (markdown != null && markdown.trim() == '/' && current.markdownText.trim().isEmpty) {
@@ -1523,6 +1999,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   }
 
   void _updateTextImageBlock(int index, {String? markdown, String? photo, String? layout}) {
+    if (_applyingRemote) return;
     if (index < 0 || index >= _sections.length || _sections[index] is! TextImageSection) return;
     final current = _sections[index] as TextImageSection;
     final newSection = TextImageSection(
@@ -2530,6 +3007,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
               ),
             ),
           ),
+          _buildPresenceBar(isDark, compact: compact),
           const Spacer(),
           if (!compact) ...[
             iconBtn(Icons.undo_rounded, 'Deshacer (Ctrl+Z)', _undoStack.isEmpty ? null : _undo),
@@ -2942,7 +3420,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       _sections.take(index).any((s) => s is PlaceSection) &&
                       transferBefore(_sections, index) == null;
                   return KeyedSubtree(
-                    key: ValueKey('${section.id}_$_editorGeneration'),
+                    key: ValueKey('${section.id}_${_editorGeneration}_${_blockGen[section.id] ?? 0}'),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -4010,13 +4488,29 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
 
     final Color fgLabel = isDark ? Colors.white60 : OhtliColors.subtleText;
-    return Container(
+    // Quién más está escribiendo en este bloque (presencia).
+    final editingHere = [for (final p in _othersHere) if (p.blockId == section.id) p];
+    final Color? editingColor = editingHere.isEmpty ? null : _presenceColor(editingHere.first.uid);
+    // Si el foco entra a cualquier campo del bloque, se avisa a los demás.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (has) {
+        if (has) {
+          _setFocusedBlock(section.id);
+        } else if (_focusedBlockId == section.id) {
+          _setFocusedBlock(null);
+        }
+      },
+      child: Container(
       key: _blockKeys.putIfAbsent(section.id, () => GlobalKey()),
       margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E22) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder.withValues(alpha: 0.8)),
+        border: editingColor != null
+            ? Border.all(color: editingColor.withValues(alpha: 0.75), width: 1.5)
+            : Border.all(color: isDark ? Colors.white10 : OhtliColors.cardBorder.withValues(alpha: 0.8)),
         boxShadow: [
           BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05), blurRadius: 18, offset: const Offset(0, 6)),
         ],
@@ -4046,6 +4540,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
                 Icon(typeIcon, size: 15, color: OhtliColors.stormyTeal),
                 const SizedBox(width: 6),
                 Text(typeLabel, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 0.2, color: fgLabel)),
+                if (editingHere.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Flexible(child: _buildEditingBadge(editingHere, isDark)),
+                ],
                 const Spacer(),
                 PopupMenuButton<String>(
                   tooltip: 'Opciones del bloque',
@@ -4087,11 +4585,154 @@ class _TripEditorPageState extends State<TripEditorPage> {
               ],
             ),
           ),
+          if (_conflicts.containsKey(section.id)) _buildConflictBanner(section.id, isDark),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: blockContent,
           ),
         ],
+      ),
+      ),
+    );
+  }
+
+  /// Color estable para cada persona en el editor.
+  static Color _presenceColor(String uid) {
+    const palette = [Color(0xFFD9480F), Color(0xFF2B8A3E), Color(0xFF5F3DC4), Color(0xFFC2255C), Color(0xFF1971C2), Color(0xFFE67700)];
+    return palette[uid.codeUnits.fold<int>(0, (a, c) => (a * 31 + c) & 0x7fffffff) % palette.length];
+  }
+
+  Widget _presenceAvatar(EditorPresence p, {double radius = 13, bool ring = false, bool isDark = false}) {
+    final color = _presenceColor(p.uid);
+    final initial = p.name.isEmpty ? '?' : p.name.characters.first.toUpperCase();
+    return Container(
+      padding: const EdgeInsets.all(1.5),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: ring ? (isDark ? const Color(0xFF1E1E22) : Colors.white) : Colors.transparent),
+      child: CircleAvatar(
+        radius: radius,
+        backgroundColor: color,
+        foregroundImage: p.photo != null ? NetworkImage(p.photo!) : null,
+        child: Text(initial, style: GoogleFonts.inter(fontSize: radius * 0.85, fontWeight: FontWeight.w800, color: Colors.white)),
+      ),
+    );
+  }
+
+  /// "Ana está editando" en el encabezado del bloque.
+  Widget _buildEditingBadge(List<EditorPresence> people, bool isDark) {
+    final color = _presenceColor(people.first.uid);
+    final names = people.map((p) => p.firstName).toList();
+    final text = names.length == 1 ? '${names.first} está editando' : '${names.join(' y ')} están editando';
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(3, 2, 9, 2),
+        decoration: BoxDecoration(color: color.withValues(alpha: isDark ? 0.25 : 0.12), borderRadius: BorderRadius.circular(20)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _presenceAvatar(people.first, radius: 8),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: isDark ? Colors.white : color)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Los dos cambiaron el mismo bloque: se quedó la versión de aquí; se puede tomar la otra.
+  Widget _buildConflictBanner(String id, bool isDark) {
+    final theirs = _conflicts[id];
+    final who = (_conflictBy[id] ?? '').trim();
+    final name = who.isEmpty ? 'Otra persona' : who;
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final String text = theirs == null
+        ? '$name borró este bloque mientras lo editabas. Se quedó porque tenía cambios tuyos.'
+        : '$name también cambió este bloque al mismo tiempo. Se quedó tu versión.';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: OhtliColors.cempasuchil.withValues(alpha: isDark ? 0.18 : 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: OhtliColors.cempasuchil.withValues(alpha: 0.5)),
+      ),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
+        runSpacing: 2,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.call_split_rounded, size: 16, color: OhtliColors.cempasuchil),
+              const SizedBox(width: 8),
+              Flexible(child: Text(text, style: GoogleFonts.inter(fontSize: 12.5, height: 1.35, color: fg))),
+            ],
+          ),
+          TextButton(
+            onPressed: () => _resolveConflict(id, useTheirs: true),
+            child: Text(theirs == null ? 'Borrarlo' : 'Usar la suya', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700)),
+          ),
+          TextButton(
+            onPressed: () => _resolveConflict(id, useTheirs: false),
+            child: Text(theirs == null ? 'Mantenerlo' : 'Dejar la mía', style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Arriba del editor: quién más lo tiene abierto.
+  Widget _buildPresenceBar(bool isDark, {required bool compact}) {
+    final others = _othersHere;
+    if (others.isEmpty) return const SizedBox.shrink();
+    final Color fg = isDark ? Colors.white : const Color(0xFF1F2A2A);
+    final names = others.map((p) => p.firstName).toList();
+    final String label = names.length == 1
+        ? '${names.first} está aquí'
+        : names.length == 2
+            ? '${names[0]} y ${names[1]} están aquí'
+            : '${names[0]} y ${names.length - 1} más están aquí';
+    String where(EditorPresence p) {
+      final i = p.blockId == null ? -1 : _idx(p.blockId!);
+      if (i < 0) return '${p.name}: viendo el viaje';
+      final (title, _) = _blockOutlineInfo(_sections[i]);
+      return '${p.name}: editando «$title»';
+    }
+
+    final shown = others.take(3).toList();
+    return Tooltip(
+      message: others.map(where).join('\n'),
+      child: Semantics(
+        label: label,
+        liveRegion: true,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 24.0 + (shown.length - 1) * 16,
+                height: 30,
+                child: Stack(
+                  children: [
+                    for (int i = 0; i < shown.length; i++)
+                      Positioned(left: i * 16.0, top: 1, child: _presenceAvatar(shown[i], radius: 12.5, ring: true, isDark: isDark)),
+                  ],
+                ),
+              ),
+              if (!compact) ...[
+                const SizedBox(width: 6),
+                Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: fg.withValues(alpha: 0.75))),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -4131,6 +4772,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
   String _newSectionId() => 'sec_${DateTime.now().microsecondsSinceEpoch}_${_sections.length}';
 
   void _replaceTransfer(String id, TransferSection Function(TransferSection) change, {bool structural = true}) {
+    if (_applyingRemote) return;
     final i = _idx(id);
     if (i < 0 || _sections[i] is! TransferSection) return;
     final next = change(_sections[i] as TransferSection);

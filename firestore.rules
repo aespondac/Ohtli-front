@@ -298,6 +298,23 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid]);
           allow delete: if request.auth != null && request.auth.uid == userId;
         }
+
+        // Presencia en el editor (edición en vivo): quién lo tiene abierto y en qué bloque
+        // escribe. La leen el dueño y los coautores; cada quien escribe solo su documento.
+        match /presence/{uid} {
+          allow read: if isTripEditor(userId, tripId);
+          allow create, update: if isTripEditor(userId, tripId)
+            && request.auth.uid == uid
+            && request.resource.data.keys().hasOnly(['name', 'photo', 'blockId', 'lastSeen'])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() <= 120
+            && (request.resource.data.get('photo', null) == null
+                || (request.resource.data.photo is string && request.resource.data.photo.size() <= 2048))
+            && (request.resource.data.get('blockId', null) == null
+                || (request.resource.data.blockId is string && request.resource.data.blockId.size() <= 200))
+            && request.resource.data.lastSeen == request.time;
+          allow delete: if request.auth != null && request.auth.uid == uid;
+        }
       }
     }
 
