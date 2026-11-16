@@ -2,6 +2,7 @@
 
 import '../../services/feedback_service.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -931,9 +932,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             ),
             trailing: _countBadge(generatingJobs.length, OhtliColors.cempasuchil),
           ),
-          Column(
-            children: generatingJobs.map((doc) => _buildGeneratingJobCard(doc, isDark)).toList(),
-          ),
+          _jobCardsWrap(width, padding, generatingJobs.map((doc) => _buildGeneratingJobCard(doc, isDark)).toList()),
           const SizedBox(height: 20),
         ],
 
@@ -945,9 +944,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             'No se pudieron generar',
             leading: const Icon(Icons.error_outline_rounded, size: 18, color: OhtliColors.xoconostle),
           ),
-          Column(
-            children: failedJobs.map((doc) => _buildFailedJobCard(doc, isDark)).toList(),
-          ),
+          _jobCardsWrap(width, padding, failedJobs.map((doc) => _buildFailedJobCard(doc, isDark)).toList()),
           const SizedBox(height: 20),
         ],
 
@@ -986,6 +983,19 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
           const SizedBox(height: 20),
         ],
       ],
+    );
+  }
+
+  /// Tarjetas de rutas en preparación o fallidas con el ancho de una tarjeta de viaje (dos
+  /// columnas de la rejilla, para que quepan título y botones), no de lado a lado.
+  Widget _jobCardsWrap(double width, double padding, List<Widget> cards) {
+    final int crossAxisCount = width > 1500 ? 5 : (width > 1100 ? 4 : (width > 760 ? 3 : (width > 520 ? 2 : 1)));
+    final double inner = width - padding * 2;
+    final double column = (inner - (crossAxisCount - 1) * 18) / crossAxisCount;
+    final double cardWidth = crossAxisCount <= 2 ? inner : math.min(inner, column * 2 + 18);
+    return Wrap(
+      spacing: 18,
+      children: [for (final c in cards) SizedBox(width: cardWidth, child: c)],
     );
   }
 
@@ -1242,9 +1252,12 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      '$progress%',
-                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.cempasuchil),
+                    _SmoothJobProgress(
+                      progress: progress,
+                      builder: (value) => Text(
+                        '${value.round()}%',
+                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: OhtliColors.cempasuchil),
+                      ),
                     ),
                   ],
                 ),
@@ -1282,15 +1295,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
             return Row(children: [Expanded(child: title), const SizedBox(width: 8), actions]);
           }),
           const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: (progress.clamp(5, 100)) / 100.0,
-              minHeight: 4,
-              backgroundColor: OhtliColors.cempasuchil.withOpacity(0.12),
-              valueColor: const AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil),
-            ),
-          ),
+          _SmoothJobProgress(progress: progress),
         ],
       ),
     );
@@ -1617,6 +1622,74 @@ class _HoverCardState extends State<_HoverCard> {
             boxShadow: OhtliUi.softShadow(color: _hover ? OhtliColors.stormyTeal : null, raised: _hover),
           ),
           child: widget.builder(_hover),
+        ),
+      ),
+    );
+  }
+}
+
+/// Avance de una ruta en preparación que se mueve con fluidez. El motor solo reporta el
+/// porcentaje al terminar cada agente (saltos de 20–30 puntos): aquí se anima hasta el nuevo
+/// valor y, mientras un agente trabaja, avanza despacio hacia el siguiente sin alcanzarlo.
+class _SmoothJobProgress extends StatefulWidget {
+  const _SmoothJobProgress({required this.progress, this.builder});
+
+  final int progress;
+
+  /// Si se da, muestra el valor con este widget (p. ej. el porcentaje) en vez de la barra.
+  final Widget Function(double value)? builder;
+
+  @override
+  State<_SmoothJobProgress> createState() => _SmoothJobProgressState();
+}
+
+class _SmoothJobProgressState extends State<_SmoothJobProgress> {
+  late double _shown = widget.progress.clamp(3, 100).toDouble();
+  Timer? _ticker;
+
+  /// Hasta dónde puede avanzar solo: un poco antes del siguiente reporte probable.
+  double get _ceiling => math.min(97, widget.progress + 22).toDouble();
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(milliseconds: 120), (_) => _tick());
+  }
+
+  void _tick() {
+    final reported = widget.progress.toDouble();
+    double next;
+    if (_shown < reported) {
+      // Llegó un nuevo reporte: alcanzarlo en ~1 s, no de golpe
+      next = _shown + math.max(0.6, (reported - _shown) * 0.12);
+      if (next > reported) next = reported;
+    } else {
+      // Entre reportes: avanzar cada vez más despacio hacia el techo
+      next = _shown + (_ceiling - _shown) * 0.008;
+    }
+    if (reported >= 100) next = 100;
+    if ((next - _shown).abs() > 0.01 && mounted) setState(() => _shown = next);
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.builder != null) return widget.builder!(_shown);
+    return Semantics(
+      label: 'Avance de la ruta',
+      value: '${_shown.round()} %',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: LinearProgressIndicator(
+          value: _shown / 100.0,
+          minHeight: 4,
+          backgroundColor: OhtliColors.cempasuchil.withValues(alpha: 0.12),
+          valueColor: const AlwaysStoppedAnimation<Color>(OhtliColors.cempasuchil),
         ),
       ),
     );
