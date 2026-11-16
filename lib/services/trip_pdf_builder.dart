@@ -87,7 +87,7 @@ class TripPdfBuilder {
   static final PdfColor onyx = PdfColor.fromHex('#0A090C');
   static final PdfColor cream = PdfColor.fromHex('#F0EEE9');
   static final PdfColor paper = PdfColor.fromHex('#FBFAF7');
-  static final PdfColor line = PdfColor.fromHex('#DCD8CF');
+  static final PdfColor line = PdfColor.fromHex('#E4E0D8');
   static final PdfColor muted = PdfColor.fromHex('#5F5B55');
 
   /// Un color por parada, como las rutas de un atlas.
@@ -101,7 +101,8 @@ class TripPdfBuilder {
     PdfColor.fromHex('#B7791F'),
   ];
 
-  static PdfColor colorFor(int index) => stopColors[index % stopColors.length];
+  /// Un solo acento, como en la app: todas las paradas en turquesa (el número las distingue).
+  static PdfColor colorFor(int index) => teal;
 
   static const String _months =
       'enero,febrero,marzo,abril,mayo,junio,julio,agosto,septiembre,octubre,noviembre,diciembre';
@@ -363,10 +364,10 @@ class TripPdfBuilder {
       build: (context) => [
         // Encabezado de la guía
         pw.Container(
-          padding: const pw.EdgeInsets.fromLTRB(16, 14, 14, 14),
+          padding: const pw.EdgeInsets.fromLTRB(18, 16, 14, 16),
           decoration: pw.BoxDecoration(
-            color: tealDeep,
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(14)),
+            color: cream,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(16)),
           ),
           child: pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -376,39 +377,27 @@ class TripPdfBuilder {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Row(children: [
-                      pw.SvgImage(svg: _logoSvg('#FFFFFF'), width: 52),
+                      pw.SvgImage(svg: _logoSvg('#2C666E'), width: 52),
                       pw.SizedBox(width: 10),
-                      _eyebrow('Guía de bolsillo · $_dateText', color: PdfColor.fromHex('#F5A55C')),
+                      _eyebrow('Guía de bolsillo · $_dateText'),
                     ]),
                     pw.SizedBox(height: 8),
                     pw.Text(
                       trip.title.isNotEmpty ? trip.title : 'Mi ruta por la ciudad',
                       maxLines: 2,
-                      style: _t(22, font: fonts.display, color: PdfColors.white, height: 1.5),
+                      style: _t(22, font: fonts.display, color: onyx, height: 1.5),
                     ),
                     pw.SizedBox(height: 10),
                     pw.Row(children: [
                       _coverStat('${places.length}', places.length == 1 ? 'parada' : 'paradas'),
                       if (time != null) _coverStat(time, 'horario'),
                       _coverStat(total > 0 ? money(total) : 'Gratis', 'por persona'),
-                      if (km != null) _coverStat('${km.toStringAsFixed(1)} km', 'recorrido'),
+                      if (km != null) _coverStat('${km.toStringAsFixed(1)} km', 'recorrido', last: true),
                     ]),
                   ],
                 ),
               ),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(5),
-                decoration: pw.BoxDecoration(
-                  color: PdfColors.white,
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                ),
-                child: pw.Column(children: [
-                  pw.BarcodeWidget(
-                      barcode: pw.Barcode.qrCode(), data: qrUrl, width: 66, height: 66, color: tealDeep, drawText: false),
-                  pw.SizedBox(height: 3),
-                  pw.Text('Mapa en vivo', style: _t(6.5, font: fonts.bodySemiBold, color: tealDeep)),
-                ]),
-              ),
+              _qrCard(62, 'Mapa en vivo'),
             ],
           ),
         ),
@@ -477,13 +466,8 @@ class TripPdfBuilder {
       padding: const pw.EdgeInsets.fromLTRB(10, 9, 10, 9),
       decoration: pw.BoxDecoration(
         color: PdfColors.white,
-        // Esquinas rectas: la librería no permite redondear un borde con un lado más grueso
-        border: pw.Border(
-          left: pw.BorderSide(color: color, width: 4),
-          top: pw.BorderSide(color: line, width: 0.6),
-          right: pw.BorderSide(color: line, width: 0.6),
-          bottom: pw.BorderSide(color: line, width: 0.6),
-        ),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(12)),
+        border: pw.Border.all(color: line, width: 0.8),
       ),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -726,124 +710,102 @@ class TripPdfBuilder {
     final km = _distanceKm;
     final total = _placesCost + _transfersCost;
     return pw.Page(
-      pageFormat: PdfPageFormat.letter,
-      margin: pw.EdgeInsets.zero,
+      pageTheme: pw.PageTheme(
+        pageFormat: PdfPageFormat.letter,
+        margin: const pw.EdgeInsets.fromLTRB(46, 40, 46, 36),
+        buildBackground: (context) => pw.FullPage(ignoreMargins: true, child: pw.Container(color: cream)),
+      ),
       build: (context) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          // Foto a sangre con logotipo
-          pw.SizedBox(
-            height: 430,
-            child: pw.Stack(
-              fit: pw.StackFit.expand,
-              children: [
-                if (cover != null)
-                  pw.Image(cover, fit: pw.BoxFit.cover)
-                else
-                  pw.Container(color: teal, child: pw.CustomPaint(painter: _contourPainter)),
-                pw.Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  child: pw.Opacity(opacity: 0.45, child: pw.Container(height: 110, color: onyx)),
-                ),
-                pw.Positioned(
-                  left: 44,
-                  top: 40,
-                  child: pw.SvgImage(svg: _logoSvg('#FFFFFF'), width: 120),
-                ),
-                pw.Positioned(
-                  right: 44,
-                  top: 44,
-                  child: pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: pw.BoxDecoration(
-                      color: cempasuchil,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(20)),
-                    ),
-                    child: pw.Text('CRÓNICA DEL VIAJE', style: _t(8.5, font: fonts.bodyBold, color: PdfColors.white, spacing: 1.6)),
-                  ),
-                ),
-              ],
+          pw.Row(children: [
+            pw.SvgImage(svg: _logoSvg('#2C666E'), width: 92),
+            pw.Spacer(),
+            _eyebrow('Crónica del viaje'),
+          ]),
+          pw.SizedBox(height: 22),
+          pw.ClipRRect(
+            horizontalRadius: 22,
+            verticalRadius: 22,
+            child: pw.SizedBox(
+              height: 340,
+              width: double.infinity,
+              child: cover != null
+                  ? pw.Image(cover, fit: pw.BoxFit.cover)
+                  : pw.Container(color: teal, child: pw.CustomPaint(painter: _contourPainter)),
             ),
           ),
-          // Bandas de color, como el canto de un atlas
-          pw.Row(children: [for (final c in stopColors) pw.Expanded(child: pw.Container(height: 8, color: c))]),
-          pw.Expanded(
-            child: pw.Container(
-              color: tealDeep,
-              padding: const pw.EdgeInsets.fromLTRB(44, 30, 44, 30),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  _eyebrow('Así fue · Ciudad de México · $_dateText', color: PdfColor.fromHex('#F5A55C')),
-                  pw.SizedBox(height: 10),
-                  pw.Text(
-                    trip.title.isNotEmpty ? trip.title : 'Mi ruta por la ciudad',
-                    maxLines: 3,
-                    style: _t(trip.title.length > 38 ? 30 : 38, font: fonts.display, color: PdfColors.white, height: 2),
-                  ),
-                  if (trip.description.trim().isNotEmpty) ...[
-                    pw.SizedBox(height: 10),
-                    pw.Text(
-                      _plain(trip.description),
-                      maxLines: 3,
-                      style: _t(10.5, color: PdfColor.fromHex('#D7E4E3'), height: 3),
-                    ),
+          pw.SizedBox(height: 28),
+          _eyebrow('Ciudad de México · $_dateText', color: cempasuchil),
+          pw.SizedBox(height: 8),
+          pw.Text(
+            trip.title.isNotEmpty ? trip.title : 'Mi ruta por la ciudad',
+            maxLines: 3,
+            style: _t(trip.title.length > 38 ? 30 : 38, font: fonts.display, color: onyx, height: 2),
+          ),
+          if (trip.description.trim().isNotEmpty) ...[
+            pw.SizedBox(height: 10),
+            pw.Text(_plain(trip.description), maxLines: 3, style: _t(11, color: muted, height: 3)),
+          ],
+          pw.Spacer(),
+          pw.Container(height: 0.8, color: PdfColor.fromHex('#CFCAC0')),
+          pw.SizedBox(height: 16),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Row(children: [
+                      _coverStat('${places.length}', places.length == 1 ? 'parada' : 'paradas'),
+                      if (time != null) _coverStat(time, 'horario'),
+                      if (_realSpent != null)
+                        _coverStat(money(_realSpent!), 'gastado')
+                      else
+                        _coverStat(total > 0 ? money(total) : 'Gratis', 'por persona'),
+                      if (km != null) _coverStat('${km.toStringAsFixed(1)} km', 'recorrido', last: true),
+                    ]),
+                    pw.SizedBox(height: 14),
+                    pw.Text('Por $authorLine', style: _t(9.5, font: fonts.bodySemiBold, color: muted)),
                   ],
-                  pw.Spacer(),
-                  pw.Row(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Expanded(
-                        child: pw.Column(
-                          crossAxisAlignment: pw.CrossAxisAlignment.start,
-                          children: [
-                            pw.Row(children: [
-                              _coverStat('${places.length}', places.length == 1 ? 'parada' : 'paradas'),
-                              if (time != null) _coverStat(time, 'horario'),
-                              if (_realSpent != null)
-                                _coverStat(money(_realSpent!), 'gastado')
-                              else
-                                _coverStat(total > 0 ? money(total) : 'Gratis', 'presupuesto aprox.'),
-                              if (km != null) _coverStat('${km.toStringAsFixed(1)} km', 'recorrido'),
-                            ]),
-                            pw.SizedBox(height: 16),
-                            pw.Text('Por $authorLine', style: _t(9.5, font: fonts.bodySemiBold, color: PdfColors.white)),
-                          ],
-                        ),
-                      ),
-                      pw.Container(
-                        padding: const pw.EdgeInsets.all(7),
-                        decoration: pw.BoxDecoration(
-                          color: PdfColors.white,
-                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(10)),
-                        ),
-                        child: pw.Column(children: [
-                          pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: qrUrl, width: 70, height: 70, color: tealDeep, drawText: false),
-                          pw.SizedBox(height: 4),
-                          pw.Text('Ábrelo en tu teléfono', style: _t(6.5, font: fonts.bodySemiBold, color: tealDeep)),
-                        ]),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
+              _qrCard(64, 'Ábrelo en tu teléfono'),
+            ],
           ),
         ],
       ),
     );
   }
 
-  pw.Widget _coverStat(String value, String label) => pw.Padding(
-        padding: const pw.EdgeInsets.only(right: 26),
+  pw.Widget _qrCard(double size, String label) => pw.Container(
+        padding: const pw.EdgeInsets.all(7),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.white,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(12)),
+          border: pw.Border.all(color: line, width: 0.8),
+        ),
+        child: pw.Column(children: [
+          pw.BarcodeWidget(barcode: pw.Barcode.qrCode(), data: qrUrl, width: size, height: size, color: onyx, drawText: false),
+          pw.SizedBox(height: 4),
+          pw.Text(label, style: _t(6.5, font: fonts.bodySemiBold, color: muted)),
+        ]),
+      );
+
+  /// Cifra con su etiqueta, separadas por una línea fina como en la app.
+  pw.Widget _coverStat(String value, String label, {bool last = false}) => pw.Container(
+        margin: const pw.EdgeInsets.only(right: 18),
+        padding: const pw.EdgeInsets.only(right: 18),
+        decoration: last
+            ? null
+            : pw.BoxDecoration(border: pw.Border(right: pw.BorderSide(color: PdfColor.fromHex('#CFCAC0'), width: 0.8))),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(value, style: _t(17, font: fonts.heading, color: PdfColors.white)),
+            pw.Text(value, style: _t(17, font: fonts.heading, color: onyx)),
             pw.SizedBox(height: 2),
-            pw.Text(label.toUpperCase(), style: _t(6.5, font: fonts.bodyBold, color: PdfColor.fromHex('#9FC3C1'), spacing: 1.2)),
+            pw.Text(label.toUpperCase(), style: _t(6.5, font: fonts.bodyBold, color: teal, spacing: 1.2)),
           ],
         ),
       );
@@ -1022,7 +984,7 @@ class TripPdfBuilder {
             ],
           ),
           pw.SizedBox(height: 5),
-          pw.Row(children: [for (final c in stopColors) pw.Expanded(child: pw.Container(height: 3, color: c))]),
+          pw.Container(height: 0.8, color: teal),
         ],
       );
 
@@ -1068,13 +1030,12 @@ class TripPdfBuilder {
             child: pw.Container(
               decoration: pw.BoxDecoration(
                 color: PdfColors.white,
-                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(12)),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(16)),
                 border: pw.Border.all(color: line, width: 0.8),
               ),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: [
-                  pw.Container(height: 4, color: color),
                   pw.Padding(
                     padding: const pw.EdgeInsets.fromLTRB(14, 10, 14, 12),
                     child: pw.Row(
@@ -1454,7 +1415,7 @@ class TripPdfBuilder {
               pw.SizedBox(width: 10),
               pw.Expanded(
                 child: pw.Text(
-                  'Hecho con Ohtli · ohtli.quest${_map != null ? '   ·   Mapa © colaboradores de OpenStreetMap' : ''}',
+                  'Hecho con Ohtli · ohtli.quest${_map != null ? '   ·   Mapa base © Esri, HERE, Garmin y colaboradores de OpenStreetMap' : ''}',
                   style: _t(7, color: muted),
                 ),
               ),
@@ -1504,9 +1465,13 @@ class _AtlasMap {
   static const double tile = 256;
 
   late int zoom;
+
+  /// Acercamiento intermedio entre dos niveles del mapa (1–2): la ruta llena el recuadro.
+  late double k;
   late double originX; // píxel mundial de la esquina superior izquierda
   late double originY;
   final Map<String, pw.ImageProvider> _tiles = {};
+  final Map<String, pw.ImageProvider> _labels = {};
 
   static double _wx(double lng, int z) => (lng + 180) / 360 * tile * math.pow(2, z);
   static double _wy(double lat, int z) {
@@ -1527,14 +1492,20 @@ class _AtlasMap {
         break;
       }
     }
-    final cx = (_wx(minLng, zoom) + _wx(maxLng, zoom)) / 2;
-    final cy = (_wy(minLat, zoom) + _wy(maxLat, zoom)) / 2;
+    final w = _wx(maxLng, zoom) - _wx(minLng, zoom);
+    final h = _wy(minLat, zoom) - _wy(maxLat, zoom);
+    k = math.min(w > 0 ? width * 0.8 / w : 2.0, h > 0 ? height * 0.8 / h : 2.0).clamp(1.0, 1.95);
+    final cx = (_wx(minLng, zoom) + _wx(maxLng, zoom)) / 2 * k;
+    final cy = (_wy(minLat, zoom) + _wy(maxLat, zoom)) / 2 * k;
     originX = cx - width / 2;
     originY = cy - height / 2;
   }
 
   /// Posición en el recuadro del mapa (origen arriba a la izquierda).
-  (double, double) pos(double lat, double lng) => (_wx(lng, zoom) - originX, _wy(lat, zoom) - originY);
+  (double, double) pos(double lat, double lng) => (_wx(lng, zoom) * k - originX, _wy(lat, zoom) * k - originY);
+
+  /// Tamaño en el PDF de cada tesela (se piden un nivel más cerca: medio cuadro, escalado).
+  double get tileSize => tile / 2 * k;
 
   String gridRef(double lat, double lng) {
     final (x, y) = pos(lat, lng);
@@ -1543,32 +1514,50 @@ class _AtlasMap {
     return '${String.fromCharCode(65 + c)}${r + 1}';
   }
 
-  /// Teselas de OpenStreetMap un nivel más cerca (cada una ocupa medio cuadro de 256 pt):
-  /// el doble de detalle para que las calles se lean al imprimir.
+  /// Mapa base gris claro de Esri un nivel más cerca (calles nítidas al imprimir) y encima su
+  /// capa de nombres, también un nivel más cerca: letra chica y nombres de calles y colonias.
   Future<void> loadTiles(TripPdfFetcher fetch) async {
-    final z = zoom + 1;
-    const half = tile / 2;
-    final x0 = (originX / half).floor(), x1 = ((originX + width) / half).floor();
-    final y0 = (originY / half).floor(), y1 = ((originY + height) / half).floor();
+    const base = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
     final jobs = <Future<void>>[];
-    for (var x = x0; x <= x1; x++) {
-      for (var y = y0; y <= y1; y++) {
-        final url = 'https://tile.openstreetmap.org/$z/$x/$y.png';
-        jobs.add(() async {
-          try {
-            final bytes = await fetch(url);
-            if (bytes != null && TripPdfBuilder._decodable(bytes)) _tiles['$x/$y'] = pw.MemoryImage(bytes);
-          } catch (_) {}
-        }());
+    void grid(int z, String layer, Map<String, pw.ImageProvider> into) {
+      final left = originX / tileSize, top = originY / tileSize;
+      final right = (originX + width) / tileSize, bottom = (originY + height) / tileSize;
+      for (var x = left.floor(); x <= right.floor(); x++) {
+        for (var y = top.floor(); y <= bottom.floor(); y++) {
+          final url = '$base/$layer/MapServer/tile/$z/$y/$x';
+          jobs.add(() async {
+            try {
+              final bytes = await fetch(url);
+              if (bytes != null && TripPdfBuilder._decodable(bytes)) into['$x/$y'] = pw.MemoryImage(bytes);
+            } catch (_) {}
+          }());
+        }
       }
     }
+
+    grid(zoom + 1, 'World_Light_Gray_Base', _tiles);
+    grid(zoom + 1, 'World_Light_Gray_Reference', _labels);
     await Future.wait(jobs);
+  }
+
+  List<(double, double)> _pinSpots(List<(double, double, int)> pins) {
+    final spots = <(double, double)>[];
+    for (final p in pins) {
+      var (x, y) = pos(p.$1, p.$2);
+      var tries = 0;
+      while (tries++ < 6 && spots.any((s) => (s.$1 - x).abs() < 18 && (s.$2 - y).abs() < 18)) {
+        x += 15;
+        y -= 7;
+      }
+      spots.add((x, y));
+    }
+    return spots;
   }
 
   /// Metros que mide un punto del PDF en la latitud del centro.
   double get _metersPerPt {
     final lat = points.map((p) => p.$1).reduce((a, b) => a + b) / points.length;
-    return 156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
+    return 156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom) / k;
   }
 
   pw.Widget widget({
@@ -1593,24 +1582,32 @@ class _AtlasMap {
       child: pw.Stack(
         overflow: pw.Overflow.clip,
         children: [
-          pw.Container(color: PdfColor.fromHex('#EEF0EA')),
+          pw.Container(color: PdfColor.fromHex('#EDEDEB')),
           for (final e in _tiles.entries)
             () {
               final xy = e.key.split('/').map(int.parse).toList();
-              const half = tile / 2;
               return pw.Positioned(
-                left: xy[0] * half - originX,
-                top: xy[1] * half - originY,
-                child: pw.SizedBox(width: half, height: half, child: pw.Image(e.value, fit: pw.BoxFit.fill)),
+                left: xy[0] * tileSize - originX,
+                top: xy[1] * tileSize - originY,
+                child: pw.SizedBox(width: tileSize, height: tileSize, child: pw.Image(e.value, fit: pw.BoxFit.fill)),
+              );
+            }(),
+          for (final e in _labels.entries)
+            () {
+              final xy = e.key.split('/').map(int.parse).toList();
+              return pw.Positioned(
+                left: xy[0] * tileSize - originX,
+                top: xy[1] * tileSize - originY,
+                child: pw.SizedBox(width: tileSize, height: tileSize, child: pw.Image(e.value, fit: pw.BoxFit.fill)),
               );
             }(),
           // Cuadrícula y ruta
           pw.CustomPaint(
             size: PdfPoint(width, height),
             painter: (canvas, size) {
-              canvas.setStrokeColor(PdfColor.fromHex('#2C666E'));
-              canvas.setLineWidth(0.5);
-              canvas.setLineDashPattern([3, 3]);
+              canvas.setStrokeColor(PdfColor.fromHex('#A39E95'));
+              canvas.setLineWidth(0.4);
+              canvas.setLineDashPattern([2, 3]);
               for (var c = 1; c < cols; c++) {
                 canvas
                   ..moveTo(c * cellW, 0)
@@ -1640,21 +1637,21 @@ class _AtlasMap {
                   ..setLineCap(PdfLineCap.round)
                   ..setLineJoin(PdfLineJoin.round)
                   ..setStrokeColor(PdfColors.white)
-                  ..setLineWidth(7);
+                  ..setLineWidth(6);
                 path();
                 canvas.strokePath();
                 canvas
-                  ..setStrokeColor(PdfColor.fromHex('#E2711D'))
-                  ..setLineWidth(3.6);
+                  ..setStrokeColor(PdfColor.fromHex('#2C666E'))
+                  ..setLineWidth(3);
                 path();
                 canvas.strokePath();
               }
             },
           ),
-          // Pines numerados
-          for (final p in pins)
+          // Pines numerados (si uno cae encima de otro, se recorre un poco para que ambos se lean)
+          for (final (i, p) in pins.indexed)
             () {
-              final (x, y) = pos(p.$1, p.$2);
+              final (x, y) = _pinSpots(pins)[i];
               return pw.Positioned(
                 left: x - 11,
                 top: y - 11,
@@ -1749,8 +1746,11 @@ class _AtlasMap {
               ]),
             ),
             pw.Container(
-              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColor.fromHex('#0A090C'), width: 1.2)),
-              child: map,
+              decoration: pw.BoxDecoration(
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(14)),
+                border: pw.Border.all(color: PdfColor.fromHex('#D6D1C8'), width: 0.8),
+              ),
+              child: pw.ClipRRect(horizontalRadius: 14, verticalRadius: 14, child: map),
             ),
           ],
         ),
