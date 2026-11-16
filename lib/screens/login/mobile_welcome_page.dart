@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,274 +6,140 @@ import '../../theme/colors.dart';
 
 /// Portada del teléfono sin sesión: la primera pantalla de Ohtli en móvil.
 ///
-/// Mismo lenguaje que la portada de web (fondo crema, Outfit, collage de fotos de la
-/// CDMX y botón cempasúchil), pero en una sola pantalla y con lo esencial: crear cuenta,
-/// iniciar sesión o explorar lugares. Las fotos y la fuente vienen incluidas en la app
-/// (assets/cover, assets/google_fonts) para que se vea completa en cuanto arranca.
+/// Foto de la ciudad a toda la pantalla con el lema y las dos acciones abajo, con la
+/// estética de la tarjeta de foto de web (AuthShell): esquinas redondeadas sobre el fondo
+/// crema, degradado oscuro, Outfit en blanco y "a tu medida." en xoconostle. La foto viene
+/// incluida en la app (assets/cover, recortada en vertical) para que se vea al instante.
 class MobileWelcomePage extends StatelessWidget {
   final VoidCallback onLoginClick;
   final VoidCallback onJoinClick;
-  final VoidCallback? onExplorePlaces;
 
   const MobileWelcomePage({
     super.key,
     required this.onLoginClick,
     required this.onJoinClick,
-    this.onExplorePlaces,
   });
 
-  static const String mainPhoto = 'assets/cover/bellas_artes.jpg';
-  static const String secondaryPhoto = 'assets/cover/trajinera.jpg';
+  static const String photo = 'assets/cover/bellas_artes.jpg';
 
-  /// Empieza a decodificar las fotos antes de mostrar la portada.
-  static Future<void> precache(BuildContext context) => Future.wait([
-        precacheImage(const AssetImage(mainPhoto), context),
-        precacheImage(const AssetImage(secondaryPhoto), context),
-      ]).then((_) {}, onError: (_) {});
+  /// Empieza a decodificar la foto antes de mostrar la portada.
+  static Future<void> precache(BuildContext context) =>
+      precacheImage(const AssetImage(photo), context).then((_) {}, onError: (_) {});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: OhtliColors.cloudDancer,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, c) {
-            // El collage ocupa lo que sobre; en teléfonos bajos se encoge para que todo quepa
-            // sin desplazarse (y si aun así no cabe, la pantalla se desplaza).
-            final collageHeight = (c.maxHeight * 0.40).clamp(200.0, 360.0);
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: c.maxHeight),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 22),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Semantics(
-                        label: 'Ohtli',
-                        child: SvgPicture.asset(
-                          'assets/logo.svg',
-                          height: 24,
-                          colorFilter: const ColorFilter.mode(OhtliColors.stormyTeal, BlendMode.srcIn),
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      _Collage(height: collageHeight),
-                      const SizedBox(height: 28),
-                      Text.rich(
-                        TextSpan(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(color: OhtliColors.stormyTeal.withValues(alpha: 0.35)),
+                Image.asset(
+                  photo,
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0, -0.2),
+                  excludeFromSemantics: true,
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0, 0.45, 1],
+                      colors: [
+                        Colors.black.withValues(alpha: 0.18),
+                        Colors.black.withValues(alpha: 0.30),
+                        Colors.black.withValues(alpha: 0.82),
+                      ],
+                    ),
+                  ),
+                ),
+                // Contenido: se desplaza si el teléfono es muy bajo o la letra es grande
+                LayoutBuilder(
+                  builder: (context, c) => SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: c.maxHeight),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(26, 28, 26, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const TextSpan(text: 'Tu camino por la\nCiudad de México, '),
-                            TextSpan(text: 'a tu medida.', style: TextStyle(color: OhtliColors.accentText)),
+                            SvgPicture.asset(
+                              'assets/logo.svg',
+                              height: 30,
+                              colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                              semanticsLabel: 'Ohtli',
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 48),
+                                Text.rich(
+                                  const TextSpan(
+                                    children: [
+                                      TextSpan(text: 'Tu camino por la Ciudad de México, '),
+                                      TextSpan(
+                                        text: 'a tu medida.',
+                                        style: TextStyle(color: OhtliColors.accentLight),
+                                      ),
+                                    ],
+                                  ),
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 40,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    height: 1.04,
+                                    letterSpacing: -1.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 28),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: onJoinClick,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: OhtliColors.accentFill,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(vertical: 17),
+                                      shape: const StadiumBorder(),
+                                      textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16.5),
+                                    ),
+                                    child: const Text('Únete al viaje'),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: TextButton(
+                                    onPressed: onLoginClick,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 15),
+                                      shape: const StadiumBorder(),
+                                      textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 15),
+                                    ),
+                                    child: const Text('Iniciar sesión'),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
-                        style: GoogleFonts.outfit(
-                          fontSize: 33,
-                          fontWeight: FontWeight.w800,
-                          color: OhtliColors.onyx,
-                          height: 1.04,
-                          letterSpacing: -0.9,
-                        ),
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Museos, cafés, cantinas y miradores convertidos en rutas según tu tiempo, '
-                        'tu presupuesto y tus gustos.',
-                        style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.subtleText, height: 1.5),
-                      ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: onJoinClick,
-                          icon: const Icon(Icons.alt_route_rounded, size: 19),
-                          label: const Text('Crea tu ruta gratis'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: OhtliColors.cempasuchil,
-                            foregroundColor: const Color(0xFF1A120B),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 17),
-                            shape: const StadiumBorder(),
-                            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: onLoginClick,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: OhtliColors.onyx,
-                            padding: const EdgeInsets.symmetric(vertical: 17),
-                            side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.18)),
-                            shape: const StadiumBorder(),
-                            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16),
-                          ),
-                          child: const Text('Iniciar sesión'),
-                        ),
-                      ),
-                      if (onExplorePlaces != null) ...[
-                        const SizedBox(height: 6),
-                        Center(
-                          child: TextButton.icon(
-                            onPressed: onExplorePlaces,
-                            icon: const Icon(Icons.explore_rounded, size: 18),
-                            label: const Text('Explorar lugares sin cuenta'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: OhtliColors.accentText,
-                              textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-/// Collage de la portada de web en tamaño de teléfono: foto principal, una secundaria
-/// con borde y dos etiquetas flotantes.
-class _Collage extends StatelessWidget {
-  final double height;
-  const _Collage({required this.height});
-
-  @override
-  Widget build(BuildContext context) {
-    final h = height;
-    return SizedBox(
-      height: h,
-      child: LayoutBuilder(
-        builder: (context, c) {
-          final w = c.maxWidth;
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: w * 0.16,
-                top: 0,
-                right: 0,
-                bottom: h * 0.16,
-                child: const _Photo(MobileWelcomePage.mainPhoto, radius: 30),
-              ),
-              Positioned(
-                left: 0,
-                bottom: 0,
-                width: w * 0.46,
-                height: h * 0.46,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(26),
-                    border: Border.all(color: OhtliColors.cloudDancer, width: 5),
-                  ),
-                  child: const _Photo(MobileWelcomePage.secondaryPhoto, radius: 21),
-                ),
-              ),
-              Positioned(
-                left: w * 0.10,
-                top: h * 0.07,
-                child: const _Chip(
-                  icon: Icons.auto_awesome_rounded,
-                  title: 'Hecho para ti',
-                  subtitle: 'Según tus gustos',
-                  color: OhtliColors.stormyTeal,
-                ),
-              ),
-              Positioned(
-                right: 6,
-                bottom: h * 0.04,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: math.max(150, w * 0.52)),
-                  child: const _Chip(
-                    icon: Icons.alt_route_rounded,
-                    title: 'Ruta de 4 paradas',
-                    subtitle: 'Centro Histórico · 5 h',
-                    color: OhtliColors.cempasuchil,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _Photo extends StatelessWidget {
-  final String asset;
-  final double radius;
-  const _Photo(this.asset, {required this.radius});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: ColoredBox(
-        color: OhtliColors.stormyTeal.withValues(alpha: 0.2),
-        child: Image.asset(asset, fit: BoxFit.cover, width: double.infinity, height: double.infinity),
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-
-  const _Chip({required this.icon, required this.title, required this.subtitle, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(9, 9, 14, 9),
-      decoration: BoxDecoration(
-        color: OhtliColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 22, offset: const Offset(0, 9)),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, size: 17, color: color),
-          ),
-          const SizedBox(width: 9),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.outfit(fontSize: 13.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

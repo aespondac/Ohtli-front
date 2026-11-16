@@ -768,7 +768,6 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   Widget _mobileWelcome() => MobileWelcomePage(
         onLoginClick: () => _navigateTo(OhtliScreen.mobileLogin),
         onJoinClick: () => _navigateTo(OhtliScreen.mobileRegister),
-        onExplorePlaces: () => _navigateTo(OhtliScreen.places),
       );
 
   void _goPublicHome() {
@@ -818,7 +817,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
         FirebaseAuth.instance.currentUser != null &&
         !ConstructionPage.isOldDomain;
     if (!_isAuthInitialized || redirectPending) {
-      // Mientras Firebase revisa la sesión, el teléfono ya va cargando las fotos de su portada.
+      // Mientras Firebase revisa la sesión, el teléfono ya va cargando la foto de su portada.
       if (!_coverPrecached && MediaQuery.sizeOf(context).width < 800) {
         _coverPrecached = true;
         MobileWelcomePage.precache(context);
