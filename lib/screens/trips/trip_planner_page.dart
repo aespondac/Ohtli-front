@@ -2143,40 +2143,92 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     );
   }
 
-  Widget _buildFriendTile(FriendOption f, {required bool selected, required VoidCallback onTap, bool radio = false}) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.15),
-              backgroundImage: f.photoUrl != null ? NetworkImage(f.photoUrl!) : null,
-              child: f.photoUrl == null
-                  ? Text(f.initials, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal))
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(f.name, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
-            ),
-            if (f.isMutualCloseFriend) ...[
-              const Icon(Icons.star_rounded, size: 15, color: OhtliColors.cempasuchil),
-              const SizedBox(width: 4),
-              Text('Mejor amigo', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
-              const SizedBox(width: 10),
+  /// Un amigo como burbuja: su foto (o iniciales) y su nombre; al elegirlo se marca con un
+  /// aro y una palomita. Los mejores amigos llevan su estrella, como en Amigos.
+  Widget _buildFriendBubble(FriendOption f, {required bool selected, required VoidCallback onTap}) {
+    const double size = 62;
+    final first = f.name.split(' ').firstWhere((w) => w.isNotEmpty, orElse: () => f.name);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: f.isMutualCloseFriend ? '${f.name}, mejor amigo' : f.name,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 78,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: size + 8,
+                height: size + 8,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: size + 8,
+                      height: size + 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: selected ? OhtliColors.stormyTeal : Colors.transparent, width: 3),
+                      ),
+                    ),
+                    CircleAvatar(
+                      radius: size / 2,
+                      backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.15),
+                      backgroundImage: f.photoUrl != null ? NetworkImage(f.photoUrl!) : null,
+                      child: f.photoUrl == null
+                          ? Text(f.initials, style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal))
+                          : null,
+                    ),
+                    if (f.isMutualCloseFriend)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: OhtliColors.cempasuchil,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: OhtliColors.cardBg, width: 2.5),
+                          ),
+                          child: const Icon(Icons.star_rounded, size: 12, color: Colors.white),
+                        ),
+                      ),
+                    if (selected)
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: OhtliColors.stormyTeal,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: OhtliColors.cardBg, width: 2.5),
+                          ),
+                          child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                first,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 12.5,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? OhtliColors.onyx : OhtliColors.subtleText,
+                ),
+              ),
             ],
-            Icon(
-              radio
-                  ? (selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded)
-                  : (selected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded),
-              color: selected ? OhtliColors.stormyTeal : OhtliColors.subtleText,
-              size: 22,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -2212,15 +2264,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         ),
       );
     }
-    return OhtliSurface(
-      radius: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: Column(
-        children: [
+    return Wrap(
+      spacing: 10,
+      runSpacing: 14,
+      children: [
           for (final f in list)
-            _buildFriendTile(
+            _buildFriendBubble(
               f,
-              radio: surprise,
               selected: surprise ? _surpriseTargetId == f.uid : _invitedIds.contains(f.uid),
               onTap: () => setState(() {
                 if (surprise) {
@@ -2230,8 +2280,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                 }
               }),
             ),
-        ],
-      ),
+      ],
     );
   }
 
