@@ -1845,10 +1845,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
       return true;
     }
     try {
-      final saved = await TripService().getTripContent(t.userId, t.id);
-      final before = saved?.sections ?? _sections;
-      final next = change(List.of(before));
-      await TripService().updateTripContent(t.userId, t.id, TripContent(sections: next));
+      // En una transacción: si alguien guarda en el editor al mismo tiempo, no se pisa.
+      final me = FirebaseAuth.instance.currentUser;
+      final (before, next) = await TripService().changeTripContent(t.userId, t.id, change,
+          editorUid: me?.uid, editorName: me?.displayName);
       // Después del viaje, cada cambio queda en la fe de erratas con quién y cuándo.
       if (_phase == TripPhase.despues) await _recordErrata([...describeTripChanges(before, next), ...extraChanges]);
       if (!mounted) return true;
