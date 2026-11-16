@@ -1878,29 +1878,51 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   Text('Premium · \$2,000', style: OhtliUi.body(size: 12)),
                 ],
               ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OhtliChoiceChip(
-                    label: 'Aprovechar mi presupuesto',
-                    selected: _budgetStrategy == 'presupuesto',
-                    onTap: () => setState(() => _budgetStrategy = 'presupuesto'),
+              const SizedBox(height: 10),
+              // Modo ahorro: desmarcado, el plan aprovecha entre 80 % y 100 % del presupuesto.
+              Semantics(
+                checked: _budgetStrategy == 'ahorro',
+                label: 'Modo ahorro',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => setState(() => _budgetStrategy = _budgetStrategy == 'ahorro' ? 'presupuesto' : 'ahorro'),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: Checkbox(
+                            value: _budgetStrategy == 'ahorro',
+                            onChanged: (v) => setState(() => _budgetStrategy = (v ?? false) ? 'ahorro' : 'presupuesto'),
+                            activeColor: OhtliColors.stormyTeal,
+                            side: BorderSide(color: OhtliColors.onyx.withValues(alpha: 0.45), width: 1.4),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Modo ahorro',
+                                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                              const SizedBox(height: 2),
+                              Text(
+                                _budgetStrategy == 'ahorro'
+                                    ? 'Priorizamos lugares gratuitos y económicos sin sacrificar lo que más te interesa.'
+                                    : 'Sin marcar, el plan aprovecha entre el 80 % y el 100 % de tu presupuesto, si es posible.',
+                                style: OhtliUi.body(size: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  OhtliChoiceChip(
-                    label: 'Gastar lo menos posible',
-                    selected: _budgetStrategy == 'ahorro',
-                    onTap: () => setState(() => _budgetStrategy = 'ahorro'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _budgetStrategy == 'presupuesto'
-                    ? 'Buscamos lugares que usen entre el 80 % y el 100 % de tu presupuesto, si el plan lo permite.'
-                    : 'Priorizamos lugares gratuitos y económicos sin sacrificar lo que más te interesa.',
-                style: OhtliUi.body(size: 12),
+                ),
               ),
             ],
           ),
