@@ -98,6 +98,12 @@ class Trip {
 
   bool get isReleaseNotes => kind == kTripKindReleaseNotes;
 
+  /// Lugares que propuso el motor cuando el viaje salió de una recomendación
+  /// (`recommendation.poi_ids` del documento; lo escribe saveOptionAsTrip). Con esto la
+  /// retroalimentación distingue "quitó una recomendación" de "quitó algo que agregó a mano".
+  final List<String> recommendedPoiIds;
+  final String? recommendationJobId;
+
   Trip({
     required this.id,
     required this.userId,
@@ -122,6 +128,8 @@ class Trip {
     this.finishedAt,
     this.kind = kTripKindTrip,
     this.version,
+    this.recommendedPoiIds = const [],
+    this.recommendationJobId,
   });
 
   factory Trip.fromMap(Map<String, dynamic> data, String documentId) {
@@ -177,6 +185,11 @@ class Trip {
       finishedAt: (data['finishedAt'] as Timestamp?)?.toDate(),
       kind: (data['kind'] ?? kTripKindTrip).toString(),
       version: data['version']?.toString(),
+      recommendedPoiIds: data['recommendation'] is Map
+          ? List<String>.from(((data['recommendation'] as Map)['poi_ids'] as List?) ?? const [])
+          : const [],
+      recommendationJobId:
+          data['recommendation'] is Map ? (data['recommendation'] as Map)['job_id']?.toString() : null,
     );
   }
 

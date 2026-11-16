@@ -17,6 +17,7 @@ import '../models/poi_model.dart';
 import '../models/trip_model.dart';
 import '../utils/friendly_errors.dart';
 import '../services/saved_places.dart';
+import '../services/feedback_service.dart';
 import 'osrm_map_widget.dart';
 import 'ohtli_ui.dart';
 import 'poi_status_badge.dart';
@@ -31,6 +32,9 @@ class PoiDetailDialog extends StatefulWidget {
   final VoidCallback? onCreateRoute;
   final bool asSheet;
 
+  /// Dónde se abrió (retroalimentación): affinity, itinerary, catalog, trip, detail…
+  final String surface;
+
   const PoiDetailDialog({
     super.key,
     required this.poi,
@@ -38,6 +42,7 @@ class PoiDetailDialog extends StatefulWidget {
     this.onSaveToggle,
     this.onCreateRoute,
     this.asSheet = false,
+    this.surface = 'other',
   });
 
   static void show(
@@ -46,7 +51,10 @@ class PoiDetailDialog extends StatefulWidget {
     bool isSaved = false,
     ValueChanged<bool>? onSaveToggle,
     VoidCallback? onCreateRoute,
+    String surface = 'other',
+    int? position,
   }) {
+    FeedbackService.opened(poi.poiId, surface: surface, position: position);
     // En móvil se abre como hoja inferior (más natural con el pulgar); en escritorio, como diálogo
     if (ohtliIsMobileWidth(MediaQuery.of(context).size.width)) {
       showModalBottomSheet(
@@ -63,6 +71,7 @@ class PoiDetailDialog extends StatefulWidget {
             onSaveToggle: onSaveToggle,
             onCreateRoute: onCreateRoute,
             asSheet: true,
+            surface: surface,
           ),
         ),
       );
@@ -75,6 +84,7 @@ class PoiDetailDialog extends StatefulWidget {
         isSaved: isSaved,
         onSaveToggle: onSaveToggle,
         onCreateRoute: onCreateRoute,
+        surface: surface,
       ),
     );
   }
@@ -89,9 +99,12 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
   List<Map<String, dynamic>> _matchingPublicTrips = [];
   bool _isLoadingTrips = true;
 
+  final Stopwatch _dwell = Stopwatch()..start();
+
   @override
   void initState() {
     super.initState();
+    FeedbackService.ensureStarted();
     _isSaved = widget.isSaved;
     _checkSavedStatus();
     _findMatchingPublicTrips();
@@ -118,6 +131,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       return !wanted;
     });
     widget.onSaveToggle?.call(_isSaved);
+    FeedbackService.saved(widget.poi.poiId, _isSaved, surface: widget.surface);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -184,6 +198,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
 
   void _openInMaps() {
     final poi = widget.poi;
+    FeedbackService.directions(poi.poiId, surface: widget.surface);
     final query = Uri.encodeComponent('${poi.name} (${poi.location.lat},${poi.location.lng})');
     final url = 'https://www.google.com/maps/search/?api=1&query=$query';
     if (kIsWeb) {
@@ -314,6 +329,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
 
   @override
   void dispose() {
+    FeedbackService.dwell(widget.poi.poiId, _dwell.elapsed, surface: widget.surface);
     _gallery.dispose();
     super.dispose();
   }
@@ -404,11 +420,12 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     final nav = Navigator.of(context);
     final parent = nav.context;
     nav.pop();
-    PoiDetailDialog.show(parent, p, onCreateRoute: widget.onCreateRoute);
+    PoiDetailDialog.show(parent, p, onCreateRoute: widget.onCreateRoute, surface: 'detail');
   }
 
   Future<void> _share() async {
     final poi = widget.poi;
+    FeedbackService.shared(poi.poiId, surface: widget.surface);
     final address = poi.address.trim().isNotEmpty ? poi.address.trim() : poi.coloniaAlcaldiaDisplay;
     final maps = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent('${poi.name} (${poi.location.lat},${poi.location.lng})')}';
     await Clipboard.setData(ClipboardData(text: '${poi.name}\n$address\n$maps'));
@@ -815,6 +832,10 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
             itemBuilder: (_, i) => _buildNearbyCard(_nearby[i].$1, _nearby[i].$2),
           ),
         ),
+      ],
+      if (FirebaseAuth.instance.currentUser != null) ...[
+        const SizedBox(height: 30),
+        _buildFeedbackRow(),
       ],
       const SizedBox(height: 30),
       _buildTripsSection(),
@@ -1374,6 +1395,113 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
   }
 
   // Acciones siempre visibles (móvil)
+  /// 👍 / "No me interesa" y reporte de datos (retroalimentación explícita, RF-12).
+  Widget _buildFeedbackRow() {
+    final id = widget.poi.poiId;
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: FeedbackService.liked,
+      builder: (context, liked, _) => ValueListenableBuilder<Set<String>>(
+        valueListenable: FeedbackService.disliked,
+        builder: (context, disliked, _) {
+          final isLiked = liked.contains(id);
+          final isDisliked = disliked.contains(id);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTitle('TU OPINIÓN', '¿Te interesa este lugar?', Icons.thumbs_up_down_rounded, OhtliColors.stormyTeal),
+              const SizedBox(height: 6),
+              Text('Con esto ajustamos lo que te recomendamos.', style: OhtliUi.body(size: 13)),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OhtliChoiceChip(
+                    label: 'Me interesa',
+                    icon: isLiked ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
+                    selected: isLiked,
+                    onTap: () => FeedbackService.toggleLike(id, surface: widget.surface),
+                  ),
+                  OhtliChoiceChip(
+                    label: 'No me interesa',
+                    icon: isDisliked ? Icons.thumb_down_alt_rounded : Icons.thumb_down_alt_outlined,
+                    selected: isDisliked,
+                    onTap: () {
+                      FeedbackService.toggleDislike(id, surface: widget.surface);
+                      if (!isDisliked) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Listo, no te lo volveremos a sugerir.', style: GoogleFonts.inter(color: Colors.white)),
+                          backgroundColor: OhtliColors.stormyTeal,
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 3),
+                          action: SnackBarAction(
+                            label: 'Deshacer',
+                            textColor: Colors.white,
+                            onPressed: () => FeedbackService.toggleDislike(id, surface: widget.surface),
+                          ),
+                        ));
+                      }
+                    },
+                  ),
+                  OhtliChoiceChip(
+                    label: 'Reportar un dato',
+                    icon: Icons.flag_outlined,
+                    selected: false,
+                    onTap: _showReportSheet,
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showReportSheet() async {
+    const options = [
+      ('closed', 'Cerró definitivamente', Icons.block_rounded),
+      ('horario', 'El horario está mal', Icons.schedule_rounded),
+      ('precio', 'El precio está mal', Icons.payments_outlined),
+      ('ubicacion', 'La ubicación está mal', Icons.wrong_location_outlined),
+    ];
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: OhtliColors.cardBg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text('¿Qué está mal en ${widget.poi.name}?',
+                    style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+              ),
+              for (final o in options)
+                ListTile(
+                  leading: Icon(o.$3, color: OhtliColors.accentText),
+                  title: Text(o.$2, style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.onyx)),
+                  onTap: () => Navigator.of(ctx).pop(o.$1),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    FeedbackService.report(widget.poi.poiId, closed: choice == 'closed', reason: choice);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Gracias. Revisaremos este lugar.', style: GoogleFonts.inter(color: Colors.white)),
+      backgroundColor: OhtliColors.stormyTeal,
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
   Widget _buildMobileActionBar() {
     final canSave = FirebaseAuth.instance.currentUser != null;
     return Container(

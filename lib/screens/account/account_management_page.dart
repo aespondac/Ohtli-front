@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../services/user_private_data.dart';
+import '../../services/feedback_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_sidebar.dart';
 import '../../widgets/image_cropper_dialog.dart';
@@ -1161,6 +1162,9 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                 "Error marking user as deleted in Firestore: $fsError",
                               );
                             }
+
+                            // Lo que el motor aprendió del uso de la cuenta (ARCO); antes de borrar el usuario
+                            await FeedbackService.deleteMine();
 
                             // Delete the user from Firebase
                             await user.delete();

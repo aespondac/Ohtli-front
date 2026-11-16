@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../models/trip_model.dart';
+import 'feedback_service.dart';
 import 'trip_transfers.dart';
 import '../theme/cdmx_photos.dart';
 import 'trip_service.dart';
@@ -249,6 +250,8 @@ class ItineraryBlackboardService {
     required Map<String, dynamic> chosenOption,
     required String defaultTitle,
     DateTime? travelDate,
+    String? jobId,
+    int? optionIndex,
   }) async {
     final tripId = const Uuid().v4();
     final now = DateTime.now();
@@ -380,6 +383,23 @@ class ItineraryBlackboardService {
       tripId,
       TripContent(sections: sections),
     );
+
+    // 3. Qué propuso el motor (retroalimentación: el editor compara contra esto)
+    final recommended = FeedbackService.stopIds(chosenOption);
+    if (recommended.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(userId).collection('trips').doc(tripId).set({
+          'recommendation': {
+            'poi_ids': recommended,
+            if (jobId != null) 'job_id': jobId,
+            if (optionIndex != null) 'option_index': optionIndex,
+          },
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('[Blackboard] no se guardó la recomendación del viaje: $e');
+      }
+    }
+    FeedbackService.itineraryChosen(jobId, optionIndex, chosenOption, tripId: tripId);
 
     return newTrip;
   }

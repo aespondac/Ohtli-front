@@ -2,6 +2,7 @@
 
 import '../../services/place_affinity.dart';
 import '../../services/saved_places.dart';
+import '../../services/feedback_service.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
@@ -281,6 +282,8 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    FeedbackService.ensureStarted();
+    FeedbackService.disliked.addListener(_onFeedbackChanged);
 
     _shimmerController = AnimationController(
       vsync: this,
@@ -353,8 +356,13 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     });
   }
 
+  void _onFeedbackChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    FeedbackService.disliked.removeListener(_onFeedbackChanged);
     catalogVersion.removeListener(_onCatalogUpdated);
     SavedPlaces.ids.removeListener(_onSavedChanged);
     _shimmerController?.dispose();
@@ -454,6 +462,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       );
       return;
     }
+    FeedbackService.saved(poiId, !SavedPlaces.contains(poiId), surface: 'catalog');
     SavedPlaces.toggle(poiId).catchError((_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -535,11 +544,13 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     _searchRemote(_searchController.text);
   }
 
-  void _onPoiTapped(Poi poi) {
+  void _onPoiTapped(Poi poi, {String surface = 'catalog', int? position}) {
     _recordPlaceViewed(poi.poiId);
     PoiDetailDialog.show(
       context,
       poi,
+      surface: surface,
+      position: position,
       isSaved: _savedPoiIds.contains(poi.poiId),
       // El diálogo guarda con SavedPlaces; esta página se entera por el listener
       onCreateRoute: () => _createRouteFromPlace(poi),
@@ -721,7 +732,12 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     // 1. "Para ti": 5 tarjetas dobles. Con perfil de gustos, las recomendaciones del motor
     // (la afinidad solo ordena, no se muestra); sin perfil, una selección del catálogo.
     final catalogById = {for (final p in allPois) p.poiId: p};
-    final paraTiCards = (_recommended.isNotEmpty ? _recommended : allPois).take(5).toList();
+    // Lo marcado "No me interesa" sale de inmediato (el motor también lo deja de recomendar)
+    final paraTiSurface = _recommended.isNotEmpty ? 'affinity' : 'catalog';
+    final paraTiCards = (_recommended.isNotEmpty ? _recommended : allPois)
+        .where((p) => !FeedbackService.disliked.value.contains(p.poiId))
+        .take(5)
+        .toList();
 
     // 2. "Descubre nuevos lugares": Todos los lugares indexados en la CDMX para scroll horizontal continuo
     final descubrePois = List<Poi>.from(allPois);
@@ -867,7 +883,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                           isSaved: _savedPoiIds.contains(poi.poiId),
                           onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
                           onCreateRoute: () => _createRouteFromPlace(poi),
-                          onTap: () => _onPoiTapped(poi),
+                          onTap: () => _onPoiTapped(poi, surface: 'search', position: index),
                         );
                       },
                       childCount: searchResults.length,
@@ -898,16 +914,19 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
                   pois: paraTiCards,
                   height: immersiveHeight + 34,
                   gap: 22,
-                  builder: (poi, index) => PoiCard(
-                    poi: poi,
-                    width: doubleWidth,
-                    height: immersiveHeight,
-                    variant: PoiCardVariant.immersive,
-                    isSaved: _savedPoiIds.contains(poi.poiId),
-                    onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
-                    onCreateRoute: () => _createRouteFromPlace(poi),
-                    onTap: () => _onPoiTapped(poi),
-                  ),
+                  builder: (poi, index) {
+                    FeedbackService.impression(poi.poiId, surface: paraTiSurface, position: index);
+                    return PoiCard(
+                      poi: poi,
+                      width: doubleWidth,
+                      height: immersiveHeight,
+                      variant: PoiCardVariant.immersive,
+                      isSaved: _savedPoiIds.contains(poi.poiId),
+                      onToggleSave: isGuest ? null : () => _toggleSavePoi(poi.poiId),
+                      onCreateRoute: () => _createRouteFromPlace(poi),
+                      onTap: () => _onPoiTapped(poi, surface: paraTiSurface, position: index),
+                    );
+                  },
                 ),
               ),
 

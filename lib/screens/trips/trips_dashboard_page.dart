@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
 
+import '../../services/feedback_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../../utils/web_helpers.dart';
@@ -1406,7 +1407,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
     void open() {
       TripActivity.instance.markJobSeen(doc.id);
-      TripPlannerDialog.show(context, initialGeneratedOptions: options, originName: originName);
+      TripPlannerDialog.show(context, initialGeneratedOptions: options, optionsJobId: doc.id, originName: originName);
     }
 
     return _HoverCard(
@@ -1474,7 +1475,10 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       icon: Icon(Icons.delete_outline_rounded, size: 19, color: OhtliColors.onyx.withValues(alpha: 0.45)),
                       tooltip: 'Descartar rutas',
                       visualDensity: VisualDensity.compact,
-                      onPressed: () => _discardJobWithUndo(doc, message: 'Rutas descartadas'),
+                      onPressed: () {
+                        FeedbackService.itineraryDiscarded(doc.id, reason: 'descartar');
+                        _discardJobWithUndo(doc, message: 'Rutas descartadas');
+                      },
                     ),
                   ],
                 ),
@@ -1554,6 +1558,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                     TextButton(
                       onPressed: () async {
                         try {
+                          FeedbackService.itineraryDiscarded(doc.id, reason: 'descartar');
                           await doc.reference.set({'status': 'dismissed'}, SetOptions(merge: true));
                         } catch (e) {
                           if (!mounted) return;

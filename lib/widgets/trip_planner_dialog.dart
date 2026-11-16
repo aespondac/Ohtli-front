@@ -12,6 +12,7 @@ class TripPlannerDialog {
     VoidCallback? onManualPlanSelected,
     List<Map<String, dynamic>>? initialGeneratedOptions,
     String? initialActiveJobId,
+    String? optionsJobId,
     String? originName,
   }) async {
     // El planificador vive con las demás pantallas de viajes, en la parte diferida
@@ -23,6 +24,7 @@ class TripPlannerDialog {
       onManualPlanSelected: onManualPlanSelected,
       initialGeneratedOptions: initialGeneratedOptions,
       initialActiveJobId: initialActiveJobId,
+      optionsJobId: optionsJobId,
       originName: originName,
     );
   }
