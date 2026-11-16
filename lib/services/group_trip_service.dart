@@ -374,7 +374,8 @@ class GroupTripService {
     if (!g.isManual) {
       try {
         final fresh = await get(g.id);
-        if (fresh != null && fresh.status == 'inviting' && fresh.everyoneResponded && fresh.acceptedIds.isNotEmpty) {
+        // Si todos rechazaron, el motor lo cancela al momento (en vez de esperar al plazo).
+        if (fresh != null && fresh.status == 'inviting' && fresh.everyoneResponded) {
           unawaited(generate(g.id));
         }
       } catch (_) {}
