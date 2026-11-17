@@ -2,4 +2,4 @@
 ///
 /// Solo se pueden crear notas de versión para esta versión. Al publicar una
 /// versión nueva, actualiza pubspec.yaml y este valor juntos.
-const String kAppVersion = '1.0.0';
+const String kAppVersion = '1.1.0';
