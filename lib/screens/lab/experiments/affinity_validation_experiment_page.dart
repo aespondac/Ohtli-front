@@ -58,6 +58,7 @@ class _AffinityValidationExperimentPageState extends State<AffinityValidationExp
           body: jsonEncode(payload),
         )
         .timeout(const Duration(seconds: 90));
+    if (response.statusCode == 503) throw EmbeddingUnavailable(response.body);
     if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
     return {...jsonDecode(response.body) as Map<String, dynamic>, '_bytes': response.bodyBytes.length};
   }

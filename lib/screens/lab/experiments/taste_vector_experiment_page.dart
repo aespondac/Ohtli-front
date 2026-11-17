@@ -24,6 +24,12 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
   List<double>? _tasteVector;
   List<Map<String, dynamic>> _rankedPois = [];
   List<Map<String, dynamic>> _filteredOutPois = [];
+  // El motor solo envía una muestra de los descartados (eran hasta 13 mil y 16 MB); el total
+  // llega aparte en filtered_out_count.
+  int _filteredOutTotal = 0;
+  // El motor respondió 503: Vertex no generó el embedding. Antes caía en silencio a un embedding
+  // de respaldo sin sentido; ahora lo dice y aquí no se inventa un ranking.
+  String? _engineError;
   int _selectedPoiIndex = 0;
   Map<String, dynamic>? _responsePayload;
   static const int _kFilteredPreview = 8;
@@ -529,11 +535,29 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
           .timeout(const Duration(seconds: 30));
 
       if (!mounted || seq != _requestSeq) return; // llegó otra petición más nueva
+      if (response.statusCode == 503) {
+        String detail = '';
+        try {
+          detail = '${(jsonDecode(response.body) as Map)['detail'] ?? ''}';
+        } catch (_) {}
+        setState(() {
+          _usedLocalFallback = false;
+          _engineError = 'El modelo de embeddings (Vertex AI) no respondió, así que el motor no calculó la afinidad. '
+              'No mostramos un ranking inventado: intenta de nuevo en unos segundos.';
+          _responsePayload = {'status': 503, if (detail.isNotEmpty) 'detail': detail};
+          _rankedPois = [];
+          _filteredOutPois = [];
+          _filteredOutTotal = 0;
+          _selectedPoiIndex = 0;
+        });
+        return;
+      }
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = jsonDecode(response.body) as Map<String, dynamic>;
         if (decoded["ranked_pois"] != null) {
           setState(() {
             _usedLocalFallback = false;
+            _engineError = null;
             _responsePayload = decoded;
             _userAxes = (decoded["user_axes"] as Map?)?.map(
               (k, v) => MapEntry(k.toString(), v.toString()),
@@ -544,6 +568,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
             _rankedPois = List<Map<String, dynamic>>.from(decoded["ranked_pois"]);
             _filteredOutPois =
                 List<Map<String, dynamic>>.from(decoded["filtered_out_pois"] ?? []);
+            _filteredOutTotal = (decoded["filtered_out_count"] as num?)?.toInt() ?? _filteredOutPois.length;
             _selectedPoiIndex = 0;
           });
           return;
@@ -849,6 +874,8 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
       _tasteVector = queryVec;
       _rankedPois = passed;
       _filteredOutPois = filteredOut;
+      _filteredOutTotal = filteredOut.length;
+      _engineError = null;
       _selectedPoiIndex = 0;
       _responsePayload = {
         // Respaldo cuando el motor no responde: no es el ranking real del catálogo.
@@ -1530,14 +1557,14 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                       color: OhtliColors.onyx,
                     ),
                   ),
-                  if (_usedLocalFallback)
+                  if (_usedLocalFallback || _engineError != null)
                     TextButton.icon(
                       onPressed: _isLoading ? null : _runMatch,
                       icon: const Icon(Icons.refresh_rounded, size: 16),
                       label: const Text("Reintentar con el motor"),
                     ),
                   Text(
-                    "${_rankedPois.length} viables • ${_filteredOutPois.length} filtrados",
+                    "${_rankedPois.length} viables • $_filteredOutTotal filtrados",
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -1547,6 +1574,21 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                 ],
               ),
               const SizedBox(height: 6),
+              if (_engineError != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: OhtliColors.xoconostle.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: OhtliColors.xoconostle.withValues(alpha: 0.35)),
+                  ),
+                  child: Text(
+                    _engineError!,
+                    style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.onyx, height: 1.4),
+                  ),
+                ),
               Text(
                 "Haz clic en cualquier lugar para comparar sus 4 ejes semánticos arriba.",
                 style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
@@ -1720,6 +1762,14 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                     ),
                   ),
                 ),
+                if (_filteredOutTotal > _filteredOutPois.length && (_showAllFiltered || _filteredOutPois.length <= _kFilteredPreview))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      "Y ${_filteredOutTotal - _filteredOutPois.length} más por el mismo tipo de filtro (el motor solo envía una muestra).",
+                      style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText),
+                    ),
+                  ),
                 if (_filteredOutPois.length > _kFilteredPreview)
                   TextButton(
                     onPressed: () => setState(() => _showAllFiltered = !_showAllFiltered),

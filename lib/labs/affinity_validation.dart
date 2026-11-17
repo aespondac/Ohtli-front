@@ -14,6 +14,15 @@ import 'dart:math' as math;
 
 typedef MatchFn = Future<Map<String, dynamic>> Function(Map<String, dynamic> payload);
 
+/// La [MatchFn] la lanza cuando el motor responde 503: Vertex no generó el embedding (el motor ya no
+/// cae en silencio al embedding de respaldo). Cuenta como falla del modelo de embeddings.
+class EmbeddingUnavailable implements Exception {
+  final String detail;
+  const EmbeddingUnavailable([this.detail = '']);
+  @override
+  String toString() => 'EmbeddingUnavailable($detail)';
+}
+
 enum CheckStatus { pass, warn, fail }
 
 class AffinityCheck {
@@ -292,6 +301,9 @@ Future<List<AffinityCheck>> runAffinityChecks(
       final r = await match(payload);
       sources.add((r['embedding_source'] ?? 'desconocida').toString());
       return r;
+    } on EmbeddingUnavailable {
+      sources.add('503: Vertex no respondió');
+      return null;
     } catch (_) {
       return null;
     }
@@ -347,7 +359,7 @@ Future<List<AffinityCheck>> runAffinityChecks(
           ? _kNoEngine
           : (fallback.isEmpty
               ? 'Las ${sources.length} respuestas usaron Vertex AI'
-              : '${fallback.length} de ${sources.length} respuestas usaron el respaldo (${fallback.toSet().join(', ')})'),
+              : '${fallback.length} de ${sources.length} respuestas sin Vertex AI (${fallback.toSet().join(', ')})'),
       status: sources.isNotEmpty && fallback.isEmpty ? CheckStatus.pass : CheckStatus.fail,
     ));
   }
@@ -609,7 +621,8 @@ Future<List<AffinityCheck>> runAffinityChecks(
       final bytes = (access['_bytes'] as num?)?.toInt();
       if (bytes != null) {
         final mb = bytes / (1024 * 1024);
-        final filteredCount = ((access['filtered_out_pois'] as List?) ?? const []).length;
+        final filteredCount = (access['filtered_out_count'] as num?)?.toInt() ??
+            ((access['filtered_out_pois'] as List?) ?? const []).length;
         checks.add(AffinityCheck(
           id: 'peso_respuesta',
           title: 'Peso de la respuesta',

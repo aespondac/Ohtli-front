@@ -226,6 +226,31 @@ void main() {
       expect(verdictOf(checks).level, VerdictLevel.unreliable);
     });
 
+    test('un 503 del motor cuenta como falla del modelo de embeddings', () async {
+      var n = 0;
+      Future<Map<String, dynamic>> partial(Map<String, dynamic> p) async {
+        if (n++ == 1) throw const EmbeddingUnavailable('Vertex no disponible');
+        return _goodEngine(p);
+      }
+
+      final checks = await runAffinityChecks(partial);
+      final emb = checks.firstWhere((c) => c.id == 'embedding');
+      expect(emb.status, CheckStatus.fail);
+      expect(emb.result, contains('503'));
+    });
+
+    test('usa filtered_out_count cuando el motor solo manda una muestra', () async {
+      Future<Map<String, dynamic>> capped(Map<String, dynamic> p) async {
+        final r = await _goodEngine(p);
+        if (p['accessibility_needs'] == 'accesibilidad_universal') r['filtered_out_count'] = 13193;
+        return r;
+      }
+
+      final peso = (await runAffinityChecks(capped)).firstWhere((c) => c.id == 'peso_respuesta');
+      expect(peso.result, contains('13193'));
+      expect(peso.status, CheckStatus.pass);
+    });
+
     test('veredicto', () {
       final unstableCritical = AffinityCheck(
           id: 'determinismo', title: 'Determinismo', question: 'q', result: 'r', status: CheckStatus.warn, unstable: true);
