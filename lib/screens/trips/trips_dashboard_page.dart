@@ -246,54 +246,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
 
   void _openAiPlanner() => TripPlannerDialog.show(context, startAi: true);
 
-  // En móvil: un solo botón "Nuevo viaje" que ofrece las dos formas de empezar
-  void _showNewTripSheet() {
-    final isDark = OhtliSettings.instance.isDarkMode;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDark ? const Color(0xFF1E1E22) : Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (sheetContext) {
-        Widget option(IconData icon, String title, String subtitle, Color color, VoidCallback onTap) {
-          return ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-            leading: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
-              child: Icon(icon, color: color),
-            ),
-            title: Text(title, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-            subtitle: Text(subtitle, style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText)),
-            onTap: () {
-              Navigator.of(sheetContext).pop();
-              onTap();
-            },
-          );
-        }
-
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(color: OhtliColors.cardBorder, borderRadius: BorderRadius.circular(2)),
-                ),
-                const SizedBox(height: 12),
-                option(Icons.auto_awesome_rounded, 'Planear con IA', 'Te proponemos 3 rutas según tus gustos', OhtliColors.stormyTeal, _openAiPlanner),
-                option(Icons.edit_note_rounded, 'Crear plan por mi cuenta', 'Empieza un borrador en blanco', OhtliColors.accent, () => TripPlannerDialog.show(context, startManual: true)),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildSectionHeader(String title, {String? subtitle, Widget? leading, Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -625,24 +577,6 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
                       ),
                     ),
 
-                    // Dos formas claras de empezar (escritorio / tablet)
-                    if (!isMobileHeader)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          OhtliSecondaryButton(
-                            label: 'Crear plan',
-                            icon: Icons.add_rounded,
-                            onPressed: () => TripPlannerDialog.show(context, startManual: true),
-                          ),
-                          const SizedBox(width: 10),
-                          OhtliPrimaryButton(
-                            label: 'Planear con IA',
-                            icon: Icons.auto_awesome_rounded,
-                            onPressed: _openAiPlanner,
-                          ),
-                        ],
-                      ),
                   ],
                 ),
               ),
@@ -788,17 +722,7 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
               ],
             ),
             
-            // Móvil: un solo botón que ofrece IA o plan manual
-            floatingActionButton: isMobileHeader
-                ? FloatingActionButton.extended(
-                    onPressed: _showNewTripSheet,
-                    backgroundColor: OhtliColors.stormyTeal,
-                    foregroundColor: Colors.white,
-                    shape: const StadiumBorder(),
-                    icon: const Icon(Icons.add_rounded),
-                    label: Text('Nuevo viaje', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
-                  )
-                : null,
+            // Sin botones propios para planear: ya están el + de la barra lateral y el botón flotante
           ),
         );
       },
