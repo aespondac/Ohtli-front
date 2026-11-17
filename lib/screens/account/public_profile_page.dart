@@ -1339,14 +1339,17 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
 
   Widget _buildActionButtons(bool isDark) {
     if (!_isSelf) {
+      // Mismo alto para los dos botones, centrados en la fila
+      Widget sized(Widget b) => SizedBox(height: _actionHeight, child: b);
       return Wrap(
         spacing: 8,
         runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          _isFollowing
+          sized(_isFollowing
               ? OhtliSecondaryButton(compact: true, label: 'Siguiendo', icon: Icons.check_rounded, onPressed: _toggleFollow)
-              : OhtliPrimaryButton(compact: true, label: 'Seguir', icon: Icons.add_rounded, onPressed: _toggleFollow),
-          _buildFriendButton(isDark),
+              : OhtliPrimaryButton(compact: true, label: 'Seguir', icon: Icons.add_rounded, onPressed: _toggleFollow)),
+          sized(_buildFriendButton(isDark)),
         ],
       );
     }
@@ -1382,6 +1385,8 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     return _buildTripsGrid(_visibleTrips(isTrip: isTrip), isDesktop, isDark, isTrip: isTrip);
   }
 
+  static const double _actionHeight = 42;
+
   Widget _buildFriendButton(bool isDark) {
     if (_currentUser == null) return const SizedBox.shrink();
 
@@ -1415,21 +1420,23 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           const PopupMenuDivider(height: 1),
           item('none', Icons.person_remove_rounded, 'Eliminar amistad', OhtliColors.warningText),
         ],
+        // Mismo alto, tipografía y padding que los botones compactos de al lado
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          height: _actionHeight,
+          padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
           decoration: BoxDecoration(
-            color: _isCloseFriend ? OhtliColors.accent.withValues(alpha: 0.14) : OhtliColors.cardBg,
-            borderRadius: BorderRadius.circular(30),
+            color: _isCloseFriend ? OhtliColors.accent.withValues(alpha: 0.14) : Colors.transparent,
+            borderRadius: BorderRadius.circular(_actionHeight / 2),
             border: Border.all(color: _isCloseFriend ? OhtliColors.accent.withValues(alpha: 0.45) : OhtliColors.onyx.withValues(alpha: 0.18)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(_isCloseFriend ? Icons.star_rounded : Icons.people_alt_rounded,
-                  size: 16, color: _isCloseFriend ? OhtliColors.accent : OhtliColors.accentText),
+                  size: 16, color: _isCloseFriend ? OhtliColors.accent : OhtliColors.onyx),
               const SizedBox(width: 6),
               Text(_isCloseFriend ? 'Mejor amigo' : 'Amigo',
-                  style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                  style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
               const SizedBox(width: 2),
               Icon(Icons.expand_more_rounded, size: 18, color: OhtliColors.subtleText),
             ],
