@@ -137,8 +137,18 @@ class _ExplorePageState extends State<ExplorePage> {
     final notes = config.showReleaseNotes ? await _loadReleaseNotes() : const <PinnedStory>[];
     if (!mounted) return;
     final base = pinned ?? kPinnedStories;
-    final ids = notes.map((n) => n.tripId).toSet();
-    final featured = [...notes, ...base.where((p) => !ids.contains(p.tripId))];
+    // Sin repetidos: la misma crónica puede venir como nota y como destacada,
+    // o elegirse dos veces en la configuración.
+    final seen = <String>{};
+    final candidates = [...notes, ...base].where((p) => seen.add(p.tripId)).toList();
+    // Solo las que de verdad se pueden mostrar: una crónica borrada, privada o que
+    // no carga dejaba una página en blanco que igual sumaba un punto al carrusel.
+    final shown = await Future.wait(candidates.map(_isStoryAvailable));
+    if (!mounted) return;
+    final featured = [
+      for (var i = 0; i < candidates.length; i++)
+        if (shown[i]) candidates[i],
+    ];
     setState(() {
       _configuredPinned = pinned;
       _featured = featured;
@@ -147,6 +157,32 @@ class _ExplorePageState extends State<ExplorePage> {
       if (pinned != null) _communityFuture = _loadCommunityTrips();
     });
     if (_pinnedController.hasClients) _pinnedController.jumpToPage(0);
+  }
+
+  /// Trae el viaje y el perfil del autor de una destacada (una sola vez por historia).
+  Future<List<DocumentSnapshot>> _storyFuture(PinnedStory pinned) {
+    return _pinnedFutures['${pinned.authorId}/${pinned.tripId}'] ??= Future.wait([
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(pinned.authorId)
+          .collection('trips')
+          .doc(pinned.tripId)
+          .get(),
+      FirebaseFirestore.instance
+          .collection('public_profiles')
+          .doc(pinned.authorId)
+          .get(),
+    ]);
+  }
+
+  /// Si la tarjeta de esta destacada tendrá contenido (el viaje existe y se puede leer).
+  Future<bool> _isStoryAvailable(PinnedStory pinned) async {
+    try {
+      final docs = await _storyFuture(pinned).timeout(const Duration(seconds: 10));
+      return docs[0].exists;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Notas de versión publicadas por el equipo editorial, la más reciente primero.
@@ -692,18 +728,7 @@ class _ExplorePageState extends State<ExplorePage> {
 
   Widget _buildPinnedStoryCard(PinnedStory pinned, bool isMobile, bool isDark) {
     return FutureBuilder<List<DocumentSnapshot>>(
-      future: _pinnedFutures['${pinned.authorId}/${pinned.tripId}'] ??= Future.wait([
-        FirebaseFirestore.instance
-            .collection('users')
-            .doc(pinned.authorId)
-            .collection('trips')
-            .doc(pinned.tripId)
-            .get(),
-        FirebaseFirestore.instance
-            .collection('public_profiles')
-            .doc(pinned.authorId)
-            .get(),
-      ]),
+      future: _storyFuture(pinned),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
