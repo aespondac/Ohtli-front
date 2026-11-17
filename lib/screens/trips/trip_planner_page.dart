@@ -1550,9 +1550,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                           : 'Votación del grupo · votaron ${_group!.voters.where(_group!.votes.containsKey).length} de ${_group!.voters.length}')
                       : _currentStep == PlannerStep.routeTriadCarousel
                       ? '3 multirutas temáticas calculadas por IA'
-                      : (_manualMode && _currentStep != PlannerStep.bifurcation
-                          ? 'Tu plan, armado por ti'
-                          : 'Diseño inteligente de experiencias en CDMX'),
+                      : (_currentStep == PlannerStep.bifurcation
+                          ? 'Diseño inteligente de experiencias en CDMX'
+                          : (_manualMode ? 'Plan por tu cuenta' : 'Plan con IA')),
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     color: OhtliColors.subtleText,
@@ -2173,10 +2173,55 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     );
   }
 
+  /// Qué tipo de plan se está armando (con IA o por tu cuenta), con opción de cambiar: los dos
+  /// empiezan en el mismo paso y sin esto se veían iguales.
+  Widget _buildModeBanner() {
+    final ai = !_manualMode;
+    return OhtliSurface(
+      radius: 18,
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      accent: ai ? OhtliColors.stormyTeal : OhtliColors.accent,
+      child: Row(
+        children: [
+          OhtliServiceIcon(
+            icon: ai ? Icons.auto_awesome_rounded : Icons.edit_note_rounded,
+            color: ai ? OhtliColors.stormyTeal : OhtliColors.accent,
+            size: 40,
+            soft: true,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(ai ? 'Plan con IA' : 'Plan por tu cuenta',
+                    style: GoogleFonts.outfit(fontSize: 15.5, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                const SizedBox(height: 2),
+                Text(
+                  ai
+                      ? 'Te proponemos 3 rutas con tus gustos y eliges una.'
+                      : 'Fijas el inicio y con quién vas; las paradas las agregas tú en el editor.',
+                  style: OhtliUi.body(size: 12.5),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => setState(() => _manualMode = !_manualMode),
+            style: TextButton.styleFrom(foregroundColor: OhtliColors.accentText),
+            child: Text(ai ? 'Hacerlo yo' : 'Usar IA', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStartingPointStep(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _buildModeBanner(),
+        const SizedBox(height: 20),
         Text('¿Desde dónde inicia tu recorrido?', style: OhtliUi.title(size: isMobile ? 24 : 30)),
         const SizedBox(height: 6),
         Text('Elige si vuelves al inicio o terminas en otro lugar, y los puntos de tu recorrido en la Ciudad de México.',

@@ -47,7 +47,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   /// Botón flotante de planear (teléfono): se esconde al desplazarse hacia abajo.
-  bool _fabVisible = true;
 
   // Preservar iconos contra tree-shaking en la web
   // ignore: unused_field
@@ -421,22 +420,8 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-        // Al bajar se esconde el botón de planear (tapaba el final de cada lista); al subir vuelve
-        body: NotificationListener<UserScrollNotification>(
-          onNotification: (n) {
-            if (n.metrics.axis == Axis.vertical) {
-              final show = n.direction != ScrollDirection.reverse;
-              if (n.direction != ScrollDirection.idle && show != _fabVisible) setState(() => _fabVisible = show);
-            }
-            return false;
-          },
-          child: _buildBody(isMobile),
-        ),
-        floatingActionButton: AnimatedSlide(
-          offset: _fabVisible ? Offset.zero : const Offset(0, 2),
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          child: FloatingActionButton(
+        body: _buildBody(isMobile),
+        floatingActionButton: FloatingActionButton(
           tooltip: 'Planear un viaje',
           heroTag: 'fab_plan_trip_mobile',
           onPressed: () {
@@ -450,7 +435,6 @@ class _HomePageState extends State<HomePage> {
             height: 22,
             colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
           ),
-        ),
         ),
         bottomNavigationBar: BottomNavigationBar(
           // En pantallas fuera de la barra (p. ej. Notificaciones) se mantiene la última pestaña
