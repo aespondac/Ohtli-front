@@ -846,19 +846,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // En escritorio, los números junto a los botones (a la derecha), sin el hueco
-                    // que quedaba en medio
-                    if (isDesktop)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Flexible(child: _buildStatsRow(isDark, followingList.length)),
-                          Container(width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 24), color: OhtliColors.cardBorder),
-                          _buildActionButtons(isDark),
-                        ],
-                      )
-                    else ...[
+                    if (!isDesktop) ...[
                       _buildActionButtons(isDark),
                       const SizedBox(height: 16),
                       _buildStatsRow(isDark, followingList.length),
@@ -1121,22 +1109,36 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
             height: overlap,
             child: Opacity(
               opacity: fullOpacity,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildActiveTitleWidget(_userProfile?['activeTitleId'] ?? 'viajero', isDark),
-                      const SizedBox(width: 8),
-                      OhtliMetaPill(icon: Icons.calendar_today_rounded, label: _formatJoinedDate(rawCreatedAt, short: !isDesktop)),
-                      if (_isHiddenForViewer) ...[
-                        const SizedBox(width: 8),
-                        const OhtliMetaPill(icon: Icons.lock_outline_rounded, label: 'Perfil privado'),
-                      ],
-                    ],
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildActiveTitleWidget(_userProfile?['activeTitleId'] ?? 'viajero', isDark),
+                            const SizedBox(width: 8),
+                            OhtliMetaPill(icon: Icons.calendar_today_rounded, label: _formatJoinedDate(rawCreatedAt, short: !isDesktop)),
+                            if (_isHiddenForViewer) ...[
+                              const SizedBox(width: 8),
+                              const OhtliMetaPill(icon: Icons.lock_outline_rounded, label: 'Perfil privado'),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  // Escritorio: números y botones en la misma franja que las fichas, sin hueco
+                  if (isDesktop) ...[
+                    const SizedBox(width: 20),
+                    _buildStatsRow(isDark, (_profileSocial?.following ?? const []).length),
+                    Container(width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 20), color: OhtliColors.cardBorder),
+                    _buildActionButtons(isDark),
+                    SizedBox(width: isDesktop ? 12 : 0),
+                  ],
+                ],
               ),
             ),
           ),
@@ -1306,10 +1308,11 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
         ],
       );
-      if (onTap == null) return child;
+      final boxed = Padding(padding: const EdgeInsets.all(2), child: child);
+      if (onTap == null) return boxed;
       return Semantics(
         button: true,
-        child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10), child: Padding(padding: const EdgeInsets.all(2), child: child)),
+        child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10), child: boxed),
       );
     }
 
@@ -1337,7 +1340,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         child: Row(children: [for (final t in tiles) Padding(padding: const EdgeInsets.only(right: 28), child: t)]),
       );
     }
-    return Wrap(spacing: 28, runSpacing: 14, alignment: WrapAlignment.end, children: tiles);
+    return Row(mainAxisSize: MainAxisSize.min, children: [for (var i = 0; i < tiles.length; i++) Padding(padding: EdgeInsets.only(left: i == 0 ? 0 : 24), child: tiles[i])]);
   }
 
   Widget _buildActionButtons(bool isDark) {
@@ -1356,7 +1359,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         ],
       );
     }
-    return OhtliSecondaryButton(
+    return SizedBox(height: _actionHeight, child: OhtliSecondaryButton(
       compact: true,
       label: 'Editar perfil',
       icon: Icons.edit_rounded,
@@ -1374,7 +1377,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           ),
         );
       },
-    );
+    ));
   }
 
   Widget _buildTripsList(bool isDesktop, bool isDark, {required bool isTrip}) {
