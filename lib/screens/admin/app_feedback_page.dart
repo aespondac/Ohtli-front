@@ -1,3 +1,4 @@
+import '../../services/achievements_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -27,6 +28,7 @@ String _when(DateTime? d) {
 (String, Color) _statusOf(String status) => switch (status) {
       FeedbackService.statusReviewed => ('Revisado', OhtliColors.stormyTeal),
       FeedbackService.statusResolved => ('Resuelto', OhtliColors.subtleText),
+      FeedbackService.statusFixed => ('Arreglado', OhtliColors.stormyTeal),
       _ => ('Nuevo', OhtliColors.accent),
     };
 
@@ -348,9 +350,12 @@ class _AppFeedbackDetailState extends State<AppFeedbackDetail> {
         _status = status;
         if (note != null) _note = note;
       });
+      // Arreglado: el motor revisa sus logros para que le llegue Amini sin esperar.
+      if (status == FeedbackService.statusFixed) AchievementsService.instance.evaluateFor(widget.feedback.uid);
       _toast(switch (status) {
         FeedbackService.statusReviewed => 'Marcado como revisado.',
         FeedbackService.statusResolved => 'Marcado como resuelto.',
+        FeedbackService.statusFixed => 'Marcado como arreglado. Quien lo envió gana el título Amini.',
         _ => 'Guardado.',
       });
     } catch (e) {
@@ -576,6 +581,13 @@ class _AppFeedbackDetailState extends State<AppFeedbackDetail> {
                       label: 'Resuelto',
                       icon: Icons.task_alt_rounded,
                       onPressed: _busy ? null : () => _setStatus(FeedbackService.statusResolved),
+                    ),
+                  if (_status != FeedbackService.statusFixed)
+                    OhtliSecondaryButton(
+                      compact: true,
+                      label: 'Ya se arregló',
+                      icon: Icons.rocket_launch_outlined,
+                      onPressed: _busy ? null : () => _setStatus(FeedbackService.statusFixed),
                     ),
                   if (_status != FeedbackService.statusNew)
                     OhtliSecondaryButton(

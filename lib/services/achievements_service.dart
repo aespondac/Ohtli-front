@@ -10,7 +10,10 @@ class AchievementProgress {
   final int value;
   final int goal;
   final bool earned;
-  const AchievementProgress(this.value, this.goal, this.earned);
+
+  /// Su función todavía no existe: se muestra como "próximamente".
+  final bool comingSoon;
+  const AchievementProgress(this.value, this.goal, this.earned, {this.comingSoon = false});
 
   double get ratio => goal <= 0 ? 1 : (value / goal).clamp(0, 1).toDouble();
 }
@@ -58,6 +61,21 @@ class AchievementsService {
     }
   }
 
+  /// Solo el admin: revisa los logros de otra persona (p. ej. al marcar su comentario como
+  /// arreglado). El motor lo exige.
+  Future<void> evaluateFor(String uid) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || uid.isEmpty) return;
+    try {
+      final token = await user.getIdToken();
+      await http
+          .post(Uri.parse('$_apiUrl/v1/achievements/evaluate/$uid'), headers: {'Authorization': 'Bearer $token'})
+          .timeout(const Duration(seconds: 30));
+    } catch (e) {
+      debugPrint('[Logros] no se revisaron los logros de $uid: $e');
+    }
+  }
+
   static Map<String, AchievementProgress> parseProgress(dynamic raw) {
     if (raw is! Map) return const {};
     return {
@@ -67,6 +85,7 @@ class AchievementsService {
             ((e.value as Map)['value'] as num?)?.toInt() ?? 0,
             ((e.value as Map)['goal'] as num?)?.toInt() ?? 1,
             (e.value as Map)['earned'] == true,
+            comingSoon: (e.value as Map)['comingSoon'] == true,
           ),
     };
   }

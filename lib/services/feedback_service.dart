@@ -182,7 +182,10 @@ class FeedbackService {
   static const String statusNew = 'new';
   static const String statusReviewed = 'reviewed';
   static const String statusResolved = 'resolved';
-  static const List<String> commentStatuses = [statusNew, statusReviewed, statusResolved];
+
+  /// El comentario se convirtió en un arreglo publicado (da el logro Amini a quien lo envió).
+  static const String statusFixed = 'fixed';
+  static const List<String> commentStatuses = [statusNew, statusReviewed, statusResolved, statusFixed];
 
   /// Navegador y sistema en pocas palabras ("Chrome · macOS").
   static String describeBrowser(String userAgent) => AppDiagnostics.describeBrowserOf(userAgent);

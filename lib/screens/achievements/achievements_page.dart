@@ -92,7 +92,9 @@ class _TitlesSectionState extends State<_TitlesSection> {
                   valueListenable: AchievementsService.instance.progress,
                   builder: (context, prog, _) {
                     // Por ganar: primero los más avanzados.
-                    final sorted = [...pending]..sort((a, b) => (prog[b.id]?.ratio ?? 0).compareTo(prog[a.id]?.ratio ?? 0));
+                    double rank(QueryDocumentSnapshot<Map<String, dynamic>> d) =>
+                        d.data()['comingSoon'] == true ? -1 : (prog[d.id]?.ratio ?? 0);
+                    final sorted = [...pending]..sort((a, b) => rank(b).compareTo(rank(a)));
                     return _grid(context, [
                       for (final d in mine) _TitleTile(data: d.data(), owned: true, active: d.id == active),
                       for (final d in sorted) _TitleTile(data: d.data(), owned: false, active: false, progress: prog[d.id]),
@@ -141,9 +143,12 @@ class _TitleTile extends StatelessWidget {
                 if (active) ...[const SizedBox(width: 8), _Pill(label: 'En tu perfil', color: OhtliColors.accent)],
               ]),
               const SizedBox(height: 4),
-              Text(owned ? (data['description'] ?? '').toString() : 'Por ganar · ${(data['description'] ?? '').toString()}',
+              Text(
+                  owned
+                      ? (data['description'] ?? '').toString()
+                      : '${data['comingSoon'] == true ? 'Próximamente' : 'Por ganar'} · ${(data['description'] ?? '').toString()}',
                   style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: OhtliColors.subtleText)),
-              if (!owned && progress != null && progress!.goal > 1) ...[
+              if (!owned && data['comingSoon'] != true && progress != null && progress!.goal > 1) ...[
                 const SizedBox(height: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(99),

@@ -490,7 +490,7 @@ service cloud.firestore {
       allow read: if isSuperUser();
       allow update: if isSuperUser()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedAt'])
-        && request.resource.data.status in ['new', 'reviewed', 'resolved'];
+        && request.resource.data.status in ['new', 'reviewed', 'resolved', 'fixed'];
       allow delete: if false;
     }
 
