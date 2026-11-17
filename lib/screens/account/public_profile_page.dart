@@ -925,6 +925,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
   /// [t] va de 0 (abierta) a 1 (compacta). No usa setState: la anima el propio header fijo.
   Widget _buildHero(BuildContext context, double t, {required bool isDesktop, required double padding, required bool isDark}) {
     final String displayName = _userProfile?['displayName'] ?? 'Viajero Ohtli';
+    final String usertag = (_userProfile?['usertag'] as String?)?.trim() ?? '';
     final String? photoURL = _userProfile?['photoURL'];
     final String? coverURL = _userProfile?['coverURL'] ?? _userProfile?['coverUrl'];
     final dynamic rawCreatedAt = _userProfile?['createdAt'];
@@ -986,6 +987,19 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                     shadows: [Shadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 16)],
                   ),
                 ),
+                if (usertag.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    '@$usertag',
+                    maxLines: 1,
+                    style: GoogleFonts.inter(
+                      fontSize: isDesktop ? 16 : 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.85),
+                      shadows: [Shadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 10)],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1001,10 +1015,21 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
           avatar(42),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
+                if (usertag.isNotEmpty)
+                  Text('@$usertag',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.75))),
+              ],
+            ),
           ),
         ],
       ),
