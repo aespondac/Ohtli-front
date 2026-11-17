@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:othli_front/labs/research/lab_codenames.dart';
 import 'package:othli_front/labs/research/lab_models.dart';
+import 'package:othli_front/services/ohtli_features.dart';
 
 void main() {
   group('Validación de participantes', () {
@@ -117,6 +118,19 @@ void main() {
       expect(lik.accepts(null), isFalse);
       expect(one.accepts('z'), isFalse);
       expect(opt.accepts(null), isTrue);
+    });
+  });
+
+  group('Ohtli Insider', () {
+    test('solo testers que lo activaron', () {
+      expect(const FeatureAccess(isTester: true).showInsider, isFalse);
+      expect(const FeatureAccess(isTester: true, insiderEnabled: true).showInsider, isTrue);
+      expect(const FeatureAccess(insiderEnabled: true).showInsider, isFalse);
+    });
+    test('Logros es una función en prueba: sin registro nadie la ve', () {
+      expect(const FeatureAccess(isTester: true, isLabMember: true).isOn(kFeatureLogros), isFalse);
+      const f = LabFeature(key: kFeatureLogros, name: 'Logros', stage: FeatureStage.beta, studyIds: ['s1']);
+      expect(const FeatureAccess(isLabMember: true, features: {kFeatureLogros: f}).isOn(kFeatureLogros), isTrue);
     });
   });
 }

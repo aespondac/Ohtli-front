@@ -7,6 +7,9 @@ import 'package:flutter/widgets.dart';
 import '../config/admin.dart' show isSuperUser;
 import '../labs/research/lab_models.dart';
 
+/// Clave de la funcionalidad en prueba "Logros" (los títulos) en `lab_features`.
+const kFeatureLogros = 'logros';
+
 /// Lo que la sesión puede ver de las funcionalidades en prueba de Ohtli Labs.
 class FeatureAccess {
   final Map<String, LabFeature> features;
@@ -14,13 +17,20 @@ class FeatureAccess {
   final Map<String, LabResearchStudy> enrolledStudies;
   final bool isLabMember;
   final bool isTester;
+
+  /// El tester activó Ohtli Insider en Cuenta (`users/{uid}.insiderEnabled`).
+  final bool insiderEnabled;
   const FeatureAccess({
     this.features = const {},
     this.enrolledStudyIds = const {},
     this.enrolledStudies = const {},
     this.isLabMember = false,
     this.isTester = false,
+    this.insiderEnabled = false,
   });
+
+  /// Ohtli Insider se ve en el menú solo si es tester y lo activó.
+  bool get showInsider => isTester && insiderEnabled;
 
   Set<String> get liveStudyIds => {
         for (final e in enrolledStudies.entries)
@@ -55,6 +65,13 @@ class OhtliFeatures {
 
   bool isOn(String key) => access.value.isOn(key);
 
+  /// Activa u oculta Ohtli Insider para la cuenta.
+  Future<void> setInsider(bool on) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _db.collection('users').doc(uid).set({'insiderEnabled': on}, SetOptions(merge: true));
+  }
+
   /// Se llama una vez al iniciar la app; sigue la sesión por su cuenta.
   void start() {
     if (_started) return;
@@ -88,6 +105,10 @@ class OhtliFeatures {
       );
     }, onError: (_) {}));
 
+    _subs.add(_db.collection('users').doc(user.uid).snapshots().listen((d) {
+      access.value = _copy(insiderEnabled: d.data()?['insiderEnabled'] == true);
+    }, onError: (_) {}));
+
     _subs.add(_db
         .collection('lab_enrollments')
         .where('uid', isEqualTo: user.uid)
@@ -118,6 +139,7 @@ class OhtliFeatures {
     Map<String, LabResearchStudy>? enrolledStudies,
     bool? isLabMember,
     bool? isTester,
+    bool? insiderEnabled,
   }) {
     final a = access.value;
     return FeatureAccess(
@@ -126,6 +148,7 @@ class OhtliFeatures {
       enrolledStudies: enrolledStudies ?? a.enrolledStudies,
       isLabMember: isLabMember ?? a.isLabMember,
       isTester: isTester ?? a.isTester,
+      insiderEnabled: insiderEnabled ?? a.insiderEnabled,
     );
   }
 }
@@ -142,6 +165,6 @@ class FeatureGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<FeatureAccess>(
         valueListenable: OhtliFeatures.instance.access,
-        builder: (_, a, __) => a.isOn(featureKey) ? child : fallback,
+        builder: (_, a, _) => a.isOn(featureKey) ? child : fallback,
       );
 }

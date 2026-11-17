@@ -79,6 +79,14 @@ en curso que la incluya) → `oficial` (todos) · `retirada` (nadie).
   lectura).
 - Una función puede estar en varios estudios; se ve si el tester está inscrito en cualquiera.
 
+### Ohtli Insider y Logros
+
+- **Ohtli Insider** (`/insider`) es la sección de la app donde el tester ve las funciones en prueba
+  de sus estudios y lo que esos estudios le piden (validar resultados). Está **oculta por
+  defecto**: el tester la activa en Cuenta → Ohtli Insider (`users/{uid}.insiderEnabled`).
+- **Logros** (`/logros`, los títulos de viajero) es en sí una función en prueba
+  (`lab_features/logros`): aparece en el menú solo a quien la tenga activa.
+
 ## Paper y validación
 
 Etapas (`paper.stage`): `borrador → revision_interna → revision_externa* → validacion_participantes* → aprobado → publicado`.

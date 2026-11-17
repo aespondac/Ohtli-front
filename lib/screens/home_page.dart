@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
 import 'achievements/achievements_page.dart';
+import 'insider/insider_page.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:web/web.dart' as web;
@@ -274,6 +275,9 @@ class _HomePageState extends State<HomePage> {
     }
     if (_currentIndex == 6) {
       return const NotificationsPage();
+    }
+    if (_currentIndex == 7) {
+      return const InsiderPage();
     }
     return ExplorePage(
       onOpenTab: (index) => _selectTab(index),

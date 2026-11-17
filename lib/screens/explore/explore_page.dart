@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, avoid_print
 
+import '../../services/ohtli_features.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -351,7 +352,10 @@ class _ExplorePageState extends State<ExplorePage> {
                         if (_featured.isNotEmpty) _buildPinnedStoriesCarousel(isMobile, isDark),
                         if (_featured.length > 1) _buildPinnedDots(),
                         const SizedBox(height: 12),
-                        _buildQuickActions(isMobile, gutter),
+                        ValueListenableBuilder<FeatureAccess>(
+                          valueListenable: OhtliFeatures.instance.access,
+                          builder: (_, _, _) => _buildQuickActions(isMobile, gutter),
+                        ),
                         const SizedBox(height: 40),
                         _buildSectionHeader(
                           gutter: gutter,
@@ -460,13 +464,22 @@ class _ExplorePageState extends State<ExplorePage> {
         color: OhtliColors.accentFill,
         onTap: () => widget.onOpenTab(3),
       ),
-      _QuickAction(
-        icon: Icons.emoji_events_outlined,
-        title: 'Logros',
-        subtitle: 'Títulos y funciones en prueba',
-        color: OhtliColors.stormyTeal,
-        onTap: () => widget.onOpenTab(4),
-      ),
+      if (OhtliFeatures.instance.isOn(kFeatureLogros))
+        _QuickAction(
+          icon: Icons.emoji_events_outlined,
+          title: 'Logros',
+          subtitle: 'Tus títulos de viajero',
+          color: OhtliColors.stormyTeal,
+          onTap: () => widget.onOpenTab(4),
+        ),
+      if (OhtliFeatures.instance.access.value.showInsider)
+        _QuickAction(
+          icon: Icons.science_outlined,
+          title: 'Ohtli Insider',
+          subtitle: 'Funciones en prueba',
+          color: OhtliColors.accentFill,
+          onTap: () => widget.onOpenTab(7),
+        ),
     ];
 
     return Padding(

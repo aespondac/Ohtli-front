@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
 
+import '../../services/ohtli_features.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:web/web.dart' as web;
@@ -38,7 +39,7 @@ import '../../utils/web_helpers.dart';
 import '../register/register_page.dart' show PasswordChecklist, PasswordRules;
 import '../../services/public_profiles.dart';
 
-enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences }
+enum AccountSection { dashboard, personalInfo, security, addresses, privacy, preferences, insider }
 
 class AccountManagementPage extends StatefulWidget {
   final void Function(int index) onBackToHome;
@@ -1534,6 +1535,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
         return _buildPrivacyView();
       case AccountSection.preferences:
         return _buildPreferencesView();
+      case AccountSection.insider:
+        return const _InsiderSettings();
     }
   }
 
@@ -1686,6 +1689,7 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     AccountSection.addresses: ('Direcciones', 'Puntos de partida guardados para planear tus rutas.'),
     AccountSection.privacy: ('Privacidad', 'Quién ve tu perfil, tus viajes y tus datos.'),
     AccountSection.preferences: ('Preferencias y accesibilidad', 'Tema, colores y tamaño de letra.'),
+    AccountSection.insider: ('Ohtli Insider', 'Las funciones en prueba de los estudios de Ohtli Labs en los que participas.'),
   };
 
   void _openSection(AccountSection section) => setState(() {
@@ -1800,6 +1804,15 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           section: AccountSection.preferences,
           onTap: () => _openSection(AccountSection.preferences),
         ),
+        // Solo testers de Ohtli Labs: activar la sección Ohtli Insider (oculta por defecto).
+        if (OhtliFeatures.instance.access.value.isTester)
+          _SettingsItem(
+            icon: Icons.science_outlined,
+            title: 'Ohtli Insider',
+            subtitle: 'Funciones en prueba de tus estudios',
+            section: AccountSection.insider,
+            onTap: () => _openSection(AccountSection.insider),
+          ),
         _SettingsItem(
           icon: Icons.rate_review_outlined,
           title: 'Enviar comentarios',
@@ -3582,4 +3595,37 @@ class _SettingsItem {
     this.section,
     this.opensDialog = false,
   });
+}
+
+/// Cuenta → Ohtli Insider: el tester decide si ve la sección en el menú.
+class _InsiderSettings extends StatelessWidget {
+  const _InsiderSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<FeatureAccess>(
+      valueListenable: OhtliFeatures.instance.access,
+      builder: (context, a, _) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SwitchListTile(
+          activeThumbColor: OhtliColors.stormyTeal,
+          contentPadding: EdgeInsets.zero,
+          title: Text('Mostrar Ohtli Insider',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.onyx, fontSize: 14)),
+          subtitle: Text(
+            'Agrega al menú la sección con las funciones en prueba de los estudios en los que participas y lo que esos '
+            'estudios te piden, como validar sus resultados.',
+            style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.onyx.withValues(alpha: 0.55)),
+          ),
+          value: a.insiderEnabled,
+          onChanged: a.isTester ? (v) => OhtliFeatures.instance.setInsider(v) : null,
+        ),
+        if (!a.isTester)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('Disponible para testers de Ohtli Labs.',
+                style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText)),
+          ),
+      ]),
+    );
+  }
 }

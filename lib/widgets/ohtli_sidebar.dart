@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
+import '../services/ohtli_features.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:web/web.dart' as web;
@@ -27,7 +28,7 @@ Color get _accent => ohtliAccent;
 /// - Si dejas el puntero encima ~1.5 s se despliega *sobre* el contenido (sin
 ///   empujarlo) y se vuelve a contraer en cuanto el puntero sale o eliges una opción.
 /// - Doble clic en una zona vacía del menú lo fija abierto o lo contrae (también ⌘B / Ctrl+B).
-/// - Atajos: ⌥1…⌥7 / Alt+1…Alt+7 para cada sección, ⌥N / Alt+N para planear un
+/// - Atajos: ⌥1…⌥8 / Alt+1…Alt+8 para cada sección, ⌥N / Alt+N para planear un
 ///   viaje, Esc para cerrar el menú desplegado y ? para ver todos los atajos.
 class OhtliSidebar extends StatefulWidget {
   final int currentIndex; // 0: Inicio, 1: Mis Viajes, 2: Account/Mi Cuenta (non-tab)
@@ -95,7 +96,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
   static const Duration _leaveGrace = Duration(milliseconds: 280);
   static const String _pinnedKey = 'ohtli_sidebar_pinned';
 
-  static const List<_NavItem> _items = [
+  static const List<_NavItem> _allItems = [
     _NavItem(Icons.explore_outlined, Icons.explore, 'Explorar', 0, PhysicalKeyboardKey.digit1, '1'),
     _NavItem(Icons.map_outlined, Icons.map_rounded, 'Mis Viajes', 1, PhysicalKeyboardKey.digit2, '2'),
     _NavItem(Icons.person_outline, Icons.person, 'Perfil', 2, PhysicalKeyboardKey.digit3, '3'),
@@ -103,7 +104,22 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     _NavItem(Icons.place_outlined, Icons.place, 'Lugares', 5, PhysicalKeyboardKey.digit5, '5'),
     _NavItem(Icons.emoji_events_outlined, Icons.emoji_events, 'Logros', 4, PhysicalKeyboardKey.digit6, '6'),
     _NavItem(Icons.notifications_none, Icons.notifications, 'Notificaciones', 6, PhysicalKeyboardKey.digit7, '7'),
+    _NavItem(Icons.science_outlined, Icons.science, 'Ohtli Insider', 7, PhysicalKeyboardKey.digit8, '8'),
   ];
+
+  /// Logros es una función en prueba (clave `logros`) y Ohtli Insider solo aparece si el
+  /// tester lo activó en Cuenta.
+  List<_NavItem> get _items {
+    final a = OhtliFeatures.instance.access.value;
+    return [
+      for (final it in _allItems)
+        if ((it.index != 4 || a.isOn(kFeatureLogros)) && (it.index != 7 || a.showInsider)) it,
+    ];
+  }
+
+  void _onAccessChanged() {
+    if (mounted) setState(() {});
+  }
 
   static const _NavItem _accessibilityItem = _NavItem(
     Icons.accessibility_new_outlined,
@@ -149,6 +165,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
+    OhtliFeatures.instance.access.addListener(_onAccessChanged);
     _peekCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 200));
     // Solo visual (la barrita de progreso); el disparo real lo hace _dwellTimer.
     _dwellCtrl = AnimationController(vsync: this, duration: _dwell);
@@ -205,6 +222,7 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
 
   @override
   void dispose() {
+    OhtliFeatures.instance.access.removeListener(_onAccessChanged);
     HardwareKeyboard.instance.removeHandler(_handleKey);
     _collapseTimer?.cancel();
     _dwellTimer?.cancel();

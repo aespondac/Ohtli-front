@@ -33,6 +33,7 @@ class AppUrl {
     4: '/logros',
     5: '/lugares',
     6: '/notificaciones',
+    7: '/insider',
   };
 
   /// Índice de pestaña para una ruta, o null si no es una pestaña.
