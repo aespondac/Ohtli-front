@@ -236,6 +236,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       TextEditingController(text: _registeredName.split(RegExp(r'\s+')).first);
   late final TextEditingController _lastNameController = TextEditingController(
       text: _registeredName.split(RegExp(r'\s+')).skip(1).join(' '));
+  late String _lastNameForTag = _registeredName;
   String get _typedName => '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
   // Foto de perfil: la de Google o la que suba aquí
   String? _photoUrl = FirebaseAuth.instance.currentUser?.photoURL;
@@ -376,11 +377,9 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   bool get _canProceed {
     switch (_stepId) {
       case 'profile':
-        return _firstNameController.text.trim().isNotEmpty;
+        return _firstNameController.text.trim().isNotEmpty && _tagOk;
       case 'tastes':
         return _selectedCultural.length >= 2 && _selectedCulinary.isNotEmpty;
-      case 'privacy':
-        return _tagOk;
       default:
         return true;
     }
@@ -531,19 +530,19 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   }
 
   String get _blockedHint {
-    if (_stepId == 'profile') return "Escribe tu nombre";
+    if (_stepId == 'profile') {
+      if (_firstNameController.text.trim().isEmpty) return "Escribe tu nombre";
+      if (!_tagOk) {
+        if (_tagController.text.trim().isEmpty) return "Elige tu usertag";
+        return _tagStatus == 'checking' ? "Revisando tu usertag…" : "Elige otro usertag";
+      }
+    }
     if (_stepId == 'tastes') {
       if (_selectedCultural.length < 2) {
         final missing = 2 - _selectedCultural.length;
         return missing == 1 ? "Elige 1 actividad más" : "Elige al menos 2 actividades";
       }
       return "Elige al menos 1 sabor";
-    }
-    if (_stepId == 'privacy') {
-      if (!_tagOk) {
-        if (_tagController.text.trim().isEmpty) return "Elige tu usertag";
-        return _tagStatus == 'checking' ? "Revisando tu usertag…" : "Elige otro usertag";
-      }
     }
     return "";
   }
@@ -2219,6 +2218,19 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   String _savedName = '';
 
+  /// Al escribir el nombre, si aún no tiene usertag y no ha tocado la sugerencia,
+  /// la sugerencia sigue al nombre.
+  void _onNameChanged() {
+    final untouched = _tagController.text.isEmpty || _tagController.text == _suggestTag(_lastNameForTag);
+    final suggestion = _suggestTag(_typedName);
+    if (_currentTag == null && untouched && suggestion != _tagController.text) {
+      _tagController.text = suggestion;
+      _checkTag(suggestion);
+    }
+    _lastNameForTag = _typedName;
+    setState(() {});
+  }
+
   /// Guarda el nombre corregido (perfil, cuenta y perfil público). Si aún no tiene
   /// usertag y no tocó la sugerencia, la vuelve a sugerir con el nombre nuevo.
   Future<void> _saveName() async {
@@ -2228,10 +2240,6 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     final previous = _savedName.isNotEmpty ? _savedName : _registeredName;
     if (name == previous) return;
     _savedName = name;
-    if (_currentTag == null && _tagController.text == _suggestTag(previous)) {
-      _tagController.text = _suggestTag(name);
-      _checkTag(_tagController.text);
-    }
     try {
       await user.updateDisplayName(name);
       await UserPrivateData.save(user.uid, {'displayName': name, 'updatedAt': FieldValue.serverTimestamp()});
@@ -2254,7 +2262,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         );
     final first = TextField(
       controller: _firstNameController,
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) => _onNameChanged(),
       textCapitalization: TextCapitalization.words,
       autofillHints: const [AutofillHints.givenName],
       style: GoogleFonts.inter(color: OhtliColors.onyx, fontWeight: FontWeight.w600),
@@ -2262,7 +2270,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
     final last = TextField(
       controller: _lastNameController,
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) => _onNameChanged(),
       textCapitalization: TextCapitalization.words,
       autofillHints: const [AutofillHints.familyName],
       style: GoogleFonts.inter(color: OhtliColors.onyx, fontWeight: FontWeight.w600),
@@ -2274,7 +2282,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       children: [
         _buildStepHeader(
           eyebrow: "Tus datos",
-          title: "Así te verán tus amigos",
+          title: "Así te verán y te encontrarán",
           description: ProfilePhotoService.signedInWithGoogle
               ? "Tomamos tu nombre y tu foto de Google. Si algo no está bien, corrígelo aquí."
               : "Revisa cómo quedó tu nombre al registrarte y agrega una foto para que te reconozcan.",
@@ -2318,6 +2326,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ],
           ),
         ],
+        const SizedBox(height: 20),
+        _buildTagField(),
+        const SizedBox(height: 20),
+        _buildPhoneSection(),
       ],
     );
   }
@@ -2380,7 +2392,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
-  Widget _buildPrivacyStep() {
+  /// Usertag (obligatorio) con su estado: libre, ocupado, no permitido…
+  Widget _buildTagField() {
     final tagHelp = switch (_tagStatus) {
       'checking' => ('Revisando…', OhtliColors.subtleText, Icons.hourglass_top_rounded),
       'ok' => (ProfileDirectory.normalizeTag(_tagController.text) == _currentTag ? 'Es tu usertag' : '¡Está libre!', OhtliColors.accentText, Icons.check_circle_rounded),
@@ -2404,25 +2417,6 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildStepHeader(
-          eyebrow: "Tu perfil",
-          title: "Tú decides quién te ve",
-          description: "Puedes cambiar todo esto después en Cuenta → Privacidad.",
-        ),
-        const SizedBox(height: 20),
-        _StaggerIn(
-          index: 0,
-          child: _switchCard(
-            icon: Icons.public_rounded,
-            title: "Perfil público",
-            body: _profilePublic
-                ? "Cualquiera puede ver tu perfil, tus viajes públicos y encontrarte."
-                : "Solo tus amigos ven tus viajes y tus amigos. Nadie te encuentra al buscar.",
-            value: _profilePublic,
-            onChanged: (v) => _profilePublic = v,
-          ),
-        ),
-        const SizedBox(height: 12),
         _buildGroupLabel("Tu usertag"),
         const SizedBox(height: 10),
         Semantics(
@@ -2447,7 +2441,15 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  /// Teléfono (opcional) con verificación por SMS y, ya verificado, la de dos pasos.
+  Widget _buildPhoneSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         _buildGroupLabel("Tu teléfono"),
         const SizedBox(height: 10),
         PhoneVerificationField(sandbox: widget.sandbox, onVerified: (_) => setState(() {})),
@@ -2459,7 +2461,32 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         const SizedBox(height: 6),
         Text("Opcional. Te mandamos un código por SMS para confirmar que es tuyo. Con él podrás activar la verificación en dos pasos y, si tu perfil es público, que alguien que ya tiene tu número te encuentre. Nunca lo mostramos.",
             style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, height: 1.4)),
-        const SizedBox(height: 18),
+      ],
+    );
+  }
+
+  Widget _buildPrivacyStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepHeader(
+          eyebrow: "Privacidad",
+          title: "Tú decides quién te ve",
+          description: "Puedes cambiar todo esto después en Cuenta → Privacidad.",
+        ),
+        const SizedBox(height: 20),
+        _StaggerIn(
+          index: 0,
+          child: _switchCard(
+            icon: Icons.public_rounded,
+            title: "Perfil público",
+            body: _profilePublic
+                ? "Cualquiera puede ver tu perfil, tus viajes públicos y encontrarte."
+                : "Solo tus amigos ven tus viajes y tus amigos. Nadie te encuentra al buscar.",
+            value: _profilePublic,
+            onChanged: (v) => _profilePublic = v,
+          ),
+        ),
         if (_profilePublic)
           _StaggerIn(
             index: 1,
