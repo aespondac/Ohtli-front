@@ -4791,6 +4791,23 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
           ),
           const SizedBox(height: 12),
         ],
+        // Por qué la ruta va en ese orden (Recomendador).
+        if ((option['route_rationale'] ?? '').toString().trim().isNotEmpty) ...[
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(Icons.alt_route_rounded, size: 18, color: OhtliColors.stormyTeal),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                (option['route_rationale']).toString().trim(),
+                style: GoogleFonts.inter(fontSize: 13.5, color: textSecondary, height: 1.5),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+        ],
         if (((option['highlights'] as List?) ?? const []).isNotEmpty) ...[
           Wrap(
             spacing: 8,

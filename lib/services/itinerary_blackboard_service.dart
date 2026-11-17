@@ -418,9 +418,12 @@ class ItineraryBlackboardService {
 
     // Introducción del viaje: el resumen del Recomendador y sus puntos fuertes, listos para
     // publicarse sin reescribirlos.
+    // Por qué la ruta va en ese orden (Recomendador), para que no parezca que da vueltas.
+    final rationale = (chosenOption['route_rationale'] ?? '').toString().trim();
     final intro = <String>[
       if (summary.isNotEmpty) summary,
       if (highlights.isNotEmpty) highlights.map((h) => '- $h').join('\n'),
+      if (rationale.isNotEmpty) '**El orden del recorrido:** $rationale',
     ].join('\n\n');
     if (intro.isNotEmpty) {
       sections.insert(
