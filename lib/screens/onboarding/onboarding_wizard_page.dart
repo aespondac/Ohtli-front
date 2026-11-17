@@ -171,7 +171,7 @@ class OnboardingWizardPage extends StatefulWidget {
 }
 
 class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
-  static const int _totalSteps = 7;
+  static const int _totalSteps = 8;
   int _currentStep = 0;
   bool _isSynthesizing = false;
   String _synthesisMessage = "Estamos preparando tus primeras recomendaciones…";
@@ -229,6 +229,14 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   bool _contactDiscoverable = true;
   bool _notificationsOn = true;
   final TextEditingController _tagController = TextEditingController();
+
+  // Paso "Tus datos": nombre como quedó en el registro o en Google, para corregirlo
+  late final String _registeredName = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
+  late final TextEditingController _firstNameController =
+      TextEditingController(text: _registeredName.split(RegExp(r'\s+')).first);
+  late final TextEditingController _lastNameController = TextEditingController(
+      text: _registeredName.split(RegExp(r'\s+')).skip(1).join(' '));
+  String get _typedName => '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
   // Foto de perfil: la de Google o la que suba aquí
   String? _photoUrl = FirebaseAuth.instance.currentUser?.photoURL;
   bool _photoUploading = false;
@@ -272,7 +280,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   void initState() {
     super.initState();
     _loadExistingSelectionsIfAny();
-    // Lugares es el 2.º paso: el catálogo se carga mientras se ajusta la accesibilidad.
+    // Lugares es el 3.er paso: el catálogo se carga mientras se ajusta la accesibilidad y los datos.
     _ensureCatalog();
   }
 
@@ -349,15 +357,17 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   @override
   void dispose() {
     _tagController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _tagDebounce?.cancel();
     _friendDebounce?.cancel();
     _stepScrollController.dispose();
     super.dispose();
   }
 
-  /// Orden: accesibilidad primero (para que cada quien ajuste la letra antes de todo),
-  /// luego lugares, que prellenan los gustos.
-  static const List<String> _stepIds = ['a11y', 'places', 'tastes', 'outings', 'addresses', 'friends', 'privacy'];
+  /// Orden: accesibilidad primero (para que cada quien ajuste la letra antes de todo), sus datos
+  /// (foto y nombre), luego lugares, que prellenan los gustos.
+  static const List<String> _stepIds = ['a11y', 'profile', 'places', 'tastes', 'outings', 'addresses', 'friends', 'privacy'];
   String get _stepId => _stepIds[_currentStep];
 
   /// El usertag es obligatorio para todos (identifica tu perfil aunque sea privado).
@@ -365,6 +375,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   bool get _canProceed {
     switch (_stepId) {
+      case 'profile':
+        return _firstNameController.text.trim().isNotEmpty;
       case 'tastes':
         return _selectedCultural.length >= 2 && _selectedCulinary.isNotEmpty;
       case 'privacy':
@@ -495,6 +507,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   // ==========================================================
   static const List<Map<String, dynamic>> _stepMeta = [
     {"label": "Accesibilidad", "icon": Icons.accessibility_new_rounded},
+    {"label": "Tus datos", "icon": Icons.badge_outlined},
     {"label": "Lugares", "icon": Icons.bookmark_add_outlined},
     {"label": "Gustos", "icon": Icons.palette_outlined},
     {"label": "Salidas", "icon": Icons.directions_walk_rounded},
@@ -511,12 +524,14 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     if (target == 'places') _ensureCatalog();
     // Al pasar de Lugares a lo siguiente, los lugares elegidos marcan los gustos.
     if (_stepId == 'places' && step > _currentStep) _prefillTastesFromPlaces();
+    if (_stepId == 'profile') _saveName();
     if (target == 'friends') _loadFriendSuggestions();
     setState(() => _currentStep = step);
     if (_stepScrollController.hasClients) _stepScrollController.jumpTo(0);
   }
 
   String get _blockedHint {
+    if (_stepId == 'profile') return "Escribe tu nombre";
     if (_stepId == 'tastes') {
       if (_selectedCultural.length < 2) {
         final missing = 2 - _selectedCultural.length;
@@ -931,6 +946,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     switch (_stepId) {
       case 'a11y':
         return _buildA11yStep(width);
+      case 'profile':
+        return _buildProfileStep(width);
       case 'places':
         return _buildSeedPlacesStep(width);
       case 'tastes':
@@ -2180,11 +2197,116 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
+  String _savedName = '';
+
+  /// Guarda el nombre corregido (perfil, cuenta y perfil público). Si aún no tiene
+  /// usertag y no tocó la sugerencia, la vuelve a sugerir con el nombre nuevo.
+  Future<void> _saveName() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final name = _typedName;
+    if (widget.sandbox || user == null || name.isEmpty) return;
+    final previous = _savedName.isNotEmpty ? _savedName : _registeredName;
+    if (name == previous) return;
+    _savedName = name;
+    if (_currentTag == null && _tagController.text == _suggestTag(previous)) {
+      _tagController.text = _suggestTag(name);
+      _checkTag(_tagController.text);
+    }
+    try {
+      await user.updateDisplayName(name);
+      await UserPrivateData.save(user.uid, {'displayName': name, 'updatedAt': FieldValue.serverTimestamp()});
+    } catch (e) {
+      debugPrint('[onboarding] no se pudo guardar el nombre: $e');
+    }
+  }
+
+  Widget _buildProfileStep(double width) {
+    InputDecoration deco(String label, IconData icon) => InputDecoration(
+          labelText: label,
+          labelStyle: GoogleFonts.inter(color: OhtliColors.subtleText),
+          prefixIcon: Icon(icon, color: OhtliColors.accentText),
+          filled: true,
+          fillColor: OhtliColors.innerCardBg,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: OhtliColors.cardBorder)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: OhtliColors.cardBorder)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: OhtliColors.accentText, width: 1.6)),
+        );
+    final first = TextField(
+      controller: _firstNameController,
+      onChanged: (_) => setState(() {}),
+      textCapitalization: TextCapitalization.words,
+      autofillHints: const [AutofillHints.givenName],
+      style: GoogleFonts.inter(color: OhtliColors.onyx, fontWeight: FontWeight.w600),
+      decoration: deco("Nombre(s)", Icons.person_outline_rounded),
+    );
+    final last = TextField(
+      controller: _lastNameController,
+      onChanged: (_) => setState(() {}),
+      textCapitalization: TextCapitalization.words,
+      autofillHints: const [AutofillHints.familyName],
+      style: GoogleFonts.inter(color: OhtliColors.onyx, fontWeight: FontWeight.w600),
+      decoration: deco("Apellidos", Icons.badge_outlined),
+    );
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepHeader(
+          eyebrow: "Tus datos",
+          title: "Así te verán tus amigos",
+          description: ProfilePhotoService.signedInWithGoogle
+              ? "Tomamos tu nombre y tu foto de Google. Si algo no está bien, corrígelo aquí."
+              : "Revisa cómo quedó tu nombre al registrarte y agrega una foto para que te reconozcan.",
+        ),
+        const SizedBox(height: 20),
+        if (!widget.sandbox) ...[
+          _buildProfilePhotoCard(),
+          const SizedBox(height: 20),
+        ],
+        _buildGroupLabel("Tu nombre"),
+        const SizedBox(height: 10),
+        if (width < 520) ...[
+          first,
+          const SizedBox(height: 10),
+          last,
+        ] else
+          Row(
+            children: [
+              Expanded(child: first),
+              const SizedBox(width: 10),
+              Expanded(child: last),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Text(
+          "Así aparece en tu perfil, en los planes que compartes y cuando alguien te busca.",
+          style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, height: 1.4),
+        ),
+        if (email.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(Icons.mail_outline_rounded, size: 16, color: OhtliColors.subtleText),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Tu correo: $email",
+                  style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
   /// Foto de perfil: si entró con Google ya se ve la suya y la puede cambiar; si no, se la pide.
   Widget _buildProfilePhotoCard() {
     final google = ProfilePhotoService.signedInWithGoogle;
     final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
-    final name = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
+    final name = _typedName;
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2268,10 +2390,6 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           description: "Puedes cambiar todo esto después en Cuenta → Privacidad.",
         ),
         const SizedBox(height: 20),
-        if (!widget.sandbox) ...[
-          _buildProfilePhotoCard(),
-          const SizedBox(height: 12),
-        ],
         _StaggerIn(
           index: 0,
           child: _switchCard(
