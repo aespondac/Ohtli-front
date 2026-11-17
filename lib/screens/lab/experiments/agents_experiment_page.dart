@@ -33,6 +33,19 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
     'Generador de Itinerarios': 'generador',
   };
 
+  // Punto de partida, presupuesto y radio: el motor los acepta (AgentRunRequest) pero la consola
+  // siempre mandaba los valores por omisión (Zócalo, $500, 3 km), así que no se podía probar otra zona.
+  static const List<({String name, double lat, double lng})> _origins = [
+    (name: 'Zócalo', lat: 19.4326, lng: -99.1332),
+    (name: 'Coyoacán', lat: 19.3496, lng: -99.1623),
+    (name: 'Roma Norte', lat: 19.4194, lng: -99.1606),
+    (name: 'Polanco', lat: 19.4328, lng: -99.1915),
+    (name: 'San Ángel', lat: 19.3466, lng: -99.1903),
+  ];
+  int _originIndex = 0;
+  double _budget = 500;
+  double _radiusKm = 3;
+
   final List<String> _presets = [
     'Cantinas históricas en Centro Histórico con ambiente bohemio',
     'Ruta de librerías y cafés de especialidad en Coyoacán',
@@ -67,7 +80,13 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
           .post(
             Uri.parse('https://api-xluju5gywq-uc.a.run.app/v1/labs/agents/run'), // directo: el gateway corta a los 60 s
             headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'},
-            body: jsonEncode({'agent': _agentIds[_selectedAgent] ?? 'comparador', 'prompt': prompt}),
+            body: jsonEncode({
+              'agent': _agentIds[_selectedAgent] ?? 'comparador',
+              'prompt': prompt,
+              'origin': {'lat': _origins[_originIndex].lat, 'lng': _origins[_originIndex].lng},
+              'budget': _budget.roundToDouble(),
+              'radius_km': _radiusKm,
+            }),
           )
           .timeout(const Duration(seconds: 90));
 
@@ -303,6 +322,59 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
           ),
           const SizedBox(height: 20),
 
+          Text(
+            'Punto de partida:',
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < _origins.length; i++)
+                ChoiceChip(
+                  label: Text(_origins[i].name),
+                  avatar: Icon(Icons.location_on_rounded, size: 14,
+                      color: i == _originIndex ? Colors.white : const Color(0xFF6C5CE7)),
+                  selected: i == _originIndex,
+                  onSelected: (v) {
+                    if (v) setState(() => _originIndex = i);
+                  },
+                  selectedColor: const Color(0xFF6C5CE7),
+                  labelStyle: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: i == _originIndex ? Colors.white : OhtliColors.onyx,
+                  ),
+                  backgroundColor: OhtliColors.innerCardBg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: OhtliColors.cardBorder),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSlider(
+            label: 'Presupuesto por persona',
+            value: _budget,
+            min: 0,
+            max: 3000,
+            divisions: 30,
+            display: '\$${_budget.round()} MXN',
+            onChanged: (v) => setState(() => _budget = v),
+          ),
+          _buildSlider(
+            label: 'Radio de búsqueda',
+            value: _radiusKm,
+            min: 0.5,
+            max: 15,
+            divisions: 29,
+            display: '${_radiusKm.toStringAsFixed(1)} km',
+            onChanged: (v) => setState(() => _radiusKm = v),
+          ),
+          const SizedBox(height: 12),
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -323,6 +395,40 @@ class _AgentsExperimentPageState extends State<AgentsExperimentPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required String display,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('$label:',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+            ),
+            Text(display, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: divisions,
+          activeColor: const Color(0xFF6C5CE7),
+          label: display,
+          onChanged: onChanged,
+        ),
+      ],
     );
   }
 

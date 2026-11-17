@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -42,9 +43,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
   late final TextEditingController _textController =
       TextEditingController(text: _canExplore ? '' : 'tranquilo, histórico, arquitectura clásica, café de especialidad');
 
+  // Comparar: un vector suelto no dice nada a un tester; dos textos y su similitud coseno sí.
+  final TextEditingController _compareController =
+      TextEditingController(text: 'ruidoso, fiesta, antros y música electrónica hasta tarde');
+
   // Result States
   Map<String, dynamic>? _explorationData;
   List<dynamic>? _vectorResult;
+  double? _similarity;
 
   @override
   void dispose() {
@@ -52,6 +58,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
     _lngController.dispose();
     _radiusController.dispose();
     _textController.dispose();
+    _compareController.dispose();
     super.dispose();
   }
 
@@ -64,11 +71,14 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         _errorMessage = '';
         _explorationData = null;
         _vectorResult = null;
+        _similarity = null;
         _jobMessage = '';
         _jobProgress = 0.0;
         _latencyMs = null;
 
-        if (newValue == 'vibe') {
+        if (newValue == 'compare') {
+          _textController.text = 'tranquilo, histórico, arquitectura clásica, café de especialidad';
+        } else if (newValue == 'vibe') {
           _textController.text = 'tranquilo, histórico, arquitectura clásica, café de especialidad';
         } else if (newValue == 'mood') {
           _textController.text = 'quiero relajarme, caminar bajo árboles y aprender cosas nuevas';
@@ -84,6 +94,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
       _errorMessage = '';
       _explorationData = null;
       _vectorResult = null;
+      _similarity = null;
       _jobMessage = 'Conectando con microservicios en Staging...';
       _jobProgress = 0.0;
       _latencyMs = null;
@@ -92,6 +103,18 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
     final stopwatch = Stopwatch()..start();
 
     try {
+      if (_selectedMode == 'compare') {
+        final vectors = await Future.wait([_vibeVector(_textController.text), _vibeVector(_compareController.text)]);
+        stopwatch.stop();
+        if (!mounted || seq != _runSeq) return;
+        setState(() {
+          _latencyMs = stopwatch.elapsedMilliseconds;
+          _similarity = _cosine(vectors[0], vectors[1]);
+          _vectorResult = vectors[0];
+          _isLoading = false;
+        });
+        return;
+      }
       String endpoint = '';
       Map<String, dynamic> payload = {};
 
@@ -118,7 +141,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         uri,
         headers: {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'},
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 30)); // un arranque en frío de Cloud Run pasa de 10 s
 
       stopwatch.stop();
       if (!mounted || seq != _runSeq) return;
@@ -152,6 +175,33 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         _isLoading = false;
       });
     }
+  }
+
+  static const _apiBase = 'https://api-xluju5gywq-uc.a.run.app';
+
+  Future<List<double>> _vibeVector(String text) async {
+    final response = await http
+        .post(
+          Uri.parse('$_apiBase/v1/api/vibe'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'vibe_description': text}),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) throw Exception('el servicio respondió ${response.statusCode}');
+    final vec = (jsonDecode(response.body) as Map)['vector'] as List?;
+    if (vec == null || vec.isEmpty) throw Exception('el servicio no devolvió un vector');
+    return vec.map((e) => (e as num).toDouble()).toList();
+  }
+
+  static double _cosine(List<double> a, List<double> b) {
+    var dot = 0.0, na = 0.0, nb = 0.0;
+    for (var i = 0; i < math.min(a.length, b.length); i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    if (na < 1e-12 || nb < 1e-12) return 0;
+    return (dot / (math.sqrt(na) * math.sqrt(nb))).clamp(-1.0, 1.0);
   }
 
   /// Sondea la exploración hasta que termina, falla, se cambia de modo o pasan ~10 min.
@@ -210,7 +260,8 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
           const SizedBox(height: 24),
           if (_errorMessage.isNotEmpty) _buildErrorCard(),
           if (_explorationData != null) _buildOepResults(),
-          if (_vectorResult != null) _buildVectorResult(),
+          if (_similarity != null) _buildSimilarityResult(),
+          if (_vectorResult != null && _similarity == null) _buildVectorResult(),
         ],
       ),
     );
@@ -280,6 +331,7 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
                 const DropdownMenuItem(value: 'oep', child: Text('OEP (exploración geoespacial multifuente)', overflow: TextOverflow.ellipsis)),
               const DropdownMenuItem(value: 'vibe', child: Text('Vibe API (vectorización del estilo de viaje)', overflow: TextOverflow.ellipsis)),
               const DropdownMenuItem(value: 'mood', child: Text('Mood API (vectorización del estado de ánimo)', overflow: TextOverflow.ellipsis)),
+              const DropdownMenuItem(value: 'compare', child: Text('Comparar dos vibras (similitud semántica)', overflow: TextOverflow.ellipsis)),
             ],
             onChanged: _onModeChanged,
           ),
@@ -287,7 +339,12 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
 
           if (_selectedMode == 'oep') _buildOepForm()
           else if (_selectedMode == 'vibe') _buildTextForm('Describe tu estilo de viaje / Vibe deseado')
-          else if (_selectedMode == 'mood') _buildTextForm('Describe qué tipo de experiencia o estado de ánimo buscas hoy'),
+          else if (_selectedMode == 'mood') _buildTextForm('Describe qué tipo de experiencia o estado de ánimo buscas hoy')
+          else if (_selectedMode == 'compare') ...[
+            _buildTextForm('Vibra A'),
+            const SizedBox(height: 12),
+            _buildTextForm('Vibra B', controller: _compareController),
+          ],
 
           const SizedBox(height: 24),
           SizedBox(
@@ -433,9 +490,9 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
     );
   }
 
-  Widget _buildTextForm(String hint) {
+  Widget _buildTextForm(String hint, {TextEditingController? controller}) {
     return TextField(
-      controller: _textController,
+      controller: controller ?? _textController,
       style: GoogleFonts.inter(color: OhtliColors.onyx),
       decoration: InputDecoration(
         labelText: hint,
@@ -559,6 +616,66 @@ class _ApisExperimentPageState extends State<ApisExperimentPage> {
         children: [
           Text('$label: ', style: GoogleFonts.inter(fontSize: 12, color: color)),
           Text(value, style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSimilarityResult() {
+    final sim = _similarity!;
+    // Medido con el servicio (que antepone "Vibras y ambiente deseado:" a todo texto): opuestos ≈0.70,
+    // relacionados ≈0.78, paráfrasis ≈0.95.
+    final (verdict, color) = sim >= 0.92
+        ? ('Casi la misma vibra', OhtliColors.stormyTeal)
+        : sim >= 0.80
+            ? ('Vibras afines', const Color(0xFF00796B))
+            : sim >= 0.75
+                ? ('Algo en común', const Color(0xFFB85900))
+                : ('Vibras distintas', OhtliColors.xoconostle);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: OhtliColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Similitud coseno entre A y B',
+              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(sim.toStringAsFixed(3),
+                  style: GoogleFonts.outfit(fontSize: 34, fontWeight: FontWeight.w800, color: color)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 7),
+                  child: Text(verdict, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: sim.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: OhtliColors.innerCardBg,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Es la misma medida que usa el Comparador para emparejar tus gustos con los lugares. '
+            'Con este servicio nunca baja mucho: vibras opuestas quedan cerca de 0.70 y arriba de 0.92 dicen casi lo mismo.',
+            style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText, height: 1.45),
+          ),
         ],
       ),
     );
