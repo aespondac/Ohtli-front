@@ -21,6 +21,9 @@ import 'lab_sma_page.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
+import 'research/research_console.dart';
+import 'research/research_papers.dart';
+import 'research/research_participate.dart';
 
 /// Ohtli Labs con sesión: una sola interfaz con menú lateral (como la app de Ohtli) y vistas
 /// según el rol. Antes eran tres pantallas con accesos distintos (espacio de testers, consola y
@@ -38,9 +41,13 @@ class LabsAppPage extends StatefulWidget {
 
   /// La sección pedida tiene sentido para el rol; si no, la de inicio del rol.
   static String validSection(String? section, LabRole role) {
-    final fallback = role.isMember ? 'study:${kLabStudies.first.id}' : 'participa';
+    final fallback = role.isMember ? 'studies' : (role.isReviewer ? 'reviews' : 'participa');
     final s = section ?? '';
+    if (role.isReviewer) return (s == 'reviews' || s == 'resultados') ? s : fallback;
     if (s == 'participa' || s == 'resultados') return s;
+    if (const ['projects', 'studies', 'library', 'surveys', 'features', 'reviews', 'audit'].contains(s)) {
+      return role.isMember ? s : fallback;
+    }
     if (s.startsWith('exp:')) return experimentById(s.substring(4)) != null ? s : fallback;
     if (s.startsWith('study:')) return role.isMember && studyById(s.substring(6)) != null ? s : fallback;
     if (s == 'posts' || s == 'sma') return role.isMember ? s : fallback;
@@ -102,7 +109,24 @@ class _LabsAppPageState extends State<LabsAppPage> {
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) _scaffoldKey.currentState!.closeDrawer();
   }
 
-  List<(String, List<_NavEntry>)> _groups() => [
+  List<(String, List<_NavEntry>)> _groups() => _role.isReviewer
+      ? const [
+          ('REVISIÓN EXTERNA', [
+            _NavEntry('reviews', Icons.rate_review_outlined, 'Tus revisiones'),
+            _NavEntry('resultados', Icons.article_outlined, 'Resultados liberados'),
+          ]),
+        ]
+      : [
+        if (_role.isMember)
+          ('INVESTIGACIÓN', [
+            const _NavEntry('studies', Icons.biotech_outlined, 'Estudios'),
+            const _NavEntry('projects', Icons.folder_outlined, 'Proyectos'),
+            const _NavEntry('library', Icons.science_outlined, 'Biblioteca de experimentos'),
+            const _NavEntry('surveys', Icons.ballot_outlined, 'Encuestas'),
+            const _NavEntry('features', Icons.toggle_on_outlined, 'Funcionalidades'),
+            const _NavEntry('reviews', Icons.rate_review_outlined, 'Revisiones'),
+            const _NavEntry('audit', Icons.history_rounded, 'Bitácora'),
+          ]),
         ('PARTICIPA', const [
           _NavEntry('participa', Icons.how_to_reg_rounded, 'Estudios abiertos'),
           _NavEntry('resultados', Icons.article_outlined, 'Resultados liberados'),
@@ -273,10 +297,20 @@ class _LabsAppPageState extends State<LabsAppPage> {
   Widget _content(String section, bool isMobile) {
     if (section == 'participa') {
       return _scroll(
-        LabParticipateView(role: _role, onLeft: () => setState(() => _role = LabRole.none)),
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          LabParticipateView(role: _role, onLeft: () => setState(() => _role = LabRole.none)),
+          const LabOpenStudiesView(),
+        ]),
         maxWidth: 820,
       );
     }
+    if (section == 'projects') return _scroll(LabProjectsPanel(role: _role));
+    if (section == 'studies') return _scroll(LabStudiesPanel(role: _role));
+    if (section == 'library') return _scroll(const LabLibraryPanel());
+    if (section == 'surveys') return _scroll(const LabSurveysPanel());
+    if (section == 'features') return _scroll(LabFeaturesPanel(role: _role));
+    if (section == 'reviews') return _scroll(LabReviewsPanel(role: _role));
+    if (section == 'audit') return _scroll(const LabAuditPanel());
     if (section == 'resultados') return _scroll(const LabReleasedView(), maxWidth: 820);
     if (section == 'posts') return _scroll(LabPostsPanel(role: _role));
     if (section == 'sma') return _scroll(const LabSmaPanel());

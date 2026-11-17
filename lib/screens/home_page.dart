@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print
 
+import 'achievements/achievements_page.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:web/web.dart' as web;
@@ -12,7 +13,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/colors.dart';
 import '../widgets/ohtli_sidebar.dart';
 import '../widgets/ohtli_accessibility_panel.dart';
-import 'construction_page.dart';
 import 'explore/explore_page.dart';
 import 'account/public_profile_page.dart';
 import 'friends_page.dart';
@@ -267,7 +267,7 @@ class _HomePageState extends State<HomePage> {
       return const FriendsPage();
     }
     if (_currentIndex == 4) {
-      return const ConstructionPage();
+      return const AchievementsPage();
     }
     if (_currentIndex == 5) {
       return const PlacesPage();

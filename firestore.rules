@@ -689,11 +689,13 @@ service cloud.firestore {
           (request.resource.data.role == 'tester' && request.resource.data.keys().hasOnly(['role', 'via', 'consent', 'joinedAt']))
           || (request.auth.token.email_verified == true
               && exists(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower()))
-              && request.resource.data.role == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.role)));
+              && request.resource.data.role == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.role
+              && request.resource.data.get('studies', []) == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.get('studies', []))));
       allow update: if isSuperUser() || (request.auth != null && request.auth.uid == uid
           && request.auth.token.email_verified == true
           && exists(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower()))
-          && request.resource.data.role == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.role);
+          && request.resource.data.role == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.role
+          && request.resource.data.get('studies', []) == get(/databases/$(database)/documents/lab_invites/$(request.auth.token.email.lower())).data.get('studies', []));
       allow delete: if isSuperUser() || (request.auth != null && request.auth.uid == uid);
     }
     match /lab_invites/{email} {
@@ -725,13 +727,69 @@ service cloud.firestore {
         || (resource.data.status == 'published' && resource.data.visibility == 'public')
         || (resource.data.status == 'published' && resource.data.visibility == 'testers' && isLabTester());
       allow create, update: if isLabMember()
-        && (request.resource.data.get('status', 'draft') != 'published' || publicOnlyBySuper());
+        && (request.resource.data.get('status', 'draft') != 'published' || publicOnlyBySuper())
+        && paperPostAllowed();
       allow delete: if isSuperUser();
     }
-    // Estado de cada estudio (activo para testers, corrida fuente): lectura pública.
+    // La nota de un paper solo sale con el paper aprobado y fuera de proyectos confidenciales.
+    function paperPostAllowed() {
+      return request.resource.data.get('paperId', null) == null
+        || (get(/databases/$(database)/documents/lab_papers/$(request.resource.data.paperId)).data.stage in ['aprobado', 'publicado']
+            && get(/databases/$(database)/documents/lab_papers/$(request.resource.data.paperId)).data.get('confidential', false) == false
+            && labProject(get(/databases/$(database)/documents/lab_papers/$(request.resource.data.paperId)).data.get('projectId', '')).get('confidential', false) == false);
+    }
+    // Estudios (docs/labs_estructura.md). Lectura pública: en proyectos confidenciales el documento
+    // solo lleva el nombre en clave; lo real vive en private/details.
     match /lab_studies/{studyId} {
       allow read: if true;
-      allow write: if isLabMember();
+      allow create: if isLabMember() && request.resource.data.get('ownerUid', '') == request.auth.uid
+        && request.resource.data.get('status', 'borrador') == 'borrador'
+        || isSuperUser();
+      allow update: if isSuperUser()
+        || (isLabMember() && studyEditable(resource.data) && preregRespected() && !publishesStudy())
+        // Cualquier miembro liga el paper vigente (autores que no son dueños del estudio).
+        || (isLabMember() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPaperId', 'paperStage', 'updatedAt'])
+            && request.resource.data.get('paperStage', '') != 'publicado')
+        // Inscribirse o darse de baja mueve el contador de uno en uno.
+        || (isLabTester() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolledCount'])
+            && (request.resource.data.enrolledCount == resource.data.get('enrolledCount', 0) + 1
+                || request.resource.data.enrolledCount == resource.data.get('enrolledCount', 0) - 1));
+      allow delete: if isSuperUser();
+      match /private/{docId} {
+        allow read: if isSuperUser() || studySecretReader(studyId);
+        allow write: if isSuperUser() || (isLabMember() && studySecretReader(studyId));
+      }
+    }
+    // Pruebas del TT (con builtinKind) y estudios anteriores sin dueño: cualquier miembro; los
+    // demás, su dueño y colaboradores.
+    function studyEditable(d) {
+      return d.get('builtinKind', null) != null || d.get('ownerUid', '') == ''
+        || d.get('ownerUid', '') == request.auth.uid || request.auth.uid in d.get('collaborators', []);
+    }
+    // El preregistro congelado solo cambia como enmienda (sube el contador; la bitácora guarda el motivo).
+    function preregRespected() {
+      return resource.data.get('preregistration', {}).get('frozenAt', null) == null
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['preregistration'])
+        || (request.resource.data.preregistration.frozenAt == resource.data.preregistration.frozenAt
+            && request.resource.data.preregistration.get('amendments', 0) == resource.data.preregistration.get('amendments', 0) + 1);
+    }
+    function publishesStudy() {
+      return request.resource.data.get('status', '') == 'publicado' && resource.data.get('status', '') != 'publicado';
+    }
+    function labProject(pid) {
+      return get(/databases/$(database)/documents/lab_projects/$(pid)).data;
+    }
+    function inProject(pid) {
+      return request.auth != null && (isSuperUser() || request.auth.uid in labProject(pid).get('members', []));
+    }
+    // Revisor invitado a ese estudio y con su NDA firmado.
+    function reviewerOf(studyId) {
+      return request.auth != null && labRole() == 'reviewer'
+        && studyId in get(/databases/$(database)/documents/lab_members/$(request.auth.uid)).data.get('studies', [])
+        && exists(/databases/$(database)/documents/lab_ndas/$(studyId + '_' + request.auth.uid));
+    }
+    function studySecretReader(studyId) {
+      return inProject(get(/databases/$(database)/documents/lab_studies/$(studyId)).data.get('projectId', '')) || reviewerOf(studyId);
     }
     match /lab_site/{docId} {
       allow read: if isLabMember();
@@ -796,6 +854,186 @@ service cloud.firestore {
       // Cada tester puede ver las suyas (para no repetir lo que ya respondió); el laboratorio, todas.
       allow read: if isLabMember() || (request.auth != null && resource.data.uid == request.auth.uid);
       allow update, delete: if isLabMember();
+    }
+
+    // ───────────── Estructura de investigación (docs/labs_estructura.md) ─────────────
+    // Proyectos: lectura pública (los confidenciales solo muestran el nombre en clave).
+    match /lab_projects/{projectId} {
+      allow read: if true;
+      allow create: if isLabMember() && request.resource.data.ownerUid == request.auth.uid
+        && request.auth.uid in request.resource.data.get('members', [])
+        && (request.resource.data.get('confidential', false) == false
+            || (request.resource.data.get('codename', '') is string
+                && get(/databases/$(database)/documents/lab_codenames/$(request.resource.data.codename)).data.projectId == projectId));
+      // Desclasificar (confidencial → público) solo el admin de Ohtli.
+      allow update: if isSuperUser()
+        || (isLabMember() && resource.data.ownerUid == request.auth.uid
+            && request.resource.data.get('confidential', false) == resource.data.get('confidential', false)
+            && request.resource.data.get('codename', null) == resource.data.get('codename', null)
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['declassifiedAt', 'ownerUid']));
+      allow delete: if isSuperUser();
+      match /private/{docId} {
+        allow read: if inProject(projectId);
+        allow write: if isSuperUser() || (isLabMember() && inProject(projectId));
+      }
+    }
+    // Nombres en clave: cada palabra se reserva una sola vez.
+    match /lab_codenames/{word} {
+      allow read: if isLabMember();
+      allow create: if isLabMember() && request.resource.data.keys().hasOnly(['projectId', 'at']);
+      allow update, delete: if false;
+    }
+    // Biblioteca de experimentos: pública (los clasificados solo con nombre en clave; lo real en private).
+    match /lab_experiments/{expId} {
+      allow read: if true;
+      allow create: if isLabMember() && request.resource.data.ownerUid == request.auth.uid
+        && (request.resource.data.get('projectId', null) == null || inProject(request.resource.data.projectId));
+      allow update: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.get('confidential', false) == resource.data.get('confidential', false));
+      allow delete: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid);
+      match /private/{docId} {
+        allow read: if inProject(get(/databases/$(database)/documents/lab_experiments/$(expId)).data.get('projectId', ''));
+        allow write: if isLabMember() && inProject(get(/databases/$(database)/documents/lab_experiments/$(expId)).data.get('projectId', ''));
+      }
+    }
+    // Encuestas: las de proyectos confidenciales solo las leen su proyecto y los testers con su NDA.
+    function surveyReadable(d) {
+      return d.get('confidential', false) == false || isSuperUser() || inProject(d.get('projectId', ''))
+        || (request.auth != null && exists(/databases/$(database)/documents/lab_ndas/$(d.get('projectId', '') + '_' + request.auth.uid)));
+    }
+    match /lab_surveys/{surveyId} {
+      allow read: if surveyReadable(resource.data);
+      allow create: if isLabMember() && request.resource.data.ownerUid == request.auth.uid
+        && (request.resource.data.get('projectId', null) == null || inProject(request.resource.data.projectId))
+        && request.resource.data.get('questions', []).size() <= 60;
+      allow update: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.get('questions', []).size() <= 60);
+      allow delete: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid);
+    }
+    // Una respuesta por persona y encuesta (ID determinista), solo si la encuesta está abierta.
+    match /lab_survey_responses/{responseId} {
+      allow create: if isLabTester()
+        && request.resource.data.uid == request.auth.uid
+        && responseId == request.resource.data.surveyId + '_' + request.auth.uid
+        && get(/databases/$(database)/documents/lab_surveys/$(request.resource.data.surveyId)).data.get('open', false) == true
+        && request.resource.data.answers is map && request.resource.data.answers.size() <= 60
+        && request.resource.data.keys().hasOnly(['surveyId', 'studyId', 'uid', 'answers', 'at']);
+      allow read: if (request.auth != null && resource.data.uid == request.auth.uid) || isLabMember();
+      allow update: if false;
+      allow delete: if isSuperUser();
+    }
+    // Funcionalidades (feature flags). Volverla oficial o retirarla es decisión del admin.
+    match /lab_features/{key} {
+      allow read: if true;
+      allow create: if isLabMember() && request.resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta'];
+      allow update: if isSuperUser() || (isLabMember()
+        && request.resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta']
+        && resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta']);
+      allow delete: if isSuperUser();
+    }
+    // Inscripción a un estudio: la persona misma, con el estudio abierto, con cupo y, si el proyecto
+    // es confidencial, con el NDA del proyecto firmado.
+    function enrollable(studyId) {
+      let st = get(/databases/$(database)/documents/lab_studies/$(studyId)).data;
+      return st.get('status', '') in ['reclutando', 'en_curso']
+        && (st.get('config', {}).get('capacity', 0) == 0 || st.get('enrolledCount', 0) < st.config.capacity)
+        && (st.get('confidential', false) == false
+            || exists(/databases/$(database)/documents/lab_ndas/$(st.get('projectId', '') + '_' + request.auth.uid)));
+    }
+    match /lab_enrollments/{enrollmentId} {
+      allow read: if isLabMember() || (request.auth != null && resource.data.uid == request.auth.uid);
+      allow create: if isLabTester()
+        && request.resource.data.uid == request.auth.uid
+        && enrollmentId == request.resource.data.studyId + '_' + request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.keys().hasOnly(['uid', 'studyId', 'status', 'consentVersion', 'joinedAt'])
+        && enrollable(request.resource.data.studyId);
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid && request.resource.data.studyId == resource.data.studyId
+        && (request.resource.data.status == 'left'
+            || (request.resource.data.status == 'active' && enrollable(resource.data.studyId)));
+      allow delete: if isSuperUser();
+    }
+    // NDA aceptado (proyecto confidencial o estudio para revisores): solo crear el propio.
+    match /lab_ndas/{ndaId} {
+      allow read: if isLabMember() || (request.auth != null && resource.data.uid == request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
+        && ndaId == request.resource.data.scope + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'scope', 'version', 'at']);
+      allow update, delete: if false;
+    }
+    // ¿La persona ve la funcionalidad? Para usar en las colecciones de cada función en prueba:
+    // oficial = todos; beta = laboratorio y testers con inscripción activa a uno de sus primeros 3 estudios.
+    function activeEnrollment(studyId) {
+      return exists(/databases/$(database)/documents/lab_enrollments/$(studyId + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/lab_enrollments/$(studyId + '_' + request.auth.uid)).data.status == 'active';
+    }
+    function featureOn(key) {
+      let f = get(/databases/$(database)/documents/lab_features/$(key)).data;
+      let ids = f.get('studyIds', []);
+      return f.get('stage', '') == 'oficial'
+        || (request.auth != null && f.get('stage', '') in ['desarrollo', 'beta'] && isLabMember())
+        || (request.auth != null && f.get('stage', '') == 'beta' && (
+             (ids.size() > 0 && activeEnrollment(ids[0]))
+             || (ids.size() > 1 && activeEnrollment(ids[1]))
+             || (ids.size() > 2 && activeEnrollment(ids[2]))));
+    }
+    // Papers: el laboratorio (los confidenciales, solo su proyecto), revisores invitados con NDA,
+    // testers inscritos desde la validación de participantes y cualquiera ya publicado.
+    function paperReadable(d) {
+      return isSuperUser()
+        || (isLabMember() && (d.get('confidential', false) == false || inProject(d.get('projectId', ''))))
+        || reviewerOf(d.studyId)
+        || (request.auth != null && d.stage in ['validacion_participantes', 'aprobado', 'publicado'] && activeEnrollment(d.studyId))
+        || (d.stage == 'publicado' && d.get('confidential', false) == false);
+    }
+    match /lab_papers/{paperId} {
+      allow read: if paperReadable(resource.data);
+      allow create: if isLabMember() && request.auth.uid in request.resource.data.get('authors', [])
+        && request.resource.data.stage == 'borrador';
+      allow update: if isSuperUser() || (isLabMember()
+        && (request.auth.uid in resource.data.get('authors', [])
+            || studyEditable(get(/databases/$(database)/documents/lab_studies/$(resource.data.studyId)).data))
+        && request.resource.data.stage != 'publicado');
+      allow delete: if isSuperUser();
+      // Dictámenes: internos de científicos que no son autores; externos de revisores invitados.
+      match /reviews/{reviewId} {
+        allow read: if isLabMember() || (request.auth != null && resource.data.uid == request.auth.uid);
+        allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
+          && request.resource.data.decision in ['aceptar', 'cambios_menores', 'cambios_mayores', 'rechazar']
+          && request.resource.data.comments is string && request.resource.data.comments.size() <= 8000
+          && reviewId == 'r' + string(request.resource.data.round) + '_' + request.resource.data.kind + '_' + request.auth.uid
+          && request.resource.data.round == get(/databases/$(database)/documents/lab_papers/$(paperId)).data.round
+          && ((request.resource.data.kind == 'interna' && isLabMember()
+                && !(request.auth.uid in get(/databases/$(database)/documents/lab_papers/$(paperId)).data.get('authors', []))
+                && get(/databases/$(database)/documents/lab_papers/$(paperId)).data.stage == 'revision_interna')
+              || (request.resource.data.kind == 'externa'
+                && reviewerOf(get(/databases/$(database)/documents/lab_papers/$(paperId)).data.studyId)
+                && get(/databases/$(database)/documents/lab_papers/$(paperId)).data.stage == 'revision_externa'));
+        allow update, delete: if false;
+      }
+      // Validación de participantes: un voto por tester inscrito y ronda, mientras la ventana esté abierta.
+      match /checks/{checkId} {
+        allow read: if isLabMember() || (request.auth != null && resource.data.uid == request.auth.uid);
+        allow create: if request.auth != null && request.resource.data.uid == request.auth.uid
+          && request.resource.data.vote in ['si', 'en_parte', 'no']
+          && request.resource.data.comment is string && request.resource.data.comment.size() <= 1000
+          && request.resource.data.keys().hasOnly(['uid', 'round', 'vote', 'comment', 'at'])
+          && checkId == 'r' + string(request.resource.data.round) + '_' + request.auth.uid
+          && request.resource.data.round == get(/databases/$(database)/documents/lab_papers/$(paperId)).data.round
+          && get(/databases/$(database)/documents/lab_papers/$(paperId)).data.stage == 'validacion_participantes'
+          && request.time < get(/databases/$(database)/documents/lab_papers/$(paperId)).data.checkClosesAt
+          && activeEnrollment(get(/databases/$(database)/documents/lab_papers/$(paperId)).data.studyId);
+        allow update, delete: if false;
+      }
+    }
+    // Bitácora: solo se agrega; nadie la edita ni la borra.
+    match /lab_audit/{entryId} {
+      allow read: if isLabMember();
+      allow create: if request.auth != null && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['action', 'target', 'detail', 'actorUid', 'at'])
+        && request.resource.data.action is string && request.resource.data.action.size() <= 60;
+      allow update, delete: if false;
     }
   }
 }

@@ -27,7 +27,7 @@ Color get _accent => ohtliAccent;
 /// - Si dejas el puntero encima ~1.5 s se despliega *sobre* el contenido (sin
 ///   empujarlo) y se vuelve a contraer en cuanto el puntero sale o eliges una opción.
 /// - Doble clic en una zona vacía del menú lo fija abierto o lo contrae (también ⌘B / Ctrl+B).
-/// - Atajos: ⌥1…⌥6 / Alt+1…Alt+6 para cada sección, ⌥N / Alt+N para planear un
+/// - Atajos: ⌥1…⌥7 / Alt+1…Alt+7 para cada sección, ⌥N / Alt+N para planear un
 ///   viaje, Esc para cerrar el menú desplegado y ? para ver todos los atajos.
 class OhtliSidebar extends StatefulWidget {
   final int currentIndex; // 0: Inicio, 1: Mis Viajes, 2: Account/Mi Cuenta (non-tab)
@@ -101,7 +101,8 @@ class _OhtliSidebarState extends State<OhtliSidebar> with TickerProviderStateMix
     _NavItem(Icons.person_outline, Icons.person, 'Perfil', 2, PhysicalKeyboardKey.digit3, '3'),
     _NavItem(Icons.people_outline, Icons.people, 'Amigos', 3, PhysicalKeyboardKey.digit4, '4'),
     _NavItem(Icons.place_outlined, Icons.place, 'Lugares', 5, PhysicalKeyboardKey.digit5, '5'),
-    _NavItem(Icons.notifications_none, Icons.notifications, 'Notificaciones', 6, PhysicalKeyboardKey.digit6, '6'),
+    _NavItem(Icons.emoji_events_outlined, Icons.emoji_events, 'Logros', 4, PhysicalKeyboardKey.digit6, '6'),
+    _NavItem(Icons.notifications_none, Icons.notifications, 'Notificaciones', 6, PhysicalKeyboardKey.digit7, '7'),
   ];
 
   static const _NavItem _accessibilityItem = _NavItem(

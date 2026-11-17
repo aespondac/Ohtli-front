@@ -7,16 +7,19 @@ import '../config/admin.dart' show isSuperUser;
 /// Roles de Ohtli Labs.
 ///  admin       superusuario: todo, incluida la publicación abierta y la gestión de miembros
 ///  researcher  miembro del laboratorio: ejecuta pruebas, ve todo lo privado y redacta artículos
-///  tester      participante: responde estudios y ve lo liberado para testers
-enum LabRole { none, tester, researcher, admin }
+///  reviewer    científico invitado: revisa solo los estudios de su invitación, tras firmar el NDA
+///  tester      participante: se inscribe a estudios, usa sus funciones en prueba y los valida
+enum LabRole { none, tester, reviewer, researcher, admin }
 
 extension LabRoleX on LabRole {
   bool get isMember => this == LabRole.researcher || this == LabRole.admin;
-  bool get isTester => this != LabRole.none;
+  bool get isTester => this == LabRole.tester || isMember;
+  bool get isReviewer => this == LabRole.reviewer;
   String get label => switch (this) {
         LabRole.admin => 'Administración',
         LabRole.researcher => 'Miembro del laboratorio',
         LabRole.tester => 'Tester',
+        LabRole.reviewer => 'Revisor invitado',
         LabRole.none => 'Visitante',
       };
 }
@@ -52,6 +55,7 @@ LabRole _parse(dynamic r) => switch (r) {
       'admin' => LabRole.admin,
       'researcher' => LabRole.researcher,
       'tester' => LabRole.tester,
+      'reviewer' => LabRole.reviewer,
       _ => LabRole.none,
     };
 
@@ -92,8 +96,10 @@ class LabAccess {
               'role': invited.name,
               // El correo y el nombre solo para el equipo (aparecen en la lista de miembros); a los
               // testers no se les guardan, como promete el consentimiento.
-              if (invited.isMember) 'email': email,
-              if (invited.isMember) 'displayName': user.displayName ?? '',
+              if (invited.isMember || invited.isReviewer) 'email': email,
+              if (invited.isMember || invited.isReviewer) 'displayName': user.displayName ?? '',
+              // El revisor solo ve los estudios de su invitación (las reglas lo comparan con ella).
+              if (invited.isReviewer) 'studies': inv.data()?['studies'] ?? const [],
               'via': 'invite',
               'joinedAt': FieldValue.serverTimestamp(),
             });
@@ -142,8 +148,15 @@ class LabAccess {
     return q.count ?? 0;
   }
 
-  static Future<void> invite(String email, String role) => inviteDoc(email).set({
+  /// Estudios que puede revisar un revisor invitado.
+  static Future<List<String>> reviewerStudies(String uid) async {
+    final d = await memberDoc(uid).get();
+    return [for (final s in (d.data()?['studies'] as List?) ?? const []) s.toString()];
+  }
+
+  static Future<void> invite(String email, String role, {List<String> studies = const []}) => inviteDoc(email).set({
         'role': role,
+        if (role == 'reviewer') 'studies': studies,
         'invitedBy': FirebaseAuth.instance.currentUser?.uid,
         'createdAt': FieldValue.serverTimestamp(),
       });

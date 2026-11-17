@@ -30,6 +30,7 @@ class AppUrl {
     1: '/mis-viajes',
     2: '/perfil',
     3: '/amigos',
+    4: '/logros',
     5: '/lugares',
     6: '/notificaciones',
   };

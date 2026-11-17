@@ -1,3 +1,4 @@
+import 'services/ohtli_features.dart';
 import 'services/user_private_data.dart';
 import 'dart:async';
 import 'package:web/web.dart' as web;
@@ -85,6 +86,7 @@ void main() async {
 
   try {
     await Firebase.initializeApp(options: options);
+    OhtliFeatures.instance.start();
     
     // Initialize Firebase App Check to prevent overcost and abuse
     const configRecaptchaKey = String.fromEnvironment('recaptchaSiteKey');

@@ -460,6 +460,13 @@ class _ExplorePageState extends State<ExplorePage> {
         color: OhtliColors.accentFill,
         onTap: () => widget.onOpenTab(3),
       ),
+      _QuickAction(
+        icon: Icons.emoji_events_outlined,
+        title: 'Logros',
+        subtitle: 'Títulos y funciones en prueba',
+        color: OhtliColors.stormyTeal,
+        onTap: () => widget.onOpenTab(4),
+      ),
     ];
 
     return Padding(
