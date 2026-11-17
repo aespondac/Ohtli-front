@@ -170,18 +170,27 @@ function nextRate(prev, nowMs) {
   return { allowed: true, state: { windowStart: start, count: count + 1 } };
 }
 
-/** Procesa app_feedback/{id} recién creado. Devuelve qué pasó (para el log). */
-async function handleFeedback(db, snap, id, nowMs = Date.now(), bucket = null) {
-  const data = (snap && snap.data && snap.data()) || {};
-  const uid = typeof data.uid === 'string' ? data.uid : '';
-  if (!uid || !String(data.message || '').trim()) return 'vacío';
+/**
+ * ¿La sección avisa por correo? Lo decide el administrador en la bandeja
+ * (admin_settings/notifications: donations, reports, feedback). Sin valor guardado, sí.
+ */
+async function emailEnabled(db, section) {
+  const snap = await db.collection('admin_settings').doc('notifications').get();
+  const data = snap.exists ? snap.data() || {} : {};
+  return data[section] !== false;
+}
 
+/**
+ * Deja el correo en la colección de la extensión Trigger Email, con el límite por persona y hora.
+ * [rateKey] separa los límites (comentarios y aportes a lugares no se comen uno al otro).
+ */
+async function enqueueMail(db, { rateKey, mailId, mail, nowMs }) {
   const configSnap = await db.collection('private_config').doc('feedback').get();
   const config = configSnap.exists ? configSnap.data() : null;
   const configured = recipientsOf(config);
   const to = configured.length > 0 ? configured : [DEFAULT_TO];
 
-  const rateRef = db.collection('feedback_rate').doc(uid);
+  const rateRef = db.collection('feedback_rate').doc(rateKey);
   const allowed = await db.runTransaction(async (tx) => {
     const cur = await tx.get(rateRef);
     const r = nextRate(cur.exists ? cur.data() : null, nowMs);
@@ -190,17 +199,111 @@ async function handleFeedback(db, snap, id, nowMs = Date.now(), bucket = null) {
   });
   if (!allowed) return 'límite por hora alcanzado';
 
-  const ts = data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(nowMs);
-  const mail = buildFeedbackMail(data, {
-    id,
-    createdAt: ts.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
-    images: await imageUrls(bucket, data.screenshots),
-    adminUrl: ADMIN_URL,
-  });
   const collection = (config && typeof config.mailCollection === 'string' && config.mailCollection) || 'mail';
-  // Mismo id que el comentario: si la función se reintenta no sale un correo repetido.
-  await db.collection(collection).doc(`feedback_${id}`).set({ to, message: mail });
+  // Id fijo: si la función se reintenta no sale un correo repetido.
+  await db.collection(collection).doc(mailId).set({ to, message: mail });
   return 'correo en cola';
 }
 
-module.exports = { DEFAULT_TO, buildFeedbackMail, imageUrls, recipientsOf, nextRate, handleFeedback, escapeHtml, RATE_LIMIT, RATE_WINDOW_MS };
+function mexicoTime(data, nowMs) {
+  const ts = data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(nowMs);
+  return ts.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
+}
+
+/** Procesa app_feedback/{id} recién creado. Devuelve qué pasó (para el log). */
+async function handleFeedback(db, snap, id, nowMs = Date.now(), bucket = null) {
+  const data = (snap && snap.data && snap.data()) || {};
+  const uid = typeof data.uid === 'string' ? data.uid : '';
+  if (!uid || !String(data.message || '').trim()) return 'vacío';
+  if (!(await emailEnabled(db, 'feedback'))) return 'aviso por correo apagado';
+
+  const mail = buildFeedbackMail(data, {
+    id,
+    createdAt: mexicoTime(data, nowMs),
+    images: await imageUrls(bucket, data.screenshots),
+    adminUrl: ADMIN_URL,
+  });
+  return enqueueMail(db, { rateKey: uid, mailId: `feedback_${id}`, mail, nowMs });
+}
+
+// ---------------------------------------------------------------------------
+// Donaciones de fotos y reportes de lugares (place_feedback/{id}, ver
+// lib/services/place_feedback_service.dart). Cada uno tiene su propio interruptor.
+// ---------------------------------------------------------------------------
+
+// Mismos ids y nombres que kReportableFields en place_feedback_service.dart (una prueba los compara).
+const PLACE_FIELD_LABELS = {
+  name: 'Nombre',
+  address: 'Dirección',
+  location: 'Ubicación en el mapa',
+  opening_hours: 'Horario',
+  price: 'Precio',
+  photo: 'Foto',
+  category: 'Tipo de lugar',
+  accessibility: 'Accesibilidad',
+  description: 'Descripción',
+  closed: 'Cerró definitivamente',
+  other: 'Algo más',
+};
+
+/** Correo de una foto donada o un reporte de un lugar. */
+function buildPlaceMail(data, { id, createdAt, adminUrl } = {}) {
+  const d = data || {};
+  const isPhoto = d.type === 'photo';
+  const poi = String(d.poiName || 'Lugar');
+  const by = String(d.byName || 'Viajero Ohtli');
+  const issues = Array.isArray(d.issues) ? d.issues : [];
+  const issueText = (i) => {
+    const label = PLACE_FIELD_LABELS[i.field] || String(i.field || 'Dato');
+    const kind = i.field === 'closed' ? 'cerró definitivamente' : (i.kind === 'missing' ? 'falta' : 'está mal');
+    const options = Array.isArray(i.options) && i.options.length ? ` · ${i.options.join(', ')}` : '';
+    const value = i.value ? ` → ${i.value}` : '';
+    return `${label}: ${kind}${options}${value}`;
+  };
+  const subject = isPhoto
+    ? `[Ohtli · Donación] Foto para ${oneLine(poi, 60)}`
+    : `[Ohtli · Reporte] ${oneLine(poi, 50)}: ${oneLine(issues.map((i) => PLACE_FIELD_LABELS[i.field] || i.field).join(', '), 50) || 'datos'}`;
+
+  const summary = [
+    ['Lugar', poi],
+    ['De', by],
+    ...(d.poiId ? [['Id del lugar', String(d.poiId)]] : []),
+    ...(createdAt ? [['Fecha', createdAt]] : []),
+    ...(id ? [['Id', id]] : []),
+  ];
+  const note = String(d.note || '').trim();
+  const text =
+    (isPhoto ? `${by} donó una foto para ${poi}.` : `${by} reportó datos de ${poi}:\n${issues.map((i) => `  - ${issueText(i)}`).join('\n')}`) +
+    (note ? `\n\n«${note}»` : '') +
+    `\n\n${summary.map(([k, v]) => `${k}: ${v}`).join('\n')}` +
+    (isPhoto && d.photoUrl ? `\n\nFoto: ${d.photoUrl}` : '') +
+    (adminUrl ? `\n\nApruébalo o recházalo en ${adminUrl}` : '') +
+    '\n';
+  const html =
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222;max-width:680px">` +
+    (isPhoto
+      ? `<p style="font-size:15px">${escapeHtml(by)} donó una foto para <b>${escapeHtml(poi)}</b>.</p>` +
+        (d.photoUrl
+          ? `<a href="${escapeHtml(d.photoUrl)}"><img src="${escapeHtml(d.photoUrl)}" alt="Foto donada" style="max-width:320px;max-height:420px;border:1px solid #ddd;border-radius:8px"></a>`
+          : '')
+      : `<p style="font-size:15px">${escapeHtml(by)} reportó datos de <b>${escapeHtml(poi)}</b>:</p>` +
+        `<ul>${issues.map((i) => `<li>${escapeHtml(issueText(i))}</li>`).join('')}</ul>`) +
+    (note ? `<p style="font-style:italic;color:#555">«${escapeHtml(note)}»</p>` : '') +
+    `<div style="margin-top:16px">${htmlTable(summary)}</div>` +
+    (adminUrl ? `<p style="margin-top:22px"><a href="${escapeHtml(adminUrl)}">Aprobarlo o rechazarlo en el panel de Ohtli</a></p>` : '') +
+    `</div>`;
+  return { subject, text, html };
+}
+
+/** Procesa place_feedback/{id} recién creado (foto donada o reporte). */
+async function handlePlaceFeedback(db, snap, id, nowMs = Date.now()) {
+  const data = (snap && snap.data && snap.data()) || {};
+  const by = typeof data.by === 'string' ? data.by : '';
+  if (!by || (data.type !== 'photo' && data.type !== 'report')) return 'vacío';
+  const section = data.type === 'photo' ? 'donations' : 'reports';
+  if (!(await emailEnabled(db, section))) return 'aviso por correo apagado';
+  const mail = buildPlaceMail(data, { id, createdAt: mexicoTime(data, nowMs), adminUrl: ADMIN_URL });
+  return enqueueMail(db, { rateKey: `${by}_lugares`, mailId: `place_${id}`, mail, nowMs });
+}
+
+module.exports = { DEFAULT_TO, PLACE_FIELD_LABELS, buildFeedbackMail, buildPlaceMail, handlePlaceFeedback, emailEnabled, imageUrls, recipientsOf, nextRate, handleFeedback, escapeHtml, RATE_LIMIT, RATE_WINDOW_MS };

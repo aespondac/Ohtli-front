@@ -26,10 +26,9 @@ import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../../utils/friendly_errors.dart';
 import 'public_profile_page.dart';
 import '../admin/place_suggestions_page.dart';
-import '../admin/place_feedback_page.dart';
-import '../../services/place_feedback_service.dart';
 import '../admin/explore_featured_page.dart';
-import '../admin/app_feedback_page.dart';
+import '../admin/admin_inbox_page.dart';
+import '../../services/admin_inbox.dart';
 import '../trips/trip_screens.dart' deferred as trips;
 import '../../widgets/deferred_view.dart';
 import '../../widgets/push_toggle.dart' show PushSettingTile;
@@ -107,15 +106,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   @override
   void initState() {
     super.initState();
-    // Administrador: cuántas fotos donadas y reportes de lugares esperan revisión
+    // Administrador: cuántas donaciones, reportes y comentarios esperan revisión
     if (isSuperUser()) {
-      _feedbackSub = PlaceFeedbackService.watchPendingCount().listen((n) {
-        if (mounted) setState(() => _feedbackPending = n);
-      }, onError: (_) {});
-      // Y cuántos comentarios de "Enviar comentarios" son nuevos
-      _commentsSub = FeedbackService.watchNewCount().listen((n) {
-        if (mounted) setState(() => _commentsNew = n);
-      }, onError: (_) {});
+      for (final section in AdminInboxSection.values) {
+        _inboxSubs.add(AdminInbox.watchPending(section).listen((n) {
+          if (mounted) setState(() => _inboxPending[section] = n);
+        }, onError: (_) {}));
+      }
     }
     final user = FirebaseAuth.instance.currentUser;
 
@@ -436,15 +433,14 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     }
   }
 
-  StreamSubscription<int>? _feedbackSub;
-  int _feedbackPending = 0;
-  StreamSubscription<int>? _commentsSub;
-  int _commentsNew = 0;
+  final List<StreamSubscription<int>> _inboxSubs = [];
+  final Map<AdminInboxSection, int> _inboxPending = {};
 
   @override
   void dispose() {
-    _feedbackSub?.cancel();
-    _commentsSub?.cancel();
+    for (final sub in _inboxSubs) {
+      sub.cancel();
+    }
     _userDataSubscription?.cancel();
     _firstNameController.dispose();
     _lastNameController.dispose();
@@ -1820,18 +1816,18 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           subtitle: 'Revisa y aprueba lugares nuevos',
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceSuggestionsPage())),
         ),
-        _SettingsItem(
-          icon: Icons.volunteer_activism_outlined,
-          title: _feedbackPending > 0 ? 'Fotos y reportes · $_feedbackPending' : 'Fotos y reportes',
-          subtitle: 'Fotos donadas y datos de lugares por corregir',
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceFeedbackPage())),
-        ),
-        _SettingsItem(
-          icon: Icons.rate_review_outlined,
-          title: _commentsNew > 0 ? 'Comentarios de la app · $_commentsNew' : 'Comentarios de la app',
-          subtitle: 'Ideas y fallas con capturas y datos del equipo',
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppFeedbackPage())),
-        ),
+        // Bandeja de administración: tres secciones separadas, cada una con su aviso por correo
+        for (final (section, icon, subtitle) in const [
+          (AdminInboxSection.donations, Icons.volunteer_activism_outlined, 'Fotos donadas a los lugares'),
+          (AdminInboxSection.reports, Icons.flag_outlined, 'Datos de lugares por corregir'),
+          (AdminInboxSection.feedback, Icons.rate_review_outlined, 'Ideas y fallas con capturas y datos del equipo'),
+        ])
+          _SettingsItem(
+            icon: icon,
+            title: (_inboxPending[section] ?? 0) > 0 ? '${section.label} · ${_inboxPending[section]}' : section.label,
+            subtitle: subtitle,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminInboxPage(initial: section))),
+          ),
         _SettingsItem(
           icon: Icons.push_pin_outlined,
           title: 'Destacados de Explorar',

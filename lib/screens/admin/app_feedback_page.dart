@@ -5,11 +5,9 @@ import 'package:web/web.dart' as web;
 
 import '../../config/admin.dart';
 import '../../services/feedback_service.dart';
-import '../../services/place_feedback_service.dart';
 import '../../theme/colors.dart';
 import '../../utils/friendly_errors.dart';
 import '../../widgets/ohtli_ui.dart';
-import 'place_feedback_page.dart';
 
 const _months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -36,7 +34,10 @@ String _when(DateTime? d) {
 /// derecha (o en su propia pantalla en el teléfono) el comentario con sus capturas, la cuenta, el
 /// dispositivo, el estado de la app y los errores recientes.
 class AppFeedbackPage extends StatefulWidget {
-  const AppFeedbackPage({super.key});
+  /// Dentro de la bandeja de administración (sin barra propia).
+  final bool embedded;
+
+  const AppFeedbackPage({super.key, this.embedded = false});
 
   @override
   State<AppFeedbackPage> createState() => _AppFeedbackPageState();
@@ -47,6 +48,7 @@ class _AppFeedbackPageState extends State<AppFeedbackPage> {
   String _category = '';
   String _query = '';
   String? _selectedId;
+  final Stream<List<AppFeedback>> _stream = FeedbackService.watchComments();
 
   bool _matches(AppFeedback f) {
     if (_status.isNotEmpty && f.status != _status) return false;
@@ -187,32 +189,8 @@ class _AppFeedbackPageState extends State<AppFeedbackPage> {
       );
     }
     final wide = MediaQuery.of(context).size.width >= 1000;
-    return Scaffold(
-      backgroundColor: OhtliColors.cloudDancer,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: OhtliColors.onyx,
-        title: Text('Comentarios de la app', style: GoogleFonts.outfit(fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-        actions: [
-          // La otra bandeja: fotos donadas y reportes de lugares
-          StreamBuilder<int>(
-            stream: PlaceFeedbackService.watchPendingCount(),
-            builder: (context, snap) {
-              final n = snap.data ?? 0;
-              return TextButton.icon(
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceFeedbackPage())),
-                icon: Icon(Icons.flag_outlined, size: 18, color: OhtliColors.accentText),
-                label: Text(wide ? 'Reportes de lugares${n > 0 ? ' · $n' : ''}' : (n > 0 ? 'Lugares · $n' : 'Lugares'),
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: OhtliColors.accentText)),
-              );
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: StreamBuilder<List<AppFeedback>>(
-        stream: FeedbackService.watchComments(),
+    final body = StreamBuilder<List<AppFeedback>>(
+        stream: _stream,
         builder: (context, snap) {
           if (snap.hasError) {
             return Center(child: Text(friendlyError(snap.error!, fallback: 'No se pudo cargar la bandeja.'), style: GoogleFonts.inter()));
@@ -290,7 +268,17 @@ class _AppFeedbackPageState extends State<AppFeedbackPage> {
             ],
           );
         },
+);
+    if (widget.embedded) return body;
+    return Scaffold(
+      backgroundColor: OhtliColors.cloudDancer,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: OhtliColors.onyx,
+        title: Text('Comentarios de la app', style: GoogleFonts.outfit(fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
       ),
+      body: body,
     );
   }
 }

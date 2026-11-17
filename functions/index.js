@@ -321,3 +321,14 @@ exports.feedbackEmail = onDocumentCreated(
     console.log('[feedback]', event.params.feedbackId, r);
   }
 );
+
+// Cada foto donada o reporte de un lugar nuevo también avisa por correo (si su sección lo tiene
+// encendido en la bandeja de administración).
+exports.placeFeedbackEmail = onDocumentCreated(
+  { document: 'place_feedback/{feedbackId}', region: 'us-central1', memory: '256MiB', maxInstances: 5 },
+  async (event) => {
+    if (!event.data) return;
+    const r = await feedback.handlePlaceFeedback(admin.firestore(), event.data, event.params.feedbackId);
+    console.log('[feedback] lugar', event.params.feedbackId, r);
+  }
+);

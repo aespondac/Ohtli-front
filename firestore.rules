@@ -485,6 +485,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Ajustes de la bandeja de administración (p. ej. notifications: avisar por correo de
+    // donaciones, reportes y comentarios). Solo el superusuario; las Cloud Functions los leen
+    // con el Admin SDK. Ver lib/services/admin_inbox.dart y functions/feedback.js.
+    match /admin_settings/{docId} {
+      allow read, write: if isSuperUser();
+    }
+
     // Titles Collection
     match /titles/{titleId} {
       allow read: if true;

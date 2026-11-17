@@ -126,3 +126,52 @@ test('URLs de capturas con el token de Firebase y solo de app_feedback/', async 
   assert.deepEqual(await fb.imageUrls(null, ['app_feedback/x.png']), []);
 });
 
+
+test('con el aviso de comentarios apagado no se manda correo', async () => {
+  const db = fakeDb(null);
+  db.store['admin_settings/notifications'] = { feedback: false };
+  const r = await fb.handleFeedback(db, snap({ uid: 'u', message: 'hola' }), 'f1');
+  assert.equal(r, 'aviso por correo apagado');
+  assert.equal(db.store['mail/feedback_f1'], undefined);
+});
+
+test('donación: correo con la foto, según su propio interruptor', async () => {
+  const db = fakeDb(null);
+  db.store['admin_settings/notifications'] = { feedback: false };
+  const data = { type: 'photo', by: 'u', byName: 'Ana', poiId: 'osm_1', poiName: 'Café Avellaneda', photoUrl: 'https://img.test/f.jpg' };
+  assert.equal(await fb.handlePlaceFeedback(db, snap(data), 'p1'), 'correo en cola');
+  const mail = db.store['mail/place_p1'].message;
+  assert.equal(mail.subject, '[Ohtli · Donación] Foto para Café Avellaneda');
+  assert.match(mail.html, /<img src="https:\/\/img\.test\/f\.jpg"/);
+  assert.match(mail.text, /Ana donó una foto para Café Avellaneda/);
+
+  db.store['admin_settings/notifications'] = { donations: false };
+  assert.equal(await fb.handlePlaceFeedback(db, snap(data), 'p2'), 'aviso por correo apagado');
+});
+
+test('reporte: lista lo que está mal con opciones y corrección', async () => {
+  const db = fakeDb(null);
+  const data = {
+    type: 'report', by: 'u', byName: 'Luis', poiName: 'Museo <X>', note: 'Cambió en 2026',
+    issues: [
+      { field: 'opening_hours', kind: 'wrong', options: ['Cierra los lunes'], value: 'Mar a dom 10–18' },
+      { field: 'closed', kind: 'wrong' },
+    ],
+  };
+  assert.equal(await fb.handlePlaceFeedback(db, snap(data), 'r1'), 'correo en cola');
+  const mail = db.store['mail/place_r1'].message;
+  assert.equal(mail.subject, '[Ohtli · Reporte] Museo <X>: Horario, Cerró definitivamente');
+  assert.match(mail.text, /Horario: está mal · Cierra los lunes → Mar a dom 10–18/);
+  assert.match(mail.text, /Cerró definitivamente: cerró definitivamente/);
+  assert.match(mail.html, /Museo &lt;X&gt;/);
+  assert.equal(await fb.handlePlaceFeedback(db, snap({ type: 'otro', by: 'u' }), 'r2'), 'vacío');
+});
+
+test('los nombres de los datos son los mismos que en la app', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dart = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'services', 'place_feedback_service.dart'), 'utf8');
+  const fields = [...dart.matchAll(/PlaceField\('([^']+)', '([^']+)'/g)].map((m) => [m[1], m[2]]);
+  assert.ok(fields.length > 5);
+  assert.deepEqual(Object.fromEntries(fields), fb.PLACE_FIELD_LABELS);
+});

@@ -13,7 +13,13 @@ import '../../widgets/ohtli_ui.dart';
 /// Fotos donadas y reportes de lugares (solo superusuario). Aprobar una foto la vuelve la foto
 /// del lugar; aprobar un reporte aplica los datos corregidos.
 class PlaceFeedbackPage extends StatefulWidget {
-  const PlaceFeedbackPage({super.key});
+  /// Solo fotos donadas ([kFeedbackPhoto]) o solo reportes ([kFeedbackReport]); null = las dos.
+  final String? type;
+
+  /// Dentro de la bandeja de administración (sin barra propia).
+  final bool embedded;
+
+  const PlaceFeedbackPage({super.key, this.type, this.embedded = false});
 
   @override
   State<PlaceFeedbackPage> createState() => _PlaceFeedbackPageState();
@@ -22,6 +28,7 @@ class PlaceFeedbackPage extends StatefulWidget {
 class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
   final Map<String, String> _busy = {};
   bool _showReviewed = false;
+  final Stream<List<PlaceFeedback>> _stream = PlaceFeedbackService.watchForReview();
 
   @override
   void initState() {
@@ -199,32 +206,19 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
         body: Center(child: Text('Esta sección es solo para el administrador de Ohtli.', style: GoogleFonts.inter(color: OhtliColors.onyx))),
       );
     }
-    return Scaffold(
-      backgroundColor: OhtliColors.cloudDancer,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: OhtliColors.onyx,
-        title: Text('Fotos y reportes de lugares', style: GoogleFonts.outfit(fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: FilterChip(
-              label: Text('Ver revisados', style: GoogleFonts.inter(fontSize: 12.5)),
-              selected: _showReviewed,
-              onSelected: (v) => setState(() => _showReviewed = v),
-            ),
-          ),
-        ],
-      ),
-      body: StreamBuilder<List<PlaceFeedback>>(
-        stream: PlaceFeedbackService.watchForReview(),
+    final reviewedChip = FilterChip(
+      label: Text('Ver revisados', style: GoogleFonts.inter(fontSize: 12.5)),
+      selected: _showReviewed,
+      onSelected: (v) => setState(() => _showReviewed = v),
+    );
+    final list = StreamBuilder<List<PlaceFeedback>>(
+        stream: _stream,
         builder: (context, snap) {
           if (snap.hasError) {
             return Center(child: Text(friendlyError(snap.error!, fallback: 'No se pudo cargar la bandeja.'), style: GoogleFonts.inter()));
           }
           if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
-          final items = _showReviewed ? snap.data! : snap.data!.where((f) => f.pending).toList();
+          final items = snap.data!.where((f) => (widget.type == null || f.type == widget.type) && (_showReviewed || f.pending)).toList();
           if (items.isEmpty) {
             return Center(
               child: Column(
@@ -234,7 +228,11 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
                   const SizedBox(height: 12),
                   Text('Nada por revisar', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
                   const SizedBox(height: 4),
-                  Text('Aquí llegan las fotos donadas y los reportes de lugares.', style: OhtliUi.body(size: 13)),
+                  Text(switch (widget.type) {
+                    kFeedbackPhoto => 'Aquí llegan las fotos que donan a los lugares.',
+                    kFeedbackReport => 'Aquí llegan los reportes de datos de lugares.',
+                    _ => 'Aquí llegan las fotos donadas y los reportes de lugares.',
+                  }, style: OhtliUi.body(size: 13)),
                 ],
               ),
             );
@@ -260,7 +258,30 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
             ),
           );
         },
+      );
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 4), child: Align(alignment: Alignment.centerRight, child: reviewedChip)),
+          Expanded(child: list),
+        ],
+      );
+    }
+    return Scaffold(
+      backgroundColor: OhtliColors.cloudDancer,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: OhtliColors.onyx,
+        title: Text(switch (widget.type) {
+          kFeedbackPhoto => 'Donaciones de fotos',
+          kFeedbackReport => 'Reportes de lugares',
+          _ => 'Fotos y reportes de lugares',
+        }, style: GoogleFonts.outfit(fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+        actions: [Padding(padding: const EdgeInsets.only(right: 12), child: reviewedChip)],
       ),
+      body: list,
     );
   }
 }
