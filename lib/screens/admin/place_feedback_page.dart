@@ -267,6 +267,8 @@ class _FeedbackCard extends StatelessWidget {
 
   static const _months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
+  static bool _isPhotoUrl(PlaceIssue i) => i.field == 'photo' && i.value.startsWith('http');
+
   Widget _photo(String? url, String label) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -351,10 +353,17 @@ class _FeedbackCard extends StatelessWidget {
                     text: i.field == 'closed' ? 'cerró definitivamente' : (i.kind == kIssueMissing ? 'falta' : 'está mal'),
                     style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.warningText, fontWeight: FontWeight.w600),
                   ),
-                  if (i.value.isNotEmpty)
+                  if (i.value.isNotEmpty && !_isPhotoUrl(i))
                     TextSpan(text: ' → ${i.value}', style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx)),
                 ])),
               ),
+            // La foto reportada (puede ser una donación ya aprobada), para ver de cuál se trata
+            for (final i in f.issues)
+              if (_isPhotoUrl(i))
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                  child: SizedBox(width: 160, child: _photo(i.value, 'REPORTADA')),
+                ),
             if (f.note.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text('«${f.note}»', style: GoogleFonts.inter(fontSize: 13, fontStyle: FontStyle.italic, color: OhtliColors.subtleText)),
