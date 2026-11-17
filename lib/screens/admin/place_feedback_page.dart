@@ -353,8 +353,12 @@ class _FeedbackCard extends StatelessWidget {
                     text: i.field == 'closed' ? 'cerró definitivamente' : (i.kind == kIssueMissing ? 'falta' : 'está mal'),
                     style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.warningText, fontWeight: FontWeight.w600),
                   ),
+                  if (i.options.isNotEmpty)
+                    TextSpan(text: ' · ${i.options.join(', ')}', style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx)),
                   if (i.value.isNotEmpty && !_isPhotoUrl(i))
-                    TextSpan(text: ' → ${i.value}', style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx)),
+                    TextSpan(
+                        text: ' → ${i.field == 'category' ? (kSuggestionCategories[i.value] ?? i.value) : i.value}',
+                        style: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
                 ])),
               ),
             // La foto reportada (puede ser una donación ya aprobada), para ver de cuál se trata

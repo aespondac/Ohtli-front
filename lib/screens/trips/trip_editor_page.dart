@@ -2154,11 +2154,20 @@ class _TripEditorPageState extends State<TripEditorPage> {
     }
   }
 
-  void _uploadImageForBlock(int startIndex, String type) {
+  Future<void> _uploadImageForBlock(int startIndex, String type) async {
     if (!kIsWeb) return;
     if (startIndex < 0 || startIndex >= _sections.length) return;
     // El usuario puede reordenar mientras elige o recorta la foto: se resuelve por id al final.
     final String sectionId = _sections[startIndex].id;
+    // Foto de un lugar del catálogo: sin foto en Ohtli se dona sola; con foto se pregunta antes
+    final start = _sections[startIndex];
+    final catalogPlace = type.startsWith('place_') && start is PlaceSection && (start.poiId ?? '').isNotEmpty ? start : null;
+    bool donate = false;
+    if (catalogPlace != null) {
+      final d = await decidePhotoDonation(context, poiId: catalogPlace.poiId!, poiName: catalogPlace.title);
+      if (d == null || !mounted) return;
+      donate = d;
+    }
 
     try {
       pickFile(accept: 'image/*,.cr2,.nef,.arw,.dng,.orf,.pef,.rw2,.raf,.raw').then((picked) {
@@ -2186,15 +2195,9 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       } else if (type == 'text_image') {
                         _updateTextImageBlock(index, photo: finalPhotoUrl);
                       }
-                      // Foto de un lugar del catálogo: se ofrece donarla para que sea la del lugar
-                      final placed = _sections[index];
-                      if (type.startsWith('place_') && placed is PlaceSection && (placed.poiId ?? '').isNotEmpty) {
-                        Future.delayed(const Duration(milliseconds: 250), () {
-                          if (mounted) {
-                            offerPhotoDonation(this.context,
-                                poiId: placed.poiId!, poiName: placed.title, dataUrl: finalPhotoUrl, tripId: widget.trip.id);
-                          }
-                        });
+                      if (donate && catalogPlace != null) {
+                        donatePhotoNow(ScaffoldMessenger.of(this.context),
+                            poiId: catalogPlace.poiId!, poiName: catalogPlace.title, dataUrl: finalPhotoUrl, tripId: widget.trip.id);
                       }
                     },
                   ),

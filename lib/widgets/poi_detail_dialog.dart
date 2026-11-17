@@ -1414,7 +1414,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inicia sesión para decirnos qué corregir.')));
       return;
     }
-    await showReportPlaceSheet(context, poiId: poi.poiId, poiName: poi.name, photoUrl: poi.photoUrl);
+    await showReportPlaceSheet(context, poi: poi);
   }
 
   Widget _buildMobileActionBar() {

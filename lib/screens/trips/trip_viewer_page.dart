@@ -2137,6 +2137,13 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Future<void> _addPhoto() async {
     final p = await _chooseStop('¿De qué parada es la foto?');
     if (p == null || !mounted) return;
+    // Lugar del catálogo: sin foto en Ohtli se dona sola; con foto se pregunta antes de elegirla
+    bool donate = false;
+    if (!_isSample && (p.poiId ?? '').isNotEmpty) {
+      final d = await decidePhotoDonation(context, poiId: p.poiId!, poiName: p.title);
+      if (d == null || !mounted) return;
+      donate = d;
+    }
     final dataUrl = await pickAndCropPhoto(context);
     if (dataUrl == null || !mounted) return;
     try {
@@ -2149,9 +2156,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
         done: 'Foto agregada a ${p.title}',
       );
       if (ok) _scrollSoon(p.id);
-      // De un lugar del catálogo: se ofrece donarla para que sea la foto del lugar
-      if (ok && !_isSample && (p.poiId ?? '').isNotEmpty && mounted) {
-        await offerPhotoDonation(context, poiId: p.poiId!, poiName: p.title, dataUrl: dataUrl, tripId: _trip?.id);
+      if (ok && donate && mounted) {
+        await donatePhotoNow(ScaffoldMessenger.of(context), poiId: p.poiId!, poiName: p.title, dataUrl: dataUrl, tripId: _trip?.id);
       }
     } catch (e) {
       _notice(friendlyError(e, fallback: 'No se pudo subir la foto.'));

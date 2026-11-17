@@ -40,7 +40,7 @@ const List<PlaceField> kReportableFields = [
   PlaceField('opening_hours', 'Horario', 'p. ej. Lun a vie 9:00–18:00', 'opening_hours'),
   PlaceField('price', 'Precio', 'Gasto promedio por persona en pesos', 'price_mxn_avg'),
   PlaceField('photo', 'Foto', '¿Qué tiene de malo la foto?'),
-  PlaceField('category', 'Tipo de lugar', '¿Qué tipo de lugar es?'),
+  PlaceField('category', 'Tipo de lugar', '¿Qué tipo de lugar es?', 'category'),
   PlaceField('accessibility', 'Accesibilidad', 'Rampas, elevador, baños…'),
   PlaceField('description', 'Descripción', '¿Qué le falta o qué está mal?'),
   PlaceField('closed', 'Cerró definitivamente', 'Cuéntanos qué sabes'),
@@ -53,13 +53,25 @@ PlaceField placeFieldOf(String id) =>
 class PlaceIssue {
   final String field;
   final String kind;
+  /// La corrección que se aplicaría (texto, monto en pesos o clave de categoría).
   final String value;
-  const PlaceIssue({required this.field, required this.kind, this.value = ''});
+  /// Lo que marcó de una lista cerrada (p. ej. «No es de este lugar», «Cierra los lunes»).
+  final List<String> options;
+  const PlaceIssue({required this.field, required this.kind, this.value = '', this.options = const []});
 
-  Map<String, dynamic> toMap() => {'field': field, 'kind': kind, if (value.trim().isNotEmpty) 'value': value.trim()};
+  Map<String, dynamic> toMap() => {
+        'field': field,
+        'kind': kind,
+        if (value.trim().isNotEmpty) 'value': value.trim(),
+        if (options.isNotEmpty) 'options': options.take(10).toList(),
+      };
 
-  static PlaceIssue fromMap(Map m) =>
-      PlaceIssue(field: (m['field'] ?? '').toString(), kind: (m['kind'] ?? kIssueWrong).toString(), value: (m['value'] ?? '').toString());
+  static PlaceIssue fromMap(Map m) => PlaceIssue(
+        field: (m['field'] ?? '').toString(),
+        kind: (m['kind'] ?? kIssueWrong).toString(),
+        value: (m['value'] ?? '').toString(),
+        options: [for (final o in (m['options'] as List?) ?? const []) o.toString()],
+      );
 }
 
 class PlaceFeedback {
