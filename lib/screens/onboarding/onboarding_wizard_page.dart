@@ -876,7 +876,30 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   }
 
   // Indicador de pasos: segmentos con etiqueta; los pasos ya visitados son navegables
+  static TextStyle _stepLabelStyle(bool active) => GoogleFonts.inter(
+        fontSize: 12,
+        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+      );
+
+  /// Ancho de cada paso en escritorio: proporcional a su etiqueta (en negritas, como
+  /// cuando está activa) más el icono, para que «Accesibilidad» no se corte.
+  List<int> _stepFlexes(bool isMobile) {
+    if (isMobile) return List.filled(_totalSteps, 1);
+    return [
+      for (final meta in _stepMeta)
+        ((TextPainter(
+                  text: TextSpan(text: meta["label"] as String, style: _stepLabelStyle(true)),
+                  maxLines: 1,
+                  textDirection: TextDirection.ltr,
+                )..layout())
+                .width +
+            19 + 4)
+            .ceil(),
+    ];
+  }
+
   Widget _buildStepper(bool isMobile) {
+    final flexes = _stepFlexes(isMobile);
     return Row(
       children: List.generate(_totalSteps, (i) {
         final done = i < _currentStep;
@@ -884,6 +907,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
         final meta = _stepMeta[i];
         final color = (done || active) ? OhtliColors.stormyTeal : OhtliColors.subtleText.withValues(alpha: 0.6);
         return Expanded(
+          flex: flexes[i],
           child: Padding(
             padding: EdgeInsets.only(right: i == _totalSteps - 1 ? 0 : 6),
             child: InkWell(
@@ -922,11 +946,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                               meta["label"] as String,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                                color: active ? OhtliColors.onyx : color,
-                              ),
+                              style: _stepLabelStyle(active).copyWith(color: active ? OhtliColors.onyx : color),
                             ),
                           ),
                         ],
