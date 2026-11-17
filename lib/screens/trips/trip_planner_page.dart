@@ -2428,6 +2428,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   color: selected ? OhtliColors.onyx : OhtliColors.subtleText,
                 ),
               ),
+              // El @usertag debajo del nombre, para distinguir a dos personas con el mismo nombre
+              if (f.usertag != null)
+                Text('@${f.usertag}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(fontSize: 10.5, color: OhtliColors.subtleText)),
             ],
           ),
         ),

@@ -18,6 +18,7 @@ import '../../theme/cdmx_photos.dart';
 import '../../widgets/address_picker_widget.dart';
 import '../places/places_page.dart';
 import '../../services/profile_directory.dart';
+import '../../services/public_profiles.dart';
 import '../../services/friend_requests.dart';
 import '../../widgets/ohtli_ui.dart';
 import '../../widgets/poi_detail_dialog.dart';
@@ -1934,24 +1935,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     final me = FirebaseAuth.instance.currentUser;
     if (me == null) return;
     setState(() => _friendSearching = true);
-    final db = FirebaseFirestore.instance;
     final found = <DocumentSnapshot>[];
     try {
-      final kind = ProfileDirectory.classify(q);
-      if (kind != null && kind.kind != 'name') {
-        final uid = await ProfileDirectory.lookup(kind.kind, kind.value);
-        if (uid != null) {
-          final d = await db.collection('public_profiles').doc(uid).get();
-          if (d.exists) found.add(d);
-        }
-      } else {
-        for (final v in {q, q[0].toUpperCase() + q.substring(1)}) {
-          final snap = await db.collection('public_profiles').where('displayName', isGreaterThanOrEqualTo: v).where('displayName', isLessThan: '$v').limit(10).get();
-          for (final d in snap.docs) {
-            if (!found.any((f) => f.id == d.id)) found.add(d);
-          }
-        }
-      }
+      // Nombre (cualquier palabra, sin acentos), usertag con o sin @, correo o teléfono
+      found.addAll(await PublicProfiles.search(q,
+          lookup: ProfileDirectory.lookup, classify: ProfileDirectory.classify, normalizeTag: ProfileDirectory.normalizeTag));
     } catch (e) {
       debugPrint('[onboarding] búsqueda de amigos: $e');
     }

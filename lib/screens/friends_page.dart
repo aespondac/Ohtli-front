@@ -10,6 +10,7 @@ import '../utils/friendly_errors.dart';
 import 'account/public_profile_page.dart'; // To visit their profile!
 import 'friends_feed.dart';
 import '../services/profile_directory.dart';
+import '../services/public_profiles.dart';
 import '../services/friend_requests.dart';
 import '../widgets/ohtli_ui.dart';
 
@@ -144,32 +145,13 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
   Future<void> _searchServer(String q) async {
     setState(() => _searchingServer = true);
     final ids = <String>[];
-    final kind = ProfileDirectory.classify(q);
     try {
-      if (kind != null && kind.kind != 'name') {
-        // Usertag, correo o teléfono exactos (correo y teléfono van cifrados en el directorio)
-        final uid = await ProfileDirectory.lookup(kind.kind, kind.value);
-        if (uid != null) {
-          final d = await FirebaseFirestore.instance.collection('public_profiles').doc(uid).get();
-          if (d.exists) {
-            _userCache[d.id] = d;
-            ids.add(d.id);
-          }
-        }
-      } else {
-        final variants = <String>{q, q[0].toUpperCase() + q.substring(1)};
-        for (final v in variants) {
-          final snap = await FirebaseFirestore.instance
-              .collection('public_profiles')
-              .where('displayName', isGreaterThanOrEqualTo: v)
-              .where('displayName', isLessThan: '$v\uf8ff')
-              .limit(20)
-              .get();
-          for (final d in snap.docs) {
-            _userCache[d.id] = d;
-            ids.add(d.id);
-          }
-        }
+      // Nombre (cualquier palabra, sin acentos), usertag con o sin @, correo o teléfono
+      final docs = await PublicProfiles.search(q,
+          lookup: ProfileDirectory.lookup, classify: ProfileDirectory.classify, normalizeTag: ProfileDirectory.normalizeTag);
+      for (final d in docs) {
+        _userCache[d.id] = d;
+        ids.add(d.id);
       }
     } catch (e) {
       debugPrint('[Friends] búsqueda: $e');
@@ -189,9 +171,9 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
     if (q.isEmpty) return true;
     final kind = ProfileDirectory.classify(q);
     if (kind != null && (kind.kind == 'email' || kind.kind == 'phone')) return _searchResultIds.contains(id);
-    final name = (data?['displayName'] ?? '').toString().toLowerCase();
-    final tag = (data?['usertag'] ?? '').toString().toLowerCase();
-    final needle = q.toLowerCase().replaceFirst('@', '');
+    final name = PublicProfiles.fold((data?['displayName'] ?? '').toString());
+    final tag = PublicProfiles.fold((data?['usertag'] ?? '').toString());
+    final needle = PublicProfiles.fold(q).replaceFirst('@', '');
     return name.contains(needle) || (tag.isNotEmpty && tag.startsWith(needle)) || _searchResultIds.contains(id);
   }
 
@@ -927,9 +909,10 @@ class _FriendsPageState extends State<FriendsPage> with SingleTickerProviderStat
                     children: [
                       Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(color: OhtliColors.onyx, fontWeight: FontWeight.w800, fontSize: 15.5)),
                       const SizedBox(height: 2),
-                      if (subtitle == null && (data?['usertag'] as String?)?.isNotEmpty == true)
-                        Text('@${data!['usertag']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 12.5, fontWeight: FontWeight.w600))
-                      else if (subtitle != null)
+                      // El @usertag siempre debajo del nombre; luego el aviso o el título
+                      if ((data?['usertag'] as String?)?.isNotEmpty == true)
+                        Text('@${data!['usertag']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: OhtliColors.subtleText, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                      if (subtitle != null)
                         Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.inter(color: OhtliColors.accentText, fontSize: 12.5, fontWeight: FontWeight.w700))
                       else
                         StreamBuilder<DocumentSnapshot>(

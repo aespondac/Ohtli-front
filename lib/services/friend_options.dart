@@ -7,6 +7,7 @@ class FriendOption {
   final String uid;
   final String name;
   final String? photoUrl;
+  final String? usertag;
 
   /// Mejores amigos mutuos: los dos se tienen como mejor amigo. Solo a ellos se les puede
   /// preparar un plan sorpresa (y por eso el plan puede usar sus gustos).
@@ -17,6 +18,7 @@ class FriendOption {
     required this.uid,
     required this.name,
     this.photoUrl,
+    this.usertag,
     this.isMutualCloseFriend = false,
     this.isCloseFriend = false,
   });
@@ -48,6 +50,7 @@ Future<List<FriendOption>> loadFriendOptions(String uid) async {
         uid: doc.id,
         name: (data['displayName'] as String?)?.trim().isNotEmpty == true ? (data['displayName'] as String).trim() : 'Viajero Ohtli',
         photoUrl: (data['photoURL'] as String?)?.isNotEmpty == true ? data['photoURL'] as String : null,
+        usertag: (data['usertag'] as String?)?.isNotEmpty == true ? data['usertag'] as String : null,
         isMutualCloseFriend: close.contains(doc.id) && closeOf.contains(doc.id),
         isCloseFriend: close.contains(doc.id),
       ));

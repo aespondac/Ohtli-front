@@ -176,8 +176,10 @@ service cloud.firestore {
       allow create, update: if request.auth != null && request.auth.uid == userId
         && request.resource.data.keys().hasOnly([
           'uid', 'updatedAt', 'displayName', 'photoURL', 'coverURL', 'coverUrl', 'usertag',
-          'activeTitleId', 'possessedTitles', 'moments', 'createdAt', 'profilePrivate', 'isDeleted'
+          'activeTitleId', 'possessedTitles', 'moments', 'createdAt', 'profilePrivate', 'isDeleted', 'searchKeys'
         ])
+        && (!('searchKeys' in request.resource.data)
+            || (request.resource.data.searchKeys is list && request.resource.data.searchKeys.size() <= 80))
         && request.resource.data.get('uid', userId) == userId;
       allow delete: if request.auth != null && (
         request.auth.uid == userId || sameVerifiedEmailAs(userId)
