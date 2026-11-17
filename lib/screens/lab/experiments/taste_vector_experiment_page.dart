@@ -26,6 +26,8 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
   List<Map<String, dynamic>> _filteredOutPois = [];
   int _selectedPoiIndex = 0;
   Map<String, dynamic>? _responsePayload;
+  static const int _kFilteredPreview = 8;
+  bool _showAllFiltered = false;
 
   // Parámetros de los 4 Ejes Ontológicos
   final Set<String> _selectedCultural = {
@@ -522,7 +524,9 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
             headers: {"Content-Type": "application/json"},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 10));
+          // Caliente responde en ~3 s, pero un arranque en frío de Cloud Run pasa de 10 s y
+          // entonces siempre se caía al catálogo de prueba de 12 lugares.
+          .timeout(const Duration(seconds: 30));
 
       if (!mounted || seq != _requestSeq) return; // llegó otra petición más nueva
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -1448,17 +1452,19 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // En un teléfono el título quedaba en una columna de pocas letras junto a la píldora de cos(θ).
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: Text(
-                      "2. Inspector Espejo de Homologación Ontológica (4 Ejes)",
-                      style: GoogleFonts.fraunces(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: OhtliColors.onyx,
-                      ),
+                  Text(
+                    "2. Inspector Espejo de Homologación Ontológica (4 Ejes)",
+                    style: GoogleFonts.fraunces(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: OhtliColors.onyx,
                     ),
                   ),
                   if (selectedPoi != null)
@@ -1508,8 +1514,11 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 6,
                 children: [
                   Text(
                     _usedLocalFallback
@@ -1521,6 +1530,12 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                       color: OhtliColors.onyx,
                     ),
                   ),
+                  if (_usedLocalFallback)
+                    TextButton.icon(
+                      onPressed: _isLoading ? null : _runMatch,
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text("Reintentar con el motor"),
+                    ),
                   Text(
                     "${_rankedPois.length} viables • ${_filteredOutPois.length} filtrados",
                     style: GoogleFonts.inter(
@@ -1668,8 +1683,10 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                ..._filteredOutPois.map(
+                // El motor llega a descartar decenas de lugares: se muestran unos cuantos y el resto a petición.
+                ...(_showAllFiltered ? _filteredOutPois : _filteredOutPois.take(_kFilteredPreview)).map(
                   (f) => Container(
+                    width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -1679,30 +1696,37 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
                       color: OhtliColors.xoconostle.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // En un teléfono el motivo largo se desbordaba a la derecha: va debajo del nombre.
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            "${f['name']} (${f['alcaldia']})",
+                        Text(
+                          "${f['name']}${(f['alcaldia'] ?? '').toString().isNotEmpty ? ' (${f['alcaldia']})' : ''}",
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: OhtliColors.onyx,
+                          ),
+                        ),
+                        if ((f["filter_reason"] ?? "").toString().isNotEmpty)
+                          Text(
+                            f["filter_reason"].toString(),
                             style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: OhtliColors.onyx,
+                              fontSize: 11,
+                              color: OhtliColors.xoconostle,
                             ),
                           ),
-                        ),
-                        Text(
-                          f["filter_reason"]?.toString() ?? "",
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: OhtliColors.xoconostle,
-                          ),
-                        ),
                       ],
                     ),
                   ),
                 ),
+                if (_filteredOutPois.length > _kFilteredPreview)
+                  TextButton(
+                    onPressed: () => setState(() => _showAllFiltered = !_showAllFiltered),
+                    child: Text(_showAllFiltered
+                        ? "Mostrar menos"
+                        : "Ver los ${_filteredOutPois.length - _kFilteredPreview} descartados restantes"),
+                  ),
               ],
             ],
           ),
@@ -1773,7 +1797,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
   }
 
   List<Widget> _buildFourAxesComparisonRows(Map<String, dynamic> selectedPoi) {
-    final poiAxes = Map<String, dynamic>.from(selectedPoi["oep_axes"] as Map);
+    final poiAxes = poiAxesOf(selectedPoi);
     final axisScores =
         Map<String, dynamic>.from(selectedPoi["axis_scores"] as Map);
 
@@ -1800,7 +1824,7 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
       final k = meta["key"]!;
       final title = meta["title"]!;
       final uText = _userAxes?[k] ?? "";
-      final pText = poiAxes[k]?.toString() ?? "";
+      final pText = poiAxes[k] ?? "El Recolector aún no describe este eje para el lugar.";
       final sVal = (axisScores[k] as num?)?.toDouble() ?? 0.5;
 
       return Container(
@@ -1814,8 +1838,10 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 10,
+              runSpacing: 2,
               children: [
                 Text(
                   title,
@@ -1887,4 +1913,30 @@ class _TasteVectorExperimentPageState extends State<TasteVectorExperimentPage> {
       );
     }).toList();
   }
+}
+
+const _axisKeysByNumber = {
+  "1": "vocacion_cultural",
+  "2": "atmosfera_sensorial",
+  "3": "dinamica_social",
+  "4": "entorno_urbano",
+};
+
+/// Ejes OEP del lugar. El motor manda `oep_axes` vacío y los ejes vienen dentro de
+/// `semantic_description` ("[EJE 1 - …]: texto\n[EJE 2 - …]: …"); sin esto la columna del
+/// lugar quedaba en blanco con datos reales.
+Map<String, String> poiAxesOf(Map<String, dynamic> poi) {
+  final raw = poi["oep_axes"];
+  if (raw is Map && raw.isNotEmpty) {
+    return raw.map((k, v) => MapEntry(k.toString(), v.toString()));
+  }
+  final desc = poi["semantic_description"]?.toString() ?? "";
+  final out = <String, String>{};
+  final re = RegExp(r'\[EJE\s*(\d)[^\]]*\]:\s*([\s\S]*?)(?=\n?\[EJE\s*\d|$)');
+  for (final m in re.allMatches(desc)) {
+    final key = _axisKeysByNumber[m.group(1)];
+    final text = m.group(2)!.trim();
+    if (key != null && text.isNotEmpty) out[key] = text;
+  }
+  return out;
 }

@@ -57,6 +57,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
       _origin = preset['origin'];
       _destination = preset['destination'];
       _profile = preset['profile'] ?? 'foot';
+      _comparison = null;
       _errorText = null;
       _resultText = null;
       _routeSummary = null;
@@ -74,42 +75,19 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
       _errorText = null;
       _resultText = null;
       _routeSummary = null;
+      _comparison = null;
       _latencyMs = null;
     });
 
     final stopwatch = Stopwatch()..start();
 
     try {
-      // /v1/** pasa por el gateway de api.ohtli.quest (la ruta antigua /api/osrm/route daba 404).
-      final response = await http.post(
-        Uri.parse('https://api.ohtli.quest/v1/osrm/route'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'origin': {'lat': _origin!['lat'], 'lng': _origin!['lng']},
-          'destination': {'lat': _destination!['lat'], 'lng': _destination!['lng']},
-          'profile': _profile,
-        }),
-      ).timeout(const Duration(seconds: 25));
+      final decoded = await _fetchRoute(_profile);
 
       stopwatch.stop();
       if (!mounted) return;
       _latencyMs = stopwatch.elapsedMilliseconds;
-
-      if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
-      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-      setState(() {
-        _resultText = const JsonEncoder.withIndent('  ').convert(decoded);
-        final routes = decoded['routes'] as List?;
-        if (routes != null && routes.isNotEmpty) {
-          final route = routes.first as Map;
-          _routeSummary = {
-            'distance_km': (((route['distance'] ?? 0) as num) / 1000.0).toStringAsFixed(2),
-            'duration_min': (((route['duration'] ?? 0) as num) / 60.0).toStringAsFixed(0),
-            'provider': decoded['provider'],
-            'estimated': decoded['estimated'] == true,
-          };
-        }
-      });
+      setState(() => _showRoute(decoded));
     } catch (e) {
       stopwatch.stop();
       if (!mounted) return;
@@ -123,14 +101,187 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
     }
   }
 
+  static const _profileLabels = {'foot': 'A pie', 'bike': 'Bicicleta', 'car': 'Automóvil'};
+  static const _profileIcons = {
+    'foot': Icons.directions_walk_rounded,
+    'bike': Icons.directions_bike_rounded,
+    'car': Icons.directions_car_rounded,
+  };
+
+  /// Comparación de los tres perfiles para el mismo par de puntos (perfil → respuesta del motor).
+  Map<String, Map<String, dynamic>?>? _comparison;
+
+  /// /v1/** pasa por el gateway de api.ohtli.quest (la ruta antigua /api/osrm/route daba 404).
+  Future<Map<String, dynamic>> _fetchRoute(String profile) async {
+    final response = await http
+        .post(
+          Uri.parse('https://api.ohtli.quest/v1/osrm/route'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'origin': {'lat': _origin!['lat'], 'lng': _origin!['lng']},
+            'destination': {'lat': _destination!['lat'], 'lng': _destination!['lng']},
+            'profile': profile,
+          }),
+        )
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  static Map<String, dynamic>? _summaryOf(Map<String, dynamic> decoded) {
+    final routes = decoded['routes'] as List?;
+    if (routes == null || routes.isEmpty) return null;
+    final route = routes.first as Map;
+    return {
+      'distance_km': (((route['distance'] ?? 0) as num) / 1000.0).toStringAsFixed(2),
+      'duration_min': (((route['duration'] ?? 0) as num) / 60.0).toStringAsFixed(0),
+      'provider': decoded['provider'],
+      'estimated': decoded['estimated'] == true,
+    };
+  }
+
+  void _showRoute(Map<String, dynamic> decoded) {
+    _resultText = const JsonEncoder.withIndent('  ').convert(decoded);
+    _routeSummary = _summaryOf(decoded);
+  }
+
+  /// Calcula a pie, en bici y en auto a la vez: es lo que el planificador necesita decidir.
+  Future<void> _compareProfiles() async {
+    if (_origin == null || _destination == null) {
+      setState(() => _errorText = 'Por favor selecciona origen y destino o utiliza un preset rápido.');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+      _comparison = null;
+      _latencyMs = null;
+    });
+    final stopwatch = Stopwatch()..start();
+    final profiles = _profileLabels.keys.toList();
+    final results = await Future.wait(
+      profiles.map((p) async {
+        try {
+          return await _fetchRoute(p);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    stopwatch.stop();
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _latencyMs = stopwatch.elapsedMilliseconds;
+      if (results.every((r) => r == null)) {
+        _errorText = 'No pudimos calcular las rutas: el motor no respondió. Intenta de nuevo en un momento.';
+        return;
+      }
+      _comparison = {for (var i = 0; i < profiles.length; i++) profiles[i]: results[i]};
+      final current = _comparison![_profile] ?? results.firstWhere((r) => r != null);
+      if (_comparison![_profile] == null) {
+        _profile = profiles[results.indexOf(current)];
+      }
+      _showRoute(current!);
+    });
+  }
+
+  void _swapPoints() {
+    setState(() {
+      final o = _origin;
+      _origin = _destination;
+      _destination = o;
+      _resultText = null;
+      _routeSummary = null;
+      _comparison = null;
+      _errorText = null;
+    });
+  }
+
+  Widget _buildComparisonCard() {
+    final entries = _comparison!.entries.toList();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: OhtliColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Comparación de perfiles',
+            style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+          ),
+          const SizedBox(height: 4),
+          Text('Toca un perfil para verlo en el mapa.', style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText)),
+          const SizedBox(height: 12),
+          for (final e in entries)
+            Builder(
+              builder: (context) {
+                final summary = e.value == null ? null : _summaryOf(e.value!);
+                final selected = e.key == _profile;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: e.value == null
+                      ? null
+                      : () => setState(() {
+                          _profile = e.key;
+                          _showRoute(e.value!);
+                        }),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: selected ? const Color(0xFFE2711D).withValues(alpha: 0.10) : OhtliColors.innerCardBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: selected ? const Color(0xFFE2711D) : OhtliColors.cardBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(_profileIcons[e.key], size: 20, color: const Color(0xFFE2711D)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _profileLabels[e.key]!,
+                            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+                          ),
+                        ),
+                        Flexible(
+                          flex: 2,
+                          child: Text(
+                            summary == null
+                                ? 'Sin respuesta del motor'
+                                : '${summary['duration_min']} min · ${summary['distance_km']} km'
+                                      '${summary['estimated'] == true ? ' · estimado' : ''}',
+                            textAlign: TextAlign.right,
+                            style: GoogleFonts.inter(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: summary == null ? OhtliColors.subtleText : OhtliColors.onyx,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildAddressCard(String title, Map<String, dynamic>? address, VoidCallback onTap) {
     return Container(
       decoration: BoxDecoration(
         color: OhtliColors.innerCardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: address != null ? OhtliColors.stormyTeal.withValues(alpha: 0.3) : OhtliColors.cardBorder,
-        ),
+        border: Border.all(color: address != null ? OhtliColors.stormyTeal.withValues(alpha: 0.3) : OhtliColors.cardBorder),
       ),
       child: InkWell(
         onTap: onTap,
@@ -159,11 +310,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: OhtliColors.onyx,
-                      ),
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14, color: OhtliColors.onyx),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -193,6 +340,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
         onSave: (address) {
           setState(() {
             _origin = address;
+            _comparison = null;
             _pickingOrigin = false;
           });
         },
@@ -205,6 +353,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
         onSave: (address) {
           setState(() {
             _destination = address;
+            _comparison = null;
             _pickingDestination = false;
           });
         },
@@ -214,7 +363,8 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
 
     return LabExperimentShell(
       title: 'Motor de Ruteo OSRM & Ye',
-      subtitle: 'Cálculo de trayectos optimizados y tiempos de traslado peatonales, en bicicleta y automóvil para el planificador de itinerarios de Ohtli.quest.',
+      subtitle:
+          'Cálculo de trayectos optimizados y tiempos de traslado peatonales, en bicicleta y automóvil para el planificador de itinerarios de Ohtli.quest.',
       category: 'Movilidad Urbana',
       status: 'BETA v0.8',
       statusColor: const Color(0xFFE2711D),
@@ -226,6 +376,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
           _buildControlsCard(),
           const SizedBox(height: 24),
           if (_errorText != null) _buildErrorCard(),
+          if (_comparison != null) _buildComparisonCard(),
           if (_resultText != null) _buildResultMap(),
         ],
       ),
@@ -239,13 +390,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
         color: OhtliColors.cardBg,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: OhtliColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 6))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -300,7 +445,14 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
           const SizedBox(height: 20),
 
           _buildAddressCard('Punto de Partida (Origen)', _origin, () => setState(() => _pickingOrigin = true)),
-          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.center,
+            child: IconButton(
+              tooltip: 'Invertir origen y destino',
+              onPressed: (_origin != null || _destination != null) && !_isLoading ? _swapPoints : null,
+              icon: const Icon(Icons.swap_vert_rounded, color: Color(0xFFE2711D)),
+            ),
+          ),
           _buildAddressCard('Punto de Llegada (Destino)', _destination, () => setState(() => _pickingDestination = true)),
           const SizedBox(height: 20),
 
@@ -377,6 +529,22 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
               ),
             ),
           ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _compareProfiles,
+              icon: const Icon(Icons.compare_arrows_rounded, size: 20),
+              label: const Text('Comparar a pie, bici y auto'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFB85900),
+                side: const BorderSide(color: Color(0xFFE2711D)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                textStyle: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -422,33 +590,39 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Antes el aviso del proveedor iba dentro de la misma fila que el título y las métricas:
+          // en un teléfono se desbordaba. Título y métricas se acomodan; el aviso va debajo.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
             children: [
               Text(
-                'Visualización de Ruta y Geometría',
+                'Ruta ${(_profileLabels[_profile] ?? '').toLowerCase()}',
                 style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
               ),
               if (_routeSummary != null)
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildMetricPill('${_routeSummary!['distance_km']} km', Icons.straighten_rounded),
                     const SizedBox(width: 8),
                     _buildMetricPill('${_routeSummary!['duration_min']} min', Icons.timer_outlined),
                   ],
                 ),
-              if (_routeSummary != null && _routeSummary!['provider'] != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    _routeSummary!['estimated'] == true
-                        ? 'Estimación: ningún servidor de rutas respondió (${_routeSummary!['provider']}).'
-                        : 'Calculado con ${_routeSummary!['provider']}.',
-                    style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
-                  ),
-                ),
             ],
           ),
+          if (_routeSummary != null && _routeSummary!['provider'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                _routeSummary!['estimated'] == true
+                    ? 'Estimación: ningún servidor de rutas respondió (${_routeSummary!['provider']}).'
+                    : 'Calculado con ${_routeSummary!['provider']}.',
+                style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText),
+              ),
+            ),
           const SizedBox(height: 16),
 
           if (_origin != null && _destination != null && coordinates.isNotEmpty)
@@ -456,11 +630,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
               borderRadius: BorderRadius.circular(16),
               child: SizedBox(
                 height: 380,
-                child: OsrmMapWidget(
-                  origin: _origin!,
-                  destination: _destination!,
-                  routeCoordinates: coordinates,
-                ),
+                child: OsrmMapWidget(origin: _origin!, destination: _destination!, routeCoordinates: coordinates),
               ),
             ),
 
@@ -477,9 +647,7 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
                 tooltip: 'Copiar GeoJSON',
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _resultText!));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Respuesta GeoJSON copiada.')),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Respuesta GeoJSON copiada.')));
                 },
               ),
             ],
@@ -504,7 +672,10 @@ class _OsrmExperimentPageState extends State<OsrmExperimentPage> {
         children: [
           Icon(icon, size: 14, color: const Color(0xFFE2711D)),
           const SizedBox(width: 6),
-          Text(text, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+          Text(
+            text,
+            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: OhtliColors.onyx),
+          ),
         ],
       ),
     );

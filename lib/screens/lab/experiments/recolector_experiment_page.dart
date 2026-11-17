@@ -30,6 +30,9 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
   Map<String, dynamic>? _job; // estado del trabajo de exploración (lo da el motor)
   int _pollSeq = 0;
   final Set<String> _selectedPois = {};
+  // Lugares ya replicados en esta sesión: antes seguían seleccionables y se podían volver a publicar
+  // sin ninguna señal de que ya estaban en Ohtli.quest.
+  final Set<String> _replicatedPois = {};
   bool _isReplicating = false;
 
   final List<Map<String, dynamic>> _presets = [
@@ -90,6 +93,7 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
         _currentJobId = jobId;
         _job = {'status': 'pending', 'progress': 0, 'message': 'Encolando en Yollotl Engine… (20 lugares tardan unos 5 minutos)'};
         _selectedPois.clear();
+        _replicatedPois.clear();
       });
       _pollJob(jobId, seq);
     } catch (e) {
@@ -152,12 +156,19 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body) as Map<String, dynamic>;
         final replicated = (body['replicated'] as num?)?.toInt() ?? 0;
-        final rejected = (body['errors'] as List?)?.length ?? 0;
+        final errors = (body['errors'] as List?)?.map((e) => e.toString()).toList() ?? const <String>[];
+        final rejected = errors.length;
         if (mounted) {
+          setState(() {
+            // El motor nombra en cada error el POI que no pasó; los demás quedaron publicados.
+            final failed = _selectedPois.where((id) => errors.any((e) => e.contains(id))).toSet();
+            _replicatedPois.addAll(_selectedPois.difference(failed));
+            _selectedPois.retainAll(failed);
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  'Replicación: $replicated de ${_selectedPois.length} lugares agregados a Ohtli.quest'
+                  'Replicación: $replicated de ${replicated + rejected} lugares agregados a Ohtli.quest'
                   '${rejected > 0 ? ' ($rejected rechazados)' : ''}.',
                   style: GoogleFonts.inter()),
               backgroundColor: OhtliColors.stormyTeal,
@@ -471,8 +482,11 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 10,
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -515,7 +529,7 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
                   _selectedPois.clear();
                   for (var r in results) {
                     final id = r['poi_id'] ?? '';
-                    if (id.isNotEmpty) _selectedPois.add(id);
+                    if (id.isNotEmpty && !_replicatedPois.contains(id)) _selectedPois.add(id);
                   }
                 });
               },
@@ -530,8 +544,23 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
         ),
         const SizedBox(height: 12),
 
+        if (results.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: OhtliColors.cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: OhtliColors.cardBorder),
+            ),
+            child: Text(
+              'La exploración terminó sin lugares válidos en esta zona. Prueba con un radio mayor u otra ubicación.',
+              style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText),
+            ),
+          ),
         ...results.map((r) {
           final id = r['poi_id'] ?? '';
+          final published = _replicatedPois.contains(id);
           final name = r['name'] ?? 'Lugar sin nombre';
           final recipe = r['recipe'] ?? 'Sin receta semántica';
           final address = r['address'] ?? '';
@@ -548,8 +577,8 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
               ),
             ),
             child: CheckboxListTile(
-              value: isSelected,
-              onChanged: (val) {
+              value: published || isSelected,
+              onChanged: published ? null : (val) {
                 setState(() {
                   if (val == true) {
                     _selectedPois.add(id);
@@ -558,7 +587,23 @@ class _RecolectorExperimentPageState extends State<RecolectorExperimentPage> {
                   }
                 });
               },
-              title: Text(name, style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16, color: OhtliColors.onyx)),
+              title: Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(name, style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16, color: OhtliColors.onyx)),
+                  if (published)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text('En Ohtli.quest',
+                          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF047857))),
+                    ),
+                ],
+              ),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
