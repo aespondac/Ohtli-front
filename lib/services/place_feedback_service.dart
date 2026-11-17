@@ -44,6 +44,7 @@ const List<PlaceField> kReportableFields = [
   PlaceField('accessibility', 'Accesibilidad', 'Rampas, elevador, baños…'),
   PlaceField('description', 'Descripción', '¿Qué le falta o qué está mal?'),
   PlaceField('closed', 'Cerró definitivamente', 'Cuéntanos qué sabes'),
+  PlaceField('other', 'Algo más', 'Cuéntanos qué falta o qué está mal'),
 ];
 
 PlaceField placeFieldOf(String id) =>

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../services/contribution_titles.dart';
+import '../services/feedback_service.dart';
 import '../services/place_feedback_service.dart';
 import '../theme/colors.dart';
 import '../utils/friendly_errors.dart';
@@ -52,51 +53,74 @@ Future<void> offerPhotoDonation(
   }
 }
 
-/// Reportar un lugar: se marca qué falta o qué está mal (y, si se sabe, el dato correcto).
-Future<void> showReportPlaceSheet(BuildContext context, {required String poiId, required String poiName}) {
+/// Cómo se presenta cada dato en la hoja de reporte: texto de la lista, ícono y la pregunta
+/// con la que se pide la corrección.
+const Map<String, (String, IconData, String)> _reportUi = {
+  'closed': ('Cerró definitivamente', Icons.block_rounded, '¿Qué sabes? (opcional)'),
+  'name': ('El nombre', Icons.title_rounded, '¿Cómo se llama en realidad?'),
+  'address': ('La dirección', Icons.signpost_outlined, '¿Cuál es la dirección correcta?'),
+  'location': ('La ubicación en el mapa', Icons.wrong_location_outlined, '¿Dónde está en realidad? (calle, esquina o referencia)'),
+  'opening_hours': ('El horario', Icons.schedule_rounded, '¿Cuál es el horario correcto? p. ej. Lun a vie 9:00–18:00'),
+  'price': ('El precio', Icons.payments_outlined, '¿Cuánto se gasta por persona, en pesos?'),
+  'photo': ('La foto', Icons.hide_image_outlined, '¿Qué tiene de malo la foto?'),
+  'category': ('El tipo de lugar', Icons.category_outlined, '¿Qué tipo de lugar es? p. ej. cafetería, museo, cantina'),
+  'accessibility': ('La accesibilidad', Icons.accessible_rounded, '¿Qué hay o qué falta? rampas, elevador, baños…'),
+  'description': ('La descripción', Icons.notes_rounded, '¿Qué le falta o qué está mal?'),
+  'other': ('Algo más…', Icons.edit_note_rounded, 'Cuéntanos qué falta o qué está mal y cómo debería ser'),
+};
+
+/// Reportar un lugar: se elige qué dato (o "Algo más"), si falta o está mal, y se escribe la
+/// corrección. Llega al administrador, que la aplica al aprobarla.
+Future<void> showReportPlaceSheet(BuildContext context,
+    {required String poiId, required String poiName, String photoUrl = ''}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _ReportPlaceSheet(poiId: poiId, poiName: poiName),
+    builder: (_) => _ReportPlaceSheet(poiId: poiId, poiName: poiName, photoUrl: photoUrl),
   );
 }
 
 class _ReportPlaceSheet extends StatefulWidget {
-  const _ReportPlaceSheet({required this.poiId, required this.poiName});
+  const _ReportPlaceSheet({required this.poiId, required this.poiName, required this.photoUrl});
   final String poiId;
   final String poiName;
+  final String photoUrl;
 
   @override
   State<_ReportPlaceSheet> createState() => _ReportPlaceSheetState();
 }
 
 class _ReportPlaceSheetState extends State<_ReportPlaceSheet> {
-  // campo → 'missing' | 'wrong'
-  final Map<String, String> _kinds = {};
-  final Map<String, TextEditingController> _values = {};
-  final TextEditingController _note = TextEditingController();
+  String? _field;
+  String _kind = kIssueWrong;
+  final TextEditingController _value = TextEditingController();
   bool _sending = false;
 
   @override
   void dispose() {
-    for (final c in _values.values) {
-      c.dispose();
-    }
-    _note.dispose();
+    _value.dispose();
     super.dispose();
   }
 
-  TextEditingController _valueFor(String field) => _values.putIfAbsent(field, TextEditingController.new);
+  // Sin "falta / está mal" en los que no aplica
+  bool get _asksKind => !{'closed', 'other', 'photo', 'description'}.contains(_field);
+  bool get _valueRequired => _field == 'other';
 
   Future<void> _send() async {
+    final field = _field!;
+    final text = _value.text.trim();
     setState(() => _sending = true);
-    final issues = [
-      for (final f in kReportableFields)
-        if (_kinds[f.id] != null) PlaceIssue(field: f.id, kind: _kinds[f.id]!, value: _values[f.id]?.text ?? ''),
-    ];
+    // Métrica de calidad del catálogo (también sin sesión)
+    FeedbackService.report(widget.poiId, closed: field == 'closed', reason: field);
     try {
-      final newTitle = await PlaceFeedbackService.report(poiId: widget.poiId, poiName: widget.poiName, issues: issues, note: _note.text);
+      final newTitle = await PlaceFeedbackService.report(
+        poiId: widget.poiId,
+        poiName: widget.poiName,
+        issues: [PlaceIssue(field: field, kind: field == 'other' ? kIssueWrong : _kind, value: text)],
+        // La foto que se reporta, para quitarla aunque sea una donación ya aprobada
+        note: field == 'photo' && widget.photoUrl.isNotEmpty ? 'Foto reportada: ${widget.photoUrl}' : '',
+      );
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
@@ -114,52 +138,109 @@ class _ReportPlaceSheetState extends State<_ReportPlaceSheet> {
     }
   }
 
-  Widget _fieldRow(PlaceField f) {
-    final kind = _kinds[f.id];
-    // "Cerró definitivamente" no es falta ni error: se marca o no
-    final closedField = f.id == 'closed';
-    Widget choice(String value, String label) => OhtliChoiceChip(
-          label: label,
-          selected: kind == value,
-          onTap: () => setState(() => kind == value ? _kinds.remove(f.id) : _kinds[f.id] = value),
-        );
+  Widget _list() => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text('¿Qué falta o está mal en ${widget.poiName}?',
+                style: GoogleFonts.outfit(fontSize: 19, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text('Elige el dato y dinos cómo debería ser. Lo revisamos antes de cambiarlo.', style: OhtliUi.body(size: 13)),
+          ),
+          for (final e in _reportUi.entries)
+            ListTile(
+              leading: Icon(e.value.$2, color: OhtliColors.accentText),
+              title: Text(e.value.$1, style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.onyx)),
+              trailing: Icon(Icons.chevron_right_rounded, color: OhtliColors.subtleText),
+              onTap: () => setState(() {
+                _field = e.key;
+                _kind = kIssueWrong;
+                _value.clear();
+              }),
+            ),
+        ],
+      );
+
+  Widget _detail() {
+    final ui = _reportUi[_field]!;
+    final canSend = !_sending && (!_valueRequired || _value.text.trim().isNotEmpty);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(8, 0, 16, 0),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(f.label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+              IconButton(
+                tooltip: 'Volver',
+                onPressed: _sending ? null : () => setState(() => _field = null),
+                icon: const Icon(Icons.arrow_back_rounded),
               ),
-              if (closedField)
-                choice(kIssueWrong, 'Sí, cerró')
-              else ...[
-                choice(kIssueMissing, 'Falta'),
-                const SizedBox(width: 6),
-                choice(kIssueWrong, 'Está mal'),
-              ],
+              Icon(ui.$2, color: OhtliColors.accentText, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(_field == 'other' ? 'Algo más de ${widget.poiName}' : '${ui.$1} · ${widget.poiName}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+              ),
             ],
           ),
-          if (kind != null) ...[
-            const SizedBox(height: 8),
-            TextField(
-              controller: _valueFor(f.id),
-              maxLength: 200,
-              keyboardType: f.id == 'price' ? TextInputType.number : TextInputType.text,
-              decoration: InputDecoration(
-                isDense: true,
-                counterText: '',
-                // El dato correcto es opcional; el ejemplo cabe completo en móvil
-                hintText: f.hint,
-                prefixIcon: Icon(kind == kIssueMissing ? Icons.add_rounded : Icons.edit_rounded, size: 18, color: OhtliColors.subtleText),
-                filled: true,
-                fillColor: OhtliColors.cloudDancer,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              ),
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_asksKind) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      OhtliChoiceChip(label: 'Está mal', selected: _kind == kIssueWrong, onTap: () => setState(() => _kind = kIssueWrong)),
+                      OhtliChoiceChip(label: 'Falta', selected: _kind == kIssueMissing, onTap: () => setState(() => _kind = kIssueMissing)),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _value,
+                  autofocus: true,
+                  maxLength: _field == 'other' ? 500 : 200,
+                  minLines: _field == 'other' ? 3 : 1,
+                  maxLines: _field == 'other' ? 6 : 3,
+                  keyboardType: _field == 'price' ? TextInputType.number : TextInputType.text,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    // La pregunta arriba y el ejemplo dentro, para que en móvil no se corte
+                    labelText: ui.$3.split(RegExp(r' p\. ej\.| \(')).first,
+                    hintText: ui.$3.contains(' p. ej.')
+                        ? 'p. ej.${ui.$3.split(' p. ej.').last}'
+                        : (ui.$3.contains(' (') ? ui.$3.substring(ui.$3.indexOf(' (') + 1) : null),
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    alignLabelWithHint: true,
+                    filled: true,
+                    fillColor: OhtliColors.cloudDancer,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OhtliPrimaryButton(
+                    label: 'Enviar',
+                    icon: Icons.flag_rounded,
+                    loading: _sending,
+                    onPressed: canSend ? _send : null,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -176,44 +257,22 @@ class _ReportPlaceSheetState extends State<_ReportPlaceSheet> {
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Center(
                   child: Container(
                     width: 40,
                     height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(color: OhtliColors.cardBorder, borderRadius: BorderRadius.circular(2)),
                   ),
                 ),
-                const SizedBox(height: 18),
-                Text('Reportar ${widget.poiName}', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
-                const SizedBox(height: 4),
-                Text('Marca qué falta o qué está mal. Lo revisamos antes de cambiarlo.', style: OhtliUi.body(size: 13.5)),
-                const SizedBox(height: 18),
-                for (final f in kReportableFields) _fieldRow(f),
-                const SizedBox(height: 4),
-                TextField(
-                  controller: _note,
-                  maxLength: 500,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: 'Algo más que debamos saber (opcional)',
-                    filled: true,
-                    fillColor: OhtliColors.cloudDancer,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OhtliPrimaryButton(
-                    label: 'Enviar reporte',
-                    icon: Icons.flag_rounded,
-                    loading: _sending,
-                    onPressed: _sending || _kinds.isEmpty ? null : _send,
-                  ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: KeyedSubtree(key: ValueKey(_field), child: _field == null ? _list() : _detail()),
                 ),
               ],
             ),

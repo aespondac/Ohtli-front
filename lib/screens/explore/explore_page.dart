@@ -134,9 +134,10 @@ class _ExplorePageState extends State<ExplorePage> {
   Future<void> _loadFeatured() async {
     final config = await ExploreConfigService.load();
     final pinned = config.pinned?.map((p) => PinnedStory(tripId: p.tripId, authorId: p.authorId)).toList();
-    final notes = config.showReleaseNotes ? await _loadReleaseNotes() : const <PinnedStory>[];
+    // Solo lo que el administrador marcó: sin configuración guardada no se agrega la nota de versión
+    final notes = config.configured && config.showReleaseNotes ? await _loadReleaseNotes() : const <PinnedStory>[];
     if (!mounted) return;
-    final base = pinned ?? kPinnedStories;
+    final base = pinned ?? (config.configured ? const <PinnedStory>[] : kPinnedStories);
     // Sin repetidos: la misma crónica puede venir como nota y como destacada,
     // o elegirse dos veces en la configuración.
     final seen = <String>{};
@@ -717,6 +718,8 @@ class _ExplorePageState extends State<ExplorePage> {
       width: double.infinity,
       child: PageView.builder(
         controller: _pinnedController,
+        // Con una sola destacada no hay a dónde deslizar
+        physics: _featured.length > 1 ? null : const NeverScrollableScrollPhysics(),
         itemCount: _featured.length,
         onPageChanged: (page) {
           setState(() => _pinnedPage = page);

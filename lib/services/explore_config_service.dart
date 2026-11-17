@@ -23,7 +23,9 @@ class FeaturedTrip {
 class ExploreConfig {
   final List<FeaturedTrip>? pinned;
   final bool showReleaseNotes;
-  const ExploreConfig({this.pinned, this.showReleaseNotes = true});
+  /// El superusuario ya guardó su elección (app_config/explore existe).
+  final bool configured;
+  const ExploreConfig({this.pinned, this.showReleaseNotes = true, this.configured = false});
 }
 
 class ExploreConfigService {
@@ -38,6 +40,7 @@ class ExploreConfigService {
     return ExploreConfig(
       pinned: raw is List ? raw.map(FeaturedTrip.fromMap).whereType<FeaturedTrip>().toList() : null,
       showReleaseNotes: d['showReleaseNotes'] != false,
+      configured: true,
     );
   }
 

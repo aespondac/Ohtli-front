@@ -5,7 +5,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'place_feedback_sheets.dart';
-import '../services/place_feedback_service.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -778,7 +777,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
-            onPressed: () => showReportPlaceSheet(context, poiId: poi.poiId, poiName: poi.name),
+            onPressed: _showReportSheet,
             icon: const Icon(Icons.flag_outlined, size: 18),
             label: const Text('¿Falta algo o está mal? Repórtalo'),
             style: TextButton.styleFrom(
@@ -1408,70 +1407,14 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
   }
 
   Future<void> _showReportSheet() async {
-    // motivo → (texto, icono, campo de place_feedback)
-    const options = [
-      ('closed', 'Cerró definitivamente', Icons.block_rounded, 'closed'),
-      ('horario', 'El horario está mal', Icons.schedule_rounded, 'opening_hours'),
-      ('precio', 'El precio está mal', Icons.payments_outlined, 'price'),
-      ('ubicacion', 'La ubicación está mal', Icons.wrong_location_outlined, 'location'),
-      ('descripcion', 'La descripción no es adecuada', Icons.notes_rounded, 'description'),
-      ('foto', 'La foto no es apropiada', Icons.hide_image_outlined, 'photo'),
-      ('otro', 'Otra cosa falta o está mal…', Icons.edit_note_rounded, ''),
-    ];
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: OhtliColors.cardBg,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
-          // Siete opciones: en un teléfono chico se desplaza en vez de cortarse
-          child: SingleChildScrollView(child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text('¿Qué está mal en ${widget.poi.name}?',
-                    style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-              ),
-              for (final o in options)
-                ListTile(
-                  leading: Icon(o.$3, color: OhtliColors.accentText),
-                  title: Text(o.$2, style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.onyx)),
-                  onTap: () => Navigator.of(ctx).pop(o.$1),
-                ),
-            ],
-          )),
-        ),
-      ),
-    );
-    if (choice == null || !mounted) return;
     final poi = widget.poi;
-    if (choice == 'otro') {
-      if (FirebaseAuth.instance.currentUser != null && poi.poiId.isNotEmpty) {
-        await showReportPlaceSheet(context, poiId: poi.poiId, poiName: poi.name);
-      }
+    if (FirebaseAuth.instance.currentUser == null || poi.poiId.isEmpty) {
+      // Sin sesión solo queda la métrica de que algo está mal
+      FeedbackService.report(poi.poiId, closed: false, reason: 'otro');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inicia sesión para decirnos qué corregir.')));
       return;
     }
-    FeedbackService.report(poi.poiId, closed: choice == 'closed', reason: choice);
-    // Con sesión, además llega a la revisión del administrador (antes solo quedaba la métrica).
-    // En la foto va cuál era, para quitarla aunque sea una donación ya aprobada.
-    final field = options.firstWhere((o) => o.$1 == choice).$4;
-    if (FirebaseAuth.instance.currentUser != null && poi.poiId.isNotEmpty) {
-      PlaceFeedbackService.report(
-        poiId: poi.poiId,
-        poiName: poi.name,
-        issues: [PlaceIssue(field: field, kind: kIssueWrong, value: field == 'photo' ? poi.photoUrl : '')],
-      ).catchError((_) => false);
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Gracias. Revisaremos este lugar.', style: GoogleFonts.inter(color: Colors.white)),
-      backgroundColor: OhtliColors.stormyTeal,
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
-    ));
+    await showReportPlaceSheet(context, poiId: poi.poiId, poiName: poi.name, photoUrl: poi.photoUrl);
   }
 
   Widget _buildMobileActionBar() {
