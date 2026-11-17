@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/contribution_titles.dart';
 import '../services/place_feedback_service.dart';
 import '../theme/colors.dart';
 import '../utils/friendly_errors.dart';
@@ -40,8 +41,12 @@ Future<void> offerPhotoDonation(
   if (donate != true || !context.mounted) return;
   final messenger = ScaffoldMessenger.of(context);
   try {
-    await PlaceFeedbackService.donatePhoto(poiId: poiId, poiName: poiName, dataUrl: dataUrl, tripId: tripId);
-    messenger.showSnackBar(const SnackBar(content: Text('¡Gracias! Revisaremos tu foto y te avisamos cuando se publique.')));
+    final newTitle = await PlaceFeedbackService.donatePhoto(poiId: poiId, poiName: poiName, dataUrl: dataUrl, tripId: tripId);
+    messenger.showSnackBar(SnackBar(
+      content: Text(newTitle
+          ? '¡Gracias! Ganaste el título ${kTitleDonor.name}. Si aprobamos tu foto, ganas ${kTitleDonorApproved.name}.'
+          : '¡Gracias! Revisaremos tu foto y te avisamos cuando se publique.'),
+    ));
   } catch (e) {
     messenger.showSnackBar(SnackBar(content: Text(friendlyError(e, fallback: 'No se pudo enviar tu foto. Intenta de nuevo.'))));
   }
@@ -91,11 +96,15 @@ class _ReportPlaceSheetState extends State<_ReportPlaceSheet> {
         if (_kinds[f.id] != null) PlaceIssue(field: f.id, kind: _kinds[f.id]!, value: _values[f.id]?.text ?? ''),
     ];
     try {
-      await PlaceFeedbackService.report(poiId: widget.poiId, poiName: widget.poiName, issues: issues, note: _note.text);
+      final newTitle = await PlaceFeedbackService.report(poiId: widget.poiId, poiName: widget.poiName, issues: issues, note: _note.text);
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      messenger.showSnackBar(const SnackBar(content: Text('¡Gracias! Lo revisamos y te avisamos cuando quede corregido.')));
+      messenger.showSnackBar(SnackBar(
+        content: Text(newTitle
+            ? '¡Gracias! Ganaste el título ${kTitleReporter.name}. Si aprobamos tu reporte, ganas ${kTitleReporterApproved.name}.'
+            : '¡Gracias! Lo revisamos y te avisamos cuando quede corregido.'),
+      ));
     } catch (e) {
       if (!mounted) return;
       setState(() => _sending = false);

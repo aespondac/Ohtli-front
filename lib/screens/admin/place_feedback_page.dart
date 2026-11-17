@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../config/admin.dart';
+import '../../services/contribution_titles.dart';
 import '../../services/place_feedback_service.dart';
+import '../../services/poi_suggestion_service.dart';
 import '../../theme/colors.dart';
 import '../../utils/friendly_errors.dart';
 import '../../widgets/ohtli_ui.dart';
@@ -20,6 +22,23 @@ class PlaceFeedbackPage extends StatefulWidget {
 class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
   final Map<String, String> _busy = {};
   bool _showReviewed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Catálogo de títulos al día y títulos pendientes para quien ya los había ganado (testers de
+    // Labs, lugares sugeridos y aportes anteriores). Lo hace el motor, que puede escribir los de todos.
+    if (isSuperUser()) _syncTitles();
+  }
+
+  Future<void> _syncTitles() async {
+    await ContributionTitles.ensureCatalog();
+    try {
+      final res = await PoiSuggestionService.postAdmin('/v1/admin/titles/sync', const {});
+      final granted = res['granted'] is Map ? (res['granted'] as Map).values.fold<int>(0, (a, b) => a + ((b as num?)?.toInt() ?? 0)) : 0;
+      if (granted > 0) _toast('Se entregaron $granted títulos pendientes.');
+    } catch (_) {}
+  }
 
   Future<void> _run(PlaceFeedback f, String label, Future<void> Function() action, String done) async {
     setState(() => _busy[f.id] = label);

@@ -470,8 +470,8 @@ service cloud.firestore {
     // Titles Collection
     match /titles/{titleId} {
       allow read: if true;
-      // Los títulos son un catálogo fijo: se administran desde la consola
-      allow write: if false;
+      // Catálogo fijo: lo administran la consola, el motor y el superusuario (títulos por aportar)
+      allow write: if isSuperUser();
     }
 
     // Labs Waitlist Collection

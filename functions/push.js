@@ -80,15 +80,20 @@ function describePush(data) {
       const place = str(d.poiName) || 'el lugar';
       const photo = type === 'place_photo_reviewed';
       if (d.approved === true) {
+        const won = str(d.titleName) ? ` Ganaste el título ${str(d.titleName)}.` : '';
         return photo
-          ? { title: 'Tu foto se publicó', body: `Tu foto ya es la de ${place}. ¡Gracias por donarla!` }
-          : { title: 'Lugar corregido', body: `Corregimos ${place} con tu reporte. ¡Gracias!` };
+          ? { title: 'Tu foto se publicó', body: `Tu foto ya es la de ${place}. ¡Gracias por donarla!${won}` }
+          : { title: 'Lugar corregido', body: `Corregimos ${place} con tu reporte. ¡Gracias!${won}` };
       }
       const reason = str(d.reason);
       return {
         title: photo ? 'Revisamos tu foto' : 'Revisamos tu reporte',
         body: (photo ? `Esta vez no usamos tu foto de ${place}` : `Revisamos tu reporte de ${place} y no hicimos cambios`) + (reason ? `: ${reason}.` : '.'),
       };
+    }
+    case 'place_suggestion_approved': {
+      const won = str(d.titleName) ? ` Ganaste el título ${str(d.titleName)}.` : '';
+      return { title: 'Tu lugar ya está en Ohtli', body: `${str(d.poiName) || 'El lugar que sugeriste'} ya es parte de Ohtli.${won}` };
     }
     case 'group_trip_remind_respond':
       return { title: 'Queda 1 hora para responder', body: message || `Responde la invitación a "${trip}" antes de que cierre.` };

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
+import 'contribution_titles.dart';
 import 'group_trip_service.dart';
 import 'poi_suggestion_service.dart';
 
@@ -120,8 +121,9 @@ class PlaceFeedbackService {
   static CollectionReference<Map<String, dynamic>> get _col => _db.collection('place_feedback');
 
   /// Dona una foto (data URL JPEG) a un lugar del catálogo. Se sube una copia propia, aparte del
-  /// viaje, para que siga existiendo aunque el viaje se borre.
-  static Future<void> donatePhoto({required String poiId, required String poiName, required String dataUrl, String? tripId}) async {
+  /// viaje, para que siga existiendo aunque el viaje se borre. Devuelve true si con esto ganó
+  /// el título Nemactia.
+  static Future<bool> donatePhoto({required String poiId, required String poiName, required String dataUrl, String? tripId}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('Inicia sesión para donar fotos.');
     final ref = _col.doc();
@@ -141,10 +143,11 @@ class PlaceFeedbackService {
       'status': kFeedbackPending,
       'createdAt': FieldValue.serverTimestamp(),
     });
+    return ContributionTitles.grant(user.uid, kTitleDonor);
   }
 
-  /// Reporta lo que falta o está incorrecto en un lugar.
-  static Future<void> report({required String poiId, required String poiName, required List<PlaceIssue> issues, String note = ''}) async {
+  /// Reporta lo que falta o está incorrecto en un lugar. Devuelve true si con esto ganó Tlamatini.
+  static Future<bool> report({required String poiId, required String poiName, required List<PlaceIssue> issues, String note = ''}) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('Inicia sesión para reportar un lugar.');
     if (issues.isEmpty) throw StateError('Marca qué falta o qué está mal.');
@@ -160,6 +163,7 @@ class PlaceFeedbackService {
       'status': kFeedbackPending,
       'createdAt': FieldValue.serverTimestamp(),
     });
+    return ContributionTitles.grant(user.uid, kTitleReporter);
   }
 
   // --- Administrador ---

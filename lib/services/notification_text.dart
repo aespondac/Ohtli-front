@@ -141,15 +141,27 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
       final approved = data['approved'] == true;
       final photo = data['type'] == 'place_photo_reviewed';
       final reason = (data['reason'] ?? '').toString().trim();
+      final titleName = (data['titleName'] ?? '').toString();
       return NotificationLook(
         sender: 'Ohtli',
         fromSystem: true,
         icon: photo ? Icons.volunteer_activism_rounded : Icons.flag_rounded,
         color: approved ? OhtliColors.stormyTeal : OhtliColors.subtleText,
         message: approved
-            ? (photo ? 'Tu foto ya es la de $place. ¡Gracias por donarla!' : 'Corregimos $place con tu reporte. ¡Gracias!')
+            ? (photo ? 'Tu foto ya es la de $place. ¡Gracias por donarla!' : 'Corregimos $place con tu reporte. ¡Gracias!') +
+                (titleName.isEmpty ? '' : ' Ganaste el título $titleName.')
             : (photo ? 'Esta vez no usamos tu foto de $place' : 'Revisamos tu reporte de $place y no hicimos cambios') +
                 (reason.isEmpty ? '.' : ': $reason.'),
+      );
+    case 'place_suggestion_approved':
+      final titleName = (data['titleName'] ?? '').toString();
+      return NotificationLook(
+        sender: 'Ohtli',
+        fromSystem: true,
+        icon: Icons.add_location_alt_rounded,
+        color: OhtliColors.stormyTeal,
+        message: '${(data['poiName'] ?? 'El lugar que sugeriste').toString()} ya es parte de Ohtli.'
+            '${titleName.isEmpty ? '' : ' Ganaste el título $titleName.'}',
       );
     case 'group_trip_remind_respond':
     case 'group_trip_remind_vote':
