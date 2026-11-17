@@ -241,10 +241,16 @@ class _ExplorePageState extends State<ExplorePage> {
     pool.sort((a, b) => ((a.poiId.hashCode ^ seed) & 0x7fffffff)
         .compareTo((b.poiId.hashCode ^ seed) & 0x7fffffff));
 
-    // Variedad: como máximo 3 lugares por categoría
+    // Variedad: como máximo 3 lugares por categoría y sin repetidos (el catálogo trae algunos
+    // lugares dos veces, con otro id pero el mismo nombre o la misma foto)
     final perCategory = <String, int>{};
     final picks = <Poi>[];
+    final seenNames = <String>{};
+    final seenPhotos = <String>{};
     for (final poi in pool) {
+      final name = poi.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9áéíóúñü]'), '');
+      if (name.isNotEmpty && !seenNames.add(name)) continue;
+      if (poi.photoUrl.isNotEmpty && !seenPhotos.add(poi.photoUrl)) continue;
       final count = perCategory[poi.category] ?? 0;
       if (count >= 3) continue;
       perCategory[poi.category] = count + 1;
