@@ -25,6 +25,7 @@ import '../../services/friend_options.dart';
 import '../../services/group_trip_service.dart';
 import '../../services/manual_plan.dart';
 import '../../services/trip_service.dart';
+import '../../services/outing_prefs.dart';
 import '../../services/trip_transfers.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
@@ -673,7 +674,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
         final profile = data['cultural_profile'];
         if (profile is Map && !_transportModeTouched && mounted) {
           setState(() => _selectedTransportMode =
-              plannerModeFromPreference(profile['transport_preference']?.toString()));
+              plannerModeFromPreferences(OutingPref.transport.read(profile)));
         }
         // Gasto promedio por salida que estimó en el cuestionario de gustos
         final avgBudget = profile is Map ? profile['avg_budget_mxn'] : null;

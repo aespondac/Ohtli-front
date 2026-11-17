@@ -73,6 +73,14 @@ String plannerModeFromPreference(String? pref) {
   }
 }
 
+/// Igual que [plannerModeFromPreference] con varios medios elegidos: si mapean a
+/// medios distintos del planificador, se usa el modo mixto.
+String plannerModeFromPreferences(List<String> prefs) {
+  final modes = prefs.map(plannerModeFromPreference).toSet();
+  if (modes.isEmpty) return plannerModeFromPreference(null);
+  return modes.length == 1 ? modes.first : 'mixto';
+}
+
 TransferMode transferModeOf(String id) =>
     kTransferModes.firstWhere((m) => m.id == id, orElse: () => kTransferModes.first);
 

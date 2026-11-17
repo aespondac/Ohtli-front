@@ -35,6 +35,11 @@ class PoiDetailDialog extends StatefulWidget {
   /// Dónde se abrió (retroalimentación): affinity, itinerary, catalog, trip, detail…
   final String surface;
 
+  /// Modo "elegir" (onboarding): el botón principal marca o desmarca el lugar en la
+  /// selección de quien lo abrió, sin guardarlo todavía ni salir a crear rutas.
+  final ValueChanged<bool>? onPick;
+  final bool picked;
+
   const PoiDetailDialog({
     super.key,
     required this.poi,
@@ -43,6 +48,8 @@ class PoiDetailDialog extends StatefulWidget {
     this.onCreateRoute,
     this.asSheet = false,
     this.surface = 'other',
+    this.onPick,
+    this.picked = false,
   });
 
   static void show(
@@ -53,6 +60,8 @@ class PoiDetailDialog extends StatefulWidget {
     VoidCallback? onCreateRoute,
     String surface = 'other',
     int? position,
+    ValueChanged<bool>? onPick,
+    bool picked = false,
   }) {
     FeedbackService.opened(poi.poiId, surface: surface, position: position);
     // En móvil se abre como hoja inferior (más natural con el pulgar); en escritorio, como diálogo
@@ -72,6 +81,8 @@ class PoiDetailDialog extends StatefulWidget {
             onCreateRoute: onCreateRoute,
             asSheet: true,
             surface: surface,
+            onPick: onPick,
+            picked: picked,
           ),
         ),
       );
@@ -85,6 +96,8 @@ class PoiDetailDialog extends StatefulWidget {
         onSaveToggle: onSaveToggle,
         onCreateRoute: onCreateRoute,
         surface: surface,
+        onPick: onPick,
+        picked: picked,
       ),
     );
   }
@@ -95,6 +108,33 @@ class PoiDetailDialog extends StatefulWidget {
 
 class _PoiDetailDialogState extends State<PoiDetailDialog> {
   late bool _isSaved;
+  late bool _picked = widget.picked;
+  bool get _pickMode => widget.onPick != null;
+
+  void _togglePick() {
+    setState(() => _picked = !_picked);
+    widget.onPick!(_picked);
+  }
+
+  /// Botón principal: en modo elegir marca el lugar; si no, crea una ruta.
+  Widget _buildPrimaryAction() {
+    if (_pickMode) {
+      return OhtliPrimaryButton(
+        label: _picked ? 'Elegido · quitar' : 'Elegir este lugar',
+        icon: _picked ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded,
+        onPressed: _togglePick,
+        highlight: !_picked,
+        expand: true,
+      );
+    }
+    return OhtliPrimaryButton(
+      label: 'Crear ruta desde aquí',
+      icon: Icons.alt_route_rounded,
+      onPressed: _createRouteFromThisPlace,
+      highlight: true,
+      expand: true,
+    );
+  }
   List<Map<String, dynamic>> _matchingPublicTrips = [];
   bool _isLoadingTrips = true;
 
@@ -106,8 +146,11 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     FeedbackService.ensureStarted();
     _isSaved = widget.isSaved;
     _checkSavedStatus();
-    _findMatchingPublicTrips();
-    _findNearby();
+    // En modo elegir no se muestran viajes ni lugares cercanos: no hace falta buscarlos
+    if (!_pickMode) {
+      _findMatchingPublicTrips();
+      _findNearby();
+    }
   }
 
   void _checkSavedStatus() {
@@ -751,7 +794,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         const SizedBox(height: 12),
         OhtliSecondaryButton(label: 'Abrir en Google Maps', icon: Icons.directions_rounded, onPressed: _openInMaps),
       ],
-      if (_nearby.isNotEmpty) ...[
+      if (_nearby.isNotEmpty && !_pickMode) ...[
         const SizedBox(height: 30),
         _buildTitle('A UNOS PASOS', 'Cerca de aquí', Icons.near_me_rounded, OhtliColors.stormyTeal),
         const SizedBox(height: 12),
@@ -769,8 +812,10 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         const SizedBox(height: 30),
         _buildFeedbackRow(),
       ],
-      const SizedBox(height: 30),
-      _buildTripsSection(),
+      if (!_pickMode) ...[
+        const SizedBox(height: 30),
+        _buildTripsSection(),
+      ],
       if (FirebaseAuth.instance.currentUser != null && poi.poiId.isNotEmpty) ...[
         const SizedBox(height: 22),
         // Algo falta o está mal: lo revisa el administrador antes de cambiarlo
@@ -1085,17 +1130,11 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                 const SizedBox(height: 16),
                 Divider(height: 1, color: OhtliColors.cardBorder),
                 const SizedBox(height: 16),
-                if (FirebaseAuth.instance.currentUser != null) ...[
+                if (FirebaseAuth.instance.currentUser != null && !_pickMode) ...[
                   _buildSaveButton(expand: true),
                   const SizedBox(height: 10),
                 ],
-                OhtliPrimaryButton(
-                  label: 'Crear ruta desde aquí',
-                  icon: Icons.alt_route_rounded,
-                  onPressed: _createRouteFromThisPlace,
-                  highlight: true,
-                  expand: true,
-                ),
+                _buildPrimaryAction(),
               ],
             ),
           ),
@@ -1418,7 +1457,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
   }
 
   Widget _buildMobileActionBar() {
-    final canSave = FirebaseAuth.instance.currentUser != null;
+    final canSave = FirebaseAuth.instance.currentUser != null && !_pickMode;
     return Container(
       padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
       decoration: BoxDecoration(
@@ -1449,15 +1488,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: OhtliPrimaryButton(
-              label: 'Crear ruta desde aquí',
-              icon: Icons.alt_route_rounded,
-              onPressed: _createRouteFromThisPlace,
-              highlight: true,
-              expand: true,
-            ),
-          ),
+          Expanded(child: _buildPrimaryAction()),
         ],
       ),
     );

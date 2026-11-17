@@ -1,4 +1,5 @@
 import '../../services/user_private_data.dart';
+import '../../services/outing_prefs.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -19,6 +20,7 @@ import '../places/places_page.dart';
 import '../../services/profile_directory.dart';
 import '../../services/friend_requests.dart';
 import '../../widgets/ohtli_ui.dart';
+import '../../widgets/poi_detail_dialog.dart';
 import '../../widgets/feedback_dialog.dart';
 import '../../widgets/phone_verification_field.dart';
 import '../../widgets/two_factor_card.dart';
@@ -127,8 +129,10 @@ class OnboardingWizardPage extends StatefulWidget {
         : <String, dynamic>{
             "vocacion_cultural": (payload['cultural_interests'] as List?)?.join(', ') ?? '',
             "atmosfera_sensorial": (payload['atmosphere_preference'] as List?)?.join(', ') ?? '',
-            "dinamica_social": "${payload['social_companion'] ?? 'pareja'} / ${payload['discovery_style'] ?? 'equilibrado'}",
-            "entorno_urbano": "${payload['transport_preference'] ?? 'caminata'} (${payload['accessibility_needs'] ?? 'estandar'})",
+            "dinamica_social":
+                "${joinOptions(OutingPref.companion.read(payload))} / ${payload['discovery_style'] ?? 'equilibrado'}",
+            "entorno_urbano":
+                "${joinOptions(OutingPref.transport.read(payload))} (${payload['accessibility_needs'] ?? 'estandar'})",
           };
 
     tasteRecipe ??= tasteAxes.entries.map((e) => "[${e.key}]: ${e.value}").join("\n");
@@ -180,13 +184,14 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   final Set<String> _selectedAtmosphere = {};
 
   // Paso 3: Dinámica Social y Nivel de Descubrimiento
-  String _socialCompanion = "pareja";
+  // Con quién, a qué hora, ritmo y cómo te mueves admiten varias opciones (en el orden en que se eligen)
+  final Set<String> _socialCompanions = {"pareja"};
   String _discoveryStyle = "equilibrado";
-  String _preferredTimeWindow = "tarde";
+  final Set<String> _preferredTimeWindows = {"tarde"};
 
   // Paso 4: Ritmo, Movilidad, Presupuesto y Accesibilidad
-  String _travelPace = "moderado";
-  String _transportPref = "caminata";
+  final Set<String> _travelPaces = {"moderado"};
+  final Set<String> _transportPrefs = {"caminata"};
   String _accessibilityNeeds = "estandar";
 
   // Paso 4: gasto promedio por salida (estimado con las respuestas; la persona lo ajusta)
@@ -306,20 +311,19 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
               ..clear()
               ..addAll((profile['atmosphere_preference'] as List).map((e) => e.toString()));
           }
-          if (profile['social_companion'] is String) {
-            _socialCompanion = profile['social_companion'];
+          // Lista nueva o valor único de perfiles anteriores
+          for (final (pref, target) in [
+            (OutingPref.companion, _socialCompanions),
+            (OutingPref.timeWindow, _preferredTimeWindows),
+            (OutingPref.pace, _travelPaces),
+            (OutingPref.transport, _transportPrefs),
+          ]) {
+            target
+              ..clear()
+              ..addAll(pref.read(profile));
           }
           if (profile['discovery_style'] is String) {
             _discoveryStyle = profile['discovery_style'];
-          }
-          if (profile['preferred_time_window'] is String) {
-            _preferredTimeWindow = profile['preferred_time_window'];
-          }
-          if (profile['travel_pace'] is String) {
-            _travelPace = profile['travel_pace'];
-          }
-          if (profile['transport_preference'] is String) {
-            _transportPref = profile['transport_preference'];
           }
           if (profile['accessibility_needs'] is String) {
             _accessibilityNeeds = profile['accessibility_needs'];
@@ -400,11 +404,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       "Eje 1 • Vocación Cultural y Gastronómica":
           "Afinidad por $cultLabels y experiencias en $culLabels.${bio.isNotEmpty ? ' \"$bio\"' : ''}",
       "Eje 2 • Atmósfera y Experiencia Sensorial":
-          "Vibras $atmoLabels a un ritmo $_travelPace.",
+          "Vibras $atmoLabels a un ritmo ${joinOptions(_travelPaces.toList())}.",
       "Eje 3 • Dinámica Social y Descubrimiento":
-          "Viaje en modalidad $_socialCompanion, enfoque $_discoveryStyle en franja $_preferredTimeWindow.",
+          "Viaje en modalidad ${joinOptions(_socialCompanions.toList())}, enfoque $_discoveryStyle en franja ${joinOptions(_preferredTimeWindows.toList())}.",
       "Eje 4 • Micro-Entorno y Caminabilidad":
-          "Prioridad de traslado: $_transportPref ($_accessibilityNeeds).",
+          "Prioridad de traslado: ${joinOptions(_transportPrefs.toList())} ($_accessibilityNeeds).",
     };
   }
 
@@ -431,14 +435,14 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       "cultural_interests": _selectedCultural.toList(),
       "culinary_interests": _selectedCulinary.toList(),
       "atmosphere_preference": _selectedAtmosphere.toList(),
-      "social_companion": _socialCompanion,
+      ...OutingPref.companion.write(_socialCompanions),
       "discovery_style": _discoveryStyle,
-      "preferred_time_window": _preferredTimeWindow,
-      "travel_pace": _travelPace,
+      ...OutingPref.timeWindow.write(_preferredTimeWindows),
+      ...OutingPref.pace.write(_travelPaces),
       "budget_tier": _budgetTierFor(_avgBudget),
       "avg_budget_mxn": _avgBudget,
       "seed_poi_ids": List<String>.from(_seedPlaceIds),
-      "transport_preference": _transportPref,
+      ...OutingPref.transport.write(_transportPrefs),
       "accessibility_needs": _accessibilityNeeds,
       "free_bio": _existingBio,
     };
@@ -977,6 +981,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
+  Widget _buildMultiHint() => Text(
+        "Elige una o varias",
+        style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: OhtliColors.subtleText),
+      );
+
   Widget _buildSelectionCounter(int count, {int? min}) {
     final ok = min == null || count >= min;
     return AnimatedContainer(
@@ -1058,6 +1067,33 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
+  // Grupo de selección múltiple con pastillas; siempre queda al menos una opción
+  Widget _buildMultiChoiceGroup({
+    required List<Map<String, dynamic>> options,
+    required Set<String> selected,
+  }) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: options.map((opt) {
+        final id = opt["value"] as String;
+        final isSelected = selected.contains(id);
+        return _ChoicePill(
+          icon: opt["icon"] as IconData,
+          label: opt["label"] as String,
+          selected: isSelected,
+          onTap: () => setState(() {
+            if (!isSelected) {
+              selected.add(id);
+            } else if (selected.length > 1) {
+              selected.remove(id);
+            }
+          }),
+        );
+      }).toList(),
+    );
+  }
+
   Widget _buildSocialDiscoveryStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1068,11 +1104,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           description: "No es lo mismo recorrer la ciudad solo que con niños o con amigos de noche.",
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("¿Con quién acostumbras recorrer la ciudad?"),
+        _buildGroupLabel("¿Con quién acostumbras recorrer la ciudad?", trailing: _buildMultiHint()),
         const SizedBox(height: 12),
-        _buildChoiceGroup(
-          value: _socialCompanion,
-          onChanged: (v) => _socialCompanion = v,
+        _buildMultiChoiceGroup(
+          selected: _socialCompanions,
           options: const [
             {"value": "solo", "label": "Solo", "icon": Icons.person_outline},
             {"value": "pareja", "label": "En Pareja", "icon": Icons.favorite_border},
@@ -1093,11 +1128,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           ],
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("¿A qué hora sales?"),
+        _buildGroupLabel("¿A qué hora sales?", trailing: _buildMultiHint()),
         const SizedBox(height: 12),
-        _buildChoiceGroup(
-          value: _preferredTimeWindow,
-          onChanged: (v) => _preferredTimeWindow = v,
+        _buildMultiChoiceGroup(
+          selected: _preferredTimeWindows,
           options: const [
             {"value": "manana", "label": "Mañana", "icon": Icons.wb_sunny_outlined},
             {"value": "tarde", "label": "Tarde", "icon": Icons.wb_twilight_outlined},
@@ -1119,11 +1153,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           description: "Calculamos un gasto promedio con lo que elegiste; ajústalo si quieres.",
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("Ritmo de la jornada"),
+        _buildGroupLabel("Ritmo de la jornada", trailing: _buildMultiHint()),
         const SizedBox(height: 12),
-        _buildChoiceGroup(
-          value: _travelPace,
-          onChanged: (v) => _travelPace = v,
+        _buildMultiChoiceGroup(
+          selected: _travelPaces,
           options: const [
             {"value": "relajado", "label": "Relajado", "icon": Icons.spa_outlined},
             {"value": "moderado", "label": "Equilibrado", "icon": Icons.explore_outlined},
@@ -1131,11 +1164,10 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           ],
         ),
         const SizedBox(height: 26),
-        _buildGroupLabel("¿Cómo te mueves?"),
+        _buildGroupLabel("¿Cómo te mueves?", trailing: _buildMultiHint()),
         const SizedBox(height: 12),
-        _buildChoiceGroup(
-          value: _transportPref,
-          onChanged: (v) => _transportPref = v,
+        _buildMultiChoiceGroup(
+          selected: _transportPrefs,
           options: const [
             {"value": "caminata", "label": "Caminata Peatonal", "icon": Icons.directions_walk},
             {"value": "bicicleta", "label": "Bici / Ecobici", "icon": Icons.pedal_bike},
@@ -1189,6 +1221,9 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   static const Map<String, double> _paceFactor = {"relajado": 0.85, "moderado": 1.0, "intensivo": 1.25};
 
+  /// A ritmo intensivo se come más veces en la salida.
+  static const Map<String, double> _paceFoodFactor = {"relajado": 1.0, "moderado": 1.0, "intensivo": 1.5};
+
   double _avg(Iterable<String> ids, Map<String, double> table, double fallback) {
     final values = ids.where(table.containsKey).map((id) => table[id]!).toList();
     if (values.isEmpty) return fallback;
@@ -1197,10 +1232,11 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
   /// (comida, entradas, traslados, total) por salida, redondeado a 50.
   ({double food, double entries, double transport, double total}) get _budgetEstimate {
-    final pace = _paceFactor[_travelPace] ?? 1.0;
-    final food = _avg(_selectedCulinary, _foodCost, 200) * (_travelPace == 'intensivo' ? 1.5 : 1.0);
+    // Con varios ritmos o medios se promedia entre los elegidos
+    final pace = _avg(_travelPaces, _paceFactor, 1.0);
+    final food = _avg(_selectedCulinary, _foodCost, 200) * _avg(_travelPaces, _paceFoodFactor, 1.0);
     final entries = _avg(_selectedCultural, _entryCost, 60) * 2; // ~2 recintos por salida
-    final transport = _transportCost[_transportPref] ?? 40;
+    final transport = _avg(_transportPrefs, _transportCost, 40);
     double round50(double v) => (v / 50).round() * 50.0;
     final total = round50((food + entries + transport) * pace).clamp(150.0, 3000.0);
     return (food: round50(food), entries: round50(entries), transport: round50(transport), total: total);
@@ -1369,6 +1405,24 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     return out;
   }
 
+  /// Detalle del lugar (foto, historia, ubicación…); desde ahí también se elige.
+  void _openSeedPlace(Poi poi, int position) {
+    PoiDetailDialog.show(
+      context,
+      poi,
+      surface: 'onboarding',
+      position: position,
+      picked: _seedPlaceIds.contains(poi.poiId),
+      onPick: (picked) {
+        if (!mounted) return;
+        setState(() {
+          _seedPlaceIds.remove(poi.poiId);
+          if (picked) _seedPlaceIds.add(poi.poiId);
+        });
+      },
+    );
+  }
+
   Widget _buildSeedPlacesStep(double width) {
     final suggestions = _placeSuggestions;
     final columns = width < 420 ? 2 : (width < 700 ? 3 : 4);
@@ -1381,7 +1435,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           eyebrow: "Empecemos por los lugares",
           title: "¿Qué lugares te llaman?",
           description:
-              "Elige los que conoces o quieres conocer. Se guardan en Mis lugares y con ellos marcamos tus gustos en el siguiente paso.",
+              "Elige los que conoces o quieres conocer; toca «Ver» para conocer cada uno. Se guardan en Mis lugares y con ellos marcamos tus gustos en el siguiente paso.",
         ),
         const SizedBox(height: 18),
         TextField(
@@ -1443,6 +1497,7 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
                     onTap: () => setState(() {
                       if (!_seedPlaceIds.remove(poi.poiId)) _seedPlaceIds.add(poi.poiId);
                     }),
+                    onView: () => _openSeedPlace(poi, suggestions.indexOf(poi)),
                   )),
                 ),
             ],
@@ -2295,11 +2350,12 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
 
 /// Lugar del catálogo con foto, para elegir los primeros lugares.
 class _SeedPlaceTile extends StatelessWidget {
-  const _SeedPlaceTile({required this.poi, required this.selected, required this.onTap});
+  const _SeedPlaceTile({required this.poi, required this.selected, required this.onTap, required this.onView});
 
   final Poi poi;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback onView;
 
   @override
   Widget build(BuildContext context) {
@@ -2352,6 +2408,35 @@ class _SeedPlaceTile extends StatelessWidget {
                             border: Border.all(color: Colors.white, width: 1.5),
                           ),
                           child: Icon(selected ? Icons.check_rounded : Icons.add_rounded, size: 17, color: Colors.white),
+                        ),
+                      ),
+                      // Ver el detalle sin marcarlo
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: Semantics(
+                          button: true,
+                          label: 'Ver ${poi.name}',
+                          excludeSemantics: true,
+                          child: Material(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            shape: const StadiumBorder(),
+                            child: InkWell(
+                              customBorder: const StadiumBorder(),
+                              onTap: onView,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.visibility_outlined, size: 14, color: Colors.white),
+                                    const SizedBox(width: 5),
+                                    Text('Ver', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
