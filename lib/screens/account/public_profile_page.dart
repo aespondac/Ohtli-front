@@ -846,12 +846,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // En escritorio, los números junto a los botones (a la derecha), sin el hueco
+                    // que quedaba en medio
                     if (isDesktop)
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Expanded(child: _buildStatsRow(isDark, followingList.length)),
-                          const SizedBox(width: 20),
+                          Flexible(child: _buildStatsRow(isDark, followingList.length)),
+                          Container(width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 24), color: OhtliColors.cardBorder),
                           _buildActionButtons(isDark),
                         ],
                       )
@@ -1334,7 +1337,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
         child: Row(children: [for (final t in tiles) Padding(padding: const EdgeInsets.only(right: 28), child: t)]),
       );
     }
-    return Wrap(spacing: 36, runSpacing: 14, children: tiles);
+    return Wrap(spacing: 28, runSpacing: 14, alignment: WrapAlignment.end, children: tiles);
   }
 
   Widget _buildActionButtons(bool isDark) {
