@@ -135,27 +135,34 @@ class _LabConsentCardState extends State<LabConsentCard> {
 }
 
 /// Sección "Participa": estudios abiertos para testers (SUS y relevancia).
-class LabParticipateView extends StatefulWidget {
+/// Encabezado de las secciones de participación (Estudios abiertos, Encuestas abiertas): rol y,
+/// para testers, "Dejar de ser tester".
+class LabParticipantHeader extends StatefulWidget {
+  final String title;
+  final String caption;
+  final IconData icon;
   final LabRole role;
 
   /// "Dejar de ser tester": la cuenta vuelve a ver el consentimiento.
   final VoidCallback onLeft;
-  const LabParticipateView({super.key, required this.role, required this.onLeft});
+  const LabParticipantHeader({
+    super.key,
+    required this.title,
+    required this.caption,
+    required this.role,
+    required this.onLeft,
+    this.icon = Icons.verified_user_outlined,
+  });
 
   @override
-  State<LabParticipateView> createState() => _LabParticipateViewState();
+  State<LabParticipantHeader> createState() => _LabParticipantHeaderState();
 }
 
-class _LabParticipateViewState extends State<LabParticipateView> {
-  String? _studyId;
-  // Una sola suscripción (no en cada build: cada redibujo volvía a mostrar el spinner).
-  late final Stream<QuerySnapshot<Map<String, dynamic>>> _activeStudies =
-      LabRepository.instance.studies.where('active', isEqualTo: true).snapshots();
-
+class _LabParticipantHeaderState extends State<LabParticipantHeader> {
   @override
   void initState() {
     super.initState();
-    // Quien respondió algún estudio antes de que existiera el título también lo recibe.
+    // Quien respondió alguna encuesta antes de que existiera el título también lo recibe.
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       LabRepository.instance.responses.where('uid', isEqualTo: uid).limit(1).get().then((q) {
@@ -165,18 +172,14 @@ class _LabParticipateViewState extends State<LabParticipateView> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_studyId == 'sus') return _SusFlow(onDone: () => setState(() => _studyId = null));
-    if (_studyId != null) return _RelevanceFlow(onDone: () => setState(() => _studyId = null));
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      LabCard(
+  Widget build(BuildContext context) => LabCard(
         child: Row(children: [
-          const Icon(Icons.verified_user_outlined, color: OhtliColors.stormyTeal),
+          Icon(widget.icon, color: OhtliColors.stormyTeal),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Estudios abiertos', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-              Text('Tu rol: ${widget.role.label}. Cada estudio toma pocos minutos y tus respuestas son anónimas.',
+              Text(widget.title, style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+              Text('Tu rol: ${widget.role.label}. ${widget.caption}',
                   style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText)),
             ]),
           ),
@@ -191,48 +194,95 @@ class _LabParticipateViewState extends State<LabParticipateView> {
               child: const Text('Dejar de ser tester'),
             ),
         ]),
+      );
+}
+
+/// Sección "Encuestas abiertas": las encuestas que cualquier tester puede responder sin inscribirse
+/// a un estudio. Antes aparecían como "Estudios abiertos" aunque son encuestas (la de relevancia y
+/// el cuestionario SUS; ver docs/labs_estructura.md). También lleva a la calibración a ciegas del
+/// experimento "Validación de afinidad", que es una encuesta con su propia pantalla.
+class LabOpenSurveysView extends StatefulWidget {
+  final LabRole role;
+  final VoidCallback onLeft;
+
+  /// Abre un experimento de Labs por su id (la calibración vive en el experimento "afinidad").
+  final ValueChanged<String> onOpenExperiment;
+  const LabOpenSurveysView({super.key, required this.role, required this.onLeft, required this.onOpenExperiment});
+
+  @override
+  State<LabOpenSurveysView> createState() => _LabOpenSurveysViewState();
+}
+
+class _LabOpenSurveysViewState extends State<LabOpenSurveysView> {
+  String? _surveyId;
+  // Una sola suscripción (no en cada build: cada redibujo volvía a mostrar el spinner).
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _activeStudies =
+      LabRepository.instance.studies.where('active', isEqualTo: true).snapshots();
+
+  @override
+  Widget build(BuildContext context) {
+    if (_surveyId == 'sus') return _SusFlow(onDone: () => setState(() => _surveyId = null));
+    if (_surveyId != null) return _RelevanceFlow(onDone: () => setState(() => _surveyId = null));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      LabParticipantHeader(
+        title: 'Encuestas abiertas',
+        caption: 'Cada encuesta toma pocos minutos y tus respuestas son anónimas.',
+        icon: Icons.ballot_outlined,
+        role: widget.role,
+        onLeft: widget.onLeft,
       ),
       const SizedBox(height: 12),
-      _studyPicker(),
+      _surveyPicker(),
+      _surveyCard(
+        title: 'Calibra la afinidad (5 min)',
+        description: 'Imagina un perfil de viajero y califica a ciegas 12 lugares. Así medimos si las recomendaciones '
+            'de Ohtli le ganan a lugares elegidos al azar.',
+        onStart: () => widget.onOpenExperiment('afinidad'),
+      ),
     ]);
   }
 
-  Widget _studyPicker() {
+  Widget _surveyCard({required String title, required String description, required VoidCallback onStart}) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: LabCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+            const SizedBox(height: 6),
+            Text(description, style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4)),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: onStart,
+              style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
+              child: const Text('Comenzar'),
+            ),
+          ]),
+        ),
+      );
+
+  /// Encuestas del TT (relevancia y SUS): solo las que el laboratorio tiene activas.
+  Widget _surveyPicker() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _activeStudies,
       builder: (context, snap) {
         final active = snap.data?.docs.map((d) => d.id).toSet() ?? {};
         final list = kLabStudies.where((s) => s.needsTesters && active.contains(s.id)).toList();
         if (snap.hasError && !snap.hasData) {
-          return LabCard(child: Text('No pudimos cargar los estudios. Recarga la página para intentar de nuevo.', style: labCell()));
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: LabCard(child: Text('No pudimos cargar algunas encuestas. Recarga la página para intentar de nuevo.', style: labCell())),
+          );
         }
-        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        if (list.isEmpty) {
-          return LabCard(child: Text('Por ahora no hay estudios abiertos. ¡Gracias por tu interés!', style: labCell()));
+        if (!snap.hasData) {
+          return const Padding(padding: EdgeInsets.only(bottom: 12), child: Center(child: CircularProgressIndicator()));
         }
         return Column(children: [
           for (final s in list)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: LabCard(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(s.kind == LabStudyKind.sus ? 'Prueba la app y cuéntanos (10–15 min)' : 'Califica recomendaciones (5 min)',
-                      style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
-                  const SizedBox(height: 6),
-                  Text(
-                    s.kind == LabStudyKind.sus
-                        ? 'Realiza cuatro tareas en ohtli.quest y responde un cuestionario corto de usabilidad.'
-                        : 'Te mostramos itinerarios generados por Ohtli y calificas qué tan bien encaja cada lugar con la intención del viaje.',
-                    style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.subtleText, height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: () => setState(() => _studyId = s.id),
-                    style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
-                    child: const Text('Comenzar'),
-                  ),
-                ]),
-              ),
+            _surveyCard(
+              title: s.kind == LabStudyKind.sus ? 'Prueba la app y cuéntanos (10–15 min)' : 'Califica recomendaciones (5 min)',
+              description: s.kind == LabStudyKind.sus
+                  ? 'Realiza cuatro tareas en ohtli.quest y responde un cuestionario corto de usabilidad.'
+                  : 'Te mostramos itinerarios generados por Ohtli y calificas qué tan bien encaja cada lugar con la intención del viaje.',
+              onStart: () => setState(() => _surveyId = s.id),
             ),
         ]);
       },

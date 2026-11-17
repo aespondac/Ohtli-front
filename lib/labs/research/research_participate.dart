@@ -14,7 +14,12 @@ TextStyle _h(double size) => GoogleFonts.outfit(fontSize: size, fontWeight: Font
 
 /// Estudios de la nueva estructura abiertos a testers (los del TT siguen con su flujo propio).
 class LabOpenStudiesView extends StatelessWidget {
-  const LabOpenStudiesView({super.key});
+  /// Título de sección propio (sin él, la pantalla ya lo pone en su encabezado).
+  final bool showTitle;
+
+  /// Qué mostrar si no hay estudios reclutando; sin él no se muestra nada.
+  final Widget? emptyState;
+  const LabOpenStudiesView({super.key, this.showTitle = true, this.emptyState});
 
   @override
   Widget build(BuildContext context) {
@@ -28,11 +33,19 @@ class LabOpenStudiesView extends StatelessWidget {
               .where((s) => s.builtinKind == null && (s.status.acceptsEnrollment || mine.containsKey(s.id)))
               .toList()
             ..sort((a, b) => (mine.containsKey(b.id) ? 1 : 0).compareTo(mine.containsKey(a.id) ? 1 : 0));
-          if (list.isEmpty) return const SizedBox.shrink();
+          if (list.isEmpty) {
+            if (emptyState == null) return const SizedBox.shrink();
+            if (ss.hasError && !ss.hasData) {
+              return LabCard(child: Text('No pudimos cargar los estudios. Recarga la página para intentar de nuevo.', style: labCell()));
+            }
+            if (!ss.hasData) return const Center(child: CircularProgressIndicator());
+            return emptyState!;
+          }
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const SizedBox(height: 8),
-            const LabSectionTitle('Estudios de investigación',
-                caption: 'Inscríbete para usar sus funciones en prueba y responder sus encuestas. Puedes darte de baja cuando quieras.'),
+            if (showTitle)
+              const LabSectionTitle('Estudios de investigación',
+                  caption: 'Inscríbete para usar sus funciones en prueba y responder sus encuestas. Puedes darte de baja cuando quieras.'),
             for (final s in list)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
