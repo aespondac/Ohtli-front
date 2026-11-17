@@ -29,6 +29,7 @@ import '../admin/place_suggestions_page.dart';
 import '../admin/place_feedback_page.dart';
 import '../../services/place_feedback_service.dart';
 import '../admin/explore_featured_page.dart';
+import '../admin/app_feedback_page.dart';
 import '../trips/trip_screens.dart' deferred as trips;
 import '../../widgets/deferred_view.dart';
 import '../../widgets/push_toggle.dart' show PushSettingTile;
@@ -110,6 +111,10 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     if (isSuperUser()) {
       _feedbackSub = PlaceFeedbackService.watchPendingCount().listen((n) {
         if (mounted) setState(() => _feedbackPending = n);
+      }, onError: (_) {});
+      // Y cuántos comentarios de "Enviar comentarios" son nuevos
+      _commentsSub = FeedbackService.watchNewCount().listen((n) {
+        if (mounted) setState(() => _commentsNew = n);
       }, onError: (_) {});
     }
     final user = FirebaseAuth.instance.currentUser;
@@ -433,10 +438,13 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
 
   StreamSubscription<int>? _feedbackSub;
   int _feedbackPending = 0;
+  StreamSubscription<int>? _commentsSub;
+  int _commentsNew = 0;
 
   @override
   void dispose() {
     _feedbackSub?.cancel();
+    _commentsSub?.cancel();
     _userDataSubscription?.cancel();
     _firstNameController.dispose();
     _lastNameController.dispose();
@@ -1817,6 +1825,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           title: _feedbackPending > 0 ? 'Fotos y reportes · $_feedbackPending' : 'Fotos y reportes',
           subtitle: 'Fotos donadas y datos de lugares por corregir',
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceFeedbackPage())),
+        ),
+        _SettingsItem(
+          icon: Icons.rate_review_outlined,
+          title: _commentsNew > 0 ? 'Comentarios de la app · $_commentsNew' : 'Comentarios de la app',
+          subtitle: 'Ideas y fallas con capturas y datos del equipo',
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppFeedbackPage())),
         ),
         _SettingsItem(
           icon: Icons.push_pin_outlined,

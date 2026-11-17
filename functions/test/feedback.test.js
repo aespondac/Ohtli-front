@@ -85,3 +85,44 @@ test('con destinatario deja el correo en la cola de la extensión', async () => 
   assert.equal(mail.message.subject, '[Ohtli · Idea] hola');
   assert.equal(db.store['feedback_rate/u'].count, 1);
 });
+
+test('correo con cuenta, dispositivo, estado, errores y capturas', () => {
+  const m = fb.buildFeedbackMail({
+    uid: 'u1', message: 'Se cerró el mapa', category: 'bug', screen: 'planear_con_ia', appVersion: '1.1.0',
+    user: { uid: 'u1', nombre: 'Ana', correo: 'ana@correo.test' },
+    device: { navegador: 'Safari · iOS', pantalla: '390x844', red: '4g · 10 Mb/s' },
+    system: { version: '1.1.0', tema: 'oscuro', ruta: '/mis-viajes' },
+    errors: [{ at: '2026-11-16T10:00:00', where: 'widgets', message: 'RenderFlex <overflow>' }],
+  }, { id: 'f9', images: ['https://img.test/1.png?a=1&b=2'], adminUrl: 'https://ohtli.quest/cuenta' });
+  assert.match(m.text, /De: Ana <ana@correo\.test>/);
+  assert.match(m.text, /Dispositivo\n  Navegador: Safari · iOS/);
+  assert.match(m.text, /Estado de Ohtli\n  Versión: 1\.1\.0/);
+  assert.match(m.text, /Errores recientes/);
+  assert.match(m.text, /https:\/\/img\.test\/1\.png/);
+  assert.match(m.html, /<img src="https:\/\/img\.test\/1\.png\?a=1&amp;b=2"/);
+  assert.match(m.html, /RenderFlex &lt;overflow&gt;/);
+  assert.match(m.html, /Revisarlo en el panel de Ohtli/);
+});
+
+test('comentario viejo (sin device) usa navegador y ventana sueltos', () => {
+  const m = fb.buildFeedbackMail({ uid: 'u', message: 'hola', browser: 'Chrome · macOS', viewport: '1200x800' });
+  assert.match(m.text, /Navegador: Chrome · macOS/);
+  assert.match(m.text, /Ventana: 1200x800/);
+  assert.ok(!m.text.includes('undefined'));
+});
+
+test('URLs de capturas con el token de Firebase y solo de app_feedback/', async () => {
+  const bucket = {
+    name: 'b.appspot.com',
+    file: (p) => ({
+      async getMetadata() {
+        if (p.endsWith('2.png')) return [{ metadata: {} }];
+        return [{ metadata: { firebaseStorageDownloadTokens: 'tok1,tok2' } }];
+      },
+    }),
+  };
+  const urls = await fb.imageUrls(bucket, ['app_feedback/u/f/1.png', 'app_feedback/u/f/2.png', 'otra/ruta.png']);
+  assert.deepEqual(urls, ['https://firebasestorage.googleapis.com/v0/b/b.appspot.com/o/app_feedback%2Fu%2Ff%2F1.png?alt=media&token=tok1']);
+  assert.deepEqual(await fb.imageUrls(null, ['app_feedback/x.png']), []);
+});
+

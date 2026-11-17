@@ -440,13 +440,15 @@ service cloud.firestore {
     }
 
     // Comentarios de "Enviar comentarios" (lib/widgets/feedback_dialog.dart). Cualquiera con
-    // sesión crea el suyo; nadie los lee ni los cambia desde la app (ni los propios): la Cloud
-    // Function feedbackEmail los manda por correo con el Admin SDK. Ver functions/feedback.js.
+    // sesión crea el suyo (siempre como "new"); no los puede leer ni cambiar después. El
+    // superusuario los lee y marca como revisados o resueltos en "Comentarios de la app"; la
+    // Cloud Function feedbackEmail los manda por correo. Ver functions/feedback.js.
     match /app_feedback/{feedbackId} {
       allow create: if request.auth != null
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.keys().hasOnly(['uid', 'message', 'category', 'screen', 'appVersion',
-             'browser', 'viewport', 'language', 'context', 'createdAt'])
+             'browser', 'viewport', 'language', 'context', 'device', 'system', 'user', 'errors',
+             'screenshots', 'status', 'createdAt'])
         && request.resource.data.message is string
         && request.resource.data.message.size() >= 3
         && request.resource.data.message.size() <= 2000
@@ -455,6 +457,7 @@ service cloud.firestore {
         && request.resource.data.screen.size() <= 80
         && request.resource.data.appVersion is string
         && request.resource.data.appVersion.size() <= 20
+        && request.resource.data.get('status', 'new') == 'new'
         && request.resource.data.get('browser', '') is string
         && request.resource.data.get('browser', '').size() <= 80
         && request.resource.data.get('viewport', '') is string
@@ -463,8 +466,23 @@ service cloud.firestore {
         && request.resource.data.get('language', '').size() <= 20
         && request.resource.data.get('context', {}) is map
         && request.resource.data.get('context', {}).size() <= 8
+        && request.resource.data.get('device', {}) is map
+        && request.resource.data.get('device', {}).size() <= 20
+        && request.resource.data.get('system', {}) is map
+        && request.resource.data.get('system', {}).size() <= 15
+        && request.resource.data.get('user', {}) is map
+        && request.resource.data.get('user', {}).size() <= 10
+        && request.resource.data.get('user', {}).get('uid', request.auth.uid) == request.auth.uid
+        && request.resource.data.get('errors', []) is list
+        && request.resource.data.get('errors', []).size() <= 10
+        && request.resource.data.get('screenshots', []) is list
+        && request.resource.data.get('screenshots', []).size() <= 3
         && request.resource.data.createdAt == request.time;
-      allow read, update, delete: if false;
+      allow read: if isSuperUser();
+      allow update: if isSuperUser()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewNote', 'reviewedAt'])
+        && request.resource.data.status in ['new', 'reviewed', 'resolved'];
+      allow delete: if false;
     }
 
     // Titles Collection

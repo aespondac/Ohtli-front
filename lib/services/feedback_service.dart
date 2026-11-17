@@ -3,12 +3,14 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:web/web.dart' as web;
 
 import '../config/app_version.dart';
+import 'app_diagnostics.dart';
 
 /// Retroalimentación del comportamiento (RF-12): lo que la persona hace con las
 /// recomendaciones y con los lugares se manda al motor Yollotl en lotes
@@ -163,7 +165,8 @@ class FeedbackService {
   // ---------------------------------------------------------------------------
 
   /// Colección donde se guardan los comentarios escritos a mano. La Cloud Function
-  /// `feedbackEmail` (functions/feedback.js) los manda por correo al equipo de Ohtli.
+  /// `feedbackEmail` (functions/feedback.js) los manda por correo al equipo de Ohtli, y el
+  /// administrador los revisa en "Comentarios de la app" (lib/screens/admin/app_feedback_page.dart).
   static const String commentsCollection = 'app_feedback';
 
   /// Tipos de comentario que acepta firestore.rules.
@@ -171,47 +174,32 @@ class FeedbackService {
   static const int commentMinLength = 3;
   static const int commentMaxLength = 2000;
 
-  /// Navegador y sistema en pocas palabras ("Chrome · macOS"), sin la cadena completa del
-  /// user agent: basta para reproducir un error y no identifica a la persona.
-  static String describeBrowser(String userAgent) {
-    final ua = userAgent.toLowerCase();
-    String browser;
-    if (ua.contains('edg/')) {
-      browser = 'Edge';
-    } else if (ua.contains('opr/') || ua.contains('opera')) {
-      browser = 'Opera';
-    } else if (ua.contains('samsungbrowser')) {
-      browser = 'Samsung Internet';
-    } else if (ua.contains('firefox/') || ua.contains('fxios')) {
-      browser = 'Firefox';
-    } else if (ua.contains('crios') || ua.contains('chrome/')) {
-      browser = 'Chrome';
-    } else if (ua.contains('safari/')) {
-      browser = 'Safari';
-    } else {
-      browser = 'Otro navegador';
-    }
-    String os;
-    if (ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod')) {
-      os = 'iOS';
-    } else if (ua.contains('android')) {
-      os = 'Android';
-    } else if (ua.contains('mac os') || ua.contains('macintosh')) {
-      os = 'macOS';
-    } else if (ua.contains('windows')) {
-      os = 'Windows';
-    } else if (ua.contains('cros')) {
-      os = 'ChromeOS';
-    } else if (ua.contains('linux')) {
-      os = 'Linux';
-    } else {
-      os = 'otro sistema';
-    }
-    return '$browser · $os';
+  /// Capturas o fotos por comentario y tamaño máximo de cada una (igual que storage.rules).
+  static const int maxAttachments = 3;
+  static const int maxAttachmentBytes = 5 * 1024 * 1024;
+
+  /// Estado de revisión: nuevo → revisado → resuelto.
+  static const String statusNew = 'new';
+  static const String statusReviewed = 'reviewed';
+  static const String statusResolved = 'resolved';
+  static const List<String> commentStatuses = [statusNew, statusReviewed, statusResolved];
+
+  /// Navegador y sistema en pocas palabras ("Chrome · macOS").
+  static String describeBrowser(String userAgent) => AppDiagnostics.describeBrowserOf(userAgent);
+
+  static String _clip(String v, int max) => v.length > max ? v.substring(0, max) : v;
+
+  static Map<String, String> _clipMap(Map<String, String>? m, {int maxKeys = 20, int maxValue = 300}) {
+    final out = <String, String>{};
+    m?.forEach((k, v) {
+      if (out.length >= maxKeys || k.isEmpty || v.isEmpty) return;
+      out[_clip(k, 40)] = _clip(v, maxValue);
+    });
+    return out;
   }
 
-  /// Documento que se guarda en [commentsCollection]. Solo lleva lo necesario para entender
-  /// el comentario: nada de correo, teléfono ni ubicación.
+  /// Documento que se guarda en [commentsCollection]. [device], [system], [user] y [errors] solo
+  /// van si la persona deja marcada "Incluir info del dispositivo"; los lee solo el administrador.
   static Map<String, dynamic> buildComment({
     required String uid,
     required String message,
@@ -221,56 +209,109 @@ class FeedbackService {
     String? viewport,
     String? language,
     Map<String, String>? context,
+    Map<String, String>? device,
+    Map<String, String>? system,
+    Map<String, String>? user,
+    List<Map<String, String>>? errors,
+    List<String>? screenshots,
     Object? createdAt,
   }) {
-    String clip(String v, int max) => v.length > max ? v.substring(0, max) : v;
-    final ctx = <String, String>{};
-    context?.forEach((k, v) {
-      if (ctx.length >= 8 || k.isEmpty || v.isEmpty) return;
-      ctx[clip(k, 40)] = clip(v, 200);
-    });
+    final ctx = _clipMap(context, maxKeys: 8, maxValue: 200);
+    final dev = _clipMap(device);
+    final sys = _clipMap(system, maxKeys: 15);
+    final usr = _clipMap(user, maxKeys: 10)..['uid'] = uid;
+    final errs = [
+      for (final e in (errors ?? const <Map<String, String>>[]).reversed.take(10).toList().reversed)
+        _clipMap(e, maxKeys: 4),
+    ];
+    final shots = [for (final p in (screenshots ?? const <String>[]).take(maxAttachments)) _clip(p, 200)];
     return {
       'uid': uid,
-      'message': clip(message.trim(), commentMaxLength),
+      'message': _clip(message.trim(), commentMaxLength),
       'category': commentCategories.contains(category) ? category : 'other',
-      'screen': clip(screen, 80),
+      'screen': _clip(screen, 80),
       'appVersion': kAppVersion,
-      if (browser != null) 'browser': clip(browser, 80),
-      if (viewport != null) 'viewport': clip(viewport, 20),
-      if (language != null) 'language': clip(language, 20),
+      'status': statusNew,
+      if (browser != null) 'browser': _clip(browser, 80),
+      if (viewport != null) 'viewport': _clip(viewport, 20),
+      if (language != null) 'language': _clip(language, 20),
       if (ctx.isNotEmpty) 'context': ctx,
+      if (dev.isNotEmpty) 'device': dev,
+      if (sys.isNotEmpty) 'system': sys,
+      'user': usr,
+      if (errs.isNotEmpty) 'errors': errs,
+      if (shots.isNotEmpty) 'screenshots': shots,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
     };
   }
 
   /// Guarda un comentario de la persona con sesión. Lanza si no hay sesión o si falla.
-  /// `screen` dice desde dónde se mandó (p. ej. `onboarding:paso-2`); `context` agrega datos
-  /// útiles y no sensibles (id del trabajo de la IA, paso del planificador).
+  /// `screen` dice desde dónde se mandó (p. ej. `onboarding`); `context` agrega datos útiles
+  /// (paso, id del trabajo de la IA). Las [attachments] (capturas o fotos) se suben primero a
+  /// Storage, en una carpeta que solo lee el administrador.
   static Future<void> sendComment({
     required String message,
     required String category,
     required String screen,
     Map<String, String>? context,
+    List<FeedbackAttachment> attachments = const [],
+    bool includeDiagnostics = true,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('Inicia sesión para enviar comentarios.');
-    String? browser, viewport, language;
-    try {
-      browser = describeBrowser(web.window.navigator.userAgent);
-      viewport = '${web.window.innerWidth}x${web.window.innerHeight}';
-      language = web.window.navigator.language;
-    } catch (_) {}
-    await FirebaseFirestore.instance.collection(commentsCollection).add(buildComment(
-          uid: user.uid,
-          message: message,
-          category: category,
-          screen: screen,
-          browser: browser,
-          viewport: viewport,
-          language: language,
-          context: context,
-        ));
+    final ref = FirebaseFirestore.instance.collection(commentsCollection).doc();
+    final paths = <String>[];
+    var i = 0;
+    for (final a in attachments.take(maxAttachments)) {
+      if (a.bytes.isEmpty || a.bytes.length > maxAttachmentBytes) continue;
+      i++;
+      final path = 'app_feedback/${user.uid}/${ref.id}/$i.${a.extension}';
+      await FirebaseStorage.instance.ref(path).putData(a.bytes, SettableMetadata(contentType: a.mimeType));
+      paths.add(path);
+    }
+    final device = includeDiagnostics ? AppDiagnostics.device() : const <String, String>{};
+    await ref.set(buildComment(
+      uid: user.uid,
+      message: message,
+      category: category,
+      screen: screen,
+      browser: device['navegador'],
+      viewport: device['ventana'],
+      language: device['idioma'],
+      context: context,
+      device: includeDiagnostics ? device : null,
+      system: includeDiagnostics ? AppDiagnostics.system() : {'version': kAppVersion},
+      user: AppDiagnostics.user(),
+      errors: includeDiagnostics ? AppDiagnostics.recentErrors : null,
+      screenshots: paths,
+    ));
   }
+
+  // --- Administrador ---
+
+  static CollectionReference<Map<String, dynamic>> get _comments =>
+      FirebaseFirestore.instance.collection(commentsCollection);
+
+  static Stream<List<AppFeedback>> watchComments() => _comments
+      .orderBy('createdAt', descending: true)
+      .limit(300)
+      .snapshots()
+      .map((q) => [for (final d in q.docs) AppFeedback.fromMap(d.id, d.data())]);
+
+  static Stream<int> watchNewCount() =>
+      _comments.where('status', isEqualTo: statusNew).snapshots().map((q) => q.size);
+
+  static Future<void> setCommentStatus(String id, String status, {String? note}) => _comments.doc(id).update({
+        'status': status,
+        if (note != null) 'reviewNote': _clip(note.trim(), 1000),
+        'reviewedAt': FieldValue.serverTimestamp(),
+      });
+
+  static final Map<String, Future<String>> _urls = {};
+
+  /// URL de una captura (solo el administrador tiene permiso de leerlas).
+  static Future<String> attachmentUrl(String path) =>
+      _urls.putIfAbsent(path, () => FirebaseStorage.instance.ref(path).getDownloadURL());
 
   // ---------------------------------------------------------------------------
   // Cola y envío
@@ -415,5 +456,92 @@ class FeedbackService {
       }
     } catch (_) {}
     return false;
+  }
+}
+
+/// Captura o foto que acompaña un comentario.
+class FeedbackAttachment {
+  final Uint8List bytes;
+  final String mimeType;
+  /// true si es la captura automática de la pantalla.
+  final bool isScreenCapture;
+  const FeedbackAttachment(this.bytes, this.mimeType, {this.isScreenCapture = false});
+
+  String get extension => switch (mimeType) {
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+        _ => 'jpg',
+      };
+}
+
+/// Un comentario guardado en `app_feedback`, como lo ve el administrador.
+class AppFeedback {
+  final String id;
+  final String uid;
+  final String message;
+  final String category;
+  final String screen;
+  final String status;
+  final String appVersion;
+  final String? reviewNote;
+  final DateTime? createdAt;
+  final Map<String, String> context;
+  final Map<String, String> device;
+  final Map<String, String> system;
+  final Map<String, String> user;
+  final List<Map<String, String>> errors;
+  final List<String> screenshots;
+
+  const AppFeedback({
+    required this.id,
+    required this.uid,
+    required this.message,
+    required this.category,
+    required this.screen,
+    required this.status,
+    this.appVersion = '',
+    this.reviewNote,
+    this.createdAt,
+    this.context = const {},
+    this.device = const {},
+    this.system = const {},
+    this.user = const {},
+    this.errors = const [],
+    this.screenshots = const [],
+  });
+
+  bool get isNew => status == FeedbackService.statusNew;
+  String get userName => user['nombre'] ?? user['correo'] ?? 'Viajero Ohtli';
+
+  static Map<String, String> _strings(Object? v) =>
+      v is Map ? {for (final e in v.entries) e.key.toString(): e.value?.toString() ?? ''} : const {};
+
+  factory AppFeedback.fromMap(String id, Map<String, dynamic> d) {
+    final device = _strings(d['device']);
+    return AppFeedback(
+      id: id,
+      uid: (d['uid'] ?? '').toString(),
+      message: (d['message'] ?? '').toString(),
+      category: (d['category'] ?? 'other').toString(),
+      screen: (d['screen'] ?? '').toString(),
+      status: (d['status'] ?? FeedbackService.statusNew).toString(),
+      appVersion: (d['appVersion'] ?? '').toString(),
+      reviewNote: d['reviewNote']?.toString(),
+      createdAt: d['createdAt'] is Timestamp ? (d['createdAt'] as Timestamp).toDate() : null,
+      context: _strings(d['context']),
+      // Comentarios anteriores solo traían navegador, ventana e idioma sueltos
+      device: device.isNotEmpty
+          ? device
+          : {
+              if (d['browser'] != null) 'navegador': d['browser'].toString(),
+              if (d['viewport'] != null) 'ventana': d['viewport'].toString(),
+              if (d['language'] != null) 'idioma': d['language'].toString(),
+            },
+      system: _strings(d['system']),
+      user: {..._strings(d['user']), if (d['uid'] != null) 'uid': d['uid'].toString()},
+      errors: [for (final e in (d['errors'] as List?) ?? const []) _strings(e)],
+      screenshots: [for (final p in (d['screenshots'] as List?) ?? const []) p.toString()],
+    );
   }
 }

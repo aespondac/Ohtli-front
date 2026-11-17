@@ -44,10 +44,13 @@ import 'screens/login/sso_bridge_page.dart';
 import 'firebase_options.dart';
 import 'screens/trips/trip_screens.dart' deferred as trips;
 import 'widgets/ohtli_toasts.dart';
+import 'services/app_diagnostics.dart';
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Guarda los últimos errores para adjuntarlos a "Enviar comentarios"
+  AppDiagnostics.install();
   // SSO entre subdominios: toma el código #ohtli_sso=… antes de que el enrutador lea la URL.
   OhtliSso.captureFromUrl();
   // URLs sin "#" (ohtli.quest/lugares). La URL de arranque se guarda antes de que el
@@ -210,7 +213,8 @@ class OhtliApp extends StatelessWidget {
                 platformBrightness: settings.isDarkMode ? Brightness.dark : Brightness.light,
               ),
               // Los avisos (showSnackBar) salen como toasts arriba; abajo solo la conexión
-              child: OhtliToastMessenger(child: child!),
+              // RepaintBoundary: la captura de pantalla que acompaña a "Enviar comentarios"
+              child: RepaintBoundary(key: AppDiagnostics.screenKey, child: OhtliToastMessenger(child: child!)),
             );
           },
         );
