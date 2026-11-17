@@ -25,6 +25,10 @@ class AddressPickerWidget extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>> onSave;
   final VoidCallback onCancel;
   final List<String> existingNames;
+  /// Para reportar la dirección o la ubicación de un lugar: otro título y botón, sin nombre ni tipo.
+  final String? title;
+  final String? saveLabel;
+  final bool showNaming;
 
   const AddressPickerWidget({
     super.key,
@@ -32,6 +36,9 @@ class AddressPickerWidget extends StatefulWidget {
     required this.onSave,
     required this.onCancel,
     this.existingNames = const [],
+    this.title,
+    this.saveLabel,
+    this.showNaming = true,
   });
 
   @override
@@ -1035,7 +1042,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  isNew ? 'Nueva dirección' : 'Editar dirección',
+                  widget.title ?? (isNew ? 'Nueva dirección' : 'Editar dirección'),
                   style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800, color: OhtliColors.onyx),
                 ),
                 const SizedBox(height: 4),
@@ -1228,6 +1235,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                 ),
                 const SizedBox(height: 24),
 
+                if (widget.showNaming) ...[
                 // 4. Nombre y tipo
                 _sectionTitle('¿Cómo la quieres llamar?'),
                 _field(
@@ -1256,6 +1264,7 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                     _buildCategoryChip('Otro', Icons.location_on_rounded),
                   ],
                 ),
+                ],
               ],
             );
 
@@ -1290,7 +1299,8 @@ class _AddressPickerWidgetState extends State<AddressPickerWidget> {
                             shape: const StadiumBorder(),
                             textStyle: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700),
                           ),
-                          child: Text(screenSize.width < 480 ? 'Guardar' : (isNew ? 'Guardar dirección' : 'Guardar cambios')),
+                          child: Text(widget.saveLabel ??
+                              (screenSize.width < 480 ? 'Guardar' : (isNew ? 'Guardar dirección' : 'Guardar cambios'))),
                         ),
                       ),
                     ),

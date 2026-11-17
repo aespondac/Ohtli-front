@@ -36,7 +36,7 @@ class PlaceField {
 const List<PlaceField> kReportableFields = [
   PlaceField('name', 'Nombre', '¿Cómo se llama?', 'name'),
   PlaceField('address', 'Dirección', 'Calle, número y colonia', 'address'),
-  PlaceField('location', 'Ubicación en el mapa', '¿Dónde está en realidad?'),
+  PlaceField('location', 'Ubicación en el mapa', '¿Dónde está en realidad? (lat, lng)', 'location'),
   PlaceField('opening_hours', 'Horario', 'p. ej. Lun a vie 9:00–18:00', 'opening_hours'),
   PlaceField('price', 'Precio', 'Gasto promedio por persona en pesos', 'price_mxn_avg'),
   PlaceField('photo', 'Foto', '¿Qué tiene de malo la foto?'),
@@ -53,17 +53,21 @@ PlaceField placeFieldOf(String id) =>
 class PlaceIssue {
   final String field;
   final String kind;
-  /// La corrección que se aplicaría (texto, monto en pesos o clave de categoría).
+  /// La corrección que se aplicaría (texto, monto en pesos, clave de categoría, horario OSM…).
   final String value;
-  /// Lo que marcó de una lista cerrada (p. ej. «No es de este lugar», «Cierra los lunes»).
+  /// Lo que marcó de una lista cerrada (p. ej. «No es de este lugar», «Se mudó»).
   final List<String> options;
-  const PlaceIssue({required this.field, required this.kind, this.value = '', this.options = const []});
+  /// Datos estructurados: nueva ubicación {lat, lng}, dirección, fechas sin abrir, lugar al que
+  /// se mudó…
+  final Map<String, dynamic> extra;
+  const PlaceIssue({required this.field, required this.kind, this.value = '', this.options = const [], this.extra = const {}});
 
   Map<String, dynamic> toMap() => {
         'field': field,
         'kind': kind,
         if (value.trim().isNotEmpty) 'value': value.trim(),
         if (options.isNotEmpty) 'options': options.take(10).toList(),
+        if (extra.isNotEmpty) 'extra': extra,
       };
 
   static PlaceIssue fromMap(Map m) => PlaceIssue(
@@ -71,6 +75,7 @@ class PlaceIssue {
         kind: (m['kind'] ?? kIssueWrong).toString(),
         value: (m['value'] ?? '').toString(),
         options: [for (final o in (m['options'] as List?) ?? const []) o.toString()],
+        extra: m['extra'] is Map ? Map<String, dynamic>.from(m['extra'] as Map) : const {},
       );
 }
 

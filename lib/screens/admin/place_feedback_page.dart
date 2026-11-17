@@ -86,8 +86,14 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
         if (placeFieldOf(i.field).applies != null) i,
     ];
     final controllers = {for (final i in applicable) i.field: TextEditingController(text: i.value)};
-    final closedReported = f.issues.any((i) => i.field == 'closed');
+    // Solo «Cerró definitivamente» marca el lugar como cerrado (temporal o mudanza se revisan a mano)
+    final closedReported = f.issues.any((i) => i.field == 'closed' && (i.extra['status'] ?? 'definitivo') == 'definitivo');
     bool markClosed = closedReported;
+    // Fechas en las que no abre (del horario reportado)
+    final closedDates = [
+      for (final i in f.issues)
+        if (i.field == 'opening_hours' && i.extra['closedDates'] is List) ...(i.extra['closedDates'] as List).map((e) => e.toString()),
+    ];
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -149,6 +155,7 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
         values[target] = text;
       }
     }
+    if (closedDates.isNotEmpty) values['closed_dates'] = closedDates;
     for (final c in controllers.values) {
       c.dispose();
     }
@@ -355,6 +362,14 @@ class _FeedbackCard extends StatelessWidget {
                   ),
                   if (i.options.isNotEmpty)
                     TextSpan(text: ' · ${i.options.join(', ')}', style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx)),
+                  if (i.extra['movedTo'] is Map)
+                    TextSpan(text: ' · se mudó a ${(i.extra['movedTo'] as Map)['name'] ?? ''}', style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx)),
+                  if (i.extra['reopens'] != null)
+                    TextSpan(text: ' · reabre ${i.extra['reopens']}', style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx)),
+                  if (i.extra['closedDates'] is List)
+                    TextSpan(text: ' · no abre: ${(i.extra['closedDates'] as List).join(', ')}', style: GoogleFonts.inter(fontSize: 13.5, color: OhtliColors.onyx)),
+                  if ((i.extra['detail'] ?? '').toString().isNotEmpty)
+                    TextSpan(text: ' · «${i.extra['detail']}»', style: GoogleFonts.inter(fontSize: 13.5, fontStyle: FontStyle.italic, color: OhtliColors.subtleText)),
                   if (i.value.isNotEmpty && !_isPhotoUrl(i))
                     TextSpan(
                         text: ' → ${i.field == 'category' ? (kSuggestionCategories[i.value] ?? i.value) : i.value}',
