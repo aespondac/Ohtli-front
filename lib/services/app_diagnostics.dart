@@ -33,6 +33,7 @@ class AppDiagnostics {
   static void install() {
     if (_installed) return;
     _installed = true;
+    _startedAt; // los static se inician al usarse: así cuenta desde que abrió la app
     final previous = FlutterError.onError;
     FlutterError.onError = (details) {
       recordError(details.exceptionAsString(), details.library);
@@ -148,7 +149,12 @@ class AppDiagnostics {
         OhtliThemeMode.dark => 'oscuro',
         OhtliThemeMode.system => settings.isDarkMode ? 'sistema (oscuro)' : 'sistema (claro)',
       },
-      'letra': settings.fontSize.name,
+      'letra': switch (settings.fontSize) {
+        OhtliFontSize.small => 'chica',
+        OhtliFontSize.medium => 'normal',
+        OhtliFontSize.large => 'grande',
+        OhtliFontSize.extraLarge => 'muy grande',
+      },
       'abiertaHace': _ago(DateTime.now().difference(_startedAt)),
       'errores': '${_errors.length}',
     };
