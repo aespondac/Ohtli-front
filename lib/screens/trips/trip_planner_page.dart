@@ -20,6 +20,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../services/itinerary_blackboard_service.dart';
+import '../../services/mood_idea_service.dart';
 import '../../services/friend_options.dart';
 import '../../services/group_trip_service.dart';
 import '../../services/manual_plan.dart';
@@ -3046,9 +3047,11 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                 ),
               ),
               TextButton.icon(
-                onPressed: _giveMoodIdea,
-                icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                label: const Text('Dame una idea'),
+                onPressed: _ideaLoading ? null : _giveMoodIdea,
+                icon: _ideaLoading
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: OhtliColors.stormyTeal))
+                    : const Icon(Icons.auto_awesome_rounded, size: 16),
+                label: Text(_ideaLoading ? 'Pensando…' : 'Dame una idea'),
                 style: TextButton.styleFrom(
                   foregroundColor: OhtliColors.accentText,
                   backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.10),
@@ -3067,6 +3070,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
               children: [
                 for (final t in active)
                   InputChip(
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
                     label: Text(t),
                     selected: true,
                     showCheckmark: false,
@@ -3086,16 +3091,19 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             ),
           ],
           const SizedBox(height: 12),
+          // Sugerencias en una fila que se desliza, recortada al borde de la tarjeta
           SizedBox(
-            height: 36,
+            height: 40,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
+              clipBehavior: Clip.hardEdge,
               itemCount: suggestions.length,
               separatorBuilder: (_, _) => const SizedBox(width: 6),
               itemBuilder: (_, i) {
                 final t = suggestions[i];
                 return ActionChip(
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
                   avatar: Icon(Icons.add_rounded, size: 15, color: OhtliColors.subtleText),
                   label: Text(t),
                   labelStyle: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w600, color: OhtliColors.onyx),
@@ -3166,7 +3174,42 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     ],
   };
 
-  void _giveMoodIdea() {
+  bool _ideaLoading = false;
+  final List<String> _givenIdeas = [];
+
+  /// Todo lo elegido en el asistente, para que la idea encaje con el plan.
+  Map<String, dynamic> _ideaContext() => {
+        'origin_name': _fixesOrigin && _selectedOriginName.trim().isNotEmpty ? _selectedOriginName.trim() : null,
+        'destination_name': _fixesDestination && _destinationName.trim().isNotEmpty ? _destinationName.trim() : null,
+        'topology': _selectedTopology,
+        'open_ends': _openEnds,
+        'transport_mode': _selectedTransportMode,
+        'limit_by': _limitBy == 'places' ? 'places' : 'budget',
+        if (_limitBy == 'places') 'max_places': _maxPlaces else 'budget': _budgetMxn,
+        'budget_strategy': _budgetStrategy,
+        'travel_date': _selectedTravelDate.toIso8601String(),
+        'companions': _companions,
+        if (_companions == 'amigos') 'group_size': _invitedIds.length + 1,
+        'tags': _activeTags,
+        'current_text': _customMoodController.text.trim(),
+        'previous_ideas': _givenIdeas.length > 6 ? _givenIdeas.sublist(_givenIdeas.length - 6) : _givenIdeas,
+      };
+
+  /// Idea del día redactada con Gemini a partir del plan; si el motor no responde, una de respaldo.
+  Future<void> _giveMoodIdea() async {
+    if (_ideaLoading) return;
+    setState(() => _ideaLoading = true);
+    final idea = await MoodIdeaService.fetch(_ideaContext());
+    if (!mounted) return;
+    setState(() {
+      _ideaLoading = false;
+      _customMoodController.text = idea ?? _fallbackIdea();
+      _givenIdeas.add(_customMoodController.text);
+      _dismissedTags.clear();
+    });
+  }
+
+  String _fallbackIdea() {
     final all = [for (final l in _moodIdeas.values) ...l];
     // Primero las ideas que hablan de lo que ya marcó la persona
     final related = _activeTags.isEmpty
@@ -3176,12 +3219,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
             return _activeTags.any((t) => _moodTagKeywords[t]!.any((k) => f.contains(_fold(k))));
           }).toList();
     final pool = related.isEmpty ? all : related;
-    setState(() {
-      _customMoodController.text = pool[_ideaIndex % pool.length];
-      _ideaIndex++;
-      _dismissedTags.clear();
-    });
+    return pool[_ideaIndex++ % pool.length];
   }
+
 
 
   Widget _buildTopologyOption({
