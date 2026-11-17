@@ -16,6 +16,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
+import '../../services/photo_storage.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_place_photo_stack.dart';
 import '../../widgets/ohtli_markdown_renderer.dart';
@@ -2130,10 +2131,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final t = _trip;
     if (uid == null || t == null) return null;
-    final bytes = base64Decode(dataUrl.split(',').last);
-    final ref = FirebaseStorage.instance.ref('users/$uid/trips/${t.id}/viajeros/${DateTime.now().millisecondsSinceEpoch}.jpg');
-    await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-    return ref.getDownloadURL();
+    return PhotoStorage.uploadDataUrl('users/$uid/trips/${t.id}/viajeros/${DateTime.now().millisecondsSinceEpoch}.jpg', dataUrl);
   }
 
   Future<void> _addPhoto() async {

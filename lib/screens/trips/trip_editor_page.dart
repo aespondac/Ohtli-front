@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
+import '../../services/photo_storage.dart';
 import '../../theme/colors.dart';
 import '../../theme/release_tags.dart';
 import '../../utils/friendly_errors.dart';
@@ -987,6 +988,112 @@ class _TripEditorPageState extends State<TripEditorPage> {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Fotos: se suben a Storage en cuanto se recortan, no hasta guardar
+  // ---------------------------------------------------------------------------
+  /// Subidas en curso o hechas en esta sesión: data URI → URL (null si falló).
+  final Map<String, Future<String?>> _photoUploads = {};
+
+  /// Avance (0 a 1) de las que siguen subiendo, para el indicador de guardado.
+  final Map<String, double> _photoUploadProgress = {};
+
+  /// Fotos de bloques subidas aquí; las que se reemplacen antes de guardar se borran.
+  final Set<String> _uploadedHere = {};
+
+  String get _tripStoragePath => 'users/${widget.trip.userId}/trips/${widget.trip.id}';
+
+  /// Sube ya la foto recién recortada [dataUrl] (a sections/[fileName], o a la portada del viaje
+  /// con [cover]) y, al terminar, cambia el data URI por la URL donde aparezca. Si falla, el data
+  /// URI se queda y el guardado lo vuelve a intentar.
+  Future<String?> _uploadPhotoNow(String dataUrl, String fileName, {bool cover = false}) {
+    if (!dataUrl.startsWith('data:') || _isSampleEditor) return Future.value(null);
+    final pending = _photoUploads[dataUrl];
+    if (pending != null) return pending;
+    final future = () async {
+      if (mounted) setState(() => _photoUploadProgress[dataUrl] = 0);
+      try {
+        final url = await PhotoStorage.uploadDataUrl(
+          cover ? '$_tripStoragePath/cover.jpg' : '$_tripStoragePath/sections/$fileName',
+          dataUrl,
+          replaces: cover,
+          onProgress: (p) {
+            if (mounted && _photoUploadProgress.containsKey(dataUrl)) setState(() => _photoUploadProgress[dataUrl] = p);
+          },
+        );
+        if (!cover) _uploadedHere.add(url);
+        // La vista previa ya está en memoria: no se vuelve a descargar
+        final cached = _imageProvidersCache[dataUrl];
+        if (cached != null) _imageProvidersCache[url] = cached;
+        if (mounted) _swapPhotoUrl(dataUrl, url);
+        return url;
+      } catch (e) {
+        debugPrint('No se pudo subir la foto ahora: $e');
+        _photoUploads.remove(dataUrl);
+        return null;
+      } finally {
+        if (mounted) setState(() => _photoUploadProgress.remove(dataUrl));
+      }
+    }();
+    _photoUploads[dataUrl] = future;
+    return future;
+  }
+
+  /// Cambia la foto [from] por [to] en la portada y en los bloques donde siga.
+  void _swapPhotoUrl(String from, String to) {
+    var changed = false;
+    String swap(String u) {
+      if (u != from) return u;
+      changed = true;
+      return to;
+    }
+
+    setState(() {
+      _coverUrl = swap(_coverUrl);
+      for (var i = 0; i < _sections.length; i++) {
+        final s = _sections[i];
+        if (s is PlaceSection) {
+          final before = changed;
+          changed = false;
+          final main = swap(s.mainPhotoUrl);
+          final sec = s.secondaryPhotoUrls.map(swap).toList();
+          final cov = s.coverUrl == null ? null : swap(s.coverUrl!);
+          if (changed) _sections[i] = s.copyWith(mainPhotoUrl: main, secondaryPhotoUrls: sec, coverUrl: cov);
+          changed = changed || before;
+        } else if (s is TextImageSection && s.imageUrl == from) {
+          changed = true;
+          _sections[i] = TextImageSection(id: s.id, markdownText: s.markdownText, imageUrl: to, layout: s.layout);
+        }
+      }
+    });
+    if (changed) _saveToLocalCache();
+  }
+
+  /// Para el guardado: la URL de [url] si todavía es un data URI (espera la subida en curso o la
+  /// reintenta). Si no se puede, se queda el data URI y cuenta en [_failedUploads].
+  Future<String> _persistPhoto(String url, String fileName, {bool cover = false}) async {
+    if (!url.startsWith('data:') || _isSampleEditor) return url;
+    final uploaded = await _uploadPhotoNow(url, fileName, cover: cover);
+    if (uploaded != null) return uploaded;
+    _failedUploads++;
+    return url;
+  }
+
+  /// Fotos subidas aquí que ya no usa nadie: ni el viaje guardado ni este editor, ni lo que se
+  /// puede recuperar con deshacer/rehacer.
+  Set<String> _abandonedUploads(List<TripSection> written) {
+    final inUse = {...sectionPhotoUrls(written), ...sectionPhotoUrls(_sections)};
+    final abandoned = <String>{};
+    for (final url in _uploadedHere) {
+      if (inUse.contains(url)) continue;
+      final name = _storageFileName(url);
+      if (name == null) continue;
+      if ([..._undoStack, ..._redoStack].any((snap) => snap.contains(name))) continue;
+      abandoned.add(url);
+    }
+    _uploadedHere.removeAll(abandoned);
+    return abandoned;
+  }
+
   // Local caching & debounced auto-save triggers
   void _onDataChanged() {
     if (_applyingRemote) return;
@@ -1282,110 +1389,27 @@ class _TripEditorPageState extends State<TripEditorPage> {
     _failedUploads = 0;
 
     final now = DateTime.now();
-    String finalCoverUrl = _coverUrl;
 
-    // 1. Upload Cover to Storage if it's a base64 local draft
-    if (_coverUrl.startsWith('data:')) {
-      try {
-        final String base64Data = _coverUrl.split(',').last;
-        final Uint8List bytes = base64Decode(base64Data);
-        final storageRef = FirebaseStorage.instance
-            .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/cover.jpg');
-        await storageRef.putData(
-          bytes,
-          SettableMetadata(contentType: 'image/jpeg'),
-        );
-        final bucket = FirebaseStorage.instance.app.options.storageBucket;
-        finalCoverUrl =
-            "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fcover.jpg?alt=media";
-      } catch (e) {
-        print("Error uploading cover to Storage: $e");
-        _failedUploads++;
-      }
-    }
-
+    // 1. Fotos que siguen en data URI: se espera la subida que empezó al recortarlas (o se
+    // reintenta si falló). Sin conexión se quedan en base64 hasta el siguiente guardado.
+    final String finalCoverUrl = await _persistPhoto(coverAtStart, 'cover.jpg', cover: true);
     final List<TripSection> updatedSections = [];
-    final bucket = FirebaseStorage.instance.app.options.storageBucket;
     final int timestamp = now.millisecondsSinceEpoch;
-
-    for (var section in sectionsAtStart) {
+    for (final section in sectionsAtStart) {
       if (section is PlaceSection) {
-        String finalMain = section.mainPhotoUrl;
-        if (finalMain.startsWith('data:')) {
-          try {
-            final String base64Data = finalMain.split(',').last;
-            final Uint8List bytes = base64Decode(base64Data);
-            final String filename = "${section.id}_main_$timestamp.jpg";
-            final storageRef = FirebaseStorage.instance
-                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
-            await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-            finalMain = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
-          } catch (e) {
-            print("Error uploading section main photo: $e");
-        _failedUploads++;
-          }
+        final main = await _persistPhoto(section.mainPhotoUrl, '${section.id}_main_$timestamp.jpg');
+        final sec = <String>[];
+        for (var i = 0; i < section.secondaryPhotoUrls.length; i++) {
+          sec.add(await _persistPhoto(section.secondaryPhotoUrls[i], '${section.id}_sec_${timestamp}_$i.jpg'));
         }
-
-        final List<String> finalSec = [];
-        for (int i = 0; i < section.secondaryPhotoUrls.length; i++) {
-          String secUrl = section.secondaryPhotoUrls[i];
-          if (secUrl.startsWith('data:')) {
-            try {
-              final String base64Data = secUrl.split(',').last;
-              final Uint8List bytes = base64Decode(base64Data);
-              final String filename = "${section.id}_sec_${timestamp}_$i.jpg";
-              final storageRef = FirebaseStorage.instance
-                  .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
-              await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-              secUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
-            } catch (e) {
-              print("Error uploading section secondary photo $i: $e");
-        _failedUploads++;
-            }
-          }
-          finalSec.add(secUrl);
-        }
-
-        String? finalCover = section.coverUrl;
-        if (finalCover != null && finalCover.startsWith('data:')) {
-          try {
-            final Uint8List bytes = base64Decode(finalCover.split(',').last);
-            final String filename = "${section.id}_cover_$timestamp.jpg";
-            final storageRef = FirebaseStorage.instance.ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
-            await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-            finalCover = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
-          } catch (e) {
-            print("Error uploading section cover: $e");
-            _failedUploads++;
-          }
-        }
-
-        updatedSections.add(section.copyWith(
-          mainPhotoUrl: finalMain,
-          secondaryPhotoUrls: finalSec,
-          coverUrl: finalCover,
-        ));
+        final cov = section.coverUrl == null ? null : await _persistPhoto(section.coverUrl!, '${section.id}_cover_$timestamp.jpg');
+        updatedSections.add(section.copyWith(mainPhotoUrl: main, secondaryPhotoUrls: sec, coverUrl: cov));
       } else if (section is TextImageSection) {
-        String finalImg = section.imageUrl;
-        if (finalImg.startsWith('data:')) {
-          try {
-            final String base64Data = finalImg.split(',').last;
-            final Uint8List bytes = base64Decode(base64Data);
-            final String filename = "${section.id}_image_$timestamp.jpg";
-            final storageRef = FirebaseStorage.instance
-                .ref('users/${widget.trip.userId}/trips/${widget.trip.id}/sections/$filename');
-            await storageRef.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-            finalImg = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${widget.trip.userId}%2Ftrips%2F${widget.trip.id}%2Fsections%2F$filename?alt=media";
-          } catch (e) {
-            print("Error uploading section text_image photo: $e");
-        _failedUploads++;
-          }
-        }
-
+        final img = await _persistPhoto(section.imageUrl, '${section.id}_image_$timestamp.jpg');
         updatedSections.add(TextImageSection(
           id: section.id,
           markdownText: section.markdownText,
-          imageUrl: finalImg,
+          imageUrl: img,
           layout: section.layout,
         ));
       } else {
@@ -1422,7 +1446,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
 
       // De Storage solo se borran las fotos que quitó este editor, nunca las de otros.
       await _cleanupStoragePhotos(widget.trip.userId, widget.trip.id,
-          photosRemovedHere(base: baseSectionsAtStart, local: updatedSections, written: r.sections));
+          {...photosRemovedHere(base: baseSectionsAtStart, local: updatedSections, written: r.sections), ..._abandonedUploads(r.sections)});
 
       if (mounted) {
         final who = r.remoteEditorUid == _myUid ? '' : r.remoteEditorName;
@@ -2152,6 +2176,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                       final String finalPhotoUrl = base64String;
                       final int index = _idx(sectionId);
                       if (index < 0) return;
+                      _uploadPhotoNow(finalPhotoUrl, '${sectionId}_${type}_${DateTime.now().millisecondsSinceEpoch}.jpg');
                       if (type == 'place_main') {
                         _updatePlaceBlock(index, mainPhoto: finalPhotoUrl);
                       } else if (type == 'place_sec_0') {
@@ -2202,6 +2227,7 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         _coverUrl = base64String;
                         _onDataChanged();
                       });
+                      _uploadPhotoNow(base64String, 'cover.jpg', cover: true);
                     },
                   ),
                 );
@@ -2924,6 +2950,12 @@ class _TripEditorPageState extends State<TripEditorPage> {
     if (_isSampleEditor) {
       syncStatusText = "Editor de muestra · no se guarda";
       syncIcon = Icons.science_outlined;
+      syncColor = OhtliColors.accent;
+    } else if (_photoUploadProgress.isNotEmpty) {
+      final n = _photoUploadProgress.length;
+      final pct = (_photoUploadProgress.values.fold<double>(0, (a, b) => a + b) / n * 100).round();
+      syncStatusText = n == 1 ? "Subiendo foto… $pct %" : "Subiendo $n fotos… $pct %";
+      syncIcon = Icons.cloud_upload_rounded;
       syncColor = OhtliColors.accent;
     } else if (_isSavingCloud) {
       syncStatusText = "Guardando…";
@@ -4126,7 +4158,10 @@ class _TripEditorPageState extends State<TripEditorPage> {
           imageBytes: picked.bytes,
           isCircle: false,
           aspectRatio: 16 / 9,
-          onCropped: (String dataUrl) => _replacePlace(sectionId, (p) => p.copyWith(coverUrl: dataUrl)),
+          onCropped: (String dataUrl) {
+            _replacePlace(sectionId, (p) => p.copyWith(coverUrl: dataUrl));
+            _uploadPhotoNow(dataUrl, '${sectionId}_cover_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          },
         ),
       );
     });

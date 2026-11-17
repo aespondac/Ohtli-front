@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/photo_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import '../services/user_private_data.dart';
 import '../services/social_graph.dart';
 import 'package:http/http.dart' as http;
@@ -112,14 +112,7 @@ class UserProfileHelper {
         final bytes = await fetchUrlBytes(googlePhotoUrl);
         if (bytes != null && bytes.isNotEmpty) {
           try {
-            final storageRef = FirebaseStorage.instance.ref(
-              'users/${user.uid}/profile.jpg',
-            );
-            await storageRef.putData(
-              bytes,
-              SettableMetadata(contentType: 'image/jpeg'),
-            );
-            photoURL = await storageRef.getDownloadURL();
+            photoURL = await PhotoStorage.upload('users/${user.uid}/profile.jpg', bytes, replaces: true);
             print(
               "Successfully uploaded Google profile picture to Firebase Storage: $photoURL",
             );

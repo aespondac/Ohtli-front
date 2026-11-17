@@ -1,12 +1,10 @@
-import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 import 'contribution_titles.dart';
 import 'group_trip_service.dart';
+import 'photo_storage.dart';
 import 'poi_suggestion_service.dart';
 
 /// Aportes de la comunidad a un lugar del catálogo (`place_feedback/{id}`), que el administrador
@@ -127,10 +125,7 @@ class PlaceFeedbackService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('Inicia sesión para donar fotos.');
     final ref = _col.doc();
-    final bytes = Uint8List.fromList(base64Decode(dataUrl.split(',').last));
-    final file = FirebaseStorage.instance.ref('place_donations/${user.uid}/${ref.id}.jpg');
-    await file.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-    final url = await file.getDownloadURL();
+    final url = await PhotoStorage.uploadDataUrl('place_donations/${user.uid}/${ref.id}.jpg', dataUrl);
     final me = await GroupTripService.me();
     await ref.set({
       'type': kFeedbackPhoto,

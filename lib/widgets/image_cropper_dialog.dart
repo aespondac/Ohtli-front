@@ -1,14 +1,16 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:js_interop';
-import 'package:web/web.dart' as web;
-import 'dart:ui' as ui;
+import 'dart:js_interop_unsafe';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:web/web.dart' as web;
+
 import '../theme/colors.dart';
 import '../utils/friendly_errors.dart';
+import '../utils/web_helpers.dart';
 
 enum ImageFormat {
   jpeg,
@@ -273,74 +275,171 @@ Uint8List? _extractEmbeddedJpeg(Uint8List rawBytes) {
   return null;
 }
 
-Future<Uint8List> _convertImageToJpegWeb(Uint8List bytes) async {
-  if (!kIsWeb) return bytes;
+/// Lado mayor de la imagen con la que se trabaja en el recorte: deja acercar 1.5× sin perder
+/// nitidez en la salida de 1600 px, y un celular la mueve sin trabarse (las fotos de 12 MP
+/// del teléfono se decodificaban enteras).
+const int _workMaxSide = 2400;
 
-  final Completer<Uint8List> completer = Completer<Uint8List>();
-  final String mimeType = _getMimeType(bytes);
-  final web.Blob blob = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: mimeType));
-  final String blobUrl = web.URL.createObjectURL(blob);
-
-  final web.HTMLImageElement imgElement = web.HTMLImageElement();
-
-  imgElement.onload = ((web.Event _) {
-    try {
-      final web.HTMLCanvasElement canvas = web.HTMLCanvasElement()
-        ..width = imgElement.naturalWidth
-        ..height = imgElement.naturalHeight;
-      final web.CanvasRenderingContext2D ctx = canvas.context2D;
-      ctx.drawImage(imgElement, 0, 0);
-
-      // Export to high-quality JPEG (0.85)
-      final String dataUrl = canvas.toDataURL('image/jpeg', 0.85.toJS);
-      web.URL.revokeObjectURL(blobUrl);
-
-      final String base64Data = dataUrl.split(',').last;
-      completer.complete(base64Decode(base64Data));
-    } catch (e) {
-      web.URL.revokeObjectURL(blobUrl);
-      completer.completeError(e);
-    }
-  }).toJS;
-
-  imgElement.onerror = ((web.Event _) {
-    web.URL.revokeObjectURL(blobUrl);
-    completer.completeError(Exception("Failed to decode image natively in browser. Format may not be supported by this browser."));
-  }).toJS;
-  imgElement.src = blobUrl;
-
-  return completer.future;
+/// La foto no se pudo abrir en este navegador (HEIC fuera de Safari sin conversión, RAW sin
+/// vista previa, archivo dañado…).
+class UnsupportedImageException implements Exception {
+  const UnsupportedImageException();
+  @override
+  String toString() =>
+      'No pudimos abrir esta foto. Si es HEIC o RAW, conviértela a JPG o elige otra e inténtalo de nuevo.';
 }
 
-Future<Uint8List> _preprocessImageBytesAsync(Uint8List bytes) async {
-  final ImageFormat format = _detectFormat(bytes);
-
-  // 1. Is it already a standard JPEG?
-  if (format == ImageFormat.jpeg) {
-    return bytes;
+/// Decodifica con el propio navegador: así se respeta la orientación EXIF (las fotos verticales
+/// del teléfono ya no salen acostadas) y Safari abre HEIC.
+Future<web.HTMLImageElement> _decodeInBrowser(Uint8List bytes, String mimeType) async {
+  final blob = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: mimeType));
+  final url = web.URL.createObjectURL(blob);
+  final img = web.HTMLImageElement();
+  final done = Completer<void>();
+  img.onload = ((web.Event _) {
+    if (!done.isCompleted) done.complete();
+  }).toJS;
+  img.onerror = ((web.Event _) {
+    if (!done.isCompleted) done.completeError(const UnsupportedImageException());
+  }).toJS;
+  img.src = url;
+  try {
+    await done.future;
+    if (img.naturalWidth == 0 || img.naturalHeight == 0) throw const UnsupportedImageException();
+    return img;
+  } finally {
+    web.URL.revokeObjectURL(url);
   }
+}
 
-  // 2. Scan for embedded JPEG preview in RAW / TIFF-based/Unknown files
+@JS('heic2any')
+external JSPromise<JSAny?> _heic2any(JSObject options);
+
+/// HEIC del iPhone en Chrome, Firefox o Android (Safari ya lo abre): se convierte a JPEG con
+/// heic2any, que solo se descarga la primera vez que hace falta.
+Future<Uint8List> _heicToJpeg(Uint8List bytes) async {
+  if (!globalContext.has('heic2any')) {
+    final script = ensureScript(id: 'ohtli-heic2any', src: 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+    final loaded = Completer<void>();
+    script.addEventListener('load', ((web.Event _) {
+      if (!loaded.isCompleted) loaded.complete();
+    }).toJS);
+    script.addEventListener('error', ((web.Event _) {
+      if (!loaded.isCompleted) loaded.completeError(const UnsupportedImageException());
+    }).toJS);
+    // Por si ya estaba cargando desde otro intento
+    if (globalContext.has('heic2any')) loaded.complete();
+    await loaded.future.timeout(const Duration(seconds: 20));
+  }
+  final options = JSObject()
+    ..['blob'] = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: 'image/heic'))
+    ..['toType'] = 'image/jpeg'.toJS
+    ..['quality'] = 0.92.toJS;
+  JSAny? result = await _heic2any(options).toDart;
+  // Con fotos "en vivo" devuelve una lista: la primera es la foto
+  if (result != null && result.isA<JSArray>()) {
+    final list = (result as JSArray<JSAny?>).toDart;
+    result = list.isEmpty ? null : list.first;
+  }
+  if (result == null || !result.isA<web.Blob>()) throw const UnsupportedImageException();
+  final buffer = await (result as web.Blob).arrayBuffer().toDart;
+  return buffer.toDart.asUint8List();
+}
+
+/// Deja la foto lista para recortar: saca la vista previa de los RAW, la decodifica con la
+/// orientación correcta y la reduce a [_workMaxSide].
+Future<web.HTMLCanvasElement> _prepareCanvas(Uint8List bytes) async {
+  var src = bytes;
+  var format = _detectFormat(bytes);
   if (format == ImageFormat.tiff || format == ImageFormat.raf || format == ImageFormat.unknown) {
-    final Uint8List? embeddedJpeg = _extractEmbeddedJpeg(bytes);
-    if (embeddedJpeg != null) {
-      // Return the extracted high-resolution JPEG preview
-      return embeddedJpeg;
+    final embedded = _extractEmbeddedJpeg(bytes);
+    if (embedded != null) {
+      src = embedded;
+      format = ImageFormat.jpeg;
     }
   }
-
-  // 3. Convert PNG, WEBP, BMP, GIF, HEIC (on Safari), or RAW without preview to JPG via Web Canvas
-  if (kIsWeb) {
+  web.HTMLImageElement img;
+  try {
+    img = await _decodeInBrowser(src, _getMimeType(src));
+  } catch (_) {
+    if (format != ImageFormat.heic) throw const UnsupportedImageException();
     try {
-      return await _convertImageToJpegWeb(bytes);
-    } catch (e) {
-      print("Warning: Web Canvas conversion failed, falling back to original bytes. Error: $e");
+      img = await _decodeInBrowser(await _heicToJpeg(src), 'image/jpeg');
+    } catch (_) {
+      throw const UnsupportedImageException();
     }
   }
-
-  return bytes; // Fallback
+  final w = img.naturalWidth, h = img.naturalHeight;
+  final scale = math.min(1.0, _workMaxSide / math.max(w, h));
+  final canvas = web.HTMLCanvasElement()
+    ..width = math.max(1, (w * scale).round())
+    ..height = math.max(1, (h * scale).round());
+  final ctx = canvas.context2D
+    ..imageSmoothingEnabled = true
+    ..imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }
 
+/// La misma imagen girada 90° a la derecha.
+web.HTMLCanvasElement _rotateClockwise(web.HTMLCanvasElement source) {
+  final out = web.HTMLCanvasElement()
+    ..width = source.height
+    ..height = source.width;
+  out.context2D
+    ..translate(out.width, 0)
+    ..rotate(math.pi / 2)
+    ..drawImage(source, 0, 0);
+  return out;
+}
+
+Future<Uint8List> _canvasToJpeg(web.HTMLCanvasElement canvas, double quality) {
+  final done = Completer<Uint8List>();
+  canvas.toBlob(
+    ((web.Blob? blob) {
+      if (blob == null) {
+        done.completeError(const UnsupportedImageException());
+        return;
+      }
+      blob.arrayBuffer().toDart.then(
+            (b) => done.complete(b.toDart.asUint8List()),
+            onError: (Object e) => done.completeError(e),
+          );
+    }).toJS,
+    'image/jpeg',
+    quality.toJS,
+  );
+  return done.future;
+}
+
+/// Tamaño del contenido en el visor: la imagen escalada para cubrir [viewport] (como BoxFit.cover).
+Size coverSize(Size image, Size viewport) {
+  final s = math.max(viewport.width / image.width, viewport.height / image.height);
+  return Size(image.width * s, image.height * s);
+}
+
+/// La parte de la imagen (en sus píxeles) que se ve en el visor con la transformación [m] del
+/// InteractiveViewer, cuyo contenido mide [content] (ver [coverSize]).
+Rect cropSourceRect({required Matrix4 m, required Size viewport, required Size content, required Size image}) {
+  final z = m.getMaxScaleOnAxis();
+  final t = m.getTranslation();
+  final toImage = image.width / content.width;
+  final rect = Rect.fromLTWH(-t.x / z * toImage, -t.y / z * toImage, viewport.width / z * toImage, viewport.height / z * toImage);
+  return rect.intersect(Offset.zero & image);
+}
+
+/// Transformación con zoom [zoom] alrededor del centro del visor, sin dejar huecos.
+Matrix4 zoomAroundCenter(Matrix4 m, double zoom, Size viewport, Size content) {
+  final z = m.getMaxScaleOnAxis();
+  final t = m.getTranslation();
+  final cx = (viewport.width / 2 - t.x) / z, cy = (viewport.height / 2 - t.y) / z;
+  final tx = (viewport.width / 2 - cx * zoom).clamp(viewport.width - content.width * zoom, 0.0);
+  final ty = (viewport.height / 2 - cy * zoom).clamp(viewport.height - content.height * zoom, 0.0);
+  return Matrix4.translationValues(tx, ty, 0)..multiply(Matrix4.diagonal3Values(zoom, zoom, 1));
+}
+
+/// Elige el encuadre de una foto (arrastrar, pellizcar o la barra de zoom, y girar) y devuelve
+/// por [onCropped] un data URI JPEG: lado mayor de 1600 px (800 en la foto de perfil) al 85 %.
 class OhtliImageCropperDialog extends StatefulWidget {
   final Uint8List imageBytes;
   final Function(String) onCropped;
@@ -360,12 +459,19 @@ class OhtliImageCropperDialog extends StatefulWidget {
 }
 
 class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
-  final GlobalKey _boundaryKey = GlobalKey();
-  final TransformationController _transformationController = TransformationController();
+  final TransformationController _transform = TransformationController();
   double _zoom = 1.0;
   bool _isSaving = false;
   bool _isProcessing = true;
-  late Uint8List _processedBytes;
+  String? _error;
+  web.HTMLCanvasElement? _canvas;
+  Uint8List? _previewBytes;
+  Size? _laidOutViewport;
+
+  static const double _maxZoom = 5.0;
+
+  double get _ratio => widget.isCircle ? 1.0 : widget.aspectRatio;
+  Size get _imageSize => Size(_canvas!.width.toDouble(), _canvas!.height.toDouble());
 
   @override
   void initState() {
@@ -373,106 +479,92 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
     _processImage();
   }
 
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
   Future<void> _processImage() async {
     try {
-      final Uint8List processed = await _preprocessImageBytesAsync(widget.imageBytes);
-      if (mounted) {
-        setState(() {
-          _processedBytes = processed;
-          _isProcessing = false;
-        });
-      }
+      final canvas = await _prepareCanvas(widget.imageBytes);
+      await _show(canvas);
     } catch (e) {
-      print("Error preprocessing image: $e");
       if (mounted) {
         setState(() {
-          _processedBytes = widget.imageBytes;
           _isProcessing = false;
+          _error = e is UnsupportedImageException
+              ? e.toString()
+              : friendlyError(e, fallback: 'No pudimos abrir esta foto. Intenta con otra.');
         });
       }
     }
   }
 
-  void _onZoomChanged(double value, double cropperWidth, double cropperHeight) {
+  /// Muestra [canvas] centrada y sin zoom.
+  Future<void> _show(web.HTMLCanvasElement canvas) async {
+    final preview = await _canvasToJpeg(canvas, 0.92);
+    if (!mounted) return;
     setState(() {
-      _zoom = value;
-      // Calculate translations to keep zoom centered
-      final double x = -((value - 1.0) * (cropperWidth / 2));
-      final double y = -((value - 1.0) * (cropperHeight / 2));
-      
-      final Matrix4 translation = Matrix4.translationValues(x, y, 0.0);
-      final Matrix4 scaling = Matrix4.diagonal3Values(value, value, 1.0);
-      _transformationController.value = translation * scaling;
+      _canvas = canvas;
+      _previewBytes = preview;
+      _isProcessing = false;
+      _laidOutViewport = null; // el build vuelve a centrar
     });
   }
 
-  Future<void> _cropAndSave() async {
+  Future<void> _rotate() async {
+    final c = _canvas;
+    if (c == null || _isSaving) return;
+    setState(() => _isProcessing = true);
+    await _show(_rotateClockwise(c));
+  }
+
+  Size _viewport(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final dialogW = math.min(screen.width - 24, 460.0);
+    var w = dialogW - 40;
+    var h = w / _ratio;
+    final maxH = math.max(200.0, screen.height * 0.5);
+    if (h > maxH) {
+      h = maxH;
+      w = h * _ratio;
+    }
+    return Size(w, h);
+  }
+
+  void _center(Size viewport) {
+    final content = coverSize(_imageSize, viewport);
+    _transform.value = Matrix4.translationValues(-(content.width - viewport.width) / 2, -(content.height - viewport.height) / 2, 0);
+    _zoom = 1.0;
+  }
+
+  void _onZoomChanged(double value, Size viewport) {
+    setState(() {
+      _zoom = value;
+      _transform.value = zoomAroundCenter(_transform.value, value, viewport, coverSize(_imageSize, viewport));
+    });
+  }
+
+  Future<void> _cropAndSave(Size viewport) async {
+    final canvas = _canvas;
+    if (canvas == null) return;
     setState(() => _isSaving = true);
     try {
-      // Delay slightly to allow Flutter's paint cycle to flush
-      await Future.delayed(const Duration(milliseconds: 150));
-
-      // Dynamically adjust export quality (pixelRatio) depending on the image's purpose:
-      // - Cover Image (not circle and not 3:4): Cinematic ultra-high quality (pixelRatio: 6.0)
-      // - Place photos / block images (3:4): Crisp high-quality (pixelRatio: 3.0)
-      // - Profile Photo (circle): Medium-high quality (pixelRatio: 2.5)
-      double pixelRatio = 1.0;
-      if (widget.isCircle) {
-        pixelRatio = 2.5;
-      } else if (widget.aspectRatio == 3 / 4) {
-        pixelRatio = 3.0; // Crisp high-resolution place photos
-      } else {
-        pixelRatio = 6.0; // Cinematic ultra-high-resolution cover image (1920x640px)
-      }
-
-      final boundary = _boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-      final ui.Image image = await boundary.toImage(pixelRatio: pixelRatio);
-      final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData != null) {
-        final Uint8List croppedBytes = byteData.buffer.asUint8List();
-        String base64String = 'data:image/png;base64,${base64.encode(croppedBytes)}';
-
-        // Convert PNG to JPEG using Web Canvas to optimize size and standard compatibility
-        if (kIsWeb) {
-          try {
-            // Lado mayor de 1600 px como máximo: suficiente para verse nítida en cualquier
-            // pantalla y ligera para quien la abre en el teléfono (antes salían de varios MB)
-            const maxSide = 1600;
-            final longest = image.width > image.height ? image.width : image.height;
-            final scale = longest > maxSide ? maxSide / longest : 1.0;
-            final outW = (image.width * scale).round();
-            final outH = (image.height * scale).round();
-            final web.HTMLCanvasElement canvas = web.HTMLCanvasElement()
-              ..width = outW
-              ..height = outH;
-            final web.CanvasRenderingContext2D ctx = canvas.context2D
-              ..imageSmoothingEnabled = true
-              ..imageSmoothingQuality = 'high';
-
-            final web.HTMLImageElement imgElement = web.HTMLImageElement();
-            final Completer<void> completer = Completer<void>();
-            imgElement.onload = ((web.Event _) {
-              ctx.drawImageScaled(imgElement, 0, 0, outW.toDouble(), outH.toDouble());
-              completer.complete();
-            }).toJS;
-            imgElement.onerror = ((web.Event _) {
-              completer.completeError(StateError('No se pudo leer la imagen recortada'));
-            }).toJS;
-            imgElement.src = base64String;
-            await completer.future;
-
-            // JPEG al 85 %: sin diferencia visible y bastante más ligero que al 95 %
-            base64String = canvas.toDataURL('image/jpeg', 0.85.toJS);
-          } catch (e) {
-            print("Error converting cropped image to JPEG: $e");
-          }
-        }
-
-        widget.onCropped(base64String);
-        if (mounted) {
-          Navigator.of(context).pop();
-        }
-      }
+      final src = cropSourceRect(m: _transform.value, viewport: viewport, content: coverSize(_imageSize, viewport), image: _imageSize);
+      final maxSide = widget.isCircle ? 800 : 1600;
+      final scale = math.min(1.0, maxSide / math.max(src.width, src.height));
+      final out = web.HTMLCanvasElement()
+        ..width = math.max(1, (src.width * scale).round())
+        ..height = math.max(1, (src.height * scale).round());
+      out.context2D
+        ..imageSmoothingEnabled = true
+        ..imageSmoothingQuality = 'high'
+        ..drawImage(canvas, src.left, src.top, src.width, src.height, 0, 0, out.width, out.height);
+      // JPEG al 85 %: sin diferencia visible y bastante más ligero que al 95 %
+      final dataUrl = out.toDataURL('image/jpeg', 0.85.toJS);
+      widget.onCropped(dataUrl);
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -483,57 +575,66 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
+  Widget _frame({required double width, required Widget child}) => Dialog(
+        backgroundColor: OhtliColors.cloudDancer,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: SizedBox(width: width, child: child),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final double dialogWidth = (screenSize.width * 0.9).clamp(280.0, 360.0);
+    final screen = MediaQuery.sizeOf(context);
+    final double dialogWidth = math.min(screen.width - 24, 460.0);
 
-    if (_isProcessing) {
-      return Dialog(
-        backgroundColor: OhtliColors.cloudDancer,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    if (_error != null) {
+      return _frame(
+        width: dialogWidth,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.image_not_supported_outlined, color: OhtliColors.warning, size: 36),
+              const SizedBox(height: 14),
+              Text(_error!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 13, color: OhtliColors.onyx, height: 1.4)),
+              const SizedBox(height: 18),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: TextButton.styleFrom(foregroundColor: OhtliColors.stormyTeal),
+                child: Text('Entendido', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_isProcessing || _previewBytes == null) {
+      return _frame(
+        width: dialogWidth,
         child: Semantics(
-          label: 'Procesando y optimizando imagen. Por favor espera.',
+          label: 'Preparando la foto. Por favor espera.',
           container: true,
-          child: Container(
+          child: Padding(
             padding: const EdgeInsets.all(30),
-            width: dialogWidth,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(
                   width: 40,
                   height: 40,
-                  child: CircularProgressIndicator(
-                    color: OhtliColors.stormyTeal,
-                    strokeWidth: 3,
-                  ),
+                  child: CircularProgressIndicator(color: OhtliColors.stormyTeal, strokeWidth: 3),
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  'Procesando imagen...',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: OhtliColors.onyx,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Optimizando el archivo y convirtiendo al formato estándar JPEG de alta calidad.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: OhtliColors.onyx.withValues(alpha: 0.6),
-                    height: 1.35,
-                  ),
-                ),
+                const SizedBox(height: 20),
+                Text('Preparando la foto…',
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
               ],
             ),
           ),
@@ -541,179 +642,161 @@ class _OhtliImageCropperDialogState extends State<OhtliImageCropperDialog> {
       );
     }
 
-    // Reduce cropper viewport dynamically for smaller mobile screens to avoid overflow
-    final double cropperSize = (dialogWidth - 48).clamp(200.0, 250.0);
+    final viewport = _viewport(context);
+    final content = coverSize(_imageSize, viewport);
+    if (_laidOutViewport != viewport) {
+      final first = _laidOutViewport == null;
+      _laidOutViewport = viewport;
+      if (first) {
+        _center(viewport);
+      } else {
+        // Giró el teléfono o cambió la ventana: se vuelve a centrar después de este cuadro
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _center(viewport));
+        });
+      }
+    }
 
-    final double cropperWidth = widget.isCircle
-        ? cropperSize
-        : widget.aspectRatio < 1.0
-            ? (cropperSize * widget.aspectRatio)
-            : (dialogWidth - 40);
-    final double cropperHeight = widget.isCircle
-        ? cropperSize
-        : (cropperWidth / widget.aspectRatio);
+    final String title = widget.isCircle
+        ? 'Recortar foto de perfil'
+        : _ratio < 1
+            ? 'Encuadrar foto'
+            : 'Encuadrar portada';
 
-    return Dialog(
-      backgroundColor: OhtliColors.cloudDancer,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        width: dialogWidth,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                widget.isCircle
-                    ? 'Recortar foto de perfil'
-                    : widget.aspectRatio == 3 / 4
-                        ? 'Recortar imagen (3:4)'
-                        : 'Recortar portada de viaje',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: OhtliColors.onyx,
+    return _frame(
+      width: dialogWidth,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: OhtliColors.onyx)),
+            const SizedBox(height: 4),
+            Text(
+              'Arrastra para encuadrar; pellizca o usa la barra para acercar.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.onyx.withValues(alpha: 0.6), height: 1.3),
+            ),
+            const SizedBox(height: 14),
+            Semantics(
+              label: 'Encuadre de la foto',
+              child: Container(
+                width: viewport.width,
+                height: viewport.height,
+                decoration: BoxDecoration(
+                  border: Border.all(color: widget.isCircle ? OhtliColors.cantera : OhtliColors.stormyTeal, width: 1.5),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                widget.isCircle
-                    ? 'Arrastra y haz zoom para ajustar tu foto dentro del círculo.'
-                    : widget.aspectRatio == 3 / 4
-                        ? 'Arrastra y haz zoom para ajustar tu imagen (3:4).'
-                        : 'Arrastra y haz zoom para elegir la parte visible de tu portada (16:9).',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: OhtliColors.onyx.withValues(alpha: 0.6),
-                  height: 1.3,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Viewport de recorte con la máscara
-              Center(
-                child: Container(
-                  width: cropperWidth,
-                  height: cropperHeight,
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: widget.isCircle ? OhtliColors.cantera : OhtliColors.stormyTeal,
-                      width: widget.isCircle ? 1.0 : 1.5,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(11),
-                    child: Stack(
-                      children: [
-                        // InteractiveViewer para arrastrar y zoom de la foto
-                        Positioned.fill(
-                          child: RepaintBoundary(
-                            key: _boundaryKey,
-                            child: InteractiveViewer(
-                              transformationController: _transformationController,
-                              minScale: 1.0,
-                              maxScale: 4.0,
-                              clipBehavior: Clip.hardEdge,
-                              onInteractionUpdate: (details) {
-                                final double scale = _transformationController.value.getMaxScaleOnAxis();
-                                setState(() {
-                                  _zoom = scale.clamp(1.0, 4.0);
-                                });
-                              },
-                              child: Image.memory(
-                                _processedBytes,
-                                fit: BoxFit.cover,
-                                width: cropperWidth,
-                                height: cropperHeight,
-                              ),
-                            ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10.5),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: InteractiveViewer(
+                          transformationController: _transform,
+                          constrained: false,
+                          minScale: 1.0,
+                          maxScale: _maxZoom,
+                          clipBehavior: Clip.hardEdge,
+                          onInteractionUpdate: (_) {
+                            final z = _transform.value.getMaxScaleOnAxis().clamp(1.0, _maxZoom);
+                            if ((z - _zoom).abs() > 0.01) setState(() => _zoom = z);
+                          },
+                          child: SizedBox(
+                            width: content.width,
+                            height: content.height,
+                            child: Image.memory(_previewBytes!, fit: BoxFit.fill, gaplessPlayback: true),
                           ),
                         ),
-
-                        // Máscara oscura circular superpuesta (solo para círculos)
-                        if (widget.isCircle)
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: CustomPaint(
-                                painter: CircularCropMaskPainter(),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                      ),
+                      if (widget.isCircle)
+                        Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: CircularCropMaskPainter())))
+                      else
+                        Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _ThirdsGridPainter()))),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Control de Zoom Slider
-              Row(
-                children: [
-                  Icon(Icons.zoom_out, size: 16, color: OhtliColors.onyx.withValues(alpha: 0.5)),
-                  Expanded(
-                    child: Slider(
-                      value: _zoom,
-                      min: 1.0,
-                      max: 4.0,
-                      activeColor: OhtliColors.stormyTeal,
-                      inactiveColor: OhtliColors.cantera,
-                      onChanged: (val) => _onZoomChanged(val, cropperWidth, cropperHeight),
-                    ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.zoom_out, size: 18, color: OhtliColors.onyx.withValues(alpha: 0.5)),
+                Expanded(
+                  child: Slider(
+                    value: _zoom.clamp(1.0, _maxZoom),
+                    min: 1.0,
+                    max: _maxZoom,
+                    activeColor: OhtliColors.stormyTeal,
+                    inactiveColor: OhtliColors.cantera,
+                    onChanged: (val) => _onZoomChanged(val, viewport),
                   ),
-                  Icon(Icons.zoom_in, size: 16, color: OhtliColors.onyx.withValues(alpha: 0.5)),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Botones de acción
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-                      style: TextButton.styleFrom(
-                        foregroundColor: OhtliColors.onyx.withValues(alpha: 0.6),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      child: Text(
-                        'Cancelar',
-                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500),
-                      ),
+                ),
+                Icon(Icons.zoom_in, size: 18, color: OhtliColors.onyx.withValues(alpha: 0.5)),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Girar',
+                  onPressed: _isSaving ? null : _rotate,
+                  icon: const Icon(Icons.rotate_right_rounded),
+                  color: OhtliColors.stormyTeal,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: OhtliColors.onyx.withValues(alpha: 0.6),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
+                    child: Text('Cancelar', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500)),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _cropAndSave,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: OhtliColors.stormyTeal,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 1.5),
-                            )
-                          : Text(
-                              'Guardar',
-                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : () => _cropAndSave(viewport),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: OhtliColors.stormyTeal,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 1.8))
+                        : Text('Guardar', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+/// Guías de tercios sobre el encuadre, para acomodar la foto.
+class _ThirdsGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 3; i++) {
+      final x = size.width * i / 3, y = size.height * i / 3;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // Pintor personalizado para hacer una máscara circular oscura

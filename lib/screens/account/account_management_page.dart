@@ -13,8 +13,9 @@ import '../../widgets/phone_verification_field.dart';
 import '../../widgets/two_factor_card.dart';
 import '../../widgets/usertag_settings.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import '../../services/user_private_data.dart';
+import '../../services/photo_storage.dart';
+import '../../services/profile_photo_service.dart';
 import '../../services/feedback_service.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_sidebar.dart';
@@ -400,18 +401,8 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   void _uploadLocalPhotoToFirestore(String uid, String base64String) async {
     // Only upload to Firebase Storage (the lowest cost option)
     try {
-      final rawBase64 = base64String.contains(',')
-          ? base64String.split(',').last
-          : base64String;
-      final imageBytes = base64Decode(rawBase64);
-      final storageRef = FirebaseStorage.instance.ref('users/$uid/profile.jpg');
-      await storageRef.putData(
-        Uint8List.fromList(imageBytes),
-        SettableMetadata(contentType: 'image/jpeg'),
-      );
-      final bucket = FirebaseStorage.instance.app.options.storageBucket;
       final String downloadUrl =
-          "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F$uid%2Fprofile.jpg?alt=media";
+          await PhotoStorage.uploadDataUrl('users/$uid/profile.jpg', base64String, replaces: true);
 
       // Update localStorage with the verified bucket URL
       web.window.localStorage.setItem('ohtli_profile_pic_$uid', downloadUrl);
@@ -693,62 +684,16 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
                                 // Keep base64 in localStorage for instant local display
                                 web.window.localStorage.setItem('ohtli_profile_pic_${user.uid}', base64String);
 
-                                // Upload to Firebase Storage instead of Firestore to avoid 1MiB document limit
+                                // Storage + users/{uid} + perfil público + Auth, igual que en el onboarding
                                 String? downloadUrl;
                                 try {
-                                  // Extract raw base64 bytes from the data URI
-                                  final rawBase64 = base64String.contains(',')
-                                      ? base64String.split(',').last
-                                      : base64String;
-                                  final imageBytes = base64Decode(rawBase64);
-
-                                  final storageRef = FirebaseStorage.instance
-                                      .ref('users/${user.uid}/profile.jpg');
-                                  await storageRef.putData(
-                                    Uint8List.fromList(imageBytes),
-                                    SettableMetadata(contentType: 'image/jpeg'),
-                                  );
-                                  final bucket = FirebaseStorage
-                                      .instance
-                                      .app
-                                      .options
-                                      .storageBucket;
-                                  downloadUrl =
-                                      "https://firebasestorage.googleapis.com/v0/b/$bucket/o/users%2F${user.uid}%2Fprofile.jpg?alt=media";
+                                  downloadUrl = await ProfilePhotoService.upload(base64String);
                                 } catch (storageError) {
-                                  print(
-                                    "Firebase Storage upload error: $storageError",
-                                  );
+                                  print("Firebase Storage upload error: $storageError");
                                 }
 
                                 if (downloadUrl != null) {
-                                  // Save the download URL (never base64!) to Firestore for cross-device sync
-                                  try {
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(user.uid)
-                                        .set({
-                                          'photoURL': downloadUrl,
-                                          'updatedAt':
-                                              FieldValue.serverTimestamp(),
-                                        }, SetOptions(merge: true));
-                                    await PublicProfiles.mirror(user.uid, {'photoURL': downloadUrl});
-                                  } catch (fsError) {
-                                    print(
-                                      "Error saving profile photo URL to Firestore: $fsError",
-                                    );
-                                  }
-
-                                  // Update Firebase Auth profile with the real download URL
-                                  try {
-                                    await user.updatePhotoURL(downloadUrl);
-                                    await user.reload();
-                                  } catch (authError) {
-                                    print(
-                                      "Firebase Auth profile sync bypassed: $authError",
-                                    );
-                                  }
-
+                                  _localPhotoURL = downloadUrl;
                                   if (mounted) {
                                     setState(() {});
                                     ScaffoldMessenger.of(context).showSnackBar(

@@ -9,8 +9,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/photo_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import '../../theme/cdmx_photos.dart';
 import '../../theme/colors.dart';
 import '../../utils/friendly_errors.dart';
@@ -704,20 +704,10 @@ class _PublicProfilePageState extends State<PublicProfilePage> with SingleTicker
     if (_currentUser == null) return;
 
     try {
-      final rawBase64 = base64String.contains(',')
-          ? base64String.split(',').last
-          : base64String;
-      final imageBytes = base64Decode(rawBase64);
-
       final fileName = isCover ? 'cover.jpg' : 'profile.jpg';
-      final storageRef = FirebaseStorage.instance.ref('users/${_currentUser.uid}/$fileName');
-      
-      await storageRef.putData(
-        Uint8List.fromList(imageBytes),
-        SettableMetadata(contentType: 'image/jpeg'),
-      );
-
-      final downloadUrl = await storageRef.getDownloadURL();
+      // replaces: la misma ruta se sobrescribe, así que la URL lleva versión (si no, se veía la anterior)
+      final downloadUrl =
+          await PhotoStorage.uploadDataUrl('users/${_currentUser.uid}/$fileName', base64String, replaces: true);
 
       final Map<String, dynamic> updateData = {
         isCover ? 'coverURL' : 'photoURL': downloadUrl,
