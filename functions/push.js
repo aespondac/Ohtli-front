@@ -75,6 +75,21 @@ function describePush(data) {
         body: `${sender} ${what} "${trip}"${reason ? `: ${reason}.` : '.'}`,
       };
     }
+    case 'place_photo_reviewed':
+    case 'place_report_reviewed': {
+      const place = str(d.poiName) || 'el lugar';
+      const photo = type === 'place_photo_reviewed';
+      if (d.approved === true) {
+        return photo
+          ? { title: 'Tu foto se publicó', body: `Tu foto ya es la de ${place}. ¡Gracias por donarla!` }
+          : { title: 'Lugar corregido', body: `Corregimos ${place} con tu reporte. ¡Gracias!` };
+      }
+      const reason = str(d.reason);
+      return {
+        title: photo ? 'Revisamos tu foto' : 'Revisamos tu reporte',
+        body: (photo ? `Esta vez no usamos tu foto de ${place}` : `Revisamos tu reporte de ${place} y no hicimos cambios`) + (reason ? `: ${reason}.` : '.'),
+      };
+    }
     case 'group_trip_remind_respond':
       return { title: 'Queda 1 hora para responder', body: message || `Responde la invitación a "${trip}" antes de que cierre.` };
     case 'group_trip_remind_vote':

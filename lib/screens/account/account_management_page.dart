@@ -25,6 +25,8 @@ import '../../widgets/address_picker_widget.dart' as address_picker;
 import '../../utils/friendly_errors.dart';
 import 'public_profile_page.dart';
 import '../admin/place_suggestions_page.dart';
+import '../admin/place_feedback_page.dart';
+import '../../services/place_feedback_service.dart';
 import '../admin/explore_featured_page.dart';
 import '../trips/trip_screens.dart' deferred as trips;
 import '../../widgets/deferred_view.dart';
@@ -103,6 +105,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
   @override
   void initState() {
     super.initState();
+    // Administrador: cuántas fotos donadas y reportes de lugares esperan revisión
+    if (isSuperUser()) {
+      _feedbackSub = PlaceFeedbackService.watchPendingCount().listen((n) {
+        if (mounted) setState(() => _feedbackPending = n);
+      }, onError: (_) {});
+    }
     final user = FirebaseAuth.instance.currentUser;
 
     // Split display name
@@ -432,8 +440,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
     }
   }
 
+  StreamSubscription<int>? _feedbackSub;
+  int _feedbackPending = 0;
+
   @override
   void dispose() {
+    _feedbackSub?.cancel();
     _userDataSubscription?.cancel();
     _firstNameController.dispose();
     _lastNameController.dispose();
@@ -1854,6 +1866,12 @@ class _AccountManagementPageState extends State<AccountManagementPage> {
           title: pending > 0 ? 'Lugares sugeridos · $pending' : 'Lugares sugeridos',
           subtitle: 'Revisa y aprueba lugares nuevos',
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceSuggestionsPage())),
+        ),
+        _SettingsItem(
+          icon: Icons.volunteer_activism_outlined,
+          title: _feedbackPending > 0 ? 'Fotos y reportes · $_feedbackPending' : 'Fotos y reportes',
+          subtitle: 'Fotos donadas y datos de lugares por corregir',
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceFeedbackPage())),
         ),
         _SettingsItem(
           icon: Icons.push_pin_outlined,

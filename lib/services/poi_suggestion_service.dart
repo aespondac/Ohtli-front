@@ -237,6 +237,9 @@ class PoiSuggestionService {
     });
   }
 
+  /// Endpoints de administración del motor (también los usa PlaceFeedbackService).
+  static Future<Map<String, dynamic>> postAdmin(String path, Map<String, dynamic> body) => _postToEngine(path, body);
+
   static Future<Map<String, dynamic>> _postToEngine(String path, Map<String, dynamic> body) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('Inicia sesión.');

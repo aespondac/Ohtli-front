@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../widgets/place_feedback_sheets.dart';
 import 'package:flutter/gestures.dart' show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -2150,6 +2151,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
         done: 'Foto agregada a ${p.title}',
       );
       if (ok) _scrollSoon(p.id);
+      // De un lugar del catálogo: se ofrece donarla para que sea la foto del lugar
+      if (ok && !_isSample && (p.poiId ?? '').isNotEmpty && mounted) {
+        await offerPhotoDonation(context, poiId: p.poiId!, poiName: p.title, dataUrl: dataUrl, tripId: _trip?.id);
+      }
     } catch (e) {
       _notice(friendlyError(e, fallback: 'No se pudo subir la foto.'));
     }

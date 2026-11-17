@@ -58,6 +58,14 @@ service firebase.storage {
     match /users/{userId}/trips/{tripId}/cover.jpg {
       allow create, update: if isImageUpload() && isTripEditor(userId, tripId);
     }
+    // Fotos donadas a un lugar del catálogo: las sube quien dona; lectura pública porque, si se
+    // aprueban, son la foto del lugar.
+    match /place_donations/{userId}/{fileName} {
+      allow read: if true;
+      allow create: if isOwnerImageUpload(userId);
+      allow delete: if isOwner(userId);
+    }
+
     match /users/{userId}/trips/{tripId}/sections/{fileName} {
       allow create, update: if isImageUpload() && isTripEditor(userId, tripId);
       allow delete: if isTripEditor(userId, tripId);

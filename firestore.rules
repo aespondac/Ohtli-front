@@ -600,6 +600,31 @@ service cloud.firestore {
       }
     }
 
+    // Aportes a lugares del catálogo: fotos donadas y reportes (falta / está mal). Los crea quien
+    // aporta, pendientes; solo el superusuario los aprueba o rechaza (y aplica el cambio en /pois).
+    match /place_feedback/{feedbackId} {
+      allow create: if request.auth != null
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.type in ['photo', 'report']
+        && request.resource.data.poiId is string
+        && request.resource.data.poiId.size() > 0
+        && exists(/databases/$(database)/documents/pois/$(request.resource.data.poiId))
+        && request.resource.data.keys().hasOnly(['type', 'poiId', 'poiName', 'photoUrl', 'tripId', 'issues', 'note',
+             'by', 'byName', 'status', 'createdAt'])
+        && (request.resource.data.type != 'photo'
+            || (request.resource.data.photoUrl is string
+                && request.resource.data.photoUrl.matches('https://firebasestorage[.]googleapis[.]com/.*/o/place_donations%2F' + request.auth.uid + '%2F.*')))
+        && (request.resource.data.type != 'report'
+            || (request.resource.data.issues is list
+                && request.resource.data.issues.size() > 0
+                && request.resource.data.issues.size() <= 12))
+        && request.resource.data.get('note', '').size() <= 500;
+      allow read: if isSuperUser() || (request.auth != null && resource.data.by == request.auth.uid);
+      allow update: if isSuperUser();
+      allow delete: if isSuperUser() || (request.auth != null && resource.data.by == request.auth.uid && resource.data.status == 'pending');
+    }
+
     match /pois_lab/{poiId} {
       allow read: if true;
       allow write: if false;

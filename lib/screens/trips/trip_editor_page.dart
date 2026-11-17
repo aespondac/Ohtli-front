@@ -1,6 +1,7 @@
 import '../../services/social_graph.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../widgets/place_feedback_sheets.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui' show ImageFilter;
 import 'package:google_fonts/google_fonts.dart';
@@ -2159,6 +2160,16 @@ class _TripEditorPageState extends State<TripEditorPage> {
                         _updatePlaceSecondaryPhoto(index, 1, finalPhotoUrl);
                       } else if (type == 'text_image') {
                         _updateTextImageBlock(index, photo: finalPhotoUrl);
+                      }
+                      // Foto de un lugar del catálogo: se ofrece donarla para que sea la del lugar
+                      final placed = _sections[index];
+                      if (type.startsWith('place_') && placed is PlaceSection && (placed.poiId ?? '').isNotEmpty) {
+                        Future.delayed(const Duration(milliseconds: 250), () {
+                          if (mounted) {
+                            offerPhotoDonation(this.context,
+                                poiId: placed.poiId!, poiName: placed.title, dataUrl: finalPhotoUrl, tripId: widget.trip.id);
+                          }
+                        });
                       }
                     },
                   ),

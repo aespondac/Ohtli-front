@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'place_feedback_sheets.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -770,6 +771,22 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       ],
       const SizedBox(height: 30),
       _buildTripsSection(),
+      if (FirebaseAuth.instance.currentUser != null && poi.poiId.isNotEmpty) ...[
+        const SizedBox(height: 22),
+        // Algo falta o está mal: lo revisa el administrador antes de cambiarlo
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => showReportPlaceSheet(context, poiId: poi.poiId, poiName: poi.name),
+            icon: const Icon(Icons.flag_outlined, size: 18),
+            label: const Text('¿Falta algo o está mal? Repórtalo'),
+            style: TextButton.styleFrom(
+              foregroundColor: OhtliColors.subtleText,
+              textStyle: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
       if (isLabsUrl) ...[
         const SizedBox(height: 24),
         _buildLabsMetadata(poi),

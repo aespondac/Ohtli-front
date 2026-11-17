@@ -22,6 +22,9 @@ import '../../widgets/ohtli_ui.dart';
 import '../../widgets/feedback_dialog.dart';
 import '../../widgets/phone_verification_field.dart';
 import '../../widgets/two_factor_card.dart';
+import '../../widgets/image_cropper_dialog.dart';
+import '../../services/profile_photo_service.dart';
+import '../../utils/web_helpers.dart';
 
 class OnboardingWizardPage extends StatefulWidget {
   /// Versión del cuestionario. Si app_config/onboarding.requiredVersion es mayor que la
@@ -221,6 +224,9 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
   bool _contactDiscoverable = true;
   bool _notificationsOn = true;
   final TextEditingController _tagController = TextEditingController();
+  // Foto de perfil: la de Google o la que suba aquí
+  String? _photoUrl = FirebaseAuth.instance.currentUser?.photoURL;
+  bool _photoUploading = false;
   String? _currentTag;
   /// null, 'checking', 'ok', 'taken' o 'invalid'
   String? _tagStatus;
@@ -276,6 +282,8 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
           _contactDiscoverable = data['contact_discoverable'] != false;
           _notificationsOn = data['privacy_notifications'] != false;
           _currentTag = data['usertag'] as String?;
+          final savedPhoto = data['photoURL'];
+          if (savedPhoto is String && savedPhoto.startsWith('http')) _photoUrl = savedPhoto;
           _tagController.text = _currentTag ?? _suggestTag(user.displayName ?? (data['displayName'] as String?) ?? '');
         });
         _checkTag(_tagController.text, immediate: true);
@@ -2090,6 +2098,91 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
     );
   }
 
+  Future<void> _pickProfilePhoto() async {
+    final picked = await pickFile(accept: 'image/*');
+    if (picked == null || picked.bytes.isEmpty || !mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => OhtliImageCropperDialog(
+        imageBytes: picked.bytes,
+        onCropped: (base64) async {
+          setState(() => _photoUploading = true);
+          try {
+            final url = await ProfilePhotoService.upload(base64);
+            if (mounted) setState(() => _photoUrl = url);
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(friendlyError(e, fallback: 'No se pudo subir la foto. Intenta de nuevo.'))),
+              );
+            }
+          } finally {
+            if (mounted) setState(() => _photoUploading = false);
+          }
+        },
+      ),
+    );
+  }
+
+  /// Foto de perfil: si entró con Google ya se ve la suya y la puede cambiar; si no, se la pide.
+  Widget _buildProfilePhotoCard() {
+    final google = ProfilePhotoService.signedInWithGoogle;
+    final hasPhoto = _photoUrl != null && _photoUrl!.isNotEmpty;
+    final name = (FirebaseAuth.instance.currentUser?.displayName ?? '').trim();
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: OhtliColors.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: OhtliColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              CircleAvatar(
+                radius: 34,
+                backgroundColor: OhtliColors.stormyTeal.withValues(alpha: 0.15),
+                backgroundImage: hasPhoto ? NetworkImage(_photoUrl!) : null,
+                child: hasPhoto
+                    ? null
+                    : Text(initial, style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w700, color: OhtliColors.stormyTeal)),
+              ),
+              if (_photoUploading)
+                const SizedBox(width: 68, height: 68, child: CircularProgressIndicator(strokeWidth: 2.5, color: OhtliColors.stormyTeal)),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(hasPhoto ? 'Tu foto' : 'Agrega tu foto',
+                    style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: OhtliColors.onyx)),
+                const SizedBox(height: 2),
+                Text(
+                  google && hasPhoto
+                      ? 'Es la de tu cuenta de Google. Puedes cambiarla.'
+                      : (hasPhoto ? 'Así te verán tus amigos.' : 'Para que tus amigos te reconozcan al invitarte a un plan.'),
+                  style: GoogleFonts.inter(fontSize: 12.5, color: OhtliColors.subtleText, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                OhtliSecondaryButton(
+                  label: hasPhoto ? 'Cambiar foto' : 'Subir foto',
+                  icon: Icons.photo_camera_outlined,
+                  onPressed: _photoUploading ? null : _pickProfilePhoto,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPrivacyStep() {
     final tagHelp = switch (_tagStatus) {
       'checking' => ('Revisando…', OhtliColors.subtleText, Icons.hourglass_top_rounded),
@@ -2115,11 +2208,15 @@ class _OnboardingWizardPageState extends State<OnboardingWizardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildStepHeader(
-          eyebrow: "Tu privacidad",
+          eyebrow: "Tu perfil",
           title: "Tú decides quién te ve",
           description: "Puedes cambiar todo esto después en Cuenta → Privacidad.",
         ),
         const SizedBox(height: 20),
+        if (!widget.sandbox) ...[
+          _buildProfilePhotoCard(),
+          const SizedBox(height: 12),
+        ],
         _StaggerIn(
           index: 0,
           child: _switchCard(
