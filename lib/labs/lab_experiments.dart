@@ -93,6 +93,19 @@ const kLabExperiments = <LabExperiment>[
     targetModule: 'api.ohtli.quest',
     metrics: 'Ambiente · Estado de ánimo',
   ),
+  LabExperiment(
+    id: 'afinidad',
+    title: 'Validación de afinidad',
+    category: 'EVALUACIÓN',
+    description: 'Comprueba que el puntaje de afinidad mide lo que dice: pruebas automáticas contra el motor y '
+        'calificación a ciegas de lugares del sistema contra lugares al azar.',
+    status: 'NUEVO',
+    statusColor: Color(0xFF2F6F4F),
+    icon: Icons.fact_check_rounded,
+    color: Color(0xFF2F6F4F),
+    targetModule: 'Ohtli.quest / Recomendaciones',
+    metrics: 'Coherencia · Discriminación · Sistema vs. azar',
+  ),
 ];
 
 LabExperiment? experimentById(String id) {

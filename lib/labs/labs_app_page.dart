@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../screens/lab/experiments/agents_experiment_page.dart';
+import '../screens/lab/experiments/affinity_validation_experiment_page.dart';
 import '../screens/lab/experiments/apis_experiment_page.dart';
 import '../screens/lab/experiments/osrm_experiment_page.dart';
 import '../screens/lab/experiments/recolector_experiment_page.dart';
@@ -297,6 +298,7 @@ class _LabsAppPageState extends State<LabsAppPage> {
       'taste' => TasteVectorExperimentPage(onBack: back),
       'osrm' => OsrmExperimentPage(onBack: back),
       'agents' => AgentsExperimentPage(onBack: back),
+      'afinidad' => AffinityValidationExperimentPage(onBack: back),
       _ => ApisExperimentPage(onBack: back),
     };
   }

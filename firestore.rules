@@ -757,18 +757,33 @@ service cloud.firestore {
         && d.runId == get(/databases/$(database)/documents/lab_studies/relevancia).data.get('sourceRunId', '')
         && likert5(d.get('grades', null), 1, 12);
     }
+    // Calibración de afinidad (experimento "Validación de afinidad"): una por persona y perfil, con
+    // listas paralelas de lugares, origen (sistema o línea base al azar), posición y calificación 1–5.
+    function validAffinityResponse(responseId, d) {
+      return d.get('profileId', null) in ['cultura', 'noche', 'cafe', 'naturaleza']
+        && responseId == 'afi_' + request.auth.uid + '_' + d.profileId
+        && likert5(d.get('grades', null), 2, 24)
+        && d.get('sources', null) is list && d.sources.size() == d.grades.size()
+        && d.sources.hasOnly(['sistema', 'base'])
+        && d.get('ranks', null) is list && d.ranks.size() == d.grades.size()
+        && d.get('poiIds', null) is list && d.poiIds.size() == d.grades.size();
+    }
     match /lab_responses/{responseId} {
       allow create: if isLabTester()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.consent == true
-        && request.resource.data.studyId in ['sus', 'relevancia']
-        && get(/databases/$(database)/documents/lab_studies/$(request.resource.data.studyId)).data.active == true
+        && request.resource.data.studyId in ['sus', 'relevancia', 'afinidad']
+        // La calibración de afinidad vive en su experimento y no se activa desde la consola de estudios.
+        && (request.resource.data.studyId == 'afinidad'
+            || get(/databases/$(database)/documents/lab_studies/$(request.resource.data.studyId)).data.active == true)
         && request.resource.data.keys().hasOnly(['studyId', 'uid', 'consent', 'createdAt', 'sus', 'satisfaction', 'tasks',
-             'profile', 'comment', 'runId', 'rowIndex', 'scenarioId', 'optionIndex', 'theme', 'mood', 'poiIds', 'grades', 'criterion'])
+             'profile', 'comment', 'runId', 'rowIndex', 'scenarioId', 'optionIndex', 'theme', 'mood', 'poiIds', 'grades', 'criterion',
+             'profileId', 'sources', 'ranks'])
         && (!('comment' in request.resource.data)
             || (request.resource.data.comment is string && request.resource.data.comment.size() <= 1000))
         && ((request.resource.data.studyId == 'sus' && validSusResponse(responseId, request.resource.data))
-            || (request.resource.data.studyId == 'relevancia' && validRelevanceResponse(responseId, request.resource.data)));
+            || (request.resource.data.studyId == 'relevancia' && validRelevanceResponse(responseId, request.resource.data))
+            || (request.resource.data.studyId == 'afinidad' && validAffinityResponse(responseId, request.resource.data)));
       // Cada tester puede ver las suyas (para no repetir lo que ya respondió); el laboratorio, todas.
       allow read: if isLabMember() || (request.auth != null && resource.data.uid == request.auth.uid);
       allow update, delete: if isLabMember();
