@@ -28,6 +28,10 @@ void main() {
   test('testers: participan, ven resultados y experimentos; no las pruebas ni la publicación', () {
     expect(LabsAppPage.validSection('participa', LabRole.tester), 'participa');
     expect(LabsAppPage.validSection('resultados', LabRole.tester), 'resultados');
+    // Encuestas abiertas (relevancia, SUS, calibración): separadas de los estudios.
+    expect(LabsAppPage.validSection('encuestas', LabRole.tester), 'encuestas');
+    expect(LabsAppPage.validSection('encuestas', LabRole.researcher), 'encuestas');
+    expect(LabsAppPage.validSection('encuestas', LabRole.reviewer), 'reviews');
     for (final e in kLabExperiments) {
       expect(LabsAppPage.validSection('exp:${e.id}', LabRole.tester), 'exp:${e.id}');
     }
