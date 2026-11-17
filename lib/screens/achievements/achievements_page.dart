@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/achievements_service.dart';
 import '../../services/ohtli_features.dart';
 import '../../theme/colors.dart';
 import '../../widgets/ohtli_ui.dart';
@@ -46,8 +47,20 @@ class AchievementsPage extends StatelessWidget {
 
 // ───────────── Títulos ─────────────
 
-class _TitlesSection extends StatelessWidget {
+class _TitlesSection extends StatefulWidget {
   const _TitlesSection();
+
+  @override
+  State<_TitlesSection> createState() => _TitlesSectionState();
+}
+
+class _TitlesSectionState extends State<_TitlesSection> {
+  @override
+  void initState() {
+    super.initState();
+    // El motor revisa los logros (y otorga los que ya se ganaron) cada vez que se abre.
+    AchievementsService.instance.evaluate();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,10 +88,17 @@ class _TitlesSection extends StatelessWidget {
               if (!snap.hasData)
                 const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
               else
-                _grid(context, [
-                  for (final d in mine) _TitleTile(data: d.data(), owned: true, active: d.id == active),
-                  for (final d in pending) _TitleTile(data: d.data(), owned: false, active: false),
-                ]),
+                ValueListenableBuilder<Map<String, AchievementProgress>>(
+                  valueListenable: AchievementsService.instance.progress,
+                  builder: (context, prog, _) {
+                    // Por ganar: primero los más avanzados.
+                    final sorted = [...pending]..sort((a, b) => (prog[b.id]?.ratio ?? 0).compareTo(prog[a.id]?.ratio ?? 0));
+                    return _grid(context, [
+                      for (final d in mine) _TitleTile(data: d.data(), owned: true, active: d.id == active),
+                      for (final d in sorted) _TitleTile(data: d.data(), owned: false, active: false, progress: prog[d.id]),
+                    ]);
+                  },
+                ),
             ]);
           },
         );
@@ -98,12 +118,13 @@ class _TitleTile extends StatelessWidget {
   final Map<String, dynamic> data;
   final bool owned;
   final bool active;
-  const _TitleTile({required this.data, required this.owned, required this.active});
+  final AchievementProgress? progress;
+  const _TitleTile({required this.data, required this.owned, required this.active, this.progress});
 
   @override
   Widget build(BuildContext context) {
     return Opacity(
-      opacity: owned ? 1 : 0.55,
+      opacity: owned ? 1 : (progress != null && progress!.value > 0 ? 0.85 : 0.55),
       child: OhtliSurface(
         selected: active,
         padding: const EdgeInsets.all(18),
@@ -122,6 +143,21 @@ class _TitleTile extends StatelessWidget {
               const SizedBox(height: 4),
               Text(owned ? (data['description'] ?? '').toString() : 'Por ganar · ${(data['description'] ?? '').toString()}',
                   style: GoogleFonts.inter(fontSize: 12.5, height: 1.4, color: OhtliColors.subtleText)),
+              if (!owned && progress != null && progress!.goal > 1) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(
+                    value: progress!.ratio,
+                    minHeight: 6,
+                    backgroundColor: OhtliColors.cardBorder,
+                    color: OhtliColors.accent,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text('${progress!.value > progress!.goal ? progress!.goal : progress!.value} de ${progress!.goal}',
+                    style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600, color: OhtliColors.subtleText)),
+              ],
             ]),
           ),
         ]),

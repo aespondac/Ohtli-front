@@ -1,3 +1,4 @@
+import 'package:uuid/uuid.dart';
 import 'social_graph.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -100,6 +101,51 @@ class TripService {
       _notifyNewCoAuthors(userId, trip, trip.coAuthorIds);
     }
     return trip;
+  }
+
+  /// "Usar como base": copia un viaje público de otra persona a los borradores de [uid] (sin
+  /// calificaciones, horas reales ni gastos de quien lo hizo) y deja constancia en
+  /// trip_inspirations para el logro Tlahuilli de quien lo escribió.
+  Future<Trip> useAsBase(Trip source, TripContent content, String uid) async {
+    final now = DateTime.now();
+    final copy = Trip(
+      id: const Uuid().v4(),
+      userId: uid,
+      title: source.title,
+      description: source.description,
+      coverUrl: source.coverUrl,
+      status: 'draft',
+      visibility: 'private',
+      createdAt: now,
+      updatedAt: now,
+      travelDate: now,
+      routeShape: source.routeShape,
+      startPoint: source.startPoint,
+      endPoint: source.endPoint,
+    );
+    const personal = ['rating', 'arrivedAt', 'leftAt', 'realCost', 'unplanned'];
+    final sections = [
+      for (final s in content.sections)
+        if (s is! ProposalSection) TripSection.fromMap({...s.toMap()}..removeWhere((k, _) => personal.contains(k))),
+    ];
+    await createTrip(uid, copy);
+    await updateTripContent(uid, copy.id, TripContent(sections: sections));
+    await _tripsRef(uid).doc(copy.id).update({
+      'inspiredBy': {'authorId': source.userId, 'tripId': source.id},
+    });
+    if (source.userId != uid) {
+      try {
+        await FirebaseFirestore.instance.collection('trip_inspirations').doc('${source.id}_$uid').set({
+          'authorId': source.userId,
+          'tripId': source.id,
+          'byUid': uid,
+          'at': FieldValue.serverTimestamp(),
+        });
+      } catch (_) {
+        // Ya lo había usado antes: la constancia es una por persona y viaje.
+      }
+    }
+    return copy;
   }
 
   Future<void> updateTrip(String userId, Trip trip) async {
@@ -344,8 +390,14 @@ class TripService {
       });
 
       if (tripData == null) {
-        tx.set(tripRef, {...localTrip.toMap(), 'editRev': rev, 'editedBy': editorUid, 'editedByName': editorName},
-            SetOptions(merge: true));
+        tx.set(tripRef, {
+          ...localTrip.toMap(),
+          'editRev': rev,
+          'editedBy': editorUid,
+          'editedByName': editorName,
+          // Quién ha editado el viaje (logro Cencalli: editar en vivo con otra persona).
+          'editorIds': FieldValue.arrayUnion([editorUid]),
+        }, SetOptions(merge: true));
       } else {
         // Solo los campos que cambian: un coautor no puede tocar al dueño ni a los participantes.
         final changes = <String, dynamic>{
@@ -358,6 +410,7 @@ class TripService {
           'editRev': rev,
           'editedBy': editorUid,
           'editedByName': editorName,
+          'editorIds': FieldValue.arrayUnion([editorUid]),
         });
       }
 
@@ -443,10 +496,12 @@ class TripService {
 
   /// Guarda la reseña posterior al viaje (T5): calificaciones/notas de las paradas
   /// y la marca `reviewedAt` en el documento del viaje.
-  Future<void> saveTripReview(String userId, String tripId, TripContent content) async {
+  Future<void> saveTripReview(String userId, String tripId, TripContent content, {String? accessibilityReview}) async {
     await updateTripContent(userId, tripId, content);
     await _tripsRef(userId).doc(tripId).update({
       'reviewedAt': FieldValue.serverTimestamp(),
+      // ¿Los lugares fueron accesibles? si | en_parte | no (opcional)
+      if (accessibilityReview != null) 'accessibilityReview': accessibilityReview,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

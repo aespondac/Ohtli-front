@@ -90,8 +90,14 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/group_trips/$(data.groupTripId)).data.get('responses', {})
              .get(request.auth.uid, '') == 'declined';
     }
+    // editorIds (logro Cencalli): cada quien solo se agrega a sí mismo.
+    function editorIdsOk() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['editorIds'])
+        || request.resource.data.get('editorIds', []).toSet()
+             .difference(resource.data.get('editorIds', []).toSet()).hasOnly([request.auth.uid]);
+    }
     function tripUpdateAllowed(data) {
-      return request.auth != null && (
+      return request.auth != null && editorIdsOk() && (
         request.auth.uid == data.get('userId', '') ||
         (data.get('coAuthorIds', []) is list && request.auth.uid in data.get('coAuthorIds', []) && coAuthorUpdateOk()) ||
         (data.get('surpriseTargetIds', []) is list && request.auth.uid in data.get('surpriseTargetIds', []) && surpriseOpenUpdateOk()) ||
@@ -264,7 +270,8 @@ service cloud.firestore {
         )) || (resource != null && resource.data.status == 'published' && resource.data.visibility == 'public');
         
         // Create/Delete: Only owner (y notas de versión solo el superusuario)
-        allow create: if request.auth != null && request.auth.uid == userId && notReleaseNotesUnlessSuper();
+        allow create: if request.auth != null && request.auth.uid == userId && notReleaseNotesUnlessSuper()
+          && request.resource.data.get('editorIds', []).toSet().hasOnly([request.auth.uid]);
         allow delete: if request.auth != null && request.auth.uid == userId;
         
         // Update: Owner, co-author, or surprise target (to mark as opened)
@@ -1033,6 +1040,20 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.actorUid == request.auth.uid
         && request.resource.data.keys().hasOnly(['action', 'target', 'detail', 'actorUid', 'at'])
         && request.resource.data.action is string && request.resource.data.action.size() <= 60;
+      allow update, delete: if false;
+    }
+
+    // "Usar como base" (logro Tlahuilli): una constancia por persona y viaje, solo de viajes
+    // públicos de otra persona. La lee el motor (Admin SDK) para contar inspiraciones.
+    match /trip_inspirations/{id} {
+      allow read: if request.auth != null && (resource.data.byUid == request.auth.uid || resource.data.authorId == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.byUid == request.auth.uid
+        && request.resource.data.authorId != request.auth.uid
+        && id == request.resource.data.tripId + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(['authorId', 'tripId', 'byUid', 'at'])
+        && get(/databases/$(database)/documents/users/$(request.resource.data.authorId)/trips/$(request.resource.data.tripId)).data.status == 'published'
+        && get(/databases/$(database)/documents/users/$(request.resource.data.authorId)/trips/$(request.resource.data.tripId)).data.visibility == 'public';
       allow update, delete: if false;
     }
   }

@@ -1,4 +1,5 @@
 // ignore: avoid_web_libraries_in_flutter
+import '../../services/achievements_service.dart';
 import 'package:web/web.dart' as web;
 import 'dart:async';
 import 'dart:convert';
@@ -2026,6 +2027,29 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   String get _defaultAfterId => _currentStop?.id ?? (_sections.isNotEmpty ? _sections.last.id : '');
 
+  /// Un viaje público de otra persona se puede copiar a mis borradores.
+  bool get _canUseAsBase =>
+      !_isPreview &&
+      !_isSample &&
+      _trip != null &&
+      !_trip!.isReleaseNotes &&
+      _trip!.status == 'published' &&
+      _trip!.visibility == 'public' &&
+      FirebaseAuth.instance.currentUser != null &&
+      FirebaseAuth.instance.currentUser!.uid != _trip!.userId &&
+      !_trip!.coAuthorIds.contains(FirebaseAuth.instance.currentUser!.uid);
+
+  Future<void> _useAsBase() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _trip == null) return;
+    try {
+      await TripService().useAsBase(_trip!, TripContent(sections: _sections), uid);
+      _notice('Listo: lo guardamos en Mis viajes como borrador para que lo hagas tuyo.');
+    } catch (e) {
+      _notice(friendlyError(e, fallback: 'No se pudo copiar el viaje.'));
+    }
+  }
+
   void _notice(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text, style: GoogleFonts.inter())));
@@ -2632,6 +2656,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       }
       if (!mounted) return;
       setState(() => _trip = Trip.fromMap({...t.toMap(), 'status': 'published', 'visibility': 'public'}, t.id));
+      if (!_isSample) AchievementsService.instance.evaluateSoon();
       _notice(_isSample ? 'Así se vería como crónica pública. En la muestra no se guarda.' : 'Listo: ya es una crónica pública y aparece en Explorar.');
     } catch (e) {
       _notice(friendlyError(e, fallback: 'Se limpió el plan, pero no se pudo publicar.'));
@@ -2713,6 +2738,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       });
       // Éxito de la recomendación: la persona hizo el viaje.
       FeedbackService.itineraryCompleted(tripId: t.id, jobId: t.recommendationJobId);
+      AchievementsService.instance.evaluateSoon();
       if (!mounted) return;
       _stopFollow();
       setState(() {
@@ -3215,6 +3241,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final places = _sections.whereType<PlaceSection>().toList();
     final ratings = {for (final p in places) p.id: p.rating};
     final notes = {for (final p in places) p.id: TextEditingController()};
+    // ¿Los lugares fueron accesibles? (opcional; da el logro Tlapalehuiani y datos de accesibilidad)
+    String? access;
     final bool? saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -3226,9 +3254,30 @@ class _TripViewerPageState extends State<TripViewerPage> {
             width: 460,
             child: ListView.separated(
               shrinkWrap: true,
-              itemCount: places.length,
+              itemCount: places.length + 1,
               separatorBuilder: (_, __) => const Divider(height: 22),
               itemBuilder: (_, i) {
+                if (i == places.length) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('¿Los lugares fueron accesibles para ti?',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14)),
+                      const SizedBox(height: 4),
+                      Text('Rampas, elevadores, banquetas, baños… Opcional: nos ayuda a recomendar mejor.',
+                          style: GoogleFonts.inter(fontSize: 12, color: OhtliColors.subtleText)),
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 8, children: [
+                        for (final (id, label) in const [('si', 'Sí'), ('en_parte', 'En parte'), ('no', 'No')])
+                          ChoiceChip(
+                            label: Text(label),
+                            selected: access == id,
+                            onSelected: (v) => setD(() => access = v ? id : null),
+                          ),
+                      ]),
+                    ],
+                  );
+                }
                 final p = places[i];
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3305,7 +3354,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     }
     setState(() => _isSavingReview = true);
     try {
-      await TripService().saveTripReview(_trip!.userId, _trip!.id, TripContent(sections: updated));
+      await TripService().saveTripReview(_trip!.userId, _trip!.id, TripContent(sections: updated), accessibilityReview: access);
+      AchievementsService.instance.evaluateSoon();
       if (!mounted) return;
       final t = _trip!;
       setState(() {
@@ -4905,6 +4955,20 @@ class _TripViewerPageState extends State<TripViewerPage> {
             icon: const Icon(Icons.ios_share_rounded, size: 17),
             label: Text('Compartir', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
           ),
+        if (_canUseAsBase) ...[
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: _useAsBase,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: onImage ? Colors.white : OhtliColors.stormyTeal,
+              side: BorderSide(color: onImage ? Colors.white70 : OhtliColors.stormyTeal),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+            icon: const Icon(Icons.content_copy_rounded, size: 16),
+            label: Text('Usar como base', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13)),
+          ),
+        ],
         const SizedBox(width: 8),
         PopupMenuButton<String>(
           tooltip: 'Más opciones',
