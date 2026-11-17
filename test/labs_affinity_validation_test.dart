@@ -247,7 +247,7 @@ void main() {
       }
 
       final peso = (await runAffinityChecks(capped)).firstWhere((c) => c.id == 'peso_respuesta');
-      expect(peso.result, contains('13193'));
+      expect(peso.result, '300 KB con accesibilidad universal (envía 0 de 13193 descartados)');
       expect(peso.status, CheckStatus.pass);
     });
 

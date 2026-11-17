@@ -621,13 +621,18 @@ Future<List<AffinityCheck>> runAffinityChecks(
       final bytes = (access['_bytes'] as num?)?.toInt();
       if (bytes != null) {
         final mb = bytes / (1024 * 1024);
-        final filteredCount = (access['filtered_out_count'] as num?)?.toInt() ??
-            ((access['filtered_out_pois'] as List?) ?? const []).length;
+        final sent = ((access['filtered_out_pois'] as List?) ?? const []).length;
+        final filteredCount = (access['filtered_out_count'] as num?)?.toInt() ?? sent;
+        // El motor ya solo manda una muestra de los descartados (antes los mandaba todos).
+        final included = sent >= filteredCount
+            ? 'incluye los $filteredCount descartados'
+            : 'envía $sent de $filteredCount descartados';
+        final size = mb >= 1 ? '${mb.toStringAsFixed(1)} MB' : '${(bytes / 1024).round()} KB';
         checks.add(AffinityCheck(
           id: 'peso_respuesta',
           title: 'Peso de la respuesta',
           question: '¿La respuesta del Comparador es ligera para un teléfono? Avisa sobre 1 MB; falla sobre 5 MB.',
-          result: '${mb.toStringAsFixed(1)} MB con accesibilidad universal ($filteredCount lugares descartados incluidos)',
+          result: '$size con accesibilidad universal ($included)',
           status: mb <= 1 ? CheckStatus.pass : (mb <= 5 ? CheckStatus.warn : CheckStatus.fail),
         ));
       }
