@@ -56,7 +56,13 @@ class ContributionTitles {
       final titles = <String>[for (final t in current ?? const []) t.toString()];
       if (titles.isEmpty) titles.add('viajero');
       titles.add(title.id);
-      await ref.set({'possessedTitles': titles}, SetOptions(merge: true));
+      await ref.set({
+        'possessedTitles': titles,
+        // Cuándo lo ganó (la vitrina de Logros lo muestra); los poseedores los recuenta el motor.
+        'achievementLog': {
+          for (final t in titles.where((t) => !(current ?? const []).contains(t))) t: {'earnedAt': FieldValue.serverTimestamp()},
+        },
+      }, SetOptions(merge: true));
       await PublicProfiles.mirror(uid, {'possessedTitles': titles});
       return true;
     } catch (e) {
