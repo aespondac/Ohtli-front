@@ -221,7 +221,10 @@ class LabStudiesPanel extends StatefulWidget {
 
   /// Solo los estudios de este proyecto (consola por proyectos). Sin él, todos agrupados.
   final LabProject? project;
-  const LabStudiesPanel({super.key, required this.role, this.project});
+
+  /// Abre el estudio en su propia página (consola por proyectos); sin él, se edita aquí mismo.
+  final ValueChanged<String>? onOpen;
+  const LabStudiesPanel({super.key, required this.role, this.project, this.onOpen});
 
   @override
   State<LabStudiesPanel> createState() => _LabStudiesPanelState();
@@ -274,7 +277,7 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
               LabCard(child: Text('Este proyecto aún no tiene estudios.', style: labCell())),
             if (scope != null)
               for (final s in studies)
-                Padding(padding: const EdgeInsets.only(bottom: 8), child: _StudyRow(study: s, onOpen: () => setState(() => _open = s.id)))
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: _StudyRow(study: s, onOpen: () => widget.onOpen != null ? widget.onOpen!(s.id) : setState(() => _open = s.id)))
             else
               for (final p in projects..sort((a, b) => a.name.compareTo(b.name)))
               if (studies.any((s) => s.projectId == p.id)) ...[
@@ -287,7 +290,7 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
                   ]),
                 ),
                 for (final s in studies.where((s) => s.projectId == p.id))
-                  Padding(padding: const EdgeInsets.only(bottom: 8), child: _StudyRow(study: s, onOpen: () => setState(() => _open = s.id))),
+                  Padding(padding: const EdgeInsets.only(bottom: 8), child: _StudyRow(study: s, onOpen: () => widget.onOpen != null ? widget.onOpen!(s.id) : setState(() => _open = s.id))),
               ],
           ]);
         },
@@ -330,7 +333,12 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
     if (ok != true || title.text.trim().isEmpty || !context.mounted) return;
     await runLabAction(context, () async {
       final id = await _repo.createStudy(project: project, title: title.text.trim(), description: desc.text.trim());
-      if (mounted) setState(() => _open = id);
+      if (!mounted) return;
+      if (widget.onOpen != null) {
+        widget.onOpen!(id);
+      } else {
+        setState(() => _open = id);
+      }
     });
   }
 }
@@ -380,11 +388,25 @@ class _StudyRow extends StatelessWidget {
 }
 
 /// Editor de un estudio: datos, preregistro, componentes, estado, proyecto, paper y bitácora.
+/// Partes del editor de estudios: todo junto (vista anterior) o por pestaña de la página del estudio.
+enum LabStudyPart { all, summary, state, paper }
+
 class LabStudyEditor extends StatelessWidget {
   final String studyId;
   final LabRole role;
   final VoidCallback onBack;
-  const LabStudyEditor({super.key, required this.studyId, required this.role, required this.onBack});
+  final LabStudyPart part;
+
+  /// Permiso de edición calculado con el IAM (consola por proyectos). Sin él, el modelo anterior.
+  final bool? editable;
+  const LabStudyEditor({
+    super.key,
+    required this.studyId,
+    required this.role,
+    required this.onBack,
+    this.part = LabStudyPart.all,
+    this.editable,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -393,7 +415,23 @@ class LabStudyEditor extends StatelessWidget {
       builder: (context, snap) {
         final s = snap.data;
         if (s == null) return const Center(child: CircularProgressIndicator());
-        final editable = s.canEdit(_uid, admin: role == LabRole.admin) || s.builtinKind != null;
+        final editable = this.editable ?? (s.canEdit(_uid, admin: role == LabRole.admin) || s.builtinKind != null);
+        switch (part) {
+          case LabStudyPart.summary:
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _StudyInfoCard(key: ValueKey('info-${s.id}'), study: s, editable: editable),
+              const SizedBox(height: 12),
+              _PreregCard(key: ValueKey('prereg-${s.id}-${s.amendments}-${s.frozenAt != null}'), study: s, editable: editable),
+              const SizedBox(height: 12),
+              _ComponentsCard(study: s, editable: editable),
+            ]);
+          case LabStudyPart.state:
+            return _StudyHeader(study: s, role: role, editable: editable);
+          case LabStudyPart.paper:
+            return LabPaperPanel(study: s, role: role);
+          case LabStudyPart.all:
+            break;
+        }
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: onBack, icon: const Icon(Icons.arrow_back), label: const Text('Estudios'))),
           _StudyHeader(study: s, role: role, editable: editable),
@@ -1005,6 +1043,7 @@ class LabLibraryPanel extends StatelessWidget {
                     ),
                     if (!e.builtin && e.ownerUid == _uid)
                       IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, e)),
+                    if (onOpen != null) FilledButton.tonal(onPressed: () => onOpen!(e.id), child: const Text('Abrir')),
                   ]),
                 ),
               ),
@@ -1119,7 +1158,7 @@ class LabSurveysPanel extends StatelessWidget {
           }
           return Column(children: [
             for (final s in list)
-              Padding(padding: const EdgeInsets.only(bottom: 10), child: _SurveyCard(survey: s)),
+              Padding(padding: const EdgeInsets.only(bottom: 10), child: _SurveyCard(survey: s, onOpen: onOpen)),
           ]);
         },
       ),
@@ -1129,7 +1168,10 @@ class LabSurveysPanel extends StatelessWidget {
 
 class _SurveyCard extends StatelessWidget {
   final LabSurvey survey;
-  const _SurveyCard({required this.survey});
+
+  /// Abre la página de la encuesta (consola por proyectos).
+  final ValueChanged<String>? onOpen;
+  const _SurveyCard({required this.survey, this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -1152,6 +1194,7 @@ class _SurveyCard extends StatelessWidget {
               child: Text(s.open ? 'Cerrar' : 'Abrir'),
             ),
           OutlinedButton(onPressed: () => _results(context), child: const Text('Resultados')),
+          if (onOpen != null) FilledButton.tonal(onPressed: () => onOpen!(s.id), child: const Text('Detalle')),
         ]),
       ]),
     );
@@ -1370,7 +1413,11 @@ class LabFeaturesPanel extends StatelessWidget {
         stream: _repo.watchFeatures(),
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          final list = [for (final f in snap.data!) if (projectId == null || f.projectId == projectId) f];
+          // El documento de configuración de un módulo del sistema (p. ej. 'sma') no es otra funcionalidad.
+          final list = [
+            for (final f in snap.data!)
+              if ((projectId == null || f.projectId == projectId) && !modules.any((m) => m.$1 == f.key)) f,
+          ];
           if (list.isEmpty) {
             return modules.isNotEmpty ? const SizedBox.shrink() : LabCard(child: Text('Aún no hay funcionalidades registradas.', style: labCell()));
           }
@@ -1395,6 +1442,7 @@ class LabFeaturesPanel extends StatelessWidget {
                     const SizedBox(height: 8),
                     Wrap(spacing: 8, runSpacing: 8, children: [
                       OutlinedButton(onPressed: () => _edit(context, f), child: const Text('Editar')),
+                      if (onOpen != null) FilledButton.tonal(onPressed: () => onOpen!(f.key), child: const Text('Abrir')),
                       for (final st in FeatureStage.values)
                         if (st != f.stage && (role == LabRole.admin || st == FeatureStage.desarrollo || st == FeatureStage.beta) &&
                             (role == LabRole.admin || f.stage == FeatureStage.desarrollo || f.stage == FeatureStage.beta))

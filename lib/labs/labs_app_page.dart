@@ -16,11 +16,9 @@ import '../widgets/ohtli_account_chip.dart';
 import '../widgets/ohtli_theme_toggle.dart';
 import 'lab_access.dart';
 import 'lab_catalog.dart';
-import 'lab_console_page.dart';
 import 'lab_eval_page.dart';
 import 'lab_experiments.dart';
 import 'lab_publishing.dart';
-import 'lab_sma_page.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
 import 'research/lab_iam.dart';
@@ -33,6 +31,7 @@ import 'shell/lab_location.dart';
 import 'shell/lab_location_store.dart';
 import 'shell/lab_project_picker.dart';
 import 'shell/lab_project_views.dart';
+import 'shell/lab_resource_pages.dart';
 
 /// Ohtli Labs con sesión, al estilo de la consola de GCP: arriba se elige el proyecto y el menú
 /// lateral da acceso a sus estudios, experimentos, encuestas y funcionalidades; la gestión (IAM,
@@ -513,29 +512,34 @@ class _LabsAppPageState extends State<LabsAppPage> {
     }
     final role = projectRoleOf(project, uid: _uid, labRole: _role);
     final pid = project.id;
-    String key(LabArea a, [String? res]) => LabLocation.project(pid, a, resourceId: res).toKey();
+    String key(LabArea a, [String? res, String? tab]) => LabLocation.project(pid, a, resourceId: res, tab: tab).toKey();
     final res = loc.resourceId;
+    final ctx = LabPageCtx(project: project, labRole: _role, uid: _uid, tab: loc.tab, go: _go);
     switch (loc.area!) {
       case LabArea.overview:
         return _scroll(LabProjectOverview(project: project, role: role, onGo: (a) => _go(key(a))));
       case LabArea.studies:
-        return _scroll(LabStudiesPanel(key: ValueKey('studies-$pid'), role: _role, project: project));
+        if (res != null) return _scroll(LabStudyPage(ctx: ctx, studyId: res));
+        return _scroll(LabStudiesPanel(key: ValueKey('studies-$pid'), role: _role, project: project, onOpen: (id) => _go(key(LabArea.studies, id))));
       case LabArea.experiments:
         if (res != null) {
-          final b = builtinExperimentById(res);
-          if (b?.page != null) return _embeddedExperiment(b!.page!, isMobile, back: () => _go(key(LabArea.experiments)));
-          final runner = b?.ttRunner;
-          if (runner != null) return _scroll(LabStudyPanel(study: runner));
+          final page = builtinExperimentById(res)?.page;
+          // Los integrados con pantalla propia ocupan todo el alto; el resto va en scroll.
+          if (page != null) {
+            return LabExperimentPage(
+              ctx: ctx,
+              experimentId: res,
+              ownPage: () => LabEmbedded(child: _experimentPage(page.id, () => _go(key(LabArea.experiments)))),
+            );
+          }
+          return _scroll(LabExperimentPage(ctx: ctx, experimentId: res));
         }
         return _scroll(LabLibraryPanel(project: project, onOpen: (id) => _go(key(LabArea.experiments, id))));
       case LabArea.surveys:
-        if (res != null) {
-          final b = builtinSurveyById(res);
-          if (b != null) return _scroll(LabStudyPanel(study: b.study));
-        }
+        if (res != null) return _scroll(LabSurveyPage(ctx: ctx, surveyId: res));
         return _scroll(LabSurveysPanel(project: project, onOpen: (id) => _go(key(LabArea.surveys, id))));
       case LabArea.functionalities:
-        if (res == 'sma') return _scroll(const LabSmaPanel());
+        if (res != null) return _scroll(LabFunctionalityPage(ctx: ctx, functionalityId: res));
         return _scroll(LabFeaturesPanel(
           role: _role,
           projectId: pid,
@@ -549,6 +553,7 @@ class _LabsAppPageState extends State<LabsAppPage> {
           labRole: _role,
           section: res ?? 'general',
           onSection: (s) => _go(key(LabArea.settings, s)),
+          onOpenStudy: (id, tab) => _go(key(LabArea.studies, id, tab)),
         ));
     }
   }

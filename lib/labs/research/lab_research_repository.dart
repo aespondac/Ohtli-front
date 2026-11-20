@@ -756,6 +756,27 @@ class LabResearch {
     return ref.id;
   }
 
+  /// Documento de un experimento (null si no existe: p. ej. un integrado sin configuración propia).
+  Stream<LabLibraryExperiment?> watchExperimentDoc(String id) =>
+      experiments.doc(id).snapshots().map((d) => d.exists ? LabLibraryExperiment.fromDoc(d.id, d.data()!) : null);
+
+  Stream<LabSurvey?> watchSurveyDoc(String id) => surveys.doc(id).snapshots().map((d) => d.exists ? LabSurvey.fromDoc(d.id, d.data()!) : null);
+
+  Stream<LabFeature?> watchFeature(String key) => features.doc(key).snapshots().map((d) => d.exists ? LabFeature.fromDoc(d.id, d.data()!) : null);
+
+  /// Compartir un experimento o encuesta con otros proyectos (solo propietario; nunca si es
+  /// clasificado). [seed] crea el documento de un integrado que aún no lo tiene.
+  Future<void> setShared(LabResourceKind kind, String id, bool shared, {String? projectId, Map<String, dynamic> seed = const {}}) async {
+    final ref = _collectionOf(kind).doc(id);
+    final exists = (await ref.get()).exists;
+    await ref.set({
+      if (!exists) ...seed,
+      if (!exists && seed.isNotEmpty) 'ownerUid': _uid,
+      'shared': shared,
+    }, SetOptions(merge: true));
+    await log(shared ? 'resource.share' : 'resource.unshare', '${kind.name}:$id', const {}, projectId);
+  }
+
   /// Experimentos creados en un proyecto (incluidos los clasificados, para quien tenga acceso).
   Stream<List<LabLibraryExperiment>> watchProjectExperiments(String projectId) => experiments
       .where('projectId', isEqualTo: projectId)
