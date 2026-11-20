@@ -10,6 +10,7 @@ import '../research/lab_models.dart';
 import '../research/lab_research_repository.dart';
 import '../research/research_widgets.dart';
 import 'lab_location.dart';
+import 'lab_resource_page.dart';
 import 'lab_settings_cards.dart';
 
 final _repo = LabResearch.instance;
@@ -149,18 +150,18 @@ class _Tile extends StatelessWidget {
       );
 }
 
-/// Secciones de la configuración del proyecto.
-const kProjectSettingsSections = [('general', 'General'), ('iam', 'Accesos (IAM)'), ('audit', 'Bitácora')];
-
-/// Configuración del proyecto: general, accesos y bitácora.
+/// Configuración del proyecto: general, accesos, revisiones y bitácora.
 class LabProjectSettings extends StatelessWidget {
   final LabProject project;
   final LabIamRole role;
   final LabRole labRole;
 
-  /// Sub-sección abierta (general, iam, audit).
+  /// Sub-sección abierta (general, iam, reviews, audit).
   final String section;
   final ValueChanged<String> onSection;
+
+  /// Abre un estudio en una pestaña (p. ej. sus revisiones).
+  final void Function(String studyId, String tab)? onOpenStudy;
   const LabProjectSettings({
     super.key,
     required this.project,
@@ -168,48 +169,70 @@ class LabProjectSettings extends StatelessWidget {
     required this.labRole,
     required this.section,
     required this.onSection,
+    this.onOpenStudy,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 900;
-    final current = kProjectSettingsSections.any((s) => s.$1 == section) ? section : 'general';
-    final body = switch (current) {
-      'iam' => LabIamCard(
-          kind: LabResourceKind.project,
-          id: project.id,
-          projectId: project.id,
-          own: projectIamOf(project),
-          canManage: role.canManageIam,
+  Widget build(BuildContext context) => LabSettingsLayout(
+        current: section,
+        onSection: onSection,
+        sections: [
+          ('general', 'General', () => _General(project: project, labRole: labRole)),
+          (
+            'iam',
+            'Accesos (IAM)',
+            () => LabIamCard(
+                  kind: LabResourceKind.project,
+                  id: project.id,
+                  projectId: project.id,
+                  own: projectIamOf(project),
+                  canManage: role.canManageIam,
+                )
+          ),
+          ('reviews', 'Revisiones', () => _ProjectPapers(project: project, onOpenStudy: onOpenStudy)),
+          ('audit', 'Bitácora', () => LabAuditCard(projectId: project.id)),
+        ],
+      );
+}
+
+/// Papers de los estudios del proyecto y en qué etapa de revisión van.
+class _ProjectPapers extends StatelessWidget {
+  final LabProject project;
+  final void Function(String studyId, String tab)? onOpenStudy;
+  const _ProjectPapers({required this.project, this.onOpenStudy});
+
+  @override
+  Widget build(BuildContext context) => LabCard(
+        child: StreamBuilder<List<LabResearchStudy>>(
+          stream: _repo.watchStudies(),
+          builder: (context, ss) => StreamBuilder<List<LabPaper>>(
+            stream: _repo.watchPapers(),
+            builder: (context, ps) {
+              final studies = {for (final s in ss.data ?? const <LabResearchStudy>[]) if (s.projectId == project.id) s.id: s};
+              final papers = [for (final p in ps.data ?? const <LabPaper>[]) if (studies.containsKey(p.studyId)) p];
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Revisiones', style: _h(16)),
+                const SizedBox(height: 4),
+                Text('Papers de los estudios del proyecto: revisión interna → externa → validación de participantes → aprobado.',
+                    style: labCell()),
+                const SizedBox(height: 8),
+                if (ps.hasError) Text('No pudimos cargar los papers.', style: labCell()),
+                if (ps.hasData && papers.isEmpty) Text('Ningún estudio del proyecto tiene paper todavía.', style: labCell()),
+                for (final p in papers)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.article_outlined),
+                    title: Text(p.title.isEmpty ? 'Paper sin título' : p.title, style: labCell(bold: true)),
+                    subtitle: Text('${studies[p.studyId]!.title} · ${p.stage.label} · ronda ${p.round}', style: labCell()),
+                    trailing: onOpenStudy == null
+                        ? null
+                        : TextButton(onPressed: () => onOpenStudy!(p.studyId, 'config.release'), child: const Text('Abrir')),
+                  ),
+              ]);
+            },
+          ),
         ),
-      'audit' => LabAuditCard(projectId: project.id),
-      _ => _General(project: project, labRole: labRole),
-    };
-    final nav = isMobile
-        ? DropdownButtonFormField<String>(
-            initialValue: current,
-            decoration: const InputDecoration(labelText: 'Sección', border: OutlineInputBorder(), isDense: true),
-            items: [for (final s in kProjectSettingsSections) DropdownMenuItem(value: s.$1, child: Text(s.$2))],
-            onChanged: (v) => v == null ? null : onSection(v),
-          )
-        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            for (final s in kProjectSettingsSections)
-              ListTile(
-                dense: true,
-                selected: s.$1 == current,
-                selectedTileColor: OhtliColors.stormyTeal.withValues(alpha: 0.08),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                title: Text(s.$2, style: GoogleFonts.inter(fontSize: 13.5, fontWeight: s.$1 == current ? FontWeight.w700 : FontWeight.w500)),
-                onTap: () => onSection(s.$1),
-              ),
-          ]);
-    if (isMobile) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [nav, const SizedBox(height: 14), body]);
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(width: 200, child: nav),
-      const SizedBox(width: 20),
-      Expanded(child: body),
-    ]);
-  }
+      );
 }
 
 class _General extends StatelessWidget {

@@ -22,6 +22,8 @@ String labAuditLabel(String a) => switch (a) {
       'project.declassify' => 'Proyecto desclasificado',
       'iam.update' => 'Accesos actualizados',
       'iam.migrate' => 'Migración al IAM',
+      'resource.share' => 'Compartido con otros proyectos',
+      'resource.unshare' => 'Dejó de compartirse',
       'study.create' => 'Estudio creado',
       'study.preregister' => 'Preregistro congelado',
       'study.amend' => 'Enmienda al preregistro',
@@ -52,11 +54,13 @@ String _detail(dynamic d) {
   ].join(', ');
 }
 
-/// Bitácora de un recurso ([target], p. ej. `study:abc`) o de todo un proyecto ([projectId]).
+/// Bitácora de un recurso ([target], p. ej. `study:abc`, o varios en [targets]) o de todo un
+/// proyecto ([projectId]).
 class LabAuditCard extends StatelessWidget {
   final String? target;
+  final List<String> targets;
   final String? projectId;
-  const LabAuditCard({super.key, this.target, this.projectId});
+  const LabAuditCard({super.key, this.target, this.targets = const [], this.projectId});
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +82,8 @@ class LabAuditCard extends StatelessWidget {
           builder: (c, snap) {
             if (snap.hasError) return Text('No pudimos cargar la bitácora.', style: labCell());
             if (!snap.hasData) return const LinearProgressIndicator();
-            final docs = (snap.data!.docs).where((d) => target == null || d.data()['target'] == target).take(60).toList();
+            final wanted = {?target, ...targets};
+            final docs = (snap.data!.docs).where((d) => wanted.isEmpty || wanted.contains(d.data()['target'])).take(60).toList();
             if (docs.isEmpty) return Text('Sin movimientos todavía.', style: labCell());
             return Column(children: [
               for (final d in docs)
@@ -88,7 +93,7 @@ class LabAuditCard extends StatelessWidget {
                   leading: const Icon(Icons.history_rounded, size: 18),
                   title: Text(labAuditLabel(d.data()['action']?.toString() ?? ''), style: labCell(bold: true)),
                   subtitle: Text([
-                    if (target == null) d.data()['target']?.toString() ?? '',
+                    if (wanted.isEmpty) d.data()['target']?.toString() ?? '',
                     _detail(d.data()['detail']),
                   ].where((x) => x.isNotEmpty).join(' · ')),
                   trailing: Text(fmtDate(d.data()['at']), style: GoogleFonts.inter(fontSize: 11, color: OhtliColors.subtleText)),
@@ -293,4 +298,72 @@ class _LabIamCardState extends State<LabIamCard> {
       ),
     );
   }
+}
+
+/// Compartir con otros proyectos (importable por sus estudios), como compartir un recurso entre
+/// proyectos en GCP. Solo el propietario; nunca si es clasificado.
+class LabSharedCard extends StatelessWidget {
+  final LabResourceKind kind;
+  final String id;
+  final String? projectId;
+  final bool shared;
+  final bool confidential;
+  final bool canManage;
+  final Map<String, dynamic> seed;
+  const LabSharedCard({
+    super.key,
+    required this.kind,
+    required this.id,
+    required this.shared,
+    required this.canManage,
+    this.projectId,
+    this.confidential = false,
+    this.seed = const {},
+  });
+
+  @override
+  Widget build(BuildContext context) => LabCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Liberación', style: _h(16)),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: shared && !confidential,
+            onChanged: !canManage || confidential
+                ? null
+                : (v) => runLabAction(context, () => _repo.setShared(kind, id, v, projectId: projectId, seed: seed),
+                    ok: v ? 'Ahora otros proyectos pueden usarlo en sus estudios.' : 'Ya no se comparte.'),
+            title: const Text('Compartir con otros proyectos'),
+            subtitle: Text(confidential
+                ? 'Es clasificado: no se puede compartir hasta que el proyecto se desclasifique.'
+                : 'Los estudios de otros proyectos podrán importarlo. Sigue perteneciendo a este proyecto.'),
+          ),
+          if (!canManage) Text('Solo el propietario puede cambiarlo.', style: labCell()),
+        ]),
+      );
+}
+
+/// Filas de datos de solo lectura (estado, origen, claves).
+class LabFactsCard extends StatelessWidget {
+  final String title;
+  final List<(String, String)> facts;
+  final List<Widget> actions;
+  const LabFactsCard({super.key, required this.title, required this.facts, this.actions = const []});
+
+  @override
+  Widget build(BuildContext context) => LabCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: _h(16)),
+          const SizedBox(height: 8),
+          for (final f in facts)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: 150, child: Text(f.$1, style: labCell(bold: true))),
+                Expanded(child: Text(f.$2, style: labCell())),
+              ]),
+            ),
+          if (actions.isNotEmpty) ...[const SizedBox(height: 6), Wrap(spacing: 8, runSpacing: 8, children: actions)],
+        ]),
+      );
 }
