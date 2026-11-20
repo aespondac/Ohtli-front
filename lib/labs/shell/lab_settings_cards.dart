@@ -149,8 +149,11 @@ class _LabIamCardState extends State<LabIamCard> {
   String _who(String principal, Map<String, Map<String, dynamic>> members) {
     if (principal == kLabAllMembers) return 'Todos los miembros del laboratorio';
     final m = members[principal];
-    final me = FirebaseAuth.instance.currentUser?.uid == principal ? ' (tú)' : '';
-    return '${(m?['displayName'] ?? m?['email'] ?? principal)}$me';
+    final user = FirebaseAuth.instance.currentUser;
+    final isMe = user?.uid == principal;
+    // El superusuario no tiene ficha en lab_members: para la propia cuenta se usa la sesión.
+    final name = m?['displayName'] ?? m?['email'] ?? (isMe ? (user?.displayName ?? user?.email) : null) ?? principal;
+    return '$name${isMe ? ' (tú)' : ''}';
   }
 
   Future<void> _save() async {
