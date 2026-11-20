@@ -297,6 +297,42 @@ class LabResearch {
     }
   }
 
+  /// Estudio que agrupa la evaluación del capítulo 6 del TT: sus pruebas son experimentos del
+  /// proyecto y relevancia y SUS sus encuestas.
+  static const ttUmbrellaStudyId = 'tt_capitulo6';
+
+  Future<void> _ensureTtUmbrellaStudy() async {
+    final ref = studies.doc(ttUmbrellaStudyId);
+    if ((await ref.get()).exists) return;
+    final exps = [for (final s in kLabStudies) if (const {LabStudyKind.scenarios, LabStudyKind.load, LabStudyKind.checklist}.contains(s.kind)) s];
+    final surveysTt = [for (final s in kLabStudies) if (s.kind == LabStudyKind.relevance || s.kind == LabStudyKind.sus) s];
+    await ref.set({
+      'projectId': kTtProjectId,
+      'title': 'Evaluación del capítulo 6',
+      'description': 'Pruebas de aceptación del Trabajo Terminal 2026-B156: escenarios, carga, continuidad fuera de línea, '
+          'relevancia de las recomendaciones y usabilidad.',
+      'status': StudyStatus.preregistrado.id,
+      'confidential': false,
+      'ownerUid': _uid,
+      'preregistration': {
+        'hypotheses': [for (final s in [...exps, ...surveysTt]) '${s.title}: ${s.criterion}'].join('\n'),
+        'analysisPlan': 'Ver ${[for (final s in [...exps, ...surveysTt]) s.chapter].toSet().join(', ')} del Trabajo Terminal.',
+        'metrics': const [],
+        'frozenAt': FieldValue.serverTimestamp(),
+        'amendments': 0,
+      },
+      'config': const StudyConfig().toMap(),
+      'experimentIds': [for (final s in exps) s.id],
+      'surveyIds': [for (final s in surveysTt) s.id],
+      'featureKeys': const [],
+      'consentVersion': 1,
+      'enrolledCount': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    await log('study.create', 'study:$ttUmbrellaStudyId', const {}, kTtProjectId);
+  }
+
   Future<void> ensureTtStudies() async {
     final p = projects.doc(kTtProjectId);
     if (!(await p.get()).exists) {
@@ -338,6 +374,7 @@ class LabResearch {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     }
+    await _ensureTtUmbrellaStudy();
   }
 
   Future<String> createStudy({required LabProject project, required String title, String description = ''}) async {

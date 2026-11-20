@@ -18,8 +18,23 @@ import '../theme/colors.dart';
 import 'lab_runner.dart';
 import 'lab_widgets.dart';
 
+/// Partes del sistema multiagente. En la consola por proyectos cada una es una funcionalidad del
+/// proyecto de la plataforma (lib/labs/lab_functionalities.dart) con su propio tablero.
+enum SmaModule { critico, politicas, curador, mensajes }
+
+extension SmaModuleX on SmaModule {
+  String get path => switch (this) {
+        SmaModule.critico => '/v1/critic/summary',
+        SmaModule.politicas => '/v1/agents/policies',
+        SmaModule.curador => '/v1/categories',
+        SmaModule.mensajes => '/v1/agents/messages?limit=30',
+      };
+}
+
 class LabSmaPanel extends StatefulWidget {
-  const LabSmaPanel({super.key});
+  /// Solo esta parte (su tablero). Sin ella, el sistema completo.
+  final SmaModule? only;
+  const LabSmaPanel({super.key, this.only});
 
   @override
   State<LabSmaPanel> createState() => _LabSmaPanelState();
@@ -53,18 +68,23 @@ class _LabSmaPanelState extends State<LabSmaPanel> {
       _error = null;
     });
     try {
-      final res = await Future.wait([
-        _get('/v1/critic/summary'),
-        _get('/v1/agents/policies'),
-        _get('/v1/categories'),
-        _get('/v1/agents/messages?limit=30'),
-      ]);
+      // Cada tablero pide solo lo suyo.
+      final wanted = _modules;
+      final res = await Future.wait([for (final m in wanted) _get(m.path)]);
       if (!mounted) return;
       setState(() {
-        _critic = res[0];
-        _policies = res[1];
-        _categories = res[2];
-        _messages = res[3];
+        for (var i = 0; i < wanted.length; i++) {
+          switch (wanted[i]) {
+            case SmaModule.critico:
+              _critic = res[i];
+            case SmaModule.politicas:
+              _policies = res[i];
+            case SmaModule.curador:
+              _categories = res[i];
+            case SmaModule.mensajes:
+              _messages = res[i];
+          }
+        }
       });
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -85,6 +105,8 @@ class _LabSmaPanelState extends State<LabSmaPanel> {
       }
     }
   }
+
+  List<SmaModule> get _modules => widget.only == null ? SmaModule.values : [widget.only!];
 
   String _pct(dynamic v) => v is num ? '${(v * 100).toStringAsFixed(0)} %' : '—';
 
@@ -126,9 +148,12 @@ class _LabSmaPanelState extends State<LabSmaPanel> {
     final cats = ((_categories?['categories'] as List?) ?? []).cast<Map>();
     final msgs = ((_messages?['messages'] as List?) ?? []).cast<Map>();
     final pols = ((_policies?['policies'] as Map?) ?? {});
+    final show = _modules.toSet();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const LabSectionTitle('Sistema multiagente',
-          caption: 'Éxito = la persona elige la recomendación, no la modifica, la hace y la comparte (IER).'),
+      if (widget.only == null)
+        const LabSectionTitle('Sistema multiagente',
+            caption: 'Éxito = la persona elige la recomendación, no la modifica, la hace y la comparte (IER).'),
+      if (show.contains(SmaModule.critico))
       LabCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Éxito de las recomendaciones (Agente Crítico)',
@@ -153,7 +178,8 @@ class _LabSmaPanelState extends State<LabSmaPanel> {
           ],
         ]),
       ),
-      const SizedBox(height: 14),
+      if (show.contains(SmaModule.critico) && show.length > 1) const SizedBox(height: 14),
+      if (show.contains(SmaModule.politicas))
       LabCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Políticas que aprenden', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
@@ -173,7 +199,8 @@ class _LabSmaPanelState extends State<LabSmaPanel> {
             ),
         ]),
       ),
-      const SizedBox(height: 14),
+      if (show.contains(SmaModule.politicas) && show.length > 1) const SizedBox(height: 14),
+      if (show.contains(SmaModule.curador))
       LabCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Categorías emergentes (Agente Curador)',
@@ -201,7 +228,8 @@ class _LabSmaPanelState extends State<LabSmaPanel> {
             ),
         ]),
       ),
-      const SizedBox(height: 14),
+      if (show.contains(SmaModule.curador) && show.length > 1) const SizedBox(height: 14),
+      if (show.contains(SmaModule.mensajes))
       LabCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Mensajes entre agentes', style: GoogleFonts.outfit(fontSize: 17, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),

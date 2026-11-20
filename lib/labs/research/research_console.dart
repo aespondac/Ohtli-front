@@ -793,7 +793,11 @@ class _ComponentsCard extends StatelessWidget {
             context,
             label: 'Experimentos',
             icon: Icons.science_outlined,
-            all: {for (final e in snap.data ?? const <LabLibraryExperiment>[]) e.id: e.title},
+            all: {
+              // Los integrados del proyecto del estudio (p. ej. las pruebas del TT).
+              for (final b in builtinExperimentsOf(s.projectId)) b.id: b.title,
+              for (final e in snap.data ?? const <LabLibraryExperiment>[]) e.id: e.title,
+            },
             selected: s.experimentIds,
             field: 'experimentIds',
           ),
@@ -806,6 +810,7 @@ class _ComponentsCard extends StatelessWidget {
             icon: Icons.ballot_outlined,
             all: {
               'sus': 'SUS (usabilidad)',
+              for (final b in builtinSurveysOf(s.projectId)) b.id: b.title,
               for (final e in snap.data ?? const <LabSurvey>[]) e.id: e.title,
             },
             selected: s.surveyIds,

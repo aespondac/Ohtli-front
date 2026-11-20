@@ -5,6 +5,7 @@ import '../../theme/colors.dart';
 import '../lab_access.dart';
 import '../lab_catalog.dart';
 import '../lab_console_page.dart';
+import '../lab_functionalities.dart';
 import '../lab_sma_page.dart';
 import '../lab_widgets.dart';
 import '../research/lab_iam.dart';
@@ -411,10 +412,6 @@ class LabSurveyPage extends StatelessWidget {
 
 // ───────────────────────────── Funcionalidad ─────────────────────────────
 
-/// Funcionalidades del sistema con tablero propio, registradas en código (el SMA se divide en
-/// varias en la fase 4).
-const kLabModuleTitles = {'sma': 'Sistema multiagente'};
-
 class LabFunctionalityPage extends StatelessWidget {
   final LabPageCtx ctx;
   final String functionalityId;
@@ -422,7 +419,10 @@ class LabFunctionalityPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final moduleTitle = ctx.project.id == kPlatformProjectId ? kLabModuleTitles[functionalityId] : null;
+    final module = moduleById(functionalityId);
+    // 'sma' es el enlace anterior al sistema completo (antes de dividirlo en funcionalidades).
+    final legacySma = functionalityId == 'sma' && ctx.project.id == kPlatformProjectId;
+    final moduleTitle = (module != null && module.projectId == ctx.project.id) ? module.title : (legacySma ? 'Sistema multiagente' : null);
     return StreamBuilder<LabFeature?>(
       stream: _repo.watchFeature(functionalityId),
       builder: (context, snap) {
@@ -437,7 +437,7 @@ class LabFunctionalityPage extends StatelessWidget {
         return LabResourcePage(
           breadcrumbs: ctx.crumbs(LabArea.functionalities, title),
           title: title,
-          subtitle: f?.description,
+          subtitle: module?.description ?? f?.description,
           icon: moduleTitle != null ? Icons.hub_outlined : Icons.toggle_on_outlined,
           role: role,
           tags: [if (moduleTitle != null) 'Sistema' else f!.stage.label],
@@ -449,7 +449,7 @@ class LabFunctionalityPage extends StatelessWidget {
               'Panel',
               Icons.dashboard_outlined,
               () => moduleTitle != null
-                  ? const LabSmaPanel()
+                  ? LabSmaPanel(only: module?.sma)
                   : LabFactsCard(title: 'Funcionalidad', facts: [
                       ('Clave en el código', f!.key),
                       ('Qué hace', f.description.isEmpty ? 'Sin describir.' : f.description),
