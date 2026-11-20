@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../theme/colors.dart';
 import '../lab_access.dart';
 import '../lab_catalog.dart';
+import '../lab_functionalities.dart';
 import '../lab_widgets.dart';
 import '../research/lab_iam.dart';
 import '../research/lab_models.dart';
@@ -78,7 +79,12 @@ class LabProjectOverview extends StatelessWidget {
                 final builtinSur = builtinSurveysOf(p.id);
                 final exps = builtinExp.length + [for (final e in es.data ?? const <LabLibraryExperiment>[]) if (!builtinExp.any((b) => b.id == e.id)) e].length;
                 final surs = builtinSur.length + [for (final s in qs.data ?? const <LabSurvey>[]) if (!builtinSur.any((b) => b.id == s.id)) s].length;
-                final feats = [for (final f in fs.data ?? const <LabFeature>[]) if (f.projectId == p.id) f].length + (p.id == kPlatformProjectId ? 1 : 0);
+                final modules = modulesOf(p.id);
+                final feats = [
+                      for (final f in fs.data ?? const <LabFeature>[])
+                        if (f.projectId == p.id && !modules.any((m) => m.id == f.key)) f,
+                    ].length +
+                    modules.length;
                 return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Wrap(spacing: 12, runSpacing: 12, children: [
                     _Tile(icon: Icons.biotech_outlined, label: 'Estudios', value: '${studies.length}', onTap: () => onGo(LabArea.studies)),

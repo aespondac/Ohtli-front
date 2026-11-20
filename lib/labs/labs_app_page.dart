@@ -18,6 +18,7 @@ import 'lab_access.dart';
 import 'lab_catalog.dart';
 import 'lab_eval_page.dart';
 import 'lab_experiments.dart';
+import 'lab_functionalities.dart';
 import 'lab_publishing.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
@@ -82,11 +83,6 @@ final _baseProjects = [
     description: 'Pruebas del capítulo 6 del Trabajo Terminal 2026-B156.',
     iam: {kLabAllMembers: 'editor'},
   ),
-];
-
-/// Funcionalidades del sistema con tablero propio (se dividen en la fase 4).
-const _platformModules = [
-  ('sma', 'Sistema multiagente', 'Éxito de las recomendaciones (Agente Crítico), políticas que aprenden, categorías emergentes y mensajes entre agentes.'),
 ];
 
 /// Vistas que siguen vivas al cambiar de sección (para no cortar una corrida ni perder lo escrito).
@@ -543,7 +539,7 @@ class _LabsAppPageState extends State<LabsAppPage> {
         return _scroll(LabFeaturesPanel(
           role: _role,
           projectId: pid,
-          modules: pid == kPlatformProjectId ? _platformModules : const [],
+          modules: [for (final m in modulesOf(pid)) (m.id, m.title, m.description)],
           onOpen: (id) => _go(key(LabArea.functionalities, id)),
         ));
       case LabArea.settings:
