@@ -767,12 +767,10 @@ service cloud.firestore {
         allow write: if isSuperUser() || (isLabMember() && studySecretReader(studyId));
       }
     }
-    // Pruebas del TT (con builtinKind) y estudios anteriores sin dueño: cualquier miembro; los
-    // demás, su dueño y colaboradores.
+    // Quien lo creó o un Editor por IAM (heredado del proyecto o dado en el estudio). Las pruebas del
+    // TT las edita todo el laboratorio porque Trabajo Terminal da Editor a '*lab'.
     function studyEditable(d) {
-      return d.get('builtinKind', null) != null || d.get('ownerUid', '') == ''
-        || d.get('ownerUid', '') == request.auth.uid || request.auth.uid in d.get('collaborators', [])
-        || resAtLeast(d, 2);
+      return d.get('ownerUid', '') == request.auth.uid || resAtLeast(d, 2);
     }
     // El preregistro congelado solo cambia como enmienda (sube el contador; la bitácora guarda el motivo).
     function preregRespected() {
@@ -788,8 +786,8 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/lab_projects/$(pid)).data;
     }
     function inProject(pid) {
-      return request.auth != null && (isSuperUser() || request.auth.uid in labProject(pid).get('members', [])
-        || iamAtLeast(labProject(pid).get('iam', {}), 1));
+      return request.auth != null && (isSuperUser() || iamAtLeast(labProject(pid).get('iam', {}), 1)
+        || labProject(pid).get('ownerUid', '') == request.auth.uid);
     }
     // IAM por proyecto (lib/labs/research/lab_iam.dart): iam = {uid | '*lab' → owner | editor | viewer}.
     // Lo heredan los recursos del proyecto; un recurso puede dar acceso extra. '*lab' = todo el laboratorio.
@@ -800,11 +798,10 @@ service cloud.firestore {
       return request.auth != null && (iamRank(iam.get(request.auth.uid, '')) >= n
         || (iamRank(iam.get('*lab', '')) >= n && isLabMember()));
     }
-    // Durante la migración también cuentan el dueño (propietario) y los miembros (editor) del modelo anterior.
+    // Quien creó el proyecto sigue siendo propietario aunque no figure en su IAM.
     function projAtLeast(pid, n) {
       return pid is string && pid != '' && request.auth != null && (isSuperUser()
         || iamAtLeast(labProject(pid).get('iam', {}), n)
-        || (n <= 2 && request.auth.uid in labProject(pid).get('members', []))
         || labProject(pid).get('ownerUid', '') == request.auth.uid);
     }
     function resAtLeast(d, n) {
@@ -903,7 +900,8 @@ service cloud.firestore {
     match /lab_projects/{projectId} {
       allow read: if true;
       allow create: if isLabMember() && request.resource.data.ownerUid == request.auth.uid
-        && request.auth.uid in request.resource.data.get('members', [])
+        && (request.auth.uid in request.resource.data.get('members', [])
+            || request.resource.data.get('iam', {}).get(request.auth.uid, '') == 'owner')
         && (!('iam' in request.resource.data) || (validIam(request.resource.data.iam)
             && request.resource.data.iam.get(request.auth.uid, '') == 'owner'))
         && (request.resource.data.get('confidential', false) == false

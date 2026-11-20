@@ -107,7 +107,6 @@ class _ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = project;
-    final isOwner = p.ownerUid == _uid || role == LabRole.admin;
     return LabCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -132,15 +131,10 @@ class _ProjectCard extends StatelessWidget {
           style: labCell(),
         ),
         const SizedBox(height: 6),
-        Text('${p.members.length} miembro(s) con acceso a lo clasificado', style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText)),
+        Text('${p.iam.length} acceso(s) en IAM · se gestionan en Configuración del proyecto',
+            style: GoogleFonts.inter(fontSize: 11.5, color: OhtliColors.subtleText)),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          if (isOwner)
-            OutlinedButton.icon(
-              onPressed: () => _members(context),
-              icon: const Icon(Icons.group_outlined, size: 16),
-              label: const Text('Miembros'),
-            ),
           if (onOpen != null)
             FilledButton.tonalIcon(
               onPressed: () => onOpen!(p.id),
@@ -172,47 +166,7 @@ class _ProjectCard extends StatelessWidget {
     );
   }
 
-  Future<void> _members(BuildContext context) async {
-    final selected = {...project.members};
-    await showDialog<void>(
-      context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (c, set) => AlertDialog(
-          title: const Text('Miembros del proyecto'),
-          content: SizedBox(
-            width: 460,
-            child: StreamBuilder(
-              stream: LabAccess.watchMembers(),
-              builder: (c, snap) {
-                final docs = snap.data?.docs ?? const [];
-                return ListView(shrinkWrap: true, children: [
-                  for (final d in docs)
-                    CheckboxListTile(
-                      value: selected.contains(d.id),
-                      onChanged: d.id == project.ownerUid
-                          ? null
-                          : (v) => set(() => v == true ? selected.add(d.id) : selected.remove(d.id)),
-                      title: Text((d.data()['displayName'] ?? d.data()['email'] ?? d.id).toString()),
-                      subtitle: Text((d.data()['email'] ?? '').toString()),
-                    ),
-                ]);
-              },
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(c);
-                await runLabAction(context, () => _repo.setProjectMembers(project.id, selected.toList()), ok: 'Miembros guardados.');
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 }
 
 // ═════════════════════════════ Estudios ═════════════════════════════
@@ -1012,12 +966,6 @@ String _auditLabel(String a) => switch (a) {
       _ => a,
     };
 
-/// Bitácora general de Labs.
-class LabAuditPanel extends StatelessWidget {
-  const LabAuditPanel({super.key});
-  @override
-  Widget build(BuildContext context) => const _AuditCard();
-}
 
 // ═════════════════════════════ Biblioteca de experimentos ═════════════════════════════
 

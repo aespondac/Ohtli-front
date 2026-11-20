@@ -37,8 +37,8 @@ class LabPageCtx {
   LabIamRole get projectRole => projectRoleOf(project, uid: uid, labRole: labRole);
 
   /// Rol sobre un recurso: lo que da el proyecto o lo que da el recurso, lo que sea mayor.
-  LabIamRole roleFor({Map<String, String> iam = const {}, String? owner, List<String> collaborators = const []}) {
-    final own = effectiveIamRole(uid: uid, labRole: labRole, resourceIam: iam, legacyOwner: owner, legacyCollaborators: collaborators);
+  LabIamRole roleFor({Map<String, String> iam = const {}, String? owner}) {
+    final own = effectiveIamRole(uid: uid, labRole: labRole, resourceIam: iam, legacyOwner: owner);
     return own.rank > projectRole.rank ? own : projectRole;
   }
 
@@ -73,7 +73,7 @@ class LabStudyPage extends StatelessWidget {
         if (!snap.hasData && snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         final s = snap.data;
         if (s == null || s.projectId != ctx.project.id) return _notFound('este estudio');
-        final role = ctx.roleFor(iam: s.iam, owner: s.ownerUid, collaborators: s.collaborators);
+        final role = ctx.roleFor(iam: s.iam, owner: s.ownerUid);
         void back() => ctx.go(ctx.key(LabArea.studies));
         return LabResourcePage(
           breadcrumbs: ctx.crumbs(LabArea.studies, s.title),
@@ -99,7 +99,7 @@ class LabStudyPage extends StatelessWidget {
                             id: s.id,
                             projectId: ctx.project.id,
                             inherited: projectIamOf(ctx.project),
-                            own: iamFromLegacy(current: s.iam, owner: s.ownerUid, editors: s.collaborators),
+                            own: iamFromLegacy(current: s.iam, owner: s.ownerUid),
                             canManage: role.canManageIam,
                           )
                     ),
@@ -140,7 +140,7 @@ class LabExperimentPage extends StatelessWidget {
         stream: _repo.watchStudy(runner.id),
         builder: (context, snap) {
           final st = snap.data;
-          final role = ctx.roleFor(iam: st?.iam ?? const {}, owner: st?.ownerUid, collaborators: st?.collaborators ?? const []);
+          final role = ctx.roleFor(iam: st?.iam ?? const {}, owner: st?.ownerUid);
           return LabResourcePage(
             breadcrumbs: ctx.crumbs(LabArea.experiments, b!.title),
             title: b.title,
@@ -164,7 +164,7 @@ class LabExperimentPage extends StatelessWidget {
                               id: runner.id,
                               projectId: ctx.project.id,
                               inherited: projectIamOf(ctx.project),
-                              own: iamFromLegacy(current: st?.iam ?? const {}, owner: st?.ownerUid, editors: st?.collaborators ?? const []),
+                              own: iamFromLegacy(current: st?.iam ?? const {}, owner: st?.ownerUid),
                               canManage: role.canManageIam,
                             )
                       ),
@@ -286,7 +286,7 @@ class LabSurveyPage extends StatelessWidget {
         stream: _repo.watchStudy(b.id),
         builder: (context, snap) {
           final st = snap.data;
-          final role = ctx.roleFor(iam: st?.iam ?? const {}, owner: st?.ownerUid, collaborators: st?.collaborators ?? const []);
+          final role = ctx.roleFor(iam: st?.iam ?? const {}, owner: st?.ownerUid);
           return LabResourcePage(
             breadcrumbs: ctx.crumbs(LabArea.surveys, b.title),
             title: b.title,
@@ -310,7 +310,7 @@ class LabSurveyPage extends StatelessWidget {
                               id: b.id,
                               projectId: ctx.project.id,
                               inherited: projectIamOf(ctx.project),
-                              own: iamFromLegacy(current: st?.iam ?? const {}, owner: st?.ownerUid, editors: st?.collaborators ?? const []),
+                              own: iamFromLegacy(current: st?.iam ?? const {}, owner: st?.ownerUid),
                               canManage: role.canManageIam,
                             )
                       ),

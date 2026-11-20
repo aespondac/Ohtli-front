@@ -25,6 +25,67 @@ conflicto de interés), *member checking* (validación de participantes en inves
 cualitativa), etapas de lanzamiento con feature flags (interno → beta cerrada → GA → retirada),
 consentimiento informado por estudio (LFPDPPP) y paquete de reproducibilidad.
 
+## Consola por proyectos (como GCP)
+
+Para los miembros del laboratorio, Labs funciona como la consola de Google Cloud:
+
+- **Selector de proyecto** en la barra superior. Busca por nombre, nombre en clave o id; muestra
+  los recientes y tu rol en cada proyecto, y permite crear uno. Solo aparecen los proyectos donde
+  tienes rol de Lector o más.
+- **Menú del proyecto:** Panel (conteos, progreso de los estudios, bitácora), Estudios,
+  Experimentos, Encuestas, Funcionalidades y Configuración.
+- **Página de cada recurso:** ruta de navegación, tu rol y pestañas. La gestión vive en su
+  **Configuración**, que reúne Accesos (IAM), Estado y progreso, Liberación (compartir, paper →
+  blog), Revisiones y Bitácora.
+- **Ubicación en la URL:** `?r=p:<proyecto>/<área>/<recurso>/<pestaña>`
+  (`lib/labs/shell/lab_location.dart`). Las claves anteriores (`exp:`, `study:`, `sma`, `studies`…)
+  llevan a su nuevo lugar.
+- **Testers y revisores** no usan el selector: siguen en Participa y en sus revisiones.
+
+**Proyectos base** (`lib/labs/lab_catalog.dart`):
+- **Ohtli.quest (plataforma)** (`ohtli_plataforma`):
+  - Contenido: los experimentos con pantalla propia y las funcionalidades del sistema
+    multiagente.
+  - Acceso: todo el laboratorio como Lector.
+  - Funcionalidades del SMA: Agente Crítico, Políticas que aprenden, Agente Curador y Mensajes
+    entre agentes (`lib/labs/lab_functionalities.dart`).
+- **Trabajo Terminal** (`trabajo_terminal`):
+  - Contenido: las pruebas del capítulo 6 (escenarios, batería, concurrencia, fuera de línea)
+    como **experimentos**, y relevancia y SUS como **encuestas**.
+  - Las seis quedan agrupadas en el estudio "Evaluación del capítulo 6".
+  - Acceso: todo el laboratorio como Editor, para que cualquier miembro corra las pruebas.
+
+Los documentos `lab_studies/{id}` de esas pruebas y encuestas se conservan, porque las corridas
+(`lab_runs.studyId`) y las reglas de `lab_responses` los usan.
+
+### IAM
+
+- **Roles:** cada proyecto tiene `iam: {uid | '*lab' → owner | editor | viewer}` (Propietario,
+  Editor, Lector). `*lab` significa "todos los miembros del laboratorio" y nunca puede ser
+  propietario.
+- **Herencia:** estudios, experimentos, encuestas y funcionalidades heredan el IAM del proyecto y
+  pueden dar acceso extra con su propio `iam`. Una concesión en el recurso nunca quita acceso.
+- **Creador y admin:** quien creó un recurso (`ownerUid`) es su propietario, y el admin lo es de
+  todo.
+- **Quién puede qué:**
+  - Editor: crear, editar, ejecutar y cambiar estados.
+  - Propietario: además, cambiar el IAM y compartir.
+  - Siempre debe quedar al menos un propietario.
+- **Implementación:**
+  - Dart: `lib/labs/research/lab_iam.dart`.
+  - Reglas: `iamAtLeast`, `projAtLeast`, `resAtLeast`, `iamChangeOk` y `sharedOk` en
+    `firestore.rules`.
+- **Migración:** desde el 20-nov-2026 `members` (proyecto) y `collaborators` (estudio) ya no dan
+  acceso. La migración "Migrar al IAM" (Miembros del laboratorio) los convirtió en roles.
+
+### Compartir entre proyectos
+
+- **Compartir:** un experimento o encuesta pertenece a su proyecto. Su propietario puede
+  **compartirlo** (Configuración › Liberación), nunca si es clasificado.
+- **Importar:** al agregar componentes a un estudio, el menú separa "De este proyecto" y
+  "Compartidos por otros proyectos".
+- **Si deja de compartirse:** lo que el estudio ya usa queda con el aviso "ya no está compartido".
+
 ## Roles
 
 | Rol | Qué puede |
@@ -129,10 +190,14 @@ desclasificar. Tras publicar, el admin decide el destino de cada función del es
 
 ## Biblioteca de experimentos y encuestas
 
-- Experimentos públicos (no clasificados) reutilizables por cualquier científico en su estudio.
-  Los integrados (recolector, perfil cultural, rutas, agentes, servicios, afinidad) tienen
-  pantalla propia; los creados por científicos son protocolos (procedimiento, métricas) con
-  mediciones registradas por corrida.
+- Cada experimento pertenece a un proyecto, y otros proyectos lo reutilizan si se comparte (ver
+  "Compartir entre proyectos").
+- Tipos de experimento:
+  - Integrados de la plataforma (recolector, perfil cultural, rutas, agentes, servicios,
+    afinidad): tienen pantalla propia.
+  - Pruebas del TT: se ejecutan con su runner y guardan corridas.
+  - Creados por científicos: son protocolos (procedimiento, métricas) con mediciones registradas
+    por corrida.
 - Encuestas: constructor con preguntas Likert 1–5, opción única, opción múltiple, número y texto.
   Una respuesta por persona y encuesta.
 
