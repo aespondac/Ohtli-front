@@ -6,6 +6,9 @@ import '../lab_access.dart';
 /// proyecto. Las reglas de Firestore aplican lo mismo (firestore.rules: projAtLeast / resAtLeast).
 enum LabIamRole { none, viewer, editor, owner }
 
+/// Recursos con IAM propio. El de [project] lo heredan los demás.
+enum LabResourceKind { project, study, experiment, survey, functionality }
+
 /// Principal "todos los miembros del laboratorio" (científicos y admin), como un dominio en GCP.
 const kLabAllMembers = '*lab';
 

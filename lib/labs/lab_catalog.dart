@@ -1,6 +1,8 @@
 import 'lab_experiments.dart';
 import 'lab_studies.dart';
-import 'research/lab_models.dart' show kTtProjectId;
+import 'research/lab_models.dart' show kPlatformProjectId, kTtProjectId;
+
+export 'research/lab_models.dart' show kPlatformProjectId, kTtProjectId;
 
 /// Recursos integrados de Ohtli Labs, ordenados por proyecto (el código es la fuente de verdad, como
 /// ya hacía `watchLibrary` con los experimentos integrados).
@@ -12,7 +14,6 @@ import 'research/lab_models.dart' show kTtProjectId;
 /// Los documentos `lab_studies/{id}` de las pruebas del TT se conservan tal cual: las corridas
 /// (`lab_runs.studyId`) y las reglas de `lab_responses` los usan. Por eso cada experimento del TT
 /// guarda su [LabBuiltinExperiment.runKey], que es el id de siempre.
-const kPlatformProjectId = 'ohtli_plataforma';
 const kPlatformProjectName = 'Ohtli.quest (plataforma)';
 const kTtProjectName = 'Trabajo Terminal';
 

@@ -109,6 +109,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "lab_audit",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "detail.projectId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "at",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

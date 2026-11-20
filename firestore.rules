@@ -753,7 +753,7 @@ service cloud.firestore {
         && request.resource.data.get('status', 'borrador') == 'borrador'
         || isSuperUser();
       allow update: if isSuperUser()
-        || (isLabMember() && studyEditable(resource.data) && preregRespected() && !publishesStudy())
+        || (isLabMember() && studyEditable(resource.data) && preregRespected() && !publishesStudy() && iamChangeOk(resource.data))
         // Cualquier miembro liga el paper vigente (autores que no son dueños del estudio).
         || (isLabMember() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPaperId', 'paperStage', 'updatedAt'])
             && request.resource.data.get('paperStage', '') != 'publicado')
@@ -771,7 +771,8 @@ service cloud.firestore {
     // demás, su dueño y colaboradores.
     function studyEditable(d) {
       return d.get('builtinKind', null) != null || d.get('ownerUid', '') == ''
-        || d.get('ownerUid', '') == request.auth.uid || request.auth.uid in d.get('collaborators', []);
+        || d.get('ownerUid', '') == request.auth.uid || request.auth.uid in d.get('collaborators', [])
+        || resAtLeast(d, 2);
     }
     // El preregistro congelado solo cambia como enmienda (sube el contador; la bitácora guarda el motivo).
     function preregRespected() {
@@ -787,7 +788,41 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/lab_projects/$(pid)).data;
     }
     function inProject(pid) {
-      return request.auth != null && (isSuperUser() || request.auth.uid in labProject(pid).get('members', []));
+      return request.auth != null && (isSuperUser() || request.auth.uid in labProject(pid).get('members', [])
+        || iamAtLeast(labProject(pid).get('iam', {}), 1));
+    }
+    // IAM por proyecto (lib/labs/research/lab_iam.dart): iam = {uid | '*lab' → owner | editor | viewer}.
+    // Lo heredan los recursos del proyecto; un recurso puede dar acceso extra. '*lab' = todo el laboratorio.
+    function iamRank(r) {
+      return r == 'owner' ? 3 : (r == 'editor' ? 2 : (r == 'viewer' ? 1 : 0));
+    }
+    function iamAtLeast(iam, n) {
+      return request.auth != null && (iamRank(iam.get(request.auth.uid, '')) >= n
+        || (iamRank(iam.get('*lab', '')) >= n && isLabMember()));
+    }
+    // Durante la migración también cuentan el dueño (propietario) y los miembros (editor) del modelo anterior.
+    function projAtLeast(pid, n) {
+      return pid is string && pid != '' && request.auth != null && (isSuperUser()
+        || iamAtLeast(labProject(pid).get('iam', {}), n)
+        || (n <= 2 && request.auth.uid in labProject(pid).get('members', []))
+        || labProject(pid).get('ownerUid', '') == request.auth.uid);
+    }
+    function resAtLeast(d, n) {
+      return projAtLeast(d.get('projectId', ''), n) || iamAtLeast(d.get('iam', {}), n)
+        || (request.auth != null && d.get('ownerUid', '') == request.auth.uid);
+    }
+    function validIam(m) {
+      return m is map && m.values().hasOnly(['owner', 'editor', 'viewer']) && m.get('*lab', 'viewer') != 'owner';
+    }
+    // Cambiar el IAM exige ser propietario del recurso (o del proyecto) y un mapa válido.
+    function iamChangeOk(d) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['iam'])
+        || (resAtLeast(d, 3) && validIam(request.resource.data.iam));
+    }
+    // Compartir (importable por otros proyectos) lo decide el propietario y nunca si es clasificado.
+    function sharedOk(d) {
+      return (request.resource.data.get('shared', false) == false || request.resource.data.get('confidential', false) == false)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['shared']) || resAtLeast(d, 3));
     }
     // Revisor invitado a ese estudio y con su NDA firmado.
     function reviewerOf(studyId) {
@@ -869,15 +904,20 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isLabMember() && request.resource.data.ownerUid == request.auth.uid
         && request.auth.uid in request.resource.data.get('members', [])
+        && (!('iam' in request.resource.data) || (validIam(request.resource.data.iam)
+            && request.resource.data.iam.get(request.auth.uid, '') == 'owner'))
         && (request.resource.data.get('confidential', false) == false
             || (request.resource.data.get('codename', '') is string
                 && get(/databases/$(database)/documents/lab_codenames/$(request.resource.data.codename)).data.projectId == projectId));
       // Desclasificar (confidencial → público) solo el admin de Ohtli.
+      // El dueño o un propietario por IAM editan el proyecto y su IAM (siempre con al menos un propietario).
       allow update: if isSuperUser()
-        || (isLabMember() && resource.data.ownerUid == request.auth.uid
+        || (isLabMember() && (resource.data.ownerUid == request.auth.uid || iamAtLeast(resource.data.get('iam', {}), 3))
             && request.resource.data.get('confidential', false) == resource.data.get('confidential', false)
             && request.resource.data.get('codename', null) == resource.data.get('codename', null)
-            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['declassifiedAt', 'ownerUid']));
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['declassifiedAt', 'ownerUid'])
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['iam'])
+                || (validIam(request.resource.data.iam) && 'owner' in request.resource.data.iam.values())));
       allow delete: if isSuperUser();
       match /private/{docId} {
         allow read: if inProject(projectId);
@@ -894,9 +934,12 @@ service cloud.firestore {
     match /lab_experiments/{expId} {
       allow read: if true;
       allow create: if isLabMember() && request.resource.data.ownerUid == request.auth.uid
-        && (request.resource.data.get('projectId', null) == null || inProject(request.resource.data.projectId));
-      allow update: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.get('confidential', false) == resource.data.get('confidential', false));
+        && (request.resource.data.get('projectId', null) == null || inProject(request.resource.data.projectId))
+        && (!('iam' in request.resource.data) || validIam(request.resource.data.iam))
+        && !(request.resource.data.get('shared', false) == true && request.resource.data.get('confidential', false) == true);
+      allow update: if isSuperUser() || (isLabMember() && resAtLeast(resource.data, 2)
+        && request.resource.data.get('confidential', false) == resource.data.get('confidential', false)
+        && iamChangeOk(resource.data) && sharedOk(resource.data));
       allow delete: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid);
       match /private/{docId} {
         allow read: if inProject(get(/databases/$(database)/documents/lab_experiments/$(expId)).data.get('projectId', ''));
@@ -912,9 +955,13 @@ service cloud.firestore {
       allow read: if surveyReadable(resource.data);
       allow create: if isLabMember() && request.resource.data.ownerUid == request.auth.uid
         && (request.resource.data.get('projectId', null) == null || inProject(request.resource.data.projectId))
-        && request.resource.data.get('questions', []).size() <= 60;
-      allow update: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.get('questions', []).size() <= 60);
+        && request.resource.data.get('questions', []).size() <= 60
+        && (!('iam' in request.resource.data) || validIam(request.resource.data.iam))
+        && !(request.resource.data.get('shared', false) == true && request.resource.data.get('confidential', false) == true);
+      allow update: if isSuperUser() || (isLabMember() && resAtLeast(resource.data, 2)
+        && request.resource.data.get('questions', []).size() <= 60
+        && request.resource.data.get('confidential', false) == resource.data.get('confidential', false)
+        && iamChangeOk(resource.data) && sharedOk(resource.data));
       allow delete: if isSuperUser() || (isLabMember() && resource.data.ownerUid == request.auth.uid);
     }
     // Una respuesta por persona y encuesta (ID determinista), solo si la encuesta está abierta.
@@ -932,10 +979,12 @@ service cloud.firestore {
     // Funcionalidades (feature flags). Volverla oficial o retirarla es decisión del admin.
     match /lab_features/{key} {
       allow read: if true;
-      allow create: if isLabMember() && request.resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta'];
+      allow create: if isLabMember() && request.resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta']
+        && (!('iam' in request.resource.data) || validIam(request.resource.data.iam));
       allow update: if isSuperUser() || (isLabMember()
         && request.resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta']
-        && resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta']);
+        && resource.data.get('stage', 'desarrollo') in ['desarrollo', 'beta']
+        && iamChangeOk(resource.data));
       allow delete: if isSuperUser();
     }
     // Inscripción a un estudio: la persona misma, con el estudio abierto, con cupo y, si el proyecto
