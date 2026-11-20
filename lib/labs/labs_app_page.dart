@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -13,48 +15,46 @@ import '../theme/colors.dart';
 import '../widgets/ohtli_account_chip.dart';
 import '../widgets/ohtli_theme_toggle.dart';
 import 'lab_access.dart';
+import 'lab_catalog.dart';
 import 'lab_console_page.dart';
 import 'lab_eval_page.dart';
 import 'lab_experiments.dart';
 import 'lab_publishing.dart';
 import 'lab_sma_page.dart';
-import 'lab_studies.dart';
 import 'lab_widgets.dart';
 import 'labs_top_bar.dart';
+import 'research/lab_iam.dart';
+import 'research/lab_models.dart';
+import 'research/lab_research_repository.dart';
 import 'research/research_console.dart';
 import 'research/research_papers.dart';
 import 'research/research_participate.dart';
+import 'shell/lab_location.dart';
+import 'shell/lab_location_store.dart';
+import 'shell/lab_project_picker.dart';
+import 'shell/lab_project_views.dart';
 
-/// Ohtli Labs con sesión: una sola interfaz con menú lateral (como la app de Ohtli) y vistas
-/// según el rol. Antes eran tres pantallas con accesos distintos (espacio de testers, consola y
-/// "experimentos técnicos" con su propia lista de espera).
+/// Ohtli Labs con sesión, al estilo de la consola de GCP: arriba se elige el proyecto y el menú
+/// lateral da acceso a sus estudios, experimentos, encuestas y funcionalidades; la gestión (IAM,
+/// estado, liberación, bitácora, revisiones) vive en la Configuración de cada recurso.
 ///
-///  - Todos (tras aceptar el consentimiento una vez): Participa, Resultados y Experimentos.
-///  - Miembros del laboratorio: además las pruebas del TT y la publicación.
+///  - Miembros del laboratorio: la consola por proyectos, más Laboratorio (todos los proyectos,
+///    revisiones, artículos, miembros) y Participa.
+///  - Testers: Participa (estudios y encuestas abiertos, resultados) y los experimentos, sin selector.
+///  - Revisores invitados: sus revisiones y los resultados liberados.
 ///
-/// Secciones: `participa` (estudios abiertos), `encuestas` (encuestas abiertas), `resultados`,
-/// `exp:<id>`, `study:<id>`, `posts`, `members`.
+/// La ubicación es una clave de [LabLocation] (`p:<proyecto>/<área>/<recurso>/<pestaña>` o una
+/// sección global) y se guarda en la URL (`?r=`) con [LabLocationStore].
 class LabsAppPage extends StatefulWidget {
   final String? initialSection;
   final VoidCallback onSignOut;
   final VoidCallback onOpenTerms;
   const LabsAppPage({super.key, this.initialSection, required this.onSignOut, required this.onOpenTerms});
 
-  /// La sección pedida tiene sentido para el rol; si no, la de inicio del rol.
-  static String validSection(String? section, LabRole role) {
-    final fallback = role.isMember ? 'studies' : (role.isReviewer ? 'reviews' : 'participa');
-    final s = section ?? '';
-    if (role.isReviewer) return (s == 'reviews' || s == 'resultados') ? s : fallback;
-    if (s == 'participa' || s == 'encuestas' || s == 'resultados') return s;
-    if (const ['projects', 'studies', 'library', 'surveys', 'features', 'reviews', 'audit'].contains(s)) {
-      return role.isMember ? s : fallback;
-    }
-    if (s.startsWith('exp:')) return experimentById(s.substring(4)) != null ? s : fallback;
-    if (s.startsWith('study:')) return role.isMember && studyById(s.substring(6)) != null ? s : fallback;
-    if (s == 'posts' || s == 'sma') return role.isMember ? s : fallback;
-    if (s == 'members') return role == LabRole.admin ? s : fallback;
-    return fallback;
-  }
+  /// La ubicación pedida tiene sentido para el rol; si no, la de inicio del rol. Acepta también las
+  /// claves del menú anterior (`exp:`, `study:`, `sma`, `studies`, …) y las lleva a su proyecto.
+  static String validSection(String? section, LabRole role, {String? lastProjectId}) =>
+      LabLocation.resolve(section, role, lastProjectId: lastProjectId).toKey();
 
   @override
   State<LabsAppPage> createState() => _LabsAppPageState();
@@ -69,20 +69,54 @@ class _NavEntry {
   const _NavEntry(this.key, this.icon, this.label, {this.badge, this.badgeColor});
 }
 
+/// Proyectos base aunque su documento todavía no exista (el admin los crea al abrir Estudios).
+final _baseProjects = [
+  const LabProject(
+    id: kPlatformProjectId,
+    name: kPlatformProjectName,
+    description: 'Experimentos de la plataforma y funcionalidades del sistema multiagente.',
+    iam: {kLabAllMembers: 'viewer'},
+  ),
+  const LabProject(
+    id: kTtProjectId,
+    name: kTtProjectName,
+    description: 'Pruebas del capítulo 6 del Trabajo Terminal 2026-B156.',
+    iam: {kLabAllMembers: 'editor'},
+  ),
+];
+
+/// Funcionalidades del sistema con tablero propio (se dividen en la fase 4).
+const _platformModules = [
+  ('sma', 'Sistema multiagente', 'Éxito de las recomendaciones (Agente Crítico), políticas que aprenden, categorías emergentes y mensajes entre agentes.'),
+];
+
+/// Vistas que siguen vivas al cambiar de sección (para no cortar una corrida ni perder lo escrito).
+const _kMaxAliveViews = 14;
+
 class _LabsAppPageState extends State<LabsAppPage> {
+  final LabLocationStore _store = LabLocationStore.create();
   LabRole _role = LabRole.none;
   bool _loaded = false;
   String? _roleError;
   late String _section;
-  // Secciones ya abiertas: se mantienen vivas (IndexedStack) para que cambiar de sección no
-  // corte una corrida en curso ni pierda lo que se estaba llenando.
   final List<String> _visited = [];
+  List<LabProject> _projects = const [];
+  bool _projectsLoaded = false;
+  StreamSubscription<List<LabProject>>? _projectsSub;
+
+  String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
   @override
   void initState() {
     super.initState();
-    _section = widget.initialSection ?? '';
+    _section = widget.initialSection ?? _store.initialKey ?? '';
     _load();
+  }
+
+  @override
+  void dispose() {
+    _projectsSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -98,66 +132,163 @@ class _LabsAppPageState extends State<LabsAppPage> {
       _role = r;
       _roleError = null;
       _loaded = true;
-      _section = LabsAppPage.validSection(_section, r);
+      _section = _resolve(_section);
     });
+    if (r.isMember) {
+      _projectsSub?.cancel();
+      _projectsSub = LabResearch.instance.watchProjects().listen((list) {
+        if (!mounted) return;
+        setState(() {
+          _projects = list;
+          _projectsLoaded = true;
+        });
+        _checkProjectAccess();
+      }, onError: (_) {
+        if (mounted) setState(() => _projectsLoaded = true);
+      });
+    }
   }
+
+  String _resolve(String? key) => LabsAppPage.validSection(key, _role, lastProjectId: _store.lastProjectId);
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  void _go(String section) {
-    setState(() => _section = LabsAppPage.validSection(section, _role));
+  void _go(String key) {
+    final next = _resolve(key);
+    setState(() => _section = next);
+    _store.save(next, projectId: LabLocation.parse(next)?.projectId);
     // En móvil el menú es un panel que se cierra al elegir.
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) _scaffoldKey.currentState!.closeDrawer();
   }
 
-  List<(String, List<_NavEntry>)> _groups() => _role.isReviewer
-      ? const [
-          ('REVISIÓN EXTERNA', [
-            _NavEntry('reviews', Icons.rate_review_outlined, 'Tus revisiones'),
-            _NavEntry('resultados', Icons.article_outlined, 'Resultados liberados'),
-          ]),
-        ]
-      : [
-        if (_role.isMember)
-          ('INVESTIGACIÓN', [
-            const _NavEntry('studies', Icons.biotech_outlined, 'Estudios'),
-            const _NavEntry('projects', Icons.folder_outlined, 'Proyectos'),
-            const _NavEntry('library', Icons.science_outlined, 'Biblioteca de experimentos'),
-            const _NavEntry('surveys', Icons.ballot_outlined, 'Encuestas'),
-            const _NavEntry('features', Icons.toggle_on_outlined, 'Funcionalidades'),
-            const _NavEntry('reviews', Icons.rate_review_outlined, 'Revisiones'),
-            const _NavEntry('audit', Icons.history_rounded, 'Bitácora'),
-          ]),
-        ('PARTICIPA', const [
-          _NavEntry('participa', Icons.how_to_reg_rounded, 'Estudios abiertos'),
-          _NavEntry('encuestas', Icons.ballot_outlined, 'Encuestas abiertas'),
+  /// Proyectos que la persona ve (rol de Lector o más), con los base aunque no existan todavía.
+  List<LabProject> get _visibleProjects {
+    final byId = {for (final p in _baseProjects) p.id: p, for (final p in _projects) p.id: p};
+    return [
+      for (final p in byId.values)
+        if (projectRoleOf(p, uid: _uid, labRole: _role).canView) p,
+    ];
+  }
+
+  LabProject? _projectById(String? id) {
+    for (final p in _visibleProjects) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  /// Un proyecto inexistente o sin acceso (p. ej. un enlace viejo) lleva a "Todos los proyectos".
+  void _checkProjectAccess() {
+    final loc = LabLocation.parse(_section);
+    if (loc == null || !loc.inProject || _projectById(loc.projectId) != null) return;
+    _go('projects');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('No tienes acceso a ese proyecto o ya no existe.')),
+      );
+    });
+  }
+
+  /// Proyecto del menú: el de la ubicación o, en las secciones globales, el último abierto.
+  LabProject? get _navProject {
+    final loc = LabLocation.parse(_section);
+    return _projectById(loc?.projectId ?? _store.lastProjectId) ?? _projectById(kPlatformProjectId);
+  }
+
+  Future<void> _pickProject() async {
+    final result = await showLabProjectPicker(
+      context,
+      projects: _visibleProjects,
+      recent: _store.recentProjects,
+      currentId: _navProject?.id,
+      roleOf: (p) => projectRoleOf(p, uid: _uid, labRole: _role),
+    );
+    if (!mounted || result == null) return;
+    switch (result) {
+      case LabPickedProject(:final id):
+        _go(LabLocation.project(id, LabArea.overview).toKey());
+      case LabCreateProject():
+        final id = await showCreateProjectDialog(context);
+        if (id != null && mounted) _go(LabLocation.project(id, LabArea.overview).toKey());
+    }
+  }
+
+  List<(String, List<_NavEntry>)> _groups() {
+    if (_role.isReviewer) {
+      return const [
+        ('REVISIÓN EXTERNA', [
+          _NavEntry('reviews', Icons.rate_review_outlined, 'Tus revisiones'),
           _NavEntry('resultados', Icons.article_outlined, 'Resultados liberados'),
         ]),
+      ];
+    }
+    const participa = ('PARTICIPA', [
+      _NavEntry('participa', Icons.how_to_reg_rounded, 'Estudios abiertos'),
+      _NavEntry('encuestas', Icons.ballot_outlined, 'Encuestas abiertas'),
+      _NavEntry('resultados', Icons.article_outlined, 'Resultados liberados'),
+    ]);
+    if (!_role.isMember) {
+      return [
+        participa,
         ('EXPERIMENTOS', [
           for (final e in kLabExperiments) _NavEntry('exp:${e.id}', e.icon, e.title, badge: e.status, badgeColor: e.statusColor),
         ]),
-        if (_role.isMember)
-          ('PRUEBAS DEL TT', [
-            for (final s in kLabStudies) _NavEntry('study:${s.id}', labStudyIcon(s.kind), s.title),
-          ]),
-        if (_role.isMember)
-          ('SISTEMA MULTIAGENTE', const [
-            _NavEntry('sma', Icons.hub_outlined, 'Aprendizaje del SMA'),
-          ]),
-        if (_role.isMember)
-          ('PUBLICACIÓN', [
-            const _NavEntry('posts', Icons.edit_note_rounded, 'Artículos y resultados'),
-            if (_role == LabRole.admin) const _NavEntry('members', Icons.manage_accounts_outlined, 'Miembros del laboratorio'),
-          ]),
       ];
+    }
+    final p = _navProject;
+    String k(LabArea a) => LabLocation.project(p!.id, a).toKey();
+    return [
+      if (p != null)
+        ('PROYECTO', [
+          _NavEntry(k(LabArea.overview), Icons.dashboard_outlined, LabArea.overview.label),
+          _NavEntry(k(LabArea.studies), Icons.biotech_outlined, LabArea.studies.label),
+          _NavEntry(k(LabArea.experiments), Icons.science_outlined, LabArea.experiments.label),
+          _NavEntry(k(LabArea.surveys), Icons.ballot_outlined, LabArea.surveys.label),
+          _NavEntry(k(LabArea.functionalities), Icons.toggle_on_outlined, LabArea.functionalities.label),
+          _NavEntry(k(LabArea.settings), Icons.settings_outlined, LabArea.settings.label),
+        ]),
+      ('LABORATORIO', [
+        const _NavEntry('projects', Icons.folder_copy_outlined, 'Todos los proyectos'),
+        const _NavEntry('reviews', Icons.rate_review_outlined, 'Revisiones'),
+        const _NavEntry('posts', Icons.edit_note_rounded, 'Artículos y blog'),
+        if (_role == LabRole.admin) const _NavEntry('members', Icons.manage_accounts_outlined, 'Miembros del laboratorio'),
+      ]),
+      participa,
+    ];
+  }
+
+  /// Entrada del menú que queda marcada: el área del proyecto (aunque se esté dentro de un recurso).
+  String get _navSelected {
+    final loc = LabLocation.parse(_section);
+    if (loc == null || !loc.inProject) return _section;
+    return LabLocation.project(loc.projectId!, loc.area!).toKey();
+  }
 
   String _titleOf(String section) {
+    final loc = LabLocation.parse(section);
+    if (loc != null && loc.inProject) {
+      final res = loc.resourceId;
+      if (res != null && loc.area == LabArea.experiments) return builtinExperimentById(res)?.title ?? LabArea.experiments.label;
+      if (res != null && loc.area == LabArea.surveys) return builtinSurveyById(res)?.title ?? LabArea.surveys.label;
+      return loc.area!.label;
+    }
     for (final g in _groups()) {
       for (final e in g.$2) {
         if (e.key == section) return e.label;
       }
     }
+    if (section.startsWith('exp:')) return experimentById(section.substring(4))?.title ?? 'Ohtli Labs';
     return 'Ohtli Labs';
+  }
+
+  /// Clave con la que se conserva viva una vista: sin la pestaña.
+  String _aliveKey(String section) => LabLocation.parse(section)?.withoutTab.toKey() ?? section;
+
+  /// Las pruebas del TT pueden tardar minutos: su vista nunca se descarta.
+  bool _isRunner(String key) {
+    final loc = LabLocation.parse(key);
+    return loc != null && loc.area == LabArea.experiments && builtinExperimentById(loc.resourceId ?? '')?.ttRunner != null;
   }
 
   @override
@@ -225,14 +356,24 @@ class _LabsAppPageState extends State<LabsAppPage> {
       );
     }
 
-    if (!_visited.contains(_section)) _visited.add(_section);
+    final alive = _aliveKey(_section);
+    if (!_visited.contains(alive)) {
+      _visited.add(alive);
+      while (_visited.length > _kMaxAliveViews) {
+        final victim = _visited.firstWhere((k) => k != alive && !_isRunner(k), orElse: () => '');
+        if (victim.isEmpty) break;
+        _visited.remove(victim);
+      }
+    }
     final content = IndexedStack(
-      index: _visited.indexOf(_section),
+      index: _visited.indexOf(alive),
       sizing: StackFit.expand,
-      children: [for (final s in _visited) KeyedSubtree(key: ValueKey(s), child: _content(s, isMobile))],
+      children: [
+        for (final s in _visited) KeyedSubtree(key: ValueKey(s), child: _content(s == alive ? _section : s, isMobile)),
+      ],
     );
 
-    final nav = _Sidebar(groups: _groups(), selected: _section, onSelect: _go);
+    final nav = _Sidebar(groups: _groups(), selected: _navSelected, onSelect: _go);
     if (isMobile) {
       return Scaffold(
         key: _scaffoldKey,
@@ -257,6 +398,12 @@ class _LabsAppPageState extends State<LabsAppPage> {
   }
 
   PreferredSizeWidget _topBar({required bool isMobile, required String title, required bool withMenu}) {
+    final picker = _role.isMember && _loaded
+        ? LabProjectPickerButton(project: _navProject, onTap: _pickProject, compact: isMobile)
+        : null;
+    final titleText = Text(title,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.outfit(fontSize: isMobile ? 17 : 19, fontWeight: FontWeight.w800, color: OhtliColors.onyx));
     return AppBar(
       backgroundColor: OhtliColors.cardBg,
       elevation: 0,
@@ -272,9 +419,12 @@ class _LabsAppPageState extends State<LabsAppPage> {
             )
           : null,
       titleSpacing: withMenu ? 0 : 24,
-      title: Text(title,
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.outfit(fontSize: isMobile ? 17 : 19, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
+      // En móvil solo cabe el selector; en escritorio, selector y título (como GCP).
+      title: picker == null
+          ? titleText
+          : (isMobile
+              ? Align(alignment: Alignment.centerLeft, child: picker)
+              : Row(children: [picker, const SizedBox(width: 16), Flexible(child: titleText)])),
       shape: Border(bottom: BorderSide(color: OhtliColors.cardBorder)),
       actions: [
         const OhtliThemeToggle(),
@@ -297,6 +447,8 @@ class _LabsAppPageState extends State<LabsAppPage> {
       });
 
   Widget _content(String section, bool isMobile) {
+    final loc = LabLocation.parse(section);
+    if (loc != null && loc.inProject) return _projectContent(loc, isMobile);
     if (section == 'participa') {
       // Solo estudios: las encuestas (relevancia, SUS, calibración) tienen su propia sección.
       return _scroll(
@@ -338,29 +490,77 @@ class _LabsAppPageState extends State<LabsAppPage> {
         maxWidth: 820,
       );
     }
-    if (section == 'projects') return _scroll(LabProjectsPanel(role: _role));
-    if (section == 'studies') return _scroll(LabStudiesPanel(role: _role));
-    if (section == 'library') return _scroll(const LabLibraryPanel());
-    if (section == 'surveys') return _scroll(const LabSurveysPanel());
-    if (section == 'features') return _scroll(LabFeaturesPanel(role: _role));
+    if (section == 'projects') {
+      return _scroll(LabProjectsPanel(role: _role, onOpen: (id) => _go(LabLocation.project(id, LabArea.overview).toKey())));
+    }
     if (section == 'reviews') return _scroll(LabReviewsPanel(role: _role));
-    if (section == 'audit') return _scroll(const LabAuditPanel());
     if (section == 'resultados') return _scroll(const LabReleasedView(), maxWidth: 820);
     if (section == 'posts') return _scroll(LabPostsPanel(role: _role));
-    if (section == 'sma') return _scroll(const LabSmaPanel());
     if (section == 'members') return _scroll(const LabMembersPanel());
-    if (section.startsWith('study:')) return _scroll(LabStudyPanel(study: studyById(section.substring(6))!));
-    final e = experimentById(section.substring(4))!;
-    return LabEmbedded(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _ExperimentHeader(experiment: e, isMobile: isMobile),
-        Expanded(child: _experimentPage(e.id)),
-      ]),
-    );
+    if (section.startsWith('exp:')) {
+      final e = experimentById(section.substring(4));
+      if (e != null) return _embeddedExperiment(e, isMobile, back: () => _go('participa'));
+    }
+    return _scroll(LabCard(child: Text('Esta sección no existe.', style: labCell())));
   }
 
-  Widget _experimentPage(String id) {
-    void back() => _go('participa');
+  Widget _projectContent(LabLocation loc, bool isMobile) {
+    final project = _projectById(loc.projectId);
+    if (project == null) {
+      return _projectsLoaded
+          ? _scroll(LabCard(child: Text('No tienes acceso a este proyecto o ya no existe.', style: labCell())))
+          : const Center(child: CircularProgressIndicator(color: OhtliColors.stormyTeal));
+    }
+    final role = projectRoleOf(project, uid: _uid, labRole: _role);
+    final pid = project.id;
+    String key(LabArea a, [String? res]) => LabLocation.project(pid, a, resourceId: res).toKey();
+    final res = loc.resourceId;
+    switch (loc.area!) {
+      case LabArea.overview:
+        return _scroll(LabProjectOverview(project: project, role: role, onGo: (a) => _go(key(a))));
+      case LabArea.studies:
+        return _scroll(LabStudiesPanel(key: ValueKey('studies-$pid'), role: _role, project: project));
+      case LabArea.experiments:
+        if (res != null) {
+          final b = builtinExperimentById(res);
+          if (b?.page != null) return _embeddedExperiment(b!.page!, isMobile, back: () => _go(key(LabArea.experiments)));
+          final runner = b?.ttRunner;
+          if (runner != null) return _scroll(LabStudyPanel(study: runner));
+        }
+        return _scroll(LabLibraryPanel(project: project, onOpen: (id) => _go(key(LabArea.experiments, id))));
+      case LabArea.surveys:
+        if (res != null) {
+          final b = builtinSurveyById(res);
+          if (b != null) return _scroll(LabStudyPanel(study: b.study));
+        }
+        return _scroll(LabSurveysPanel(project: project, onOpen: (id) => _go(key(LabArea.surveys, id))));
+      case LabArea.functionalities:
+        if (res == 'sma') return _scroll(const LabSmaPanel());
+        return _scroll(LabFeaturesPanel(
+          role: _role,
+          projectId: pid,
+          modules: pid == kPlatformProjectId ? _platformModules : const [],
+          onOpen: (id) => _go(key(LabArea.functionalities, id)),
+        ));
+      case LabArea.settings:
+        return _scroll(LabProjectSettings(
+          project: project,
+          role: role,
+          labRole: _role,
+          section: res ?? 'general',
+          onSection: (s) => _go(key(LabArea.settings, s)),
+        ));
+    }
+  }
+
+  Widget _embeddedExperiment(LabExperiment e, bool isMobile, {required VoidCallback back}) => LabEmbedded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _ExperimentHeader(experiment: e, isMobile: isMobile),
+          Expanded(child: _experimentPage(e.id, back)),
+        ]),
+      );
+
+  Widget _experimentPage(String id, VoidCallback back) {
     return switch (id) {
       'recolector' => RecolectorExperimentPage(onBack: back),
       'taste' => TasteVectorExperimentPage(onBack: back),

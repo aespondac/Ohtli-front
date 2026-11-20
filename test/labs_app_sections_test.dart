@@ -1,58 +1,69 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:othli_front/labs/lab_access.dart';
+import 'package:othli_front/labs/lab_catalog.dart';
 import 'package:othli_front/labs/lab_experiments.dart';
-import 'package:othli_front/labs/lab_studies.dart';
 import 'package:othli_front/labs/labs_app_page.dart';
 
 void main() {
-  final firstStudy = 'study:${kLabStudies.first.id}';
-  const home = 'studies'; // inicio de los miembros: Investigación → Estudios
+  // Inicio de los miembros: el panel del último proyecto (sin uno, la plataforma), como en GCP.
+  const home = 'p:$kPlatformProjectId/overview';
+  String v(String? s, LabRole r, {String? last}) => LabsAppPage.validSection(s, r, lastProjectId: last);
 
   test('sección de inicio según el rol', () {
-    expect(LabsAppPage.validSection(null, LabRole.tester), 'participa');
-    expect(LabsAppPage.validSection(null, LabRole.researcher), home);
-    expect(LabsAppPage.validSection(null, LabRole.admin), home);
-    expect(LabsAppPage.validSection(null, LabRole.reviewer), 'reviews');
+    expect(v(null, LabRole.tester), 'participa');
+    expect(v(null, LabRole.researcher), home);
+    expect(v(null, LabRole.admin), home);
+    expect(v(null, LabRole.researcher, last: 'abc'), 'p:abc/overview');
+    expect(v(null, LabRole.reviewer), 'reviews');
   });
 
-  test('investigación solo para miembros; el revisor invitado solo ve sus revisiones', () {
-    for (final s in ['projects', 'studies', 'library', 'surveys', 'features', 'reviews', 'audit']) {
-      expect(LabsAppPage.validSection(s, LabRole.researcher), s);
-      expect(LabsAppPage.validSection(s, LabRole.tester), 'participa');
+  test('las secciones del menú anterior llevan a su lugar en un proyecto', () {
+    expect(v('studies', LabRole.researcher), 'p:$kPlatformProjectId/studies');
+    expect(v('library', LabRole.researcher, last: 'abc'), 'p:abc/experiments');
+    expect(v('surveys', LabRole.researcher), 'p:$kPlatformProjectId/surveys');
+    expect(v('features', LabRole.researcher), 'p:$kPlatformProjectId/functionalities');
+    expect(v('audit', LabRole.researcher), 'p:$kPlatformProjectId/settings/audit');
+    expect(v('sma', LabRole.researcher), 'p:$kPlatformProjectId/functionalities');
+    expect(v('study:bateria_30', LabRole.researcher), 'p:$kTtProjectId/experiments/bateria_30');
+    expect(v('study:sus', LabRole.researcher), 'p:$kTtProjectId/surveys/sus');
+    expect(v('exp:osrm', LabRole.researcher), 'p:$kPlatformProjectId/experiments/osrm');
+  });
+
+  test('laboratorio solo para miembros; el revisor invitado solo ve sus revisiones', () {
+    for (final s in ['projects', 'reviews', 'posts']) {
+      expect(v(s, LabRole.researcher), s);
+      expect(v(s, LabRole.tester), 'participa');
     }
-    expect(LabsAppPage.validSection('reviews', LabRole.reviewer), 'reviews');
-    expect(LabsAppPage.validSection('studies', LabRole.reviewer), 'reviews');
-    expect(LabsAppPage.validSection('participa', LabRole.reviewer), 'reviews');
+    expect(v('p:$kTtProjectId/experiments', LabRole.tester), 'participa');
+    expect(v('reviews', LabRole.reviewer), 'reviews');
+    expect(v('studies', LabRole.reviewer), 'reviews');
+    expect(v('participa', LabRole.reviewer), 'reviews');
+    expect(v('encuestas', LabRole.reviewer), 'reviews');
   });
 
-  test('testers: participan, ven resultados y experimentos; no las pruebas ni la publicación', () {
-    expect(LabsAppPage.validSection('participa', LabRole.tester), 'participa');
-    expect(LabsAppPage.validSection('resultados', LabRole.tester), 'resultados');
-    // Encuestas abiertas (relevancia, SUS, calibración): separadas de los estudios.
-    expect(LabsAppPage.validSection('encuestas', LabRole.tester), 'encuestas');
-    expect(LabsAppPage.validSection('encuestas', LabRole.researcher), 'encuestas');
-    expect(LabsAppPage.validSection('encuestas', LabRole.reviewer), 'reviews');
+  test('testers: estudios y encuestas abiertos, resultados y experimentos', () {
+    for (final s in ['participa', 'encuestas', 'resultados']) {
+      expect(v(s, LabRole.tester), s);
+      expect(v(s, LabRole.researcher), s);
+    }
     for (final e in kLabExperiments) {
-      expect(LabsAppPage.validSection('exp:${e.id}', LabRole.tester), 'exp:${e.id}');
+      expect(v('exp:${e.id}', LabRole.tester), 'exp:${e.id}');
     }
-    expect(LabsAppPage.validSection(firstStudy, LabRole.tester), 'participa');
-    expect(LabsAppPage.validSection('posts', LabRole.tester), 'participa');
-    expect(LabsAppPage.validSection('members', LabRole.tester), 'participa');
-    expect(LabsAppPage.validSection('sma', LabRole.tester), 'participa');
+    for (final s in ['study:bateria_30', 'posts', 'members', 'sma', 'projects']) {
+      expect(v(s, LabRole.tester), 'participa');
+    }
   });
 
-  test('miembros: pruebas y publicación; Miembros solo administración', () {
-    expect(LabsAppPage.validSection(firstStudy, LabRole.researcher), firstStudy);
-    expect(LabsAppPage.validSection('posts', LabRole.researcher), 'posts');
-    expect(LabsAppPage.validSection('sma', LabRole.researcher), 'sma');
-    expect(LabsAppPage.validSection('members', LabRole.researcher), home);
-    expect(LabsAppPage.validSection('members', LabRole.admin), 'members');
+  test('Miembros del laboratorio solo para administración', () {
+    expect(v('members', LabRole.researcher), home);
+    expect(v('members', LabRole.admin), 'members');
   });
 
   test('secciones inexistentes vuelven al inicio del rol', () {
-    expect(LabsAppPage.validSection('exp:nada', LabRole.tester), 'participa');
-    expect(LabsAppPage.validSection('study:nada', LabRole.admin), home);
-    expect(LabsAppPage.validSection('cualquier', LabRole.tester), 'participa');
+    expect(v('exp:nada', LabRole.tester), 'participa');
+    expect(v('study:nada', LabRole.admin), home);
+    expect(v('cualquier', LabRole.tester), 'participa');
+    expect(v('p:x/nada', LabRole.researcher), home);
   });
 
   test('catálogo de experimentos con rutas /labs/<id> únicas', () {
