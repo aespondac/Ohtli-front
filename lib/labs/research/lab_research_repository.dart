@@ -132,23 +132,18 @@ class LabResearch {
         LabResourceKind.functionality => features,
       };
 
-  /// Guarda el IAM de un recurso. Mientras dure la migración también escribe el modelo anterior
-  /// (`members` del proyecto, `collaborators` del estudio) para que las reglas y pantallas viejas
-  /// sigan funcionando. [seed] crea el documento de un recurso integrado que aún no lo tiene.
+  /// Guarda el IAM de un recurso (las reglas ya no leen `members` ni `collaborators`). [seed] crea el
+  /// documento de un recurso integrado que aún no lo tiene.
   Future<void> setIam(LabResourceKind kind, String id, Map<String, String> iam,
       {String? projectId, Map<String, dynamic> seed = const {}}) async {
     final problem = validateIamChange(iam, requireOwner: kind == LabResourceKind.project);
     if (problem != null) throw StateError(problem);
     final ref = _collectionOf(kind).doc(id);
-    final people = [for (final e in iam.entries) if (e.key != kLabAllMembers) e.key];
-    final editors = [for (final e in iam.entries) if (e.key != kLabAllMembers && parseIamRole(e.value).canEdit) e.key];
     final exists = (await ref.get()).exists;
     await ref.set({
       if (!exists) ...seed,
       if (!exists && seed.isNotEmpty) 'ownerUid': _uid,
       'iam': iam,
-      if (kind == LabResourceKind.project) 'members': people,
-      if (kind == LabResourceKind.study) 'collaborators': editors,
     }, SetOptions(merge: true));
     await log('iam.update', '${kind.name}:$id', {'grants': iam.length}, projectId ?? (kind == LabResourceKind.project ? id : null));
   }

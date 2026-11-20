@@ -17,9 +17,9 @@ import 'lab_settings_cards.dart';
 final _repo = LabResearch.instance;
 TextStyle _h(double size) => GoogleFonts.outfit(fontSize: size, fontWeight: FontWeight.w800, color: OhtliColors.onyx);
 
-/// IAM del proyecto para mostrar y editar: el mapa `iam` y, mientras no se haya migrado, el dueño y
-/// los miembros del modelo anterior.
-Map<String, String> projectIamOf(LabProject p) => iamFromLegacy(current: p.iam, owner: p.ownerUid, editors: p.members);
+/// IAM del proyecto para mostrar y editar: el mapa `iam` y quien lo creó (propietario, como en las
+/// reglas).
+Map<String, String> projectIamOf(LabProject p) => iamFromLegacy(current: p.iam, owner: p.ownerUid);
 
 /// Rol de la persona en el proyecto.
 LabIamRole projectRoleOf(LabProject p, {required String? uid, required LabRole labRole}) => effectiveIamRole(
@@ -27,7 +27,6 @@ LabIamRole projectRoleOf(LabProject p, {required String? uid, required LabRole l
       labRole: labRole,
       projectIam: p.iam,
       legacyOwner: p.ownerUid,
-      legacyMembers: p.members,
     );
 
 /// Panel del proyecto (como la página de inicio de un proyecto en GCP): qué tiene y cómo va.
