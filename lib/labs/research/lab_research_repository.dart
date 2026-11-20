@@ -756,6 +756,18 @@ class LabResearch {
     return ref.id;
   }
 
+  /// Experimentos creados en un proyecto (incluidos los clasificados, para quien tenga acceso).
+  Stream<List<LabLibraryExperiment>> watchProjectExperiments(String projectId) => experiments
+      .where('projectId', isEqualTo: projectId)
+      .snapshots()
+      .map((s) => [for (final d in s.docs) LabLibraryExperiment.fromDoc(d.id, d.data())]);
+
+  /// Encuestas de un proyecto.
+  Stream<List<LabSurvey>> watchProjectSurveys(String projectId) => surveys
+      .where('projectId', isEqualTo: projectId)
+      .snapshots()
+      .map((s) => [for (final d in s.docs) LabSurvey.fromDoc(d.id, d.data())]);
+
   /// Encuestas no clasificadas (las de proyectos confidenciales se abren por ID con [survey]).
   Stream<List<LabSurvey>> watchSurveys() => surveys
       .where('confidential', isEqualTo: false)

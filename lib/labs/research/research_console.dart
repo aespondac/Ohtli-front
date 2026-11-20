@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../theme/colors.dart';
 import '../lab_access.dart';
+import '../lab_catalog.dart';
 import '../lab_widgets.dart';
 import 'lab_models.dart';
 import 'lab_research_repository.dart';
@@ -19,7 +20,10 @@ TextStyle _h(double size) => GoogleFonts.outfit(fontSize: size, fontWeight: Font
 
 class LabProjectsPanel extends StatelessWidget {
   final LabRole role;
-  const LabProjectsPanel({super.key, required this.role});
+
+  /// Abre un proyecto en la consola (selector de proyecto).
+  final ValueChanged<String>? onOpen;
+  const LabProjectsPanel({super.key, required this.role, this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +33,14 @@ class LabProjectsPanel extends StatelessWidget {
           child: LabSectionTitle('Proyectos',
               caption: 'Agrupan estudios. Un proyecto confidencial se muestra con su nombre en clave hasta que el admin lo desclasifique.'),
         ),
-        FilledButton.icon(onPressed: () => _create(context), icon: const Icon(Icons.add), label: const Text('Nuevo proyecto')),
+        FilledButton.icon(
+          onPressed: () async {
+            final id = await showCreateProjectDialog(context);
+            if (id != null) onOpen?.call(id);
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('Nuevo proyecto'),
+        ),
       ]),
       StreamBuilder<List<LabProject>>(
         stream: _repo.watchProjects(),
@@ -37,13 +48,18 @@ class LabProjectsPanel extends StatelessWidget {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
           final list = snap.data!..sort((a, b) => a.name.compareTo(b.name));
           if (list.isEmpty) return LabCard(child: Text('Aún no hay proyectos.', style: labCell()));
-          return Column(children: [for (final p in list) Padding(padding: const EdgeInsets.only(bottom: 12), child: _ProjectCard(project: p, role: role))]);
+          return Column(children: [
+            for (final p in list) Padding(padding: const EdgeInsets.only(bottom: 12), child: _ProjectCard(project: p, role: role, onOpen: onOpen)),
+          ]);
         },
       ),
     ]);
   }
 
-  Future<void> _create(BuildContext context) async {
+}
+
+/// Diálogo "Nuevo proyecto". Devuelve el id del proyecto creado (o null si se canceló o falló).
+Future<String?> showCreateProjectDialog(BuildContext context) async {
     final name = TextEditingController(), desc = TextEditingController();
     var confidential = false;
     final ok = await showDialog<bool>(
@@ -73,17 +89,19 @@ class LabProjectsPanel extends StatelessWidget {
         ),
       ),
     );
-    if (ok != true || name.text.trim().isEmpty || !context.mounted) return;
+    if (ok != true || name.text.trim().isEmpty || !context.mounted) return null;
+    String? id;
     await runLabAction(context, () async {
-      await _repo.createProject(name: name.text.trim(), description: desc.text.trim(), confidential: confidential);
+      id = await _repo.createProject(name: name.text.trim(), description: desc.text.trim(), confidential: confidential);
     }, ok: confidential ? 'Proyecto creado con nombre en clave.' : 'Proyecto creado.');
-  }
+    return id;
 }
 
 class _ProjectCard extends StatelessWidget {
   final LabProject project;
   final LabRole role;
-  const _ProjectCard({required this.project, required this.role});
+  final ValueChanged<String>? onOpen;
+  const _ProjectCard({required this.project, required this.role, this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -121,6 +139,12 @@ class _ProjectCard extends StatelessWidget {
               onPressed: () => _members(context),
               icon: const Icon(Icons.group_outlined, size: 16),
               label: const Text('Miembros'),
+            ),
+          if (onOpen != null)
+            FilledButton.tonalIcon(
+              onPressed: () => onOpen!(p.id),
+              icon: const Icon(Icons.open_in_new_rounded, size: 16),
+              label: const Text('Abrir'),
             ),
           if (p.confidential && role == LabRole.admin)
             FilledButton.icon(
@@ -194,7 +218,10 @@ class _ProjectCard extends StatelessWidget {
 
 class LabStudiesPanel extends StatefulWidget {
   final LabRole role;
-  const LabStudiesPanel({super.key, required this.role});
+
+  /// Solo los estudios de este proyecto (consola por proyectos). Sin él, todos agrupados.
+  final LabProject? project;
+  const LabStudiesPanel({super.key, required this.role, this.project});
 
   @override
   State<LabStudiesPanel> createState() => _LabStudiesPanelState();
@@ -223,8 +250,13 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
       builder: (context, ps) => StreamBuilder<List<LabResearchStudy>>(
         stream: _repo.watchStudies(),
         builder: (context, ss) {
-          final projects = ps.data ?? const <LabProject>[];
-          final studies = ss.data ?? const <LabResearchStudy>[];
+          final scope = widget.project;
+          final projects = scope != null ? [scope] : (ps.data ?? const <LabProject>[]);
+          // En un proyecto, las pruebas del TT y relevancia/SUS se ven como experimentos y encuestas.
+          final studies = [
+            for (final s in ss.data ?? const <LabResearchStudy>[])
+              if (scope == null || (s.projectId == scope.id && !s.legacyHolder)) s,
+          ];
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
               const Expanded(
@@ -238,7 +270,13 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
               ),
             ]),
             if (!ss.hasData) const Center(child: CircularProgressIndicator()),
-            for (final p in projects..sort((a, b) => a.name.compareTo(b.name)))
+            if (scope != null && ss.hasData && studies.isEmpty)
+              LabCard(child: Text('Este proyecto aún no tiene estudios.', style: labCell())),
+            if (scope != null)
+              for (final s in studies)
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: _StudyRow(study: s, onOpen: () => setState(() => _open = s.id)))
+            else
+              for (final p in projects..sort((a, b) => a.name.compareTo(b.name)))
               if (studies.any((s) => s.projectId == p.id)) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
@@ -259,7 +297,7 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
 
   Future<void> _create(BuildContext context, List<LabProject> projects) async {
     final title = TextEditingController(), desc = TextEditingController();
-    var project = projects.first;
+    var project = widget.project ?? projects.first;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -268,6 +306,7 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
           content: SizedBox(
             width: 480,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (widget.project == null)
               DropdownButtonFormField<LabProject>(
                 initialValue: project,
                 decoration: const InputDecoration(labelText: 'Proyecto', border: OutlineInputBorder(), isDense: true),
@@ -891,24 +930,59 @@ class LabAuditPanel extends StatelessWidget {
 // ═════════════════════════════ Biblioteca de experimentos ═════════════════════════════
 
 class LabLibraryPanel extends StatelessWidget {
-  const LabLibraryPanel({super.key});
+  /// Solo los experimentos de este proyecto, con los integrados del catálogo primero.
+  final LabProject? project;
+
+  /// Abre un experimento integrado del proyecto (su pantalla o el runner de la prueba del TT).
+  final ValueChanged<String>? onOpen;
+  const LabLibraryPanel({super.key, this.project, this.onOpen});
 
   @override
   Widget build(BuildContext context) {
+    final scope = project;
+    final builtins = scope == null ? const <LabBuiltinExperiment>[] : builtinExperimentsOf(scope.id);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
-        const Expanded(
-          child: LabSectionTitle('Biblioteca de experimentos',
-              caption: 'Públicos y reutilizables por cualquier científico en su estudio (los clasificados no aparecen aquí).'),
+        Expanded(
+          child: scope == null
+              ? const LabSectionTitle('Biblioteca de experimentos',
+                  caption: 'Públicos y reutilizables por cualquier científico en su estudio (los clasificados no aparecen aquí).')
+              : const LabSectionTitle('Experimentos',
+                  caption: 'Miden o prueban una funcionalidad del sistema o su interacción. Los integrados se ejecutan aquí mismo.'),
         ),
         FilledButton.icon(onPressed: () => _edit(context, null), icon: const Icon(Icons.add), label: const Text('Nuevo experimento')),
       ]),
+      for (final b in builtins)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: LabCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(child: Text(b.title, style: _h(15))),
+                    const SizedBox(width: 8),
+                    LabTag(b.ttRunner != null ? 'Prueba del TT' : 'Integrado', color: OhtliColors.stormyTeal),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(b.description, style: labCell()),
+                ]),
+              ),
+              if (onOpen != null) FilledButton.tonal(onPressed: () => onOpen!(b.id), child: const Text('Abrir')),
+            ]),
+          ),
+        ),
       StreamBuilder<List<LabLibraryExperiment>>(
-        stream: _repo.watchLibrary(),
+        stream: scope == null ? _repo.watchLibrary() : _repo.watchProjectExperiments(scope.id),
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          final builtinIds = {for (final b in builtins) b.id};
+          final list = [for (final e in snap.data!) if (!builtinIds.contains(e.id)) e];
+          if (scope != null && list.isEmpty && builtins.isEmpty) {
+            return LabCard(child: Text('Este proyecto aún no tiene experimentos.', style: labCell()));
+          }
           return Column(children: [
-            for (final e in snap.data!)
+            for (final e in list)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: LabCard(
@@ -943,7 +1017,7 @@ class LabLibraryPanel extends StatelessWidget {
   Future<void> _edit(BuildContext context, LabLibraryExperiment? e) async {
     final title = TextEditingController(text: e?.title), desc = TextEditingController(text: e?.description);
     final proc = TextEditingController(text: e?.procedure), metrics = TextEditingController(text: e?.metricNames.join(', '));
-    LabProject? project;
+    LabProject? project = this.project;
     final projects = await _repo.watchProjects().first;
     if (!context.mounted) return;
     final ok = await showDialog<bool>(
@@ -959,7 +1033,7 @@ class LabLibraryPanel extends StatelessWidget {
                 labField(desc, 'Qué evalúa', maxLines: 2),
                 labField(proc, 'Procedimiento (para que otro lo pueda repetir)', maxLines: 6),
                 labField(metrics, 'Métricas que produce (separadas por coma)'),
-                if (e == null)
+                if (e == null && this.project == null)
                   DropdownButtonFormField<LabProject?>(
                     initialValue: project,
                     decoration: const InputDecoration(labelText: 'Proyecto (opcional)', border: OutlineInputBorder(), isDense: true),
@@ -997,22 +1071,54 @@ class LabLibraryPanel extends StatelessWidget {
 // ═════════════════════════════ Encuestas ═════════════════════════════
 
 class LabSurveysPanel extends StatelessWidget {
-  const LabSurveysPanel({super.key});
+  /// Solo las encuestas de este proyecto, con las integradas (relevancia, SUS) primero.
+  final LabProject? project;
+
+  /// Abre una encuesta integrada (su panel de resultados y apertura a testers).
+  final ValueChanged<String>? onOpen;
+  const LabSurveysPanel({super.key, this.project, this.onOpen});
 
   @override
   Widget build(BuildContext context) {
+    final scope = project;
+    final builtins = scope == null ? const <LabBuiltinSurvey>[] : builtinSurveysOf(scope.id);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         const Expanded(child: LabSectionTitle('Encuestas', caption: 'Cualquier científico puede crearlas. Una respuesta por persona.')),
-        FilledButton.icon(onPressed: () => SurveyEditorDialog.show(context, null), icon: const Icon(Icons.add), label: const Text('Nueva encuesta')),
+        FilledButton.icon(
+            onPressed: () => SurveyEditorDialog.show(context, null, project: scope), icon: const Icon(Icons.add), label: const Text('Nueva encuesta')),
       ]),
+      for (final b in builtins)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: LabCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(child: Text(b.title, style: _h(15))),
+                    const SizedBox(width: 8),
+                    LabTag('Integrada', color: OhtliColors.stormyTeal),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(b.study.description, style: labCell()),
+                ]),
+              ),
+              if (onOpen != null) FilledButton.tonal(onPressed: () => onOpen!(b.id), child: const Text('Abrir')),
+            ]),
+          ),
+        ),
       StreamBuilder<List<LabSurvey>>(
-        stream: _repo.watchSurveys(),
+        stream: scope == null ? _repo.watchSurveys() : _repo.watchProjectSurveys(scope.id),
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.isEmpty) return LabCard(child: Text('Aún no hay encuestas.', style: labCell()));
+          final builtinIds = {for (final b in builtins) b.id};
+          final list = [for (final s in snap.data!) if (!builtinIds.contains(s.id)) s];
+          if (list.isEmpty) {
+            return builtins.isNotEmpty ? const SizedBox.shrink() : LabCard(child: Text('Aún no hay encuestas.', style: labCell()));
+          }
           return Column(children: [
-            for (final s in snap.data!)
+            for (final s in list)
               Padding(padding: const EdgeInsets.only(bottom: 10), child: _SurveyCard(survey: s)),
           ]);
         },
@@ -1103,8 +1209,8 @@ class SurveyEditorDialog extends StatefulWidget {
   final LabProject? project;
   const SurveyEditorDialog({super.key, this.survey, this.project});
 
-  static Future<void> show(BuildContext context, LabSurvey? s) =>
-      showDialog<void>(context: context, builder: (_) => SurveyEditorDialog(survey: s));
+  static Future<void> show(BuildContext context, LabSurvey? s, {LabProject? project}) =>
+      showDialog<void>(context: context, builder: (_) => SurveyEditorDialog(survey: s, project: project));
 
   @override
   State<SurveyEditorDialog> createState() => _SurveyEditorDialogState();
@@ -1219,7 +1325,15 @@ class _SurveyEditorDialogState extends State<SurveyEditorDialog> {
 
 class LabFeaturesPanel extends StatelessWidget {
   final LabRole role;
-  const LabFeaturesPanel({super.key, required this.role});
+
+  /// Solo las funcionalidades de este proyecto.
+  final String? projectId;
+
+  /// Módulos del sistema con tablero propio (p. ej. el SMA en la plataforma): id, título y
+  /// descripción; "Abrir" llama a [onOpen] con el id.
+  final List<(String, String, String)> modules;
+  final ValueChanged<String>? onOpen;
+  const LabFeaturesPanel({super.key, required this.role, this.projectId, this.modules = const [], this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -1232,13 +1346,36 @@ class LabFeaturesPanel extends StatelessWidget {
         ),
         FilledButton.icon(onPressed: () => _edit(context, null), icon: const Icon(Icons.add), label: const Text('Nueva funcionalidad')),
       ]),
+      for (final m in modules)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: LabCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(child: Text(m.$2, style: _h(15))),
+                    const SizedBox(width: 8),
+                    LabTag('Sistema', color: const Color(0xFF6C5CE7)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(m.$3, style: labCell()),
+                ]),
+              ),
+              if (onOpen != null) FilledButton.tonal(onPressed: () => onOpen!(m.$1), child: const Text('Abrir')),
+            ]),
+          ),
+        ),
       StreamBuilder<List<LabFeature>>(
         stream: _repo.watchFeatures(),
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          if (snap.data!.isEmpty) return LabCard(child: Text('Aún no hay funcionalidades registradas.', style: labCell()));
+          final list = [for (final f in snap.data!) if (projectId == null || f.projectId == projectId) f];
+          if (list.isEmpty) {
+            return modules.isNotEmpty ? const SizedBox.shrink() : LabCard(child: Text('Aún no hay funcionalidades registradas.', style: labCell()));
+          }
           return Column(children: [
-            for (final f in snap.data!)
+            for (final f in list)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: LabCard(
@@ -1333,6 +1470,7 @@ class LabFeaturesPanel extends StatelessWidget {
         'howToTry': how.text.trim(),
         if (f == null) 'stage': FeatureStage.desarrollo.name,
         if (f == null) 'studyIds': const <String>[],
+        if (f == null) 'projectId': projectId ?? kPlatformProjectId,
       }),
       ok: 'Funcionalidad guardada.',
     );
