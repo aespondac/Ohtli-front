@@ -6,6 +6,7 @@ import '../../theme/colors.dart';
 import '../lab_access.dart';
 import '../lab_catalog.dart';
 import '../lab_widgets.dart';
+import 'lab_import.dart';
 import 'lab_models.dart';
 import 'lab_research_repository.dart';
 import 'research_papers.dart';
@@ -784,38 +785,67 @@ class _ComponentsCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Componentes', style: _h(16)),
         const SizedBox(height: 4),
-        Text('Usa cualquier experimento de la biblioteca (los no clasificados son públicos), tus encuestas y las funciones de la app que mide este estudio.',
+        Text('Usa los experimentos y encuestas de este proyecto o los que otros proyectos comparten, y las funciones '
+            'de la app que mide este estudio.',
             style: labCell()),
         const SizedBox(height: 12),
-        StreamBuilder<List<LabLibraryExperiment>>(
-          stream: _repo.watchLibrary(),
-          builder: (c, snap) => _picker(
-            context,
-            label: 'Experimentos',
-            icon: Icons.science_outlined,
-            all: {
-              // Los integrados del proyecto del estudio (p. ej. las pruebas del TT).
-              for (final b in builtinExperimentsOf(s.projectId)) b.id: b.title,
-              for (final e in snap.data ?? const <LabLibraryExperiment>[]) e.id: e.title,
-            },
-            selected: s.experimentIds,
-            field: 'experimentIds',
-          ),
-        ),
-        StreamBuilder<List<LabSurvey>>(
-          stream: _repo.watchSurveys(),
-          builder: (c, snap) => _picker(
-            context,
-            label: 'Encuestas',
-            icon: Icons.ballot_outlined,
-            all: {
-              'sus': 'SUS (usabilidad)',
-              for (final b in builtinSurveysOf(s.projectId)) b.id: b.title,
-              for (final e in snap.data ?? const <LabSurvey>[]) e.id: e.title,
-            },
-            selected: s.surveyIds,
-            field: 'surveyIds',
-          ),
+        StreamBuilder<List<LabProject>>(
+          stream: _repo.watchProjects(),
+          builder: (c, ps) {
+            final names = {for (final p in ps.data ?? const <LabProject>[]) p.id: p.name};
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              StreamBuilder<List<LabLibraryExperiment>>(
+                stream: _repo.watchLibrary(),
+                builder: (c, lib) => StreamBuilder<List<LabLibraryExperiment>>(
+                  stream: _repo.watchProjectExperiments(s.projectId),
+                  builder: (c, mine) => _picker(
+                    context,
+                    label: 'Experimentos',
+                    icon: Icons.science_outlined,
+                    all: const {},
+                    split: splitImportables(
+                      projectId: s.projectId,
+                      builtins: {for (final b in builtinExperimentsOf(s.projectId)) b.id: b.title},
+                      items: [
+                        for (final e in [...?mine.data, ...?lib.data])
+                          if (!e.builtin || e.projectId != null)
+                            LabImportable(id: e.id, title: e.title, projectId: e.projectId, shared: e.shared, confidential: e.confidential),
+                      ],
+                      projectNames: names,
+                      selected: s.experimentIds,
+                    ),
+                    selected: s.experimentIds,
+                    field: 'experimentIds',
+                  ),
+                ),
+              ),
+              StreamBuilder<List<LabSurvey>>(
+                stream: _repo.watchSurveys(),
+                builder: (c, lib) => StreamBuilder<List<LabSurvey>>(
+                  stream: _repo.watchProjectSurveys(s.projectId),
+                  builder: (c, mine) => _picker(
+                    context,
+                    label: 'Encuestas',
+                    icon: Icons.ballot_outlined,
+                    all: const {},
+                    split: splitImportables(
+                      projectId: s.projectId,
+                      // SUS es el cuestionario estándar: cualquier estudio puede usarlo.
+                      builtins: {for (final b in builtinSurveysOf(s.projectId)) b.id: b.title, 'sus': 'SUS (usabilidad)'},
+                      items: [
+                        for (final q in [...?mine.data, ...?lib.data])
+                          LabImportable(id: q.id, title: q.title, projectId: q.projectId, shared: q.shared, confidential: q.confidential),
+                      ],
+                      projectNames: names,
+                      selected: s.surveyIds,
+                    ),
+                    selected: s.surveyIds,
+                    field: 'surveyIds',
+                  ),
+                ),
+              ),
+            ]);
+          },
         ),
         StreamBuilder<List<LabFeature>>(
           stream: _repo.watchFeatures(),
@@ -850,7 +880,14 @@ class _ComponentsCard extends StatelessWidget {
     required List<String> selected,
     required String field,
     Future<void> Function(List<String>)? onChanged,
+    LabImportSplit? split,
   }) {
+    String labelOf(String id) => split?.labelOf(id) ?? all[id] ?? id;
+    PopupMenuItem<String> header(String t) => PopupMenuItem<String>(
+          enabled: false,
+          height: 30,
+          child: Text(t, style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: OhtliColors.subtleText)),
+        );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -865,7 +902,8 @@ class _ComponentsCard extends StatelessWidget {
           child: Wrap(spacing: 6, runSpacing: 6, children: [
             for (final id in selected)
               InputChip(
-                label: Text(all[id] ?? id),
+                avatar: split?.stale.containsKey(id) == true ? Icon(Icons.warning_amber_rounded, size: 16, color: OhtliColors.xoconostle) : null,
+                label: Text(labelOf(id)),
                 onDeleted: editable
                     ? () => runLabAction(context, () async {
                           final next = selected.where((x) => x != id).toList();
@@ -877,10 +915,21 @@ class _ComponentsCard extends StatelessWidget {
             if (editable)
               PopupMenuButton<String>(
                 tooltip: 'Agregar',
-                itemBuilder: (_) => [
-                  for (final e in all.entries)
-                    if (!selected.contains(e.key)) PopupMenuItem(value: e.key, child: Text(e.value)),
-                ],
+                itemBuilder: (_) => split == null
+                    ? [
+                        for (final e in all.entries)
+                          if (!selected.contains(e.key)) PopupMenuItem(value: e.key, child: Text(e.value)),
+                      ]
+                    : [
+                        header('DE ESTE PROYECTO'),
+                        for (final e in split.own.entries)
+                          if (!selected.contains(e.key)) PopupMenuItem(value: e.key, child: Text(e.value)),
+                        if (split.shared.keys.any((k) => !selected.contains(k))) ...[
+                          header('COMPARTIDOS POR OTROS PROYECTOS'),
+                          for (final e in split.shared.entries)
+                            if (!selected.contains(e.key)) PopupMenuItem(value: e.key, child: Text(e.value)),
+                        ],
+                      ],
                 onSelected: (id) => runLabAction(context, () async {
                   final next = [...selected, id];
                   await _repo.updateStudy(study, {field: next});
