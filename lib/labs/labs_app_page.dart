@@ -32,7 +32,8 @@ import 'research/research_participate.dart';
 ///  - Todos (tras aceptar el consentimiento una vez): Participa, Resultados y Experimentos.
 ///  - Miembros del laboratorio: además las pruebas del TT y la publicación.
 ///
-/// Secciones: `participa`, `resultados`, `exp:<id>`, `study:<id>`, `posts`, `members`.
+/// Secciones: `participa` (estudios abiertos), `encuestas` (encuestas abiertas), `resultados`,
+/// `exp:<id>`, `study:<id>`, `posts`, `members`.
 class LabsAppPage extends StatefulWidget {
   final String? initialSection;
   final VoidCallback onSignOut;
@@ -44,7 +45,7 @@ class LabsAppPage extends StatefulWidget {
     final fallback = role.isMember ? 'studies' : (role.isReviewer ? 'reviews' : 'participa');
     final s = section ?? '';
     if (role.isReviewer) return (s == 'reviews' || s == 'resultados') ? s : fallback;
-    if (s == 'participa' || s == 'resultados') return s;
+    if (s == 'participa' || s == 'encuestas' || s == 'resultados') return s;
     if (const ['projects', 'studies', 'library', 'surveys', 'features', 'reviews', 'audit'].contains(s)) {
       return role.isMember ? s : fallback;
     }
@@ -129,6 +130,7 @@ class _LabsAppPageState extends State<LabsAppPage> {
           ]),
         ('PARTICIPA', const [
           _NavEntry('participa', Icons.how_to_reg_rounded, 'Estudios abiertos'),
+          _NavEntry('encuestas', Icons.ballot_outlined, 'Encuestas abiertas'),
           _NavEntry('resultados', Icons.article_outlined, 'Resultados liberados'),
         ]),
         ('EXPERIMENTOS', [
@@ -296,11 +298,43 @@ class _LabsAppPageState extends State<LabsAppPage> {
 
   Widget _content(String section, bool isMobile) {
     if (section == 'participa') {
+      // Solo estudios: las encuestas (relevancia, SUS, calibración) tienen su propia sección.
       return _scroll(
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          LabParticipateView(role: _role, onLeft: () => setState(() => _role = LabRole.none)),
-          const LabOpenStudiesView(),
+          LabParticipantHeader(
+            title: 'Estudios abiertos',
+            caption: 'Inscríbete en un estudio para usar sus funciones en prueba y responder sus encuestas.',
+            role: _role,
+            onLeft: () => setState(() => _role = LabRole.none),
+          ),
+          const SizedBox(height: 12),
+          LabOpenStudiesView(
+            showTitle: false,
+            emptyState: LabCard(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Por ahora ningún estudio está reclutando participantes.', style: labCell(bold: true)),
+                const SizedBox(height: 4),
+                Text('Mientras, puedes ayudarnos respondiendo las encuestas abiertas.', style: labCell()),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => _go('encuestas'),
+                  icon: const Icon(Icons.ballot_outlined, size: 18),
+                  label: const Text('Ver encuestas abiertas'),
+                ),
+              ]),
+            ),
+          ),
         ]),
+        maxWidth: 820,
+      );
+    }
+    if (section == 'encuestas') {
+      return _scroll(
+        LabOpenSurveysView(
+          role: _role,
+          onLeft: () => setState(() => _role = LabRole.none),
+          onOpenExperiment: (id) => _go('exp:$id'),
+        ),
         maxWidth: 820,
       );
     }

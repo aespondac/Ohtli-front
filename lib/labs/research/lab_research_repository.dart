@@ -8,6 +8,14 @@ import 'lab_models.dart';
 
 /// Persistencia de la estructura de investigación (docs/labs_estructura.md). No decide permisos:
 /// eso lo hacen las reglas de Firestore. Todo cambio relevante queda en `lab_audit`.
+/// Escrituras por lote (Firestore admite 500; se deja margen).
+const kMaxBatchWrites = 450;
+
+/// Campos de proyecto de un experimento o encuesta. Al crear se escriben siempre; al editar solo si
+/// se conoce el proyecto, para no borrar el que ya tiene.
+Map<String, dynamic> libraryScopeFields({required bool isNew, LabProject? project}) =>
+    (isNew || project != null) ? {'projectId': project?.id, 'confidential': project?.confidential ?? false} : const {};
+
 class LabResearch {
   LabResearch._();
   static final LabResearch instance = LabResearch._();
@@ -115,23 +123,36 @@ class LabResearch {
   Future<int> declassify(String projectId) async {
     final pRef = projects.doc(projectId);
     final secret = await secretOf(pRef) ?? const {};
-    final batch = _db.batch();
-    batch.update(pRef, {
-      if (secret['name'] != null) 'name': secret['name'],
-      if (secret['description'] != null) 'description': secret['description'],
-      'confidential': false,
-      'declassifiedAt': FieldValue.serverTimestamp(),
-    });
+    // Lotes de hasta 450 escrituras: Firestore no acepta más de 500 por lote y un proyecto grande
+    // hacía fallar la desclasificación completa.
+    var batch = _db.batch();
+    var pending = 0;
+    Future<void> add(DocumentReference<Map<String, dynamic>> ref, Map<String, dynamic> data) async {
+      batch.update(ref, data);
+      if (++pending >= kMaxBatchWrites) {
+        await batch.commit();
+        batch = _db.batch();
+        pending = 0;
+      }
+    }
+
     var n = 0;
     for (final col in [studies, experiments, surveys, features, papers]) {
       final q = await col.where('projectId', isEqualTo: projectId).get();
       for (final d in q.docs) {
         final s = await secretOf(d.reference) ?? const {};
-        batch.update(d.reference, {...s, 'confidential': false, 'declassifiedAt': FieldValue.serverTimestamp()});
+        await add(d.reference, {...s, 'confidential': false, 'declassifiedAt': FieldValue.serverTimestamp()});
         n++;
       }
     }
-    await batch.commit();
+    // El proyecto al final: si algo falla a la mitad, sigue marcado como clasificado y se puede reintentar.
+    await add(pRef, {
+      if (secret['name'] != null) 'name': secret['name'],
+      if (secret['description'] != null) 'description': secret['description'],
+      'confidential': false,
+      'declassifiedAt': FieldValue.serverTimestamp(),
+    });
+    if (pending > 0) await batch.commit();
     await log('project.declassify', 'project:$projectId', {'items': n});
     return n;
   }
@@ -561,8 +582,30 @@ class LabResearch {
         ];
       });
 
+  /// Proyecto con el que se guarda un experimento o encuesta. Al crear es el que se eligió; al editar
+  /// sin proyecto (p. ej. el botón Abrir/Cerrar) es el que ya tiene el documento. Antes se escribía
+  /// `projectId: null` y `confidential: false` en cada edición: el recurso perdía su proyecto y, si
+  /// era clasificado, dejaba de serlo.
+  Future<LabProject?> _scopeFor(DocumentReference<Map<String, dynamic>> ref, String? id, LabProject? project) async {
+    if (project != null || id == null) return project;
+    final current = (await ref.get()).data() ?? const {};
+    final pid = current['projectId'];
+    if (pid is String && pid.isNotEmpty) {
+      try {
+        final p = await projects.doc(pid).get();
+        if (p.exists) return LabProject.fromDoc(p.id, p.data()!);
+      } catch (_) {}
+    }
+    if (current['confidential'] == true) {
+      // Sin el proyecto no se puede enmascarar: mejor no guardar que exponer el texto real.
+      throw StateError('No pudimos confirmar el proyecto clasificado de este recurso. Intenta de nuevo.');
+    }
+    return null;
+  }
+
   Future<String> saveExperiment(String? id, Map<String, dynamic> data, {LabProject? project}) async {
     final ref = id == null ? experiments.doc() : experiments.doc(id);
+    project = await _scopeFor(ref, id, project);
     final masked = project?.confidential ?? false;
     final batch = _db.batch();
     batch.set(ref, {
@@ -570,8 +613,7 @@ class LabResearch {
       if (masked) 'title': '${project!.codename} · Experimento',
       if (masked) 'description': 'Experimento clasificado.',
       if (masked) 'procedure': '',
-      'confidential': masked,
-      'projectId': project?.id,
+      ...libraryScopeFields(isNew: id == null, project: project),
       if (id == null) 'ownerUid': _uid,
       if (id == null) 'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -591,10 +633,10 @@ class LabResearch {
 
   Future<String> saveSurvey(String? id, Map<String, dynamic> data, {LabProject? project}) async {
     final ref = id == null ? surveys.doc() : surveys.doc(id);
+    project = await _scopeFor(ref, id, project);
     await ref.set({
       ...data,
-      'confidential': project?.confidential ?? false,
-      'projectId': project?.id,
+      ...libraryScopeFields(isNew: id == null, project: project),
       if (id == null) 'ownerUid': _uid,
       if (id == null) 'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
