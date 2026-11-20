@@ -9,6 +9,7 @@ import 'lab_article.dart';
 import 'lab_repository.dart';
 import 'lab_studies.dart';
 import 'lab_widgets.dart';
+import 'research/lab_research_repository.dart';
 
 /// Selector de visibilidad (pipeline: privado → testers → público). Solo el superusuario abre al público.
 class VisibilityPicker extends StatelessWidget {
@@ -407,6 +408,8 @@ class _LabMembersPanelState extends State<LabMembersPanel> {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
+      const _IamMigrationCard(),
+      const SizedBox(height: 16),
       LabCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const LabSectionTitle('Miembros del laboratorio',
@@ -501,4 +504,54 @@ class _LabMembersPanelState extends State<LabMembersPanel> {
       ),
     ]);
   }
+}
+
+/// Paso único de la consola por proyectos: convierte dueños, miembros y colaboradores en roles de
+/// IAM y asigna a la plataforma lo que no tenía proyecto. Se puede repetir sin efecto.
+class _IamMigrationCard extends StatefulWidget {
+  const _IamMigrationCard();
+
+  @override
+  State<_IamMigrationCard> createState() => _IamMigrationCardState();
+}
+
+class _IamMigrationCardState extends State<_IamMigrationCard> {
+  bool _running = false;
+  String? _result;
+
+  Future<void> _run() async {
+    setState(() {
+      _running = true;
+      _result = null;
+    });
+    try {
+      final n = await LabResearch.instance.migrateIam();
+      if (mounted) setState(() => _result = n == 0 ? 'Todo estaba al día: no hubo cambios.' : 'Listo: $n documentos actualizados.');
+    } catch (e) {
+      if (mounted) setState(() => _result = 'No se pudo completar: $e');
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LabCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const LabSectionTitle('Accesos por proyecto (IAM)',
+              caption: 'Convierte los dueños, miembros de proyecto y colaboradores de estudio en roles Propietario, '
+                  'Editor y Lector, y asigna a la plataforma los experimentos, encuestas y funcionalidades sin proyecto. '
+                  'Se puede repetir sin efecto.'),
+          Wrap(spacing: 12, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            ElevatedButton.icon(
+              onPressed: _running ? null : _run,
+              icon: _running
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.admin_panel_settings_outlined),
+              label: Text(_running ? 'Migrando…' : 'Migrar al IAM'),
+              style: ElevatedButton.styleFrom(backgroundColor: OhtliColors.stormyTeal, foregroundColor: Colors.white),
+            ),
+            if (_result != null) Text(_result!, style: labCell()),
+          ]),
+        ]),
+      );
 }

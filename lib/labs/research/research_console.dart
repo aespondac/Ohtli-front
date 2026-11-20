@@ -207,7 +207,10 @@ class _LabStudiesPanelState extends State<LabStudiesPanel> {
   void initState() {
     super.initState();
     // Las pruebas del TT entran a la estructura como estudios del proyecto "Trabajo Terminal".
-    if (widget.role == LabRole.admin) _repo.ensureTtStudies().catchError((e) => debugPrint('[Labs] TT: $e'));
+    if (widget.role == LabRole.admin) {
+      _repo.ensureTtStudies().catchError((e) => debugPrint('[Labs] TT: $e'));
+      _repo.ensureBaseProjects().catchError((e) => debugPrint('[Labs] proyectos base: $e'));
+    }
   }
 
   @override

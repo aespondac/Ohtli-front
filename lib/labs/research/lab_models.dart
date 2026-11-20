@@ -10,6 +10,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 DateTime? _date(dynamic v) => v is Timestamp ? v.toDate() : (v is DateTime ? v : null);
 List<String> _strings(dynamic v) => [for (final x in (v as List?) ?? const []) x.toString()];
 
+/// Mapa de IAM {uid o '*lab' → 'owner' | 'editor' | 'viewer'} (ver lab_iam.dart).
+Map<String, String> _iam(dynamic v) => v is Map ? {for (final e in v.entries) e.key.toString(): e.value.toString()} : const {};
+
 // ───────────────────────────── Proyecto ─────────────────────────────
 
 class LabProject {
@@ -22,6 +25,7 @@ class LabProject {
   final String ownerUid;
   final DateTime? declassifiedAt;
   final DateTime? createdAt;
+  final Map<String, String> iam;
 
   const LabProject({
     required this.id,
@@ -33,6 +37,7 @@ class LabProject {
     this.ownerUid = '',
     this.declassifiedAt,
     this.createdAt,
+    this.iam = const {},
   });
 
   factory LabProject.fromDoc(String id, Map<String, dynamic> d) => LabProject(
@@ -45,6 +50,7 @@ class LabProject {
         ownerUid: (d['ownerUid'] ?? '').toString(),
         declassifiedAt: _date(d['declassifiedAt']),
         createdAt: _date(d['createdAt']),
+        iam: _iam(d['iam']),
       );
 
   bool canSeeSecret(String? uid, {bool admin = false}) => !confidential || admin || (uid != null && members.contains(uid));
@@ -52,6 +58,9 @@ class LabProject {
 
 /// Proyecto público al que pertenecen las pruebas del Trabajo Terminal.
 const kTtProjectId = 'trabajo_terminal';
+
+/// Proyecto de la plataforma: experimentos con pantalla propia y funcionalidades del SMA.
+const kPlatformProjectId = 'ohtli_plataforma';
 
 // ───────────────────────────── Estudio ─────────────────────────────
 
@@ -178,6 +187,7 @@ class LabResearchStudy {
   final String? currentPaperId;
   final PaperStage? paperStage;
   final DateTime? updatedAt;
+  final Map<String, String> iam;
 
   const LabResearchStudy({
     required this.id,
@@ -204,6 +214,7 @@ class LabResearchStudy {
     this.currentPaperId,
     this.paperStage,
     this.updatedAt,
+    this.iam = const {},
   });
 
   factory LabResearchStudy.fromDoc(String id, Map<String, dynamic> d) {
@@ -233,8 +244,13 @@ class LabResearchStudy {
       currentPaperId: d['currentPaperId'] as String?,
       paperStage: d['paperStage'] == null ? null : PaperStageX.parse(d['paperStage']),
       updatedAt: _date(d['updatedAt']),
+      iam: _iam(d['iam']),
     );
   }
+
+  /// Documentos de las pruebas del TT y de relevancia y SUS: se conservan porque las corridas y las
+  /// reglas de las respuestas los usan, pero en la consola por proyectos son experimentos y encuestas.
+  bool get legacyHolder => builtinKind != null && const {'scenarios', 'load', 'checklist', 'relevance', 'sus'}.contains(builtinKind);
 
   bool get isFull => config.capacity > 0 && enrolledCount >= config.capacity;
   bool canEdit(String? uid, {bool admin = false}) => admin || (uid != null && (uid == ownerUid || collaborators.contains(uid)));
@@ -263,6 +279,8 @@ class LabFeature {
   final List<String> studyIds;
   final bool confidential;
   final String? howToTry; // dónde encontrarla en la app
+  final String projectId; // las anteriores sin proyecto son de la plataforma
+  final Map<String, String> iam;
   const LabFeature({
     required this.key,
     required this.name,
@@ -271,6 +289,8 @@ class LabFeature {
     this.studyIds = const [],
     this.confidential = false,
     this.howToTry,
+    this.projectId = kPlatformProjectId,
+    this.iam = const {},
   });
   factory LabFeature.fromDoc(String id, Map<String, dynamic> d) => LabFeature(
         key: id,
@@ -280,6 +300,8 @@ class LabFeature {
         studyIds: _strings(d['studyIds']),
         confidential: d['confidential'] == true,
         howToTry: d['howToTry'] as String?,
+        projectId: (d['projectId'] as String?)?.isNotEmpty == true ? d['projectId'] as String : kPlatformProjectId,
+        iam: _iam(d['iam']),
       );
 }
 
@@ -480,6 +502,10 @@ class LabLibraryExperiment {
   final bool confidential;
   final String? projectId;
   final String ownerUid;
+
+  /// Importable por estudios de otros proyectos (nunca si es clasificado).
+  final bool shared;
+  final Map<String, String> iam;
   const LabLibraryExperiment({
     required this.id,
     required this.title,
@@ -490,6 +516,8 @@ class LabLibraryExperiment {
     this.confidential = false,
     this.projectId,
     this.ownerUid = '',
+    this.shared = false,
+    this.iam = const {},
   });
   factory LabLibraryExperiment.fromDoc(String id, Map<String, dynamic> d) => LabLibraryExperiment(
         id: id,
@@ -501,6 +529,8 @@ class LabLibraryExperiment {
         confidential: d['confidential'] == true,
         projectId: d['projectId'] as String?,
         ownerUid: (d['ownerUid'] ?? '').toString(),
+        shared: d['shared'] == true && d['confidential'] != true,
+        iam: _iam(d['iam']),
       );
 }
 
@@ -544,6 +574,8 @@ class LabSurvey {
   final bool confidential;
   final String? projectId;
   final String ownerUid;
+  final bool shared;
+  final Map<String, String> iam;
   const LabSurvey({
     required this.id,
     required this.title,
@@ -553,6 +585,8 @@ class LabSurvey {
     this.confidential = false,
     this.projectId,
     this.ownerUid = '',
+    this.shared = false,
+    this.iam = const {},
   });
   factory LabSurvey.fromDoc(String id, Map<String, dynamic> d) => LabSurvey(
         id: id,
@@ -563,5 +597,7 @@ class LabSurvey {
         confidential: d['confidential'] == true,
         projectId: d['projectId'] as String?,
         ownerUid: (d['ownerUid'] ?? '').toString(),
+        shared: d['shared'] == true && d['confidential'] != true,
+        iam: _iam(d['iam']),
       );
 }

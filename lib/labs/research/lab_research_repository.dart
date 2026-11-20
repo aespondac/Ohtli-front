@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../lab_experiments.dart';
 import '../lab_studies.dart';
 import 'lab_codenames.dart';
+import 'lab_iam.dart';
 import 'lab_models.dart';
 
 /// Persistencia de la estructura de investigación (docs/labs_estructura.md). No decide permisos:
@@ -43,12 +44,14 @@ class LabResearch {
 
   // ───────────── Bitácora ─────────────
 
-  Future<void> log(String action, String target, [Map<String, dynamic> detail = const {}]) async {
+  /// [projectId] va dentro de `detail` (las reglas fijan los campos de primer nivel) y permite ver la
+  /// bitácora de todo un proyecto con [watchProjectAudit].
+  Future<void> log(String action, String target, [Map<String, dynamic> detail = const {}, String? projectId]) async {
     try {
       await audit.add({
         'action': action,
         'target': target,
-        'detail': detail,
+        'detail': {...detail, 'projectId': ?projectId},
         'actorUid': _uid,
         'at': FieldValue.serverTimestamp(),
       });
@@ -62,6 +65,13 @@ class LabResearch {
     if (target != null) q = audit.where('target', isEqualTo: target).orderBy('at', descending: true).limit(limit);
     return q.snapshots();
   }
+
+  /// Bitácora de un proyecto: todo lo registrado con su `projectId` (entradas desde la fase 1).
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchProjectAudit(String projectId, {int limit = 120}) => audit
+      .where('detail.projectId', isEqualTo: projectId)
+      .orderBy('at', descending: true)
+      .limit(limit)
+      .snapshots();
 
   // ───────────── Proyectos ─────────────
 
@@ -95,7 +105,8 @@ class LabResearch {
       'confidential': confidential,
       'codename': codename,
       'ownerUid': uid,
-      'members': [if (uid != null) uid],
+      'members': [?uid],
+      'iam': {?uid: 'owner'},
       'createdAt': FieldValue.serverTimestamp(),
     });
     if (confidential) batch.set(details(ref), {'name': name, 'description': description});
@@ -111,6 +122,93 @@ class LabResearch {
     } catch (_) {
       return null; // sin autorización: se queda el nombre en clave
     }
+  }
+
+  CollectionReference<Map<String, dynamic>> _collectionOf(LabResourceKind kind) => switch (kind) {
+        LabResourceKind.project => projects,
+        LabResourceKind.study => studies,
+        LabResourceKind.experiment => experiments,
+        LabResourceKind.survey => surveys,
+        LabResourceKind.functionality => features,
+      };
+
+  /// Guarda el IAM de un recurso. Mientras dure la migración también escribe el modelo anterior
+  /// (`members` del proyecto, `collaborators` del estudio) para que las reglas y pantallas viejas
+  /// sigan funcionando. [seed] crea el documento de un recurso integrado que aún no lo tiene.
+  Future<void> setIam(LabResourceKind kind, String id, Map<String, String> iam,
+      {String? projectId, Map<String, dynamic> seed = const {}}) async {
+    final problem = validateIamChange(iam, requireOwner: kind == LabResourceKind.project);
+    if (problem != null) throw StateError(problem);
+    final ref = _collectionOf(kind).doc(id);
+    final people = [for (final e in iam.entries) if (e.key != kLabAllMembers) e.key];
+    final editors = [for (final e in iam.entries) if (e.key != kLabAllMembers && parseIamRole(e.value).canEdit) e.key];
+    final exists = (await ref.get()).exists;
+    await ref.set({
+      if (!exists) ...seed,
+      if (!exists && seed.isNotEmpty) 'ownerUid': _uid,
+      'iam': iam,
+      if (kind == LabResourceKind.project) 'members': people,
+      if (kind == LabResourceKind.study) 'collaborators': editors,
+    }, SetOptions(merge: true));
+    await log('iam.update', '${kind.name}:$id', {'grants': iam.length}, projectId ?? (kind == LabResourceKind.project ? id : null));
+  }
+
+  /// Migración del modelo anterior al IAM (solo admin; se puede correr varias veces). Devuelve
+  /// cuántos documentos cambió.
+  Future<int> migrateIam() async {
+    var changed = 0;
+    var batch = _db.batch();
+    var pending = 0;
+    Future<void> put(DocumentReference<Map<String, dynamic>> ref, Map<String, dynamic> data) async {
+      batch.update(ref, data);
+      changed++;
+      if (++pending >= kMaxBatchWrites) {
+        await batch.commit();
+        batch = _db.batch();
+        pending = 0;
+      }
+    }
+
+    bool same(Map<String, dynamic>? a, Map<String, String> b) =>
+        a != null && a.length == b.length && b.entries.every((e) => a[e.key] == e.value);
+
+    for (final d in (await projects.get()).docs) {
+      final v = d.data();
+      final iam = iamFromLegacy(
+        current: (v['iam'] as Map?)?.cast<String, dynamic>() ?? const {},
+        owner: v['ownerUid'] as String?,
+        editors: [for (final m in (v['members'] as List?) ?? const []) m.toString()],
+        labViewers: v['confidential'] != true,
+      );
+      if (!same((v['iam'] as Map?)?.cast<String, dynamic>(), iam)) await put(d.reference, {'iam': iam});
+    }
+    for (final d in (await studies.get()).docs) {
+      final v = d.data();
+      final iam = iamFromLegacy(
+        current: (v['iam'] as Map?)?.cast<String, dynamic>() ?? const {},
+        owner: v['ownerUid'] as String?,
+        editors: [for (final m in (v['collaborators'] as List?) ?? const []) m.toString()],
+      );
+      if (iam.isNotEmpty && !same((v['iam'] as Map?)?.cast<String, dynamic>(), iam)) await put(d.reference, {'iam': iam});
+    }
+    for (final col in [experiments, surveys]) {
+      for (final d in (await col.get()).docs) {
+        final v = d.data();
+        final iam = iamFromLegacy(current: (v['iam'] as Map?)?.cast<String, dynamic>() ?? const {}, owner: v['ownerUid'] as String?);
+        final noProject = (v['projectId'] as String?)?.isNotEmpty != true;
+        final data = {
+          if (iam.isNotEmpty && !same((v['iam'] as Map?)?.cast<String, dynamic>(), iam)) 'iam': iam,
+          if (noProject) 'projectId': kPlatformProjectId,
+        };
+        if (data.isNotEmpty) await put(d.reference, data);
+      }
+    }
+    for (final d in (await features.get()).docs) {
+      if ((d.data()['projectId'] as String?)?.isNotEmpty != true) await put(d.reference, {'projectId': kPlatformProjectId});
+    }
+    if (pending > 0) await batch.commit();
+    await log('iam.migrate', 'lab', {'changed': changed});
+    return changed;
   }
 
   Future<void> setProjectMembers(String projectId, List<String> members) async {
@@ -168,6 +266,37 @@ class LabResearch {
       studies.doc(id).snapshots().map((d) => d.exists ? LabResearchStudy.fromDoc(d.id, d.data()!) : null);
 
   /// Las seis pruebas del TT como estudios del proyecto público "Trabajo Terminal" (idempotente).
+  /// Proyectos base de la consola (solo admin): "Ohtli.quest (plataforma)", con los experimentos
+  /// integrados y las funcionalidades del SMA, visible para todo el laboratorio; y Trabajo Terminal
+  /// editable por todo el laboratorio (como hasta ahora: cualquier miembro corre las pruebas del TT).
+  Future<void> ensureBaseProjects() async {
+    final uid = _uid;
+    final platform = projects.doc(kPlatformProjectId);
+    if (!(await platform.get()).exists) {
+      await platform.set({
+        'name': 'Ohtli.quest (plataforma)',
+        'description': 'Experimentos de la plataforma y funcionalidades del sistema multiagente.',
+        'confidential': false,
+        'ownerUid': uid,
+        'members': [?uid],
+        // Todo el laboratorio la ve; editar cada experimento o funcionalidad es de su propietario.
+        'iam': {?uid: 'owner', kLabAllMembers: 'viewer'},
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await log('project.create', 'project:$kPlatformProjectId', const {}, kPlatformProjectId);
+    }
+    final tt = projects.doc(kTtProjectId);
+    final ttData = (await tt.get()).data();
+    if (ttData != null && (ttData['iam'] as Map?)?.containsKey(kLabAllMembers) != true) {
+      final iam = iamFromLegacy(
+        current: (ttData['iam'] as Map?)?.cast<String, dynamic>() ?? const {},
+        owner: ttData['ownerUid'] as String?,
+        editors: [for (final m in (ttData['members'] as List?) ?? const []) m.toString()],
+      )..[kLabAllMembers] = 'editor';
+      await tt.update({'iam': iam});
+    }
+  }
+
   Future<void> ensureTtStudies() async {
     final p = projects.doc(kTtProjectId);
     if (!(await p.get()).exists) {
@@ -176,7 +305,8 @@ class LabResearch {
         'description': 'Pruebas del capítulo 6 del Trabajo Terminal 2026-B156.',
         'confidential': false,
         'ownerUid': _uid,
-        'members': [if (_uid != null) _uid],
+        'members': [?_uid],
+        'iam': {?_uid: 'owner', kLabAllMembers: 'editor'},
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
