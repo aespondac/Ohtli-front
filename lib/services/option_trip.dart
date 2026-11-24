@@ -69,3 +69,21 @@ TransferSection? departureLeg(Map option, {required String id}) {
     isEstimated: true,
   );
 }
+
+/// Jornada de la alternativa como la cuenta el viaje guardado ([tripTimeSpan]): salida del punto
+/// de partida (primera llegada menos el tramo de salida) hasta el regreso (última salida más el
+/// tramo final). La duración del motor contaba desde la hora de inicio del tema aunque la ruta
+/// esperara a que abriera la primera parada (demo E1: 7 h 35 min en la propuesta y 7 h 11 min en
+/// el viaje guardado). Null sin horarios.
+({int start, int end})? optionTimeSpan(Map option) {
+  final route = [for (final s in (option['route'] as List? ?? const [])) if (s is Map) s];
+  if (route.isEmpty) return null;
+  final arrivals = [for (final s in route) ?parseClockMinutes(s['arrival_time']?.toString())];
+  final departures = [for (final s in route) ?parseClockMinutes(s['departure_time']?.toString())];
+  if (arrivals.isEmpty || departures.isEmpty) return null;
+  final firstLeg = (route.first['travel_time_from_prev_mins'] as num?)?.toInt() ?? 0;
+  final finalLeg = option['final_leg'] is Map ? (num.tryParse('${(option['final_leg'] as Map)['mins']}') ?? 0).toInt() : 0;
+  final start = arrivals.reduce((a, b) => a < b ? a : b) - firstLeg;
+  final end = departures.reduce((a, b) => a > b ? a : b) + finalLeg;
+  return end > start ? (start: start, end: end) : null;
+}

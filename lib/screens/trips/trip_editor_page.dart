@@ -5399,7 +5399,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
         id: id,
         title: poi.name,
         description: poi.cleanNarrative,
-        photoUrl: poi.imageUrl,
+        // Solo la foto del lugar (imageUrl cae en una de referencia de otro lugar).
+        photoUrl: poi.hasOwnPhoto ? poi.photoUrl : '',
         lat: poi.location.isValid ? poi.location.lat : null,
         lng: poi.location.isValid ? poi.location.lng : null,
         cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),

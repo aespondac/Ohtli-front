@@ -7,6 +7,7 @@ import 'package:othli_front/models/trip_model.dart';
 import 'package:othli_front/services/option_trip.dart';
 import 'package:othli_front/services/trip_transfers.dart';
 import 'package:othli_front/theme/cdmx_photos.dart';
+import 'package:othli_front/widgets/photo_credit.dart';
 
 const _own = 'https://firebasestorage.googleapis.com/v0/b/x/o/sor_juana.jpg?alt=media';
 
@@ -207,6 +208,83 @@ void main() {
         if (sameInSpanish.contains(c)) continue;
         expect(label, isNot(fallback(c)), reason: '$c → $label');
       }
+    });
+  });
+
+  // Regrabación del 24-nov: "Madero y el pulso histórico del Centro" (aventura). El motor salía a
+  // las 09:30 (inicio del tema) y esperaba 24 min a que "abriera" Calle Madero (10:00).
+  group('regrabación: duración de la propuesta = viaje guardado', () {
+    Map<String, dynamic> aventura() => {
+          'total_duration_mins': 455, // lo que decía el motor: 09:30–17:05
+          'start_time': '09:30',
+          'end_time': '17:05',
+          'route': [
+            _stop('Calle Madero', 'attraction', 19.4334, -99.1358, arrival: '10:00', departure: '11:00', mins: 6, km: 0.386),
+            _stop('Casa de los Azulejos', 'museum', 19.4342, -99.1403, arrival: '11:07', departure: '12:07', mins: 7, km: 0.5),
+            _stop('Comida callejera mexicana', 'restaurant', 19.4307, -99.1268, arrival: '15:55', departure: '16:55', mins: 15, km: 1.107),
+          ],
+          'final_leg': {'mins': '10', 'km': 0.735, 'transport_mode': 'walking', 'to': 'origin'},
+        };
+
+    test('la tarjeta cuenta desde la salida real (09:54), no desde la hora del tema', () {
+      final span = optionTimeSpan(aventura())!;
+      expect(formatClock(span.start), '09:54');
+      expect(formatClock(span.end), '17:05');
+      expect(formatDuration(span.end - span.start), '7 h 11 min');
+    });
+
+    test('y coincide con lo que muestra el viaje guardado', () {
+      final o = aventura();
+      final route = o['route'] as List;
+      final sections = <TripSection>[
+        departureLeg(o, id: 't0')!,
+        for (final (i, s) in route.indexed) ...[
+          if (i > 0) TransferSection(id: 't$i', durationMins: s['travel_time_from_prev_mins'] as int),
+          PlaceSection(id: 'p$i', title: s['name'] as String, description: '', rating: 0, mainPhotoUrl: '',
+              secondaryPhotoUrls: const [], arrivalTime: s['arrival_time'] as String, departureTime: s['departure_time'] as String),
+        ],
+        TransferSection(id: 'tf', durationMins: 10, notes: 'Regreso al punto de partida'),
+      ];
+      final saved = tripTimeSpan(sections)!;
+      final proposal = optionTimeSpan(o)!;
+      expect((saved.start, saved.end), (proposal.start, proposal.end));
+    });
+
+    test('sin horarios no hay jornada', () {
+      expect(optionTimeSpan({'route': []}), isNull);
+      expect(optionTimeSpan({'route': [{'name': 'x'}]}), isNull);
+    });
+  });
+
+  group('regrabación: fotos del propio lugar con crédito', () {
+    const credit = 'Foto: Jane Doe · CC BY-SA 4.0 · Wikimedia Commons';
+    const commons = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Hemiciclo_a_Juarez.jpg/1280px-Hemiciclo_a_Juarez.jpg';
+
+    test('la ficha del lugar trae el crédito de su foto', () {
+      final poi = Poi.fromMap({'poi_id': 'osm_992941278', 'name': 'Hemiciclo a Juárez', 'category': 'attraction',
+        'location': {'lat': 19.435, 'lng': -99.144}, 'photo_url': commons, 'photo_credit': credit});
+      expect(poi.hasOwnPhoto, isTrue);
+      expect(poi.photoCredit, credit);
+      expect(Poi.fromMap({'poi_id': 'x', 'name': 'Calle Madero', 'location': {'lat': 19.43, 'lng': -99.13}}).photoCredit, '');
+    });
+
+    test('el crédito corto cabe en la miniatura', () {
+      expect(PhotoCredit.short(credit), 'Jane Doe · CC BY-SA 4.0');
+    });
+
+    test('la parada guardada conserva el crédito, y lo pierde si cambia la foto', () {
+      final p = PlaceSection(id: 'p', title: 'Hemiciclo a Juárez', description: '', rating: 0, mainPhotoUrl: commons,
+          secondaryPhotoUrls: const [], mainPhotoCredit: credit);
+      final back = PlaceSection.fromMap(p.toMap());
+      expect(back.mainPhotoCredit, credit);
+      expect(p.copyWith(title: 'Hemiciclo').mainPhotoCredit, credit);
+      expect(p.copyWith(mainPhotoUrl: _own).mainPhotoCredit, isNull);
+      expect(PlaceSection.fromMap({'id': 'q', 'title': 'Sin foto'}).mainPhotoCredit, isNull);
+    });
+
+    test('una foto de Commons del propio lugar no se toma por foto de referencia', () {
+      expect(CdmxPhotos.isReference(commons), isFalse);
+      expect(ownStopPhoto({'photo_url': commons, 'photo_credit': credit}), commons);
     });
   });
 }

@@ -330,10 +330,11 @@ class ItineraryBlackboardService {
     for (int i = 0; i < rawStops.length; i++) {
       final stop = rawStops[i] as Map<String, dynamic>;
       final stopName = stop['name'] ?? 'Parada ${i + 1}';
-      // Solo la foto del lugar. Sin ella la parada queda sin foto y el visor muestra una de
-      // referencia avisada como tal: guardada aquí, pasaba por foto del lugar (el Museo Soumaya
-      // en el Museo de Sitio Sor Juana) y hasta salía entre los momentos del viaje.
+      // Solo la foto del lugar, con su crédito. Sin ella la parada queda sin foto: una de
+      // referencia guardada aquí pasaba por foto del lugar (el Museo Soumaya en el Museo de Sitio
+      // Sor Juana) y hasta salía entre los momentos del viaje.
       final photo = ownStopPhoto(stop);
+      final photoCredit = photo.isEmpty ? '' : (stop['photo_credit'] ?? '').toString().trim();
 
       // Prellenado con lo que escribió el Recomendador: historia, por qué destaca y consejo.
       // Antes se buscaban campos que el motor no envía (narration/why) y cada parada quedaba con
@@ -390,6 +391,7 @@ class ItineraryBlackboardService {
           // las 5 estrellas prellenadas contaban como "me gustó" en la retroalimentación.
           rating: 0,
           mainPhotoUrl: photo.toString(),
+          mainPhotoCredit: photoCredit.isEmpty ? null : photoCredit,
           secondaryPhotoUrls: [],
           cost: (stop['price_mxn'] as num?)?.toDouble() ?? 0.0,
           currency: 'MXN',

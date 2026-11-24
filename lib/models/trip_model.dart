@@ -341,8 +341,11 @@ class PlaceSection extends TripSection {
   /// Lo que realmente se gastó en la parada (el costo estimado sigue en [cost]).
   final double? realCost;
 
-  /// Portada elegida por los viajeros. Si no hay, se usa la del catálogo o una de referencia.
+  /// Portada elegida por los viajeros. Si no hay, se usa la foto del lugar (catálogo) o ninguna.
   final String? coverUrl;
+
+  /// Autor y licencia de [mainPhotoUrl] cuando es de Wikimedia Commons (pide atribución).
+  final String? mainPhotoCredit;
 
   /// Solo en notas de versión: la parada es una "novedad" y esto dice de qué tipo es
   /// ('nuevo', 'mejora' o 'correccion', ver [kReleaseTags]).
@@ -384,6 +387,7 @@ class PlaceSection extends TripSection {
     this.leftAt,
     this.realCost,
     this.coverUrl,
+    this.mainPhotoCredit,
     this.changeTag,
     this.branchId,
     this.meetup = false,
@@ -418,6 +422,7 @@ class PlaceSection extends TripSection {
     bool clearRealCost = false,
     String? coverUrl,
     bool clearCoverUrl = false,
+    String? mainPhotoCredit,
     String? changeTag,
     String? branchId,
     bool clearBranch = false,
@@ -443,6 +448,8 @@ class PlaceSection extends TripSection {
       leftAt: clearLeftAt ? null : (leftAt ?? this.leftAt),
       realCost: clearRealCost ? null : (realCost ?? this.realCost),
       coverUrl: clearCoverUrl ? null : (coverUrl ?? this.coverUrl),
+      // Otra foto principal sin crédito nuevo: el anterior ya no es de esa foto.
+      mainPhotoCredit: mainPhotoCredit ?? (mainPhotoUrl == null || mainPhotoUrl == this.mainPhotoUrl ? this.mainPhotoCredit : null),
       changeTag: changeTag ?? this.changeTag,
       branchId: clearBranch ? null : (branchId ?? this.branchId),
       meetup: meetup ?? this.meetup,
@@ -478,6 +485,7 @@ class PlaceSection extends TripSection {
       leftAt: data['leftAt']?.toString(),
       realCost: (data['realCost'] as num?)?.toDouble(),
       coverUrl: (data['coverUrl'] as String?)?.trim().isEmpty == true ? null : data['coverUrl'] as String?,
+      mainPhotoCredit: (data['mainPhotoCredit'] as String?)?.trim().isEmpty == true ? null : data['mainPhotoCredit'] as String?,
       changeTag: kReleaseTags.containsKey(data['changeTag']) ? data['changeTag'] as String : null,
       branchId: (data['branchId'] as String?)?.isEmpty == true ? null : data['branchId'] as String?,
       meetup: data['meetup'] == true,
@@ -508,6 +516,7 @@ class PlaceSection extends TripSection {
       if (leftAt != null) 'leftAt': leftAt,
       if (realCost != null) 'realCost': realCost,
       if (coverUrl != null) 'coverUrl': coverUrl,
+      if (mainPhotoCredit != null) 'mainPhotoCredit': mainPhotoCredit,
       if (changeTag != null) 'changeTag': changeTag,
       if (branchId != null) 'branchId': branchId,
       if (meetup) 'meetup': true,

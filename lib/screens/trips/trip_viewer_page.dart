@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../widgets/photo_credit.dart';
 import '../../widgets/place_feedback_sheets.dart';
 import 'package:flutter/gestures.dart' show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/services.dart';
@@ -169,7 +170,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
   final Map<String, (double, double)> _resolvedCoords = {};
 
   // Portadas tomadas de la base de imágenes de Ohtli (paradas vinculadas al catálogo).
-  final Map<String, String> _catalogCovers = {};
+  final Map<String, ({String url, String credit})> _catalogCovers = {};
   bool _locating = false;
 
   // Panel lateral flotante: ancho del panel abierto y del riel plegado, y el espacio que reserva.
@@ -1831,40 +1832,41 @@ class _TripViewerPageState extends State<TripViewerPage> {
   Future<void> _resolveCatalogCovers() async {
     for (final p in _sections.whereType<PlaceSection>()) {
       if ((p.coverUrl ?? '').isNotEmpty || p.poiId == null || _catalogCovers.containsKey(p.id)) continue;
-      final url = await PlaceLocator.catalogPhoto(p);
+      final photo = await PlaceLocator.catalogPhoto(p);
       if (!mounted) return;
-      if (url != null) setState(() => _catalogCovers[p.id] = url);
+      if (photo != null) setState(() => _catalogCovers[p.id] = photo);
     }
   }
 
-  /// Portada de la parada: la que eligieron los viajeros, la del catálogo o, si no hay,
-  /// una foto de referencia de la CDMX según el tipo de lugar. [generic] marca esta última.
-  ({String url, bool generic}) _coverFor(PlaceSection p) {
-    if ((p.coverUrl ?? '').isNotEmpty) return (url: p.coverUrl!, generic: false);
-    final cat = _catalogCovers[p.id];
-    if (cat != null) return (url: cat, generic: false);
-    final seed = p.id.codeUnits.fold<int>(0, (a, c) => a + c);
-    return (url: CdmxPhotos.forCategory(p.title, seed), generic: true);
+  /// Portada de la parada: la que eligieron los viajeros, la foto del lugar (guardada o del
+  /// catálogo, con su crédito) o, si no hay, ninguna: la de referencia era de otro lugar (trajineras
+  /// de Xochimilco en el Hemiciclo a Juárez, demo E1 del 24-nov-2026).
+  ({String url, String credit}) _coverFor(PlaceSection p) {
+    if ((p.coverUrl ?? '').isNotEmpty) return (url: p.coverUrl!, credit: '');
+    if (p.ownMainPhotoUrl.isNotEmpty) return (url: p.ownMainPhotoUrl, credit: p.mainPhotoCredit ?? '');
+    return _catalogCovers[p.id] ?? (url: '', credit: '');
   }
 
   Widget _placeCover(PlaceSection p, bool isDark, double height) {
     final cover = _coverFor(p);
-    final seed = p.id.codeUnits.fold<int>(0, (a, c) => a + c);
+    final empty = Container(
+      color: isDark ? const Color(0xFF26343A) : OhtliColors.cantera,
+      child: Center(child: Icon(Icons.place_rounded, size: 34, color: OhtliColors.stormyTeal.withValues(alpha: 0.35))),
+    );
     return SizedBox(
       height: height,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image(
-            image: _getImageProvider(cover.url),
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Image.network(
-              CdmxPhotos.cover(seed),
+          if (cover.url.isEmpty)
+            empty
+          else
+            Image(
+              image: _getImageProvider(cover.url),
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => ColoredBox(color: isDark ? const Color(0xFF26343A) : OhtliColors.cantera),
+              errorBuilder: (_, __, ___) => empty,
             ),
-          ),
           // Se funde suave con la tarjeta.
           DecoratedBox(
             decoration: BoxDecoration(
@@ -1876,19 +1878,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
               ),
             ),
           ),
-          if (cover.generic)
-            Positioned(
-              left: 10,
-              top: 10,
-              child: Tooltip(
-                message: 'Imagen de la CDMX: este lugar aún no tiene portada propia.',
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(8)),
-                  child: Text('Foto de referencia', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white)),
-                ),
-              ),
-            ),
+          if (cover.credit.isNotEmpty)
+            Positioned(right: 8, top: 8, left: 120, child: Align(alignment: Alignment.topRight, child: PhotoCredit(cover.credit))),
         ],
       ),
     );
@@ -6218,8 +6209,9 @@ class _TripViewerPageState extends State<TripViewerPage> {
     // Collect active photo urls
     final List<Map<String, dynamic>> drawOrderSlots = [];
     final List<String> activeUrls = [];
-    // Sin la foto de referencia que guardaban los viajes de la IA (no es de este lugar).
-    if (place.ownMainPhotoUrl.isNotEmpty) {
+    // Sin la foto de referencia que guardaban los viajes de la IA (no es de este lugar), ni la
+    // foto del lugar cuando ya es la portada de la tarjeta (saldría dos veces).
+    if (place.ownMainPhotoUrl.isNotEmpty && place.ownMainPhotoUrl != _coverFor(place).url) {
       drawOrderSlots.add({'url': place.mainPhotoUrl, 'type': 'place_main'});
       activeUrls.add(place.mainPhotoUrl);
     }

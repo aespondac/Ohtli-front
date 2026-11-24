@@ -101,6 +101,9 @@ class Poi {
   final List<double> embeddingVector;
 
   final String photoUrl;
+  /// Autor y licencia de [photoUrl] ("Foto: X · CC BY-SA 4.0 · Wikimedia Commons"). Las licencias
+  /// de Commons piden atribución: se muestra junto a la foto.
+  final String photoCredit;
   /// Fotos reales del lugar (la primera es la portada).
   final List<String> photos;
   /// Tipo de cocina (OSM), p. ej. "mexican;tacos".
@@ -127,6 +130,7 @@ class Poi {
     this.vibeTags = const [],
     this.reviewsSnippets = const [],
     this.photoUrl = '',
+    this.photoCredit = '',
     this.photos = const [],
     this.cuisine = '',
     this.address = '',
@@ -248,6 +252,7 @@ class Poi {
       vibeTags: vibes,
       reviewsSnippets: reviews,
       photoUrl: photo,
+      photoCredit: (data['photo_credit'] ?? '').toString(),
       photos: [
         for (final x in (data['photos'] is List ? data['photos'] as List : const []))
           if (x != null && x.toString().startsWith('http')) x.toString(),

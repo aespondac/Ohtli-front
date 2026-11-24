@@ -19,6 +19,7 @@ import '../services/saved_places.dart';
 import '../services/feedback_service.dart';
 import 'osrm_map_widget.dart';
 import 'ohtli_ui.dart';
+import 'photo_credit.dart';
 import 'poi_status_badge.dart';
 import '../screens/places/places_page.dart';
 import '../screens/trips/trip_screens.dart' deferred as trips;
@@ -290,10 +291,11 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     super.dispose();
   }
 
-  /// Fotos reales del lugar; si no hay, la foto de referencia de su categoría.
+  /// Fotos reales del lugar. Sin foto propia no se muestra la de otro lugar (salían trajineras de
+  /// Xochimilco en el Hemiciclo a Juárez, demo E1): la portada queda con el ícono de su categoría.
   List<String> get _photos {
     final out = <String>[];
-    for (final u in [widget.poi.imageUrl, ...widget.poi.photos]) {
+    for (final u in [if (widget.poi.hasOwnPhoto) widget.poi.photoUrl, ...widget.poi.photos]) {
       if (u.isNotEmpty && !out.contains(u)) out.add(u);
     }
     return out.take(6).toList();
@@ -538,12 +540,15 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        PageView.builder(
-          controller: _gallery,
-          itemCount: photos.length,
-          onPageChanged: (i) => setState(() => _photoIndex = i),
-          itemBuilder: (_, i) => _buildPhoto(photos[i]),
-        ),
+        if (photos.isEmpty)
+          _buildPhoto('')
+        else
+          PageView.builder(
+            controller: _gallery,
+            itemCount: photos.length,
+            onPageChanged: (i) => setState(() => _photoIndex = i),
+            itemBuilder: (_, i) => _buildPhoto(photos[i]),
+          ),
         IgnorePointer(
           child: DecoratedBox(
             decoration: BoxDecoration(
@@ -556,24 +561,13 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
             ),
           ),
         ),
-        // Sin foto propia se muestra una de otro lugar de la ciudad: decirlo para no confundir
-        if (!poi.hasOwnPhoto && _photoIndex == 0)
+        // Autor y licencia de la foto (Wikimedia Commons)
+        if (poi.hasOwnPhoto && poi.photoCredit.isNotEmpty && _photoIndex == 0)
           Positioned(
             top: 14,
             left: 14,
-            child: IgnorePointer(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Foto de referencia',
-                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
-                ),
-              ),
-            ),
+            right: 64,
+            child: Align(alignment: Alignment.centerLeft, child: PhotoCredit(poi.photoCredit, fontSize: 10)),
           ),
         if (photos.length > 1 && !isMobile) ...[
           Positioned(
@@ -697,6 +691,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       ),
       child: Center(child: Icon(poi.categoryIcon, size: 56, color: Colors.white.withValues(alpha: 0.7))),
     );
+    if (url.isEmpty) return placeholder;
     return Stack(
       fit: StackFit.expand,
       children: [

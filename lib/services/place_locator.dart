@@ -8,8 +8,10 @@ import 'dart:js_interop_unsafe';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/trip_model.dart';
+import '../theme/cdmx_photos.dart';
 
 /// Encuentra la ubicación de una parada que no la trae guardada: primero en el catálogo
 /// (o en la sugerencia de la que salió) y, si no, buscando su nombre en Google Places
@@ -34,15 +36,42 @@ class PlaceLocator {
     });
   }
 
-  /// Foto del lugar en la base de imágenes de Ohtli, si está vinculado a ella.
-  static Future<String?> catalogPhoto(PlaceSection p) async {
-    final d = await _poiDoc(p);
-    if (d == null) return null;
-    String photo = (d['photo_url'] ?? d['image_url'] ?? d['photo'] ?? '').toString();
-    if (photo.isEmpty && d['photos'] is List && (d['photos'] as List).isNotEmpty) {
-      photo = (d['photos'] as List).first.toString();
+  static const String _apiUrl = String.fromEnvironment('yollotlApiUrl', defaultValue: 'https://api.ohtli.quest');
+  static final Map<String, Future<Map<String, dynamic>?>> _engineDocs = {};
+
+  /// Ficha del lugar en el catálogo del motor (/v1/pois?ids=): trae las fotos de Wikimedia Commons
+  /// con su crédito y los lugares de DENUE, SIC y mercados, que la base de la app no tiene.
+  static Future<Map<String, dynamic>?> _engineDoc(String id) {
+    return _engineDocs.putIfAbsent(id, () async {
+      try {
+        final uri = Uri.parse('$_apiUrl/v1/pois').replace(queryParameters: {'ids': id});
+        final res = await http.get(uri).timeout(const Duration(seconds: 8));
+        if (res.statusCode != 200) return null;
+        final decoded = jsonDecode(res.body);
+        final list = decoded is Map ? decoded['pois'] : null;
+        if (list is List && list.isNotEmpty && list.first is Map) return Map<String, dynamic>.from(list.first as Map);
+      } catch (_) {}
+      return null;
+    });
+  }
+
+  /// Foto del propio lugar (y su crédito) según el catálogo, o null. Nunca una foto de referencia
+  /// de otro lugar.
+  static Future<({String url, String credit})?> catalogPhoto(PlaceSection p) async {
+    final id = p.poiId;
+    if (id == null || id.isEmpty) return null;
+    for (final load in [if (!p.isSuggestion) () => _engineDoc(id), () => _poiDoc(p)]) {
+      final d = await load();
+      if (d == null) continue;
+      String photo = (d['photo_url'] ?? d['image_url'] ?? d['photo'] ?? '').toString();
+      if (photo.isEmpty && d['photos'] is List && (d['photos'] as List).isNotEmpty) {
+        photo = (d['photos'] as List).first.toString();
+      }
+      if (photo.startsWith('http') && !CdmxPhotos.isReference(photo)) {
+        return (url: photo, credit: (d['photo_credit'] ?? '').toString());
+      }
     }
-    return photo.startsWith('http') ? photo : null;
+    return null;
   }
 
   static (double, double)? _fromLocation(dynamic loc) {

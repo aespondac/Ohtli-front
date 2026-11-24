@@ -37,6 +37,7 @@ import '../../widgets/osrm_map_widget.dart';
 import '../../widgets/place_search_field.dart';
 import '../../utils/friendly_errors.dart';
 import '../../widgets/poi_detail_dialog.dart';
+import '../../widgets/photo_credit.dart';
 import '../construction_page.dart'; // RouteBackgroundPainter
 import '../places/places_page.dart';
 import 'trip_viewer_page.dart';
@@ -810,7 +811,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       if (cards.length == total) break;
       final isSelected = current == poi.name;
       cards.add(_buildOriginCard(
-        leading: _thumb(poi.imageUrl, poi.categoryIcon, poi.categoryColor, isSelected),
+        leading: _thumb(poi.hasOwnPhoto ? poi.photoUrl : null, poi.categoryIcon, poi.categoryColor, isSelected),
         title: poi.name,
         subtitle: 'Guardado · ${poi.coloniaAlcaldiaDisplay}',
         selected: isSelected,
@@ -1131,6 +1132,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   }
 
   int _computeOptionTotalDuration(Map<String, dynamic> option) {
+    // La misma jornada que mostrará el viaje guardado (de la salida real al regreso).
+    final span = optionTimeSpan(option);
+    if (span != null) return span.end - span.start;
     final direct = (option['total_duration_mins'] as num?)?.toInt() ??
         (option['estimated_time_mins'] as num?)?.toInt();
     if (direct != null && direct > 0) return direct;
@@ -1237,6 +1241,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       'semantic_description': stop['semantic_description'] ?? '',
       // Solo la foto del lugar: con la de referencia, la ficha la mostraba como propia.
       'photo_url': _ownStopPhoto(stop),
+      'photo_credit': stop['photo_credit'] ?? '',
       'address': stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México',
       'opening_hours': stop['opening_hours'] ?? '',
       'rating': (stop['rating'] as num?)?.toDouble(),
@@ -3445,13 +3450,13 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
   /// Foto propia del lugar que trae la parada ('' si no tiene).
   static String _ownStopPhoto(Map<String, dynamic> stop) => ownStopPhoto(stop);
 
-  /// Foto de la parada: la del lugar o, si no tiene, una de referencia de su categoría. Esa es de
-  /// otro lugar de la ciudad (p. ej. el Museo Soumaya para cualquier museo): [generic] la marca
-  /// para avisarlo, como en la ficha del lugar y en el viaje guardado.
-  static ({String url, bool generic}) _resolveStopPhoto(Map<String, dynamic> stop, int idx) {
+  /// Foto de la parada: solo la del propio lugar, con su crédito. Sin foto propia queda el ícono de
+  /// la categoría: la de referencia era de otro lugar (trajineras de Xochimilco en el Hemiciclo a
+  /// Juárez y en la Antigua sede de la Inquisición, demo E1 del 24-nov-2026).
+  static ({String url, String credit}) _resolveStopPhoto(Map<String, dynamic> stop) {
     final raw = _ownStopPhoto(stop);
-    if (raw.isNotEmpty) return (url: _upgradeImageUrl(raw, width: 800, quality: 85), generic: false);
-    return (url: CdmxPhotos.forCategory((stop['category'] ?? stop['type'] ?? '').toString(), idx), generic: true);
+    if (raw.isEmpty) return (url: '', credit: '');
+    return (url: _upgradeImageUrl(raw, width: 800, quality: 85), credit: (stop['photo_credit'] ?? '').toString());
   }
 
   static IconData _getStopCategoryIcon(String category) {
@@ -4503,7 +4508,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final departure = stop['departure_time']?.toString();
       final stayMins = (stop['stay_duration_mins'] as num?)?.toInt() ?? 60;
       final stopPrice = (stop['price_mxn'] as num?)?.toDouble() ?? 0.0;
-      final photo = _resolveStopPhoto(stop, idx);
+      final photo = _resolveStopPhoto(stop);
       final category = (stop['category'] ?? stop['type'] ?? 'cultural').toString();
       final catIcon = _getStopCategoryIcon(category);
       final catColor = _getStopCategoryColor(category);
@@ -4552,32 +4557,27 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.network(
-                          photo.url,
-                          fit: BoxFit.cover,
-                          gaplessPlayback: true,
-                          frameBuilder: (context, child, frame, sync) => sync
-                              ? child
-                              : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 300), child: child),
-                          errorBuilder: (context, error, stackTrace) => Container(
+                        if (photo.url.isEmpty)
+                          Container(
                             color: catColor.withOpacity(0.10),
                             child: Center(child: Icon(catIcon, size: 30, color: catColor.withOpacity(0.6))),
-                          ),
-                        ),
-                        if (photo.generic)
-                          Positioned(
-                            left: 6,
-                            bottom: 6,
-                            child: Tooltip(
-                              message: 'Imagen de otro lugar de la CDMX: este lugar aún no tiene foto propia.',
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(6)),
-                                child: Text('Foto de referencia',
-                                    style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                              ),
+                          )
+                        else
+                          Image.network(
+                            // Tamaño estándar de Wikimedia justo para la tarjeta (las fotos vienen a 1280 px)
+                            CdmxPhotos.sized(photo.url, isMobile ? 420 : photoSize, MediaQuery.devicePixelRatioOf(context)),
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            frameBuilder: (context, child, frame, sync) => sync
+                                ? child
+                                : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 300), child: child),
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: catColor.withOpacity(0.10),
+                              child: Center(child: Icon(catIcon, size: 30, color: catColor.withOpacity(0.6))),
                             ),
                           ),
+                        if (photo.credit.isNotEmpty)
+                          Positioned(left: 4, right: 4, bottom: 4, child: Align(alignment: Alignment.bottomLeft, child: PhotoCredit(photo.credit, fontSize: 8))),
                       ],
                     ),
                   ),
