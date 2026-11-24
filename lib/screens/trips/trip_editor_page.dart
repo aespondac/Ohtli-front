@@ -1853,7 +1853,8 @@ class _TripEditorPageState extends State<TripEditorPage> {
       (p) => p.copyWith(
         title: poi.name,
         description: p.description.trim().isEmpty ? poi.cleanNarrative : null,
-        mainPhotoUrl: p.mainPhotoUrl.isEmpty && poi.imageUrl.isNotEmpty ? poi.imageUrl : null,
+        // Solo la foto propia del lugar (imageUrl cae en una de referencia de otro lugar).
+        mainPhotoUrl: p.mainPhotoUrl.isEmpty && poi.hasOwnPhoto ? poi.photoUrl : null,
         cost: p.cost <= 0 ? (poi.priceMxnAvg ?? (poi.priceLevel * 60.0)) : null,
         lat: poi.location.isValid ? poi.location.lat : null,
         lng: poi.location.isValid ? poi.location.lng : null,

@@ -2,6 +2,8 @@
 // Todas fueron revisadas: cada imagen corresponde a un lugar real de la CDMX.
 // Se usan solo cuando un viaje, ruta o lugar no trae fotografía propia.
 
+import 'dart:math' as math;
+
 class CdmxPhotos {
   CdmxPhotos._();
 
@@ -132,6 +134,71 @@ class CdmxPhotos {
 
   /// Portada panorámica de la CDMX para viajes y rutas sin foto.
   static String cover([int seed = 0]) => covers[seed.abs() % covers.length];
+
+  /// Dónde está lo que muestra cada portada (mismo orden que [covers]).
+  static const List<(double, double)> _coverSpots = [
+    (19.4352, -99.1412), // Bellas Artes
+    (19.4352, -99.1412), // Bellas Artes
+    (19.4345, -99.1331), // Catedral Metropolitana
+    (19.4204, -99.1819), // Castillo de Chapultepec
+    (19.4270, -99.1677), // Ángel de la Independencia
+    (19.4342, -99.1406), // Casa de los Azulejos
+    (19.2572, -99.1030), // Xochimilco
+  ];
+
+  /// Portada de la zona del viaje: una de las postales a menos de 1 km de la más cercana a
+  /// ([lat], [lng]), elegida con [seed]. Un viaje por el Centro ya no sale con Xochimilco.
+  static String coverNear(double lat, double lng, [int seed = 0]) {
+    double km(int i) {
+      final (la, lo) = _coverSpots[i];
+      final dx = (lo - lng) * 104.9; // km por grado de longitud a la latitud de la CDMX
+      final dy = (la - lat) * 110.8;
+      return math.sqrt(dx * dx + dy * dy);
+    }
+
+    final d = [for (var i = 0; i < covers.length; i++) km(i)];
+    final nearest = d.reduce(math.min);
+    final within = [
+      for (var i = 0; i < covers.length; i++)
+        if (d[i] <= nearest + 1.0) i,
+    ];
+    return covers[within[seed.abs() % within.length]];
+  }
+
+  // Archivo de Commons de una URL de miniatura (".../thumb/b/b2/Archivo.jpg/500px-Archivo.jpg"
+  // → "b/b2/Archivo.jpg"): la misma foto en cualquier tamaño (el motor guarda 1280 px).
+  static final RegExp _commonsFile = RegExp(r'/commons/thumb/([0-9a-f]/[0-9a-f]{2}/[^/]+)/');
+
+  static String? _fileOf(String url) => _commonsFile.firstMatch(url)?.group(1);
+
+  static final Set<String> _referenceFiles = {
+    for (final u in [...covers, for (final l in byCategory.values) ...l]) ?_fileOf(u),
+  };
+
+  static final Set<String> _coverFiles = {for (final u in covers) ?_fileOf(u)};
+
+  /// La URL es una de estas fotos de referencia (de otro lugar de la ciudad), no una foto del
+  /// lugar. Sirve también para viajes guardados antes, que la tenían como foto de la parada.
+  static bool isReference(String? url) {
+    if (url == null || url.isEmpty) return false;
+    final f = _fileOf(url);
+    return f != null && _referenceFiles.contains(f);
+  }
+
+  /// Foto de referencia de una categoría que no es postal de portada (p. ej. el Museo Soumaya
+  /// para cualquier museo): como portada de un viaje hacía creer que se visita ese lugar.
+  static bool isCategoryReference(String? url) {
+    if (!isReference(url)) return false;
+    return !_coverFiles.contains(_fileOf(url!));
+  }
+
+  /// Portada que se muestra para un viaje: la suya o, si no tiene o es la foto de referencia de
+  /// una categoría (viajes guardados antes de este cambio), una postal de la CDMX.
+  static String tripCover(String? coverUrl, [int seed = 0]) {
+    final url = (coverUrl ?? '').trim();
+    if (url.isEmpty || isCategoryReference(url)) return cover(seed);
+    return url;
+  }
 
   static final RegExp _thumbWidth = RegExp(r'/(\d+)px-');
   // Anchos que Wikimedia sirve como miniatura estándar (otros, como 640, responden 400)

@@ -43,7 +43,8 @@ List<TripSection> manualPlanSections({
         title: poi.name,
         description: poi.cleanNarrative,
         rating: 0,
-        mainPhotoUrl: poi.imageUrl,
+        // Solo la foto propia: imageUrl cae en una de referencia de otro lugar.
+        mainPhotoUrl: poi.photoUrl,
         secondaryPhotoUrls: const [],
         cost: poi.priceMxnAvg ?? (poi.priceLevel * 60.0),
         currency: 'MXN',

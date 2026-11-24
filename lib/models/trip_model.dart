@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../theme/cdmx_photos.dart';
 
 /// Entrada de la fe de erratas: quién cambió qué y cuándo (después del viaje).
 class ErrataEntry {
@@ -357,6 +358,11 @@ class PlaceSection extends TripSection {
   bool get isLinkedToCatalog => poiId != null && poiSource == kPlaceSourceCatalog;
   bool get isSuggestion => poiId != null && poiSource == kPlaceSourceSuggestion;
   bool get isGeneric => !isLinkedToCatalog && !isSuggestion;
+
+  /// Foto principal si es del lugar o de los viajeros. Los viajes creados con la IA antes del
+  /// 24-nov-2026 guardaban aquí una foto de referencia de otro lugar (el Museo Soumaya en
+  /// cualquier museo); esas no cuentan como foto de la parada.
+  String get ownMainPhotoUrl => CdmxPhotos.isReference(mainPhotoUrl) ? '' : mainPhotoUrl;
 
   PlaceSection({
     required super.id,

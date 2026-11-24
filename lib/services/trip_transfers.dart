@@ -149,6 +149,33 @@ String formatClock(int minutes) {
   return '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
 }
 
+/// Jornada del viaje en minutos del día: desde que se sale del punto de partida (llegada a la
+/// primera parada menos los traslados que la anteceden) hasta el regreso o la llegada al punto
+/// final (salida de la última parada más los traslados que le siguen). Es lo que cuenta el motor
+/// en la duración que muestra el planificador; antes el viaje guardado iba solo de la primera
+/// llegada a la última salida y salía más corto (5 h 3 min contra 5 h 27 min). Null sin horarios.
+({int start, int end})? tripTimeSpan(List<TripSection> sections) {
+  final places = sections.whereType<PlaceSection>().toList();
+  final starts = places.map((p) => parseClockMinutes(p.arrivalTime)).whereType<int>().toList();
+  final ends = places
+      .map((p) => parseClockMinutes(p.departureTime) ?? parseClockMinutes(p.arrivalTime))
+      .whereType<int>()
+      .toList();
+  if (starts.isEmpty || ends.isEmpty) return null;
+  final first = sections.indexWhere((s) => s is PlaceSection);
+  final last = sections.lastIndexWhere((s) => s is PlaceSection);
+  int legs(Iterable<TripSection> xs) =>
+      xs.whereType<TransferSection>().fold(0, (a, t) => a + (t.durationMins ?? 0));
+  return (
+    start: starts.reduce(math.min) - legs(sections.take(first)),
+    end: ends.reduce(math.max) + legs(sections.skip(last + 1)),
+  );
+}
+
+/// Kilómetros de todos los traslados del viaje (salida, entre paradas y regreso).
+double tripTransfersKm(List<TripSection> sections) =>
+    sections.whereType<TransferSection>().fold(0.0, (a, t) => a + (t.distanceKm ?? 0));
+
 String formatDuration(int mins) {
   if (mins < 60) return '$mins min';
   final h = mins ~/ 60;

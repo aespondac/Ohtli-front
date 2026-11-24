@@ -20,6 +20,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/poi_model.dart';
 import '../../models/trip_model.dart';
 import '../../services/itinerary_blackboard_service.dart';
+import '../../services/option_trip.dart';
 import '../../services/mood_idea_service.dart';
 import '../../services/friend_options.dart';
 import '../../services/group_trip_service.dart';
@@ -1234,7 +1235,8 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       'description': stop['description'] ?? stop['semantic_description'] ?? '',
       'editorial_summary': stop['editorial_summary'] ?? '',
       'semantic_description': stop['semantic_description'] ?? '',
-      'photo_url': _resolveStopPhoto(stop, 0),
+      // Solo la foto del lugar: con la de referencia, la ficha la mostraba como propia.
+      'photo_url': _ownStopPhoto(stop),
       'address': stop['address'] ?? stop['alcaldia'] ?? 'Ciudad de México',
       'opening_hours': stop['opening_hours'] ?? '',
       'rating': (stop['rating'] as num?)?.toDouble(),
@@ -1423,8 +1425,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
       final invitees = _companions == 'amigos' ? _invitedFriends : const <FriendOption>[];
       final groupId = invitees.isNotEmpty ? GroupTripService.newId() : null;
       final poi = widget.initialOriginPoi;
-      final cover = (poi != null && poi.name == _selectedOriginName.trim() && poi.imageUrl.isNotEmpty)
-          ? poi.imageUrl
+      // Solo la foto propia del lugar de partida (imageUrl cae en una de referencia de otro lugar).
+      final cover = (poi != null && poi.name == _selectedOriginName.trim() && poi.hasOwnPhoto)
+          ? poi.photoUrl
           : CdmxPhotos.cover(title.hashCode);
       // Con id propio: sin él, el editor no tiene dónde guardar ("Sin guardar").
       final trip = Trip(
@@ -3439,12 +3442,16 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     return clean;
   }
 
-  static String _resolveStopPhoto(Map<String, dynamic> stop, int idx) {
-    final raw = (stop['photo_url'] ?? stop['main_photo_url'] ?? stop['image_url'] ?? stop['photo'] ?? '').toString().trim();
-    if (raw.isNotEmpty) {
-      return _upgradeImageUrl(raw, width: 800, quality: 85);
-    }
-    return CdmxPhotos.forCategory((stop['category'] ?? stop['type'] ?? '').toString(), idx);
+  /// Foto propia del lugar que trae la parada ('' si no tiene).
+  static String _ownStopPhoto(Map<String, dynamic> stop) => ownStopPhoto(stop);
+
+  /// Foto de la parada: la del lugar o, si no tiene, una de referencia de su categoría. Esa es de
+  /// otro lugar de la ciudad (p. ej. el Museo Soumaya para cualquier museo): [generic] la marca
+  /// para avisarlo, como en la ficha del lugar y en el viaje guardado.
+  static ({String url, bool generic}) _resolveStopPhoto(Map<String, dynamic> stop, int idx) {
+    final raw = _ownStopPhoto(stop);
+    if (raw.isNotEmpty) return (url: _upgradeImageUrl(raw, width: 800, quality: 85), generic: false);
+    return (url: CdmxPhotos.forCategory((stop['category'] ?? stop['type'] ?? '').toString(), idx), generic: true);
   }
 
   static IconData _getStopCategoryIcon(String category) {
@@ -3760,19 +3767,9 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
     final timeMins = _computeOptionTotalDuration(option);
     final List<dynamic> stops = option['route'] ?? [];
 
-    String? rawCover = (option['cover_url'] as String?);
-    if (rawCover == null || rawCover.trim().isEmpty) {
-      if (stops.isNotEmpty) {
-        final firstStop = stops[0];
-        if (firstStop is Map) {
-          final p = (firstStop['photo_url'] ?? firstStop['photo'] ?? firstStop['image_url'])?.toString().trim();
-          if (p != null && p.isNotEmpty) {
-            rawCover = p;
-          }
-        }
-      }
-    }
-    final coverUrl = (rawCover != null && rawCover.trim().isNotEmpty) ? _upgradeImageUrl(rawCover, width: 1400, quality: 85) : CdmxPhotos.cover(index);
+    // La misma portada que tendrá el viaje al elegirla (saveOptionAsTrip): foto propia de una
+    // parada o postal de la zona. Antes aquí salía una postal por posición y al guardar otra foto.
+    final coverUrl = _upgradeImageUrl(optionCover(option, seed: optionCoverSeed(option)), width: 1400, quality: 85);
 
     final int hours = timeMins ~/ 60;
     final int minutes = timeMins % 60;
@@ -4552,17 +4549,36 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                   child: SizedBox(
                     width: isMobile ? double.infinity : photoSize,
                     height: isMobile ? 150 : photoSize,
-                    child: Image.network(
-                      photo,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      frameBuilder: (context, child, frame, sync) => sync
-                          ? child
-                          : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 300), child: child),
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: catColor.withOpacity(0.10),
-                        child: Center(child: Icon(catIcon, size: 30, color: catColor.withOpacity(0.6))),
-                      ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
+                          photo.url,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          frameBuilder: (context, child, frame, sync) => sync
+                              ? child
+                              : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 300), child: child),
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: catColor.withOpacity(0.10),
+                            child: Center(child: Icon(catIcon, size: 30, color: catColor.withOpacity(0.6))),
+                          ),
+                        ),
+                        if (photo.generic)
+                          Positioned(
+                            left: 6,
+                            bottom: 6,
+                            child: Tooltip(
+                              message: 'Imagen de otro lugar de la CDMX: este lugar aún no tiene foto propia.',
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(6)),
+                                child: Text('Foto de referencia',
+                                    style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -4578,7 +4594,7 @@ class _TripPlannerPageState extends State<TripPlannerPage> with SingleTickerProv
                             Row(mainAxisSize: MainAxisSize.min, children: [
                               Icon(catIcon, size: 12, color: catColor),
                               const SizedBox(width: 4),
-                              Text(category.toUpperCase(),
+                              Text(Poi.categoryLabel(category).toUpperCase(),
                                   style: GoogleFonts.inter(fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.6, color: catColor)),
                             ]),
                             catColor,

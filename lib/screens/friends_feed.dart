@@ -501,7 +501,7 @@ class _ActivityCard extends StatelessWidget {
       );
     }
 
-    final cover = trip.coverUrl.isNotEmpty ? trip.coverUrl : CdmxPhotos.cover(trip.id.hashCode);
+    final cover = CdmxPhotos.tripCover(trip.coverUrl, trip.id.hashCode);
     return OhtliSurface(
       padding: EdgeInsets.zero,
       onTap: onOpenTrip,

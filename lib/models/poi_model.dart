@@ -677,8 +677,15 @@ class Poi {
     }
   }
 
-  String get categoryDisplay {
-    final cat = category.toLowerCase().trim();
+  String get categoryDisplay => categoryLabel(category);
+
+  /// Nombre en español de una categoría del catálogo ("museum" → "Museo"). Lo usan la ficha del
+  /// lugar y la cronología del planificador, que antes mostraba la clave en inglés ("ARTS_CENTRE").
+  /// Valores compuestos de OSM ("bakery;pastry") toman el primero.
+  static String categoryLabel(String? category) {
+    var cat = (category ?? '').toLowerCase().trim();
+    final sep = cat.indexOf(';');
+    if (sep >= 0) cat = cat.substring(0, sep).trim();
     switch (cat) {
       case 'cafe':
       case 'coffee':
@@ -745,6 +752,45 @@ class Poi {
         return 'Cibercafé';
       case 'car_parts':
         return 'Refaccionaria / Autopartes';
+      case 'place_of_worship':
+      case 'church':
+        return 'Templo / Iglesia';
+      case 'garden':
+        return 'Jardín';
+      case 'monument':
+      case 'memorial':
+        return 'Monumento';
+      case 'cantina':
+        return 'Cantina';
+      case 'pulqueria':
+        return 'Pulquería';
+      case 'nature_reserve':
+        return 'Área Natural';
+      case 'arqueologia':
+      case 'archaeological_site':
+        return 'Zona Arqueológica';
+      case 'historic':
+        return 'Sitio Histórico';
+      case 'art':
+        return 'Arte';
+      case 'food_court':
+        return 'Zona de Comida';
+      case 'water_park':
+        return 'Parque Acuático';
+      case 'aquarium':
+        return 'Acuario';
+      case 'music_venue':
+        return 'Foro de Música';
+      case 'biergarten':
+        return 'Cervecería al Aire Libre';
+      case 'public_building':
+        return 'Edificio Público';
+      case 'resort':
+        return 'Centro Recreativo';
+      case 'confectionery':
+        return 'Dulcería';
+      case 'cultural':
+        return 'Cultural';
       default:
         if (cat.isEmpty) return 'Punto de Interés';
         // Formatear cualquier categoría en snake_case o kebab-case a palabras limpias

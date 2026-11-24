@@ -1162,9 +1162,7 @@ class _StoryCardState extends State<_StoryCard> {
   @override
   Widget build(BuildContext context) {
     final t = widget.trip;
-    final cover = t.coverUrl.isNotEmpty
-        ? t.coverUrl
-        : CdmxPhotos.cover(t.tripId.hashCode);
+    final cover = CdmxPhotos.tripCover(t.coverUrl, t.tripId.hashCode);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),

@@ -21,7 +21,7 @@ class TripPhotos {
   TripPhotos._();
   static final Map<String, Future<TripPhotoInfo>> _cache = {};
 
-  static String _cover(Trip trip) => trip.coverUrl.isNotEmpty ? trip.coverUrl : CdmxPhotos.cover(trip.id.hashCode);
+  static String _cover(Trip trip) => CdmxPhotos.tripCover(trip.coverUrl, trip.id.hashCode);
 
   /// Lo que se puede mostrar al instante (solo la portada), sin esperar al contenido.
   static TripPhotoInfo initial(Trip trip) => TripPhotoInfo([_cover(trip)], 0);
@@ -40,8 +40,8 @@ class TripPhotos {
         String? url;
         if (s is PlaceSection) {
           stops++;
-          url = (s.coverUrl?.isNotEmpty ?? false) ? s.coverUrl : (s.mainPhotoUrl.isNotEmpty ? s.mainPhotoUrl : null);
-          url ??= CdmxPhotos.forCategory(s.title, stops);
+          // Solo fotos de la parada: una de referencia es de otro lugar (el Soumaya en un museo).
+          url = (s.coverUrl?.isNotEmpty ?? false) ? s.coverUrl : (s.ownMainPhotoUrl.isNotEmpty ? s.ownMainPhotoUrl : null);
         } else if (s is TextImageSection && s.imageUrl.isNotEmpty) {
           url = s.imageUrl;
         }

@@ -59,7 +59,7 @@ List<({String url, String caption})> momentCandidates(Trip trip, TripContent? co
   for (final s in content?.sections ?? const <TripSection>[]) {
     if (s is PlaceSection) {
       add(s.coverUrl, s.title);
-      add(s.mainPhotoUrl, s.title);
+      add(s.ownMainPhotoUrl, s.title);
       for (final u in s.secondaryPhotoUrls) {
         add(u, s.title);
       }

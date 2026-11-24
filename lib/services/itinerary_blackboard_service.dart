@@ -7,8 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../models/trip_model.dart';
 import 'feedback_service.dart';
+import 'option_trip.dart';
 import 'trip_transfers.dart';
-import '../theme/cdmx_photos.dart';
 import 'trip_service.dart';
 
 class ItineraryBlackboardService {
@@ -321,17 +321,19 @@ class ItineraryBlackboardService {
       if (idx != null) narrationByIndex[idx] = n;
     }
 
-    String coverUrl = '';
     final List<TripSection> sections = [];
+
+    // Salida: del punto de partida a la primera parada (el motor la cuenta en sus totales).
+    final departure = departureLeg(chosenOption, id: 'sec_${const Uuid().v4()}');
+    if (departure != null) sections.add(departure);
 
     for (int i = 0; i < rawStops.length; i++) {
       final stop = rawStops[i] as Map<String, dynamic>;
       final stopName = stop['name'] ?? 'Parada ${i + 1}';
-      final category = stop['category']?.toString();
-      final ownPhoto = (stop['photo_url'] ?? stop['main_photo_url'] ?? '').toString();
-      // Sin foto del lugar, una foto de la CDMX de su categoría (antes, ninguna).
-      final photo = ownPhoto.isNotEmpty ? ownPhoto : CdmxPhotos.forCategory(category, i + stopName.hashCode);
-      if (coverUrl.isEmpty && ownPhoto.isNotEmpty) coverUrl = ownPhoto;
+      // Solo la foto del lugar. Sin ella la parada queda sin foto y el visor muestra una de
+      // referencia avisada como tal: guardada aquí, pasaba por foto del lugar (el Museo Soumaya
+      // en el Museo de Sitio Sor Juana) y hasta salía entre los momentos del viaje.
+      final photo = ownStopPhoto(stop);
 
       // Prellenado con lo que escribió el Recomendador: historia, por qué destaca y consejo.
       // Antes se buscaban campos que el motor no envía (narration/why) y cada parada quedaba con
@@ -434,10 +436,8 @@ class ItineraryBlackboardService {
         ),
       );
     }
-    if (coverUrl.isEmpty && rawStops.isNotEmpty) {
-      final first = rawStops.first as Map<String, dynamic>;
-      coverUrl = CdmxPhotos.forCategory(first['category']?.toString(), title.hashCode);
-    }
+    // La misma portada que mostró el planificador: foto propia de una parada o postal de la zona.
+    final coverUrl = optionCover(chosenOption, seed: optionCoverSeed(chosenOption));
 
     // Qué propuso el motor (retroalimentación: el editor compara contra esto)
     final recommended = FeedbackService.stopIds(chosenOption);
@@ -447,9 +447,7 @@ class ItineraryBlackboardService {
       userId: userId,
       title: title,
       description: description,
-      coverUrl: coverUrl.isNotEmpty
-          ? coverUrl
-          : CdmxPhotos.cover(title.hashCode),
+      coverUrl: coverUrl,
       status: 'draft',
       visibility: 'private',
       createdAt: now,

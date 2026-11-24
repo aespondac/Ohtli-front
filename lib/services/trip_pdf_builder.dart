@@ -5,6 +5,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../models/trip_model.dart';
+import '../theme/cdmx_photos.dart';
+import 'trip_transfers.dart';
 
 /// Tipografías del PDF (Outfit para títulos, Inter para texto), cargadas por quien lo genera.
 class TripPdfFonts {
@@ -122,13 +124,12 @@ class TripPdfBuilder {
     return '${d.day} de ${_months.split(',')[d.month - 1]} de ${d.year}';
   }
 
+  /// De la salida al regreso, como el visor y el planificador (ver [tripTimeSpan]).
   String? get _timeWindow {
-    final start = places.map((p) => p.arrivalTime).firstWhere((t) => t != null && t.isNotEmpty, orElse: () => null);
-    final end = places.reversed
-        .map((p) => p.departureTime ?? p.arrivalTime)
-        .firstWhere((t) => t != null && t.isNotEmpty, orElse: () => null);
-    if (start == null) return null;
-    return end == null || end == start ? start : '$start – $end';
+    final span = tripTimeSpan(sections);
+    if (span == null) return null;
+    final start = formatClock(span.start), end = formatClock(span.end);
+    return span.end <= span.start ? start : '$start – $end';
   }
 
   /// Lo que de verdad se gastó (solo si se registró en alguna parada).
@@ -203,9 +204,10 @@ class TripPdfBuilder {
   }
 
   String get _coverUrl {
-    if (trip.coverUrl.isNotEmpty) return trip.coverUrl;
+    // Una foto de referencia de categoría (viajes de la IA anteriores) no es portada del viaje.
+    if (trip.coverUrl.isNotEmpty && !CdmxPhotos.isCategoryReference(trip.coverUrl)) return trip.coverUrl;
     for (final p in places) {
-      final u = (p.coverUrl?.isNotEmpty ?? false) ? p.coverUrl! : p.mainPhotoUrl;
+      final u = (p.coverUrl?.isNotEmpty ?? false) ? p.coverUrl! : p.ownMainPhotoUrl;
       if (u.isNotEmpty) return u;
     }
     return '';
@@ -318,13 +320,13 @@ class TripPdfBuilder {
     return stops.map(_key).any((s) => s.isNotEmpty && (n.contains(s) || s.contains(n)));
   }
 
-  String _photoOf(PlaceSection p) => (p.coverUrl?.isNotEmpty ?? false) ? p.coverUrl! : p.mainPhotoUrl;
+  String _photoOf(PlaceSection p) => (p.coverUrl?.isNotEmpty ?? false) ? p.coverUrl! : p.ownMainPhotoUrl;
 
   /// Fotos del álbum (crónica): la principal y las secundarias de cada parada, hasta 12.
   late final List<(String, String)> _albumUrls = () {
     final out = <(String, String)>[];
     for (var i = 0; i < places.length && out.length < 12; i++) {
-      final urls = {_photoOf(places[i]), places[i].mainPhotoUrl, ...places[i].secondaryPhotoUrls}..removeWhere((u) => u.isEmpty);
+      final urls = {_photoOf(places[i]), places[i].ownMainPhotoUrl, ...places[i].secondaryPhotoUrls}..removeWhere((u) => u.isEmpty);
       var k = 0;
       for (final u in urls) {
         if (out.length >= 12) break;

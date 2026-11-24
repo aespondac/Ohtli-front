@@ -2350,9 +2350,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     final stops = _plannedStops;
     final double budget = stops.fold<double>(0, (a, p) => a + p.cost) +
         _sections.whereType<TransferSection>().fold<double>(0, (a, t) => a + t.cost);
-    final starts = stops.map((p) => _minutesOf(p.arrivalTime)).whereType<int>().toList();
-    final ends = stops.map((p) => _minutesOf(p.departureTime) ?? _minutesOf(p.arrivalTime)).whereType<int>().toList();
-    String hm(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+    // El mismo horario que la portada: de la salida al regreso (ver tripTimeSpan).
+    final span = tripTimeSpan(_sections.where((s) => s is! PlaceSection || !s.unplanned).toList());
     final d = _trip?.travelDate;
     int? daysLeft;
     if (d != null) {
@@ -2370,7 +2369,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
       const SizedBox(height: 10),
       Row(
         children: [
-          Expanded(child: _planFact(isDark, Icons.schedule_rounded, starts.isEmpty ? 'Sin horario' : '${hm(starts.reduce(math.min))}–${hm(ends.reduce(math.max))}')),
+          Expanded(child: _planFact(isDark, Icons.schedule_rounded, span == null ? 'Sin horario' : '${formatClock(span.start)}–${formatClock(span.end)}')),
           const SizedBox(width: 8),
           Expanded(child: _planFact(isDark, Icons.account_balance_wallet_rounded, budget > 0 ? '\$${budget.toStringAsFixed(0)} MXN' : 'Sin presupuesto')),
         ],
@@ -4848,17 +4847,16 @@ class _TripViewerPageState extends State<TripViewerPage> {
       '$planned ${planned == 1 ? 'parada' : 'paradas'}${detours > 0 ? ' · $detours ${detours == 1 ? 'desvío' : 'desvíos'}' : ''}'
     ));
 
-    final starts = places.map((p) => _minutesOf(p.arrivalTime)).whereType<int>().toList();
-    final ends = places.map((p) => _minutesOf(p.departureTime) ?? _minutesOf(p.arrivalTime)).whereType<int>().toList();
-    if (starts.isNotEmpty && ends.isNotEmpty) {
-      final a = starts.reduce(math.min);
-      final b = ends.reduce(math.max);
-      String fmt(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
-      facts.add((Icons.schedule_rounded, b > a ? '${fmt(a)} – ${fmt(b)} · ${formatDuration(b - a)}' : fmt(a)));
+    // De la salida al regreso, con los traslados de ida y vuelta: lo mismo que mostró el
+    // planificador al elegir la ruta (antes solo de la primera llegada a la última salida).
+    final span = tripTimeSpan(_sections);
+    if (span != null) {
+      final a = span.start, b = span.end;
+      facts.add((Icons.schedule_rounded, b > a ? '${formatClock(a)} – ${formatClock(b)} · ${formatDuration(b - a)}' : formatClock(a)));
     }
 
     final transfers = _sections.whereType<TransferSection>().toList();
-    double km = transfers.fold<double>(0, (a, x) => a + (x.distanceKm ?? 0));
+    double km = tripTransfersKm(_sections);
     if (km == 0) {
       PlaceSection? prev;
       for (final p in places) {
@@ -4915,7 +4913,10 @@ class _TripViewerPageState extends State<TripViewerPage> {
 
   Widget _buildCoverHeader(bool isDark, bool isDesktop) {
     final t = _trip;
-    final String cover = t?.coverUrl ?? '';
+    // Una foto de referencia de categoría como portada (viajes de la IA anteriores) hacía creer que
+    // se visita ese lugar: se cambia por una postal de la CDMX.
+    final String rawCover = t?.coverUrl ?? '';
+    final String cover = CdmxPhotos.isCategoryReference(rawCover) ? CdmxPhotos.tripCover(rawCover, t!.id.hashCode) : rawCover;
     final bool onImage = cover.isNotEmpty;
     final String title = t?.title ?? 'Sin título';
     final String desc = t?.description ?? '';
@@ -5331,7 +5332,7 @@ class _TripViewerPageState extends State<TripViewerPage> {
     // en el resto de bloques va encima del texto para no taparlo.
     double padTop = 30, pillTop = 0;
     if (section is PlaceSection) {
-      final hasPhotos = section.mainPhotoUrl.isNotEmpty || section.secondaryPhotoUrls.any((u) => u.isNotEmpty);
+      final hasPhotos = section.ownMainPhotoUrl.isNotEmpty || section.secondaryPhotoUrls.any((u) => u.isNotEmpty);
       final bool inset = hasPhotos && isDesktop; // la tarjeta empieza 14 px abajo por las fotos
       final cardTop = inset ? 14.0 : 0.0;
       padTop = inset ? 0 : 12;
@@ -6217,7 +6218,8 @@ class _TripViewerPageState extends State<TripViewerPage> {
     // Collect active photo urls
     final List<Map<String, dynamic>> drawOrderSlots = [];
     final List<String> activeUrls = [];
-    if (place.mainPhotoUrl.isNotEmpty) {
+    // Sin la foto de referencia que guardaban los viajes de la IA (no es de este lugar).
+    if (place.ownMainPhotoUrl.isNotEmpty) {
       drawOrderSlots.add({'url': place.mainPhotoUrl, 'type': 'place_main'});
       activeUrls.add(place.mainPhotoUrl);
     }

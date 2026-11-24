@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use, avoid_print, use_build_context_synchronously
 
+import '../../services/option_trip.dart';
 import '../../services/feedback_service.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -12,7 +13,6 @@ import '../../widgets/group_trip_sheet.dart' show openGroupTrip;
 import '../../services/group_trip_service.dart';
 import '../../widgets/ohtli_service_icon.dart';
 import '../../theme/colors.dart';
-import '../../theme/cdmx_photos.dart';
 import '../../utils/friendly_errors.dart';
 import '../../models/trip_model.dart';
 import '../../services/trip_service.dart';
@@ -944,18 +944,9 @@ class _TripsDashboardPageState extends State<TripsDashboardPage> {
     // Primera foto de cada ruta
     final photos = <String>[];
     for (var i = 0; i < options.length && photos.length < 3; i++) {
-      final route = options[i]['route'] as List<dynamic>? ?? const [];
-      String? url;
-      for (final stop in route) {
-        if (stop is! Map) continue;
-        final raw = (stop['photo_url'] ?? stop['main_photo_url'] ?? stop['image_url'] ?? stop['photo'] ?? '').toString().trim();
-        if (raw.isNotEmpty) {
-          url = raw;
-          break;
-        }
-      }
-      url ??= CdmxPhotos.forCategory((route.isNotEmpty && route.first is Map ? (route.first as Map)['category'] : '')?.toString(), i);
-      photos.add(url);
+      // La portada de cada alternativa, igual que en el planificador y en el viaje guardado.
+      final option = options[i];
+      photos.add(optionCover(option, seed: optionCoverSeed(option)));
     }
 
     void open() {
