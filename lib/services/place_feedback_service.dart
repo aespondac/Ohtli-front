@@ -198,8 +198,9 @@ class PlaceFeedbackService {
 
   /// Aprueba un reporte y aplica los datos corregidos ([values]: campo de /pois → valor; puede ir
   /// vacío si se resolvió a mano). "Cerró definitivamente" marca el lugar como cerrado.
-  static Future<void> approveReport(PlaceFeedback f, Map<String, dynamic> values, {bool closed = false}) async {
-    await PoiSuggestionService.postAdmin('/v1/admin/place-feedback/${f.id}/approve', {'values': values, 'closed': closed});
+  static Future<void> approveReport(PlaceFeedback f, Map<String, dynamic> values, {bool closed = false, bool reopened = false}) async {
+    await PoiSuggestionService.postAdmin(
+        '/v1/admin/place-feedback/${f.id}/approve', {'values': values, 'closed': closed, 'reopened': reopened});
   }
 
   static Future<void> reject(PlaceFeedback f, {String note = ''}) async {

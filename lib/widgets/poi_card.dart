@@ -122,7 +122,7 @@ class _PoiCardState extends State<PoiCard> {
   Widget _photo({double zoom = 1.06}) {
     final poi = widget.poi;
     final accent = poi.categoryColor;
-    return Stack(
+    return closedTone(poi.isClosedPermanently, Stack(
       fit: StackFit.expand,
       children: [
         // Fondo de respaldo con el color de la categoría
@@ -181,7 +181,7 @@ class _PoiCardState extends State<PoiCard> {
             ),
           ),
       ],
-    );
+    ));
   }
 
   Widget _glass({required Widget child, EdgeInsets padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 6), double radius = 30}) {
@@ -406,7 +406,7 @@ class _PoiCardState extends State<PoiCard> {
                     const SizedBox(height: 18),
                     Row(
                       children: [
-                        Expanded(child: _primaryRouteButton(label: 'Crear ruta desde aquí')),
+                        if (!widget.poi.isClosedPermanently) Expanded(child: _primaryRouteButton(label: 'Crear ruta desde aquí')),
                         const SizedBox(width: 10),
                         _circleArrowButton(),
                       ],
@@ -535,6 +535,8 @@ class _PoiCardState extends State<PoiCard> {
                       if (widget.affinity != null)
                         Positioned(left: 12, bottom: 12, child: _affinityBadge()),
                       // Botón de ruta: círculo que se expande a píldora al pasar el cursor
+                      // (no en un lugar que ya cerró)
+                      if (!poi.isClosedPermanently)
                       Positioned(
                         right: 12,
                         bottom: 12,

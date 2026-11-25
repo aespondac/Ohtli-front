@@ -58,6 +58,8 @@ const _photoIssues = [('otro_lugar', 'No es de este lugar'), ('calidad', 'Está 
 const _accessOptions = [('rampa', 'Tiene rampa'), ('elevador', 'Tiene elevador'), ('bano', 'Baño accesible'), ('sin_escalones', 'Entrada sin escalones'), ('no_accesible', 'No es accesible en silla de ruedas')];
 const _descIssues = [('falsa', 'Tiene información falsa'), ('vieja', 'Está desactualizada'), ('otro_lugar', 'Habla de otro lugar'), ('tono', 'El tono no es adecuado')];
 const _closedKinds = [('definitivo', 'Cerró definitivamente'), ('temporal', 'Cerró temporalmente'), ('mudanza', 'Se mudó a otro lugar')];
+// Si el lugar ya aparece como cerrado, lo que se reporta es que volvió a abrir (o que se mudó)
+const _reopenKinds = [('reabrio', 'Ya volvió a abrir'), ('mudanza', 'Se mudó a otro lugar')];
 
 // Días de la semana: OSM y etiqueta
 const _osmDays = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -137,6 +139,9 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
   }
 
   Poi get poi => widget.poi;
+  bool get _placeClosed => poi.isClosedPermanently || poi.isClosedTemporarily;
+  List<(String, String)> get _statusKinds => _placeClosed ? _reopenKinds : _closedKinds;
+  String _caseLabel(_Case c) => c.id == 'closed' && _placeClosed ? 'Volvió a abrir o se mudó' : c.label;
   _Draft _d(String id) => _drafts.putIfAbsent(id, () {
         final d = _Draft();
         if (id == 'opening_hours') d.rows.add(_HoursRow({0, 1, 2, 3, 4}, const TimeOfDay(hour: 9, minute: 0), const TimeOfDay(hour: 18, minute: 0)));
@@ -213,7 +218,7 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
     switch (id) {
       case 'closed':
         final kind = d.options.isEmpty ? '' : d.options.first;
-        return PlaceIssue(field: id, kind: kIssueWrong, value: text, options: [_label(_closedKinds, kind)], extra: {
+        return PlaceIssue(field: id, kind: kIssueWrong, value: text, options: [_label(_statusKinds, kind)], extra: {
           'status': kind,
           if (kind == 'mudanza' && d.lat != null) 'movedTo': {'name': d.movedName ?? '', 'lat': d.lat, 'lng': d.lng},
           if (kind == 'temporal' && d.reopens != null) 'reopens': d.reopens!.toIso8601String().substring(0, 10),
@@ -360,7 +365,7 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
                     value: _selected.contains(c.id),
                     onChanged: (_) => _toggleSelected(c.id),
                     secondary: Icon(c.icon, color: OhtliColors.accentText),
-                    title: Text(c.label, style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.onyx)),
+                    title: Text(_caseLabel(c), style: GoogleFonts.inter(fontSize: 15, color: OhtliColors.onyx)),
                     activeColor: OhtliColors.stormyTeal,
                     controlAffinity: ListTileControlAffinity.trailing,
                   ),
@@ -420,7 +425,7 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: InputChip(
-                    label: Text(_caseOf(f).label.replaceAll('…', '')),
+                    label: Text(_caseLabel(_caseOf(f)).replaceAll('…', '')),
                     avatar: _sent.contains(f) ? const Icon(Icons.check_rounded, size: 16, color: OhtliColors.stormyTeal) : null,
                     selected: f == id,
                     showCheckmark: false,
@@ -441,7 +446,7 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
           children: [
             Icon(_caseOf(id).icon, color: OhtliColors.accentText),
             const SizedBox(width: 10),
-            Expanded(child: Text(_caseOf(id).label.replaceAll('…', ''), style: OhtliUi.title(size: 22))),
+            Expanded(child: Text(_caseLabel(_caseOf(id)).replaceAll('…', ''), style: OhtliUi.title(size: 22))),
           ],
         ),
       ],
@@ -579,7 +584,7 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
     switch (id) {
       case 'closed':
         return [
-          _chips(_closedKinds, d.options),
+          _chips(_statusKinds, d.options),
           if (d.options.contains('temporal')) ...[
             const SizedBox(height: 14),
             OutlinedButton.icon(
@@ -894,13 +899,17 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
         current = poi.categoryDisplay;
         next = d.options.isEmpty ? null : kSuggestionCategories[d.options.first];
       case 'closed':
-        current = 'Abierto';
+        current = poi.isClosedPermanently ? 'Cerró definitivamente' : (poi.isClosedTemporarily ? 'Cerrado temporalmente' : 'Abierto');
+        if (d.options.contains('reabrio')) {
+          next = 'Abierto de nuevo';
+          break;
+        }
         final k = d.options.isEmpty ? null : d.options.first;
         next = k == null
             ? null
             : (k == 'mudanza'
                 ? 'Se mudó${d.movedName != null ? ' a ${d.movedName}' : ''}'
-                : '${_label(_closedKinds, k)}${k == 'temporal' && d.reopens != null ? ' · reabre el ${_dateText(d.reopens!)}' : ''}');
+                : '${_label(_statusKinds, k)}${k == 'temporal' && d.reopens != null ? ' · reabre el ${_dateText(d.reopens!)}' : ''}');
       case 'accessibility':
         next = d.options.isEmpty ? null : d.options.map((o) => _label(_accessOptions, o)).join(' · ');
       case 'photo':

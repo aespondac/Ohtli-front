@@ -67,7 +67,7 @@ class PoiClosedNotice extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.pause_circle_filled_rounded, size: 19, color: color),
+            child: Icon(permanent ? Icons.block_rounded : Icons.pause_circle_filled_rounded, size: 19, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -90,4 +90,19 @@ class PoiClosedNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Foto en gris para un lugar que cerró definitivamente (se ve a primera vista que ya no está).
+Widget closedTone(bool closed, Widget child) {
+  if (!closed) return child;
+  return ColorFiltered(
+    colorFilter: const ColorFilter.matrix(<double>[
+      0.2126, 0.7152, 0.0722, 0, 0,
+      0.2126, 0.7152, 0.0722, 0, 0,
+      0.2126, 0.7152, 0.0722, 0, 0,
+      0, 0, 0, 1, 0,
+    ]),
+    child: Opacity(opacity: 0.85, child: child),
+  );
 }

@@ -96,6 +96,9 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
     // Solo «Cerró definitivamente» marca el lugar como cerrado (temporal o mudanza se revisan a mano)
     final closedReported = f.issues.any((i) => i.field == 'closed' && (i.extra['status'] ?? 'definitivo') == 'definitivo');
     bool markClosed = closedReported;
+    // «Ya volvió a abrir»: al aprobar, el lugar deja de estar cerrado
+    final reopenReported = f.issues.any((i) => i.field == 'closed' && i.extra['status'] == 'reabrio');
+    bool markReopened = reopenReported;
     // Fechas en las que no abre (del horario reportado)
     final closedDates = [
       for (final i in f.issues)
@@ -128,6 +131,13 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
                     ),
                     const SizedBox(height: 10),
                   ],
+                  if (reopenReported)
+                    CheckboxListTile(
+                      value: markReopened,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (v) => setD(() => markReopened = v ?? false),
+                      title: const Text('Marcar el lugar como abierto de nuevo'),
+                    ),
                   if (closedReported)
                     CheckboxListTile(
                       value: markClosed,
@@ -167,7 +177,7 @@ class _PlaceFeedbackPageState extends State<PlaceFeedbackPage> {
       c.dispose();
     }
     if (ok != true) return;
-    await _run(f, 'Aplicando…', () => PlaceFeedbackService.approveReport(f, values, closed: markClosed),
+    await _run(f, 'Aplicando…', () => PlaceFeedbackService.approveReport(f, values, closed: markClosed, reopened: markReopened),
         'Reporte aprobado${values.isEmpty && !markClosed ? '' : ' y aplicado'}.');
   }
 

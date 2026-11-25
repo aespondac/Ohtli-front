@@ -128,6 +128,35 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         expand: true,
       );
     }
+    // Un lugar que ya cerró no sirve de punto de partida
+    if (widget.poi.isClosedPermanently) {
+      return Semantics(
+        label: 'Este lugar cerró: no se puede crear una ruta desde aquí',
+        child: Container(
+          height: 52,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: OhtliColors.warning.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: OhtliColors.warning.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.block_rounded, size: 18, color: OhtliColors.warningText),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text('Cerró: no se puede crear ruta',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w700, color: OhtliColors.warningText)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return OhtliPrimaryButton(
       label: 'Crear ruta desde aquí',
       icon: Icons.alt_route_rounded,
@@ -623,7 +652,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                     ),
                     if (poi.isClosedTemporarily || poi.isClosedPermanently) ...[
                       const SizedBox(width: 8),
-                      Flexible(child: PoiClosedBadge(permanent: poi.isClosedPermanently)),
+                      PoiClosedBadge(permanent: poi.isClosedPermanently),
                     ],
                     const Spacer(),
                     if (photos.length > 1)
@@ -692,7 +721,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
       child: Center(child: Icon(poi.categoryIcon, size: 56, color: Colors.white.withValues(alpha: 0.7))),
     );
     if (url.isEmpty) return placeholder;
-    return Stack(
+    return closedTone(poi.isClosedPermanently, Stack(
       fit: StackFit.expand,
       children: [
         placeholder,
@@ -712,7 +741,7 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
           errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
         ),
       ],
-    );
+    ));
   }
 
   Widget _buildRoundIcon({
