@@ -5,12 +5,15 @@ import 'ohtli_ui.dart';
 
 /// Texto del aviso para lugares que Google marca como cerrados por ahora.
 const String kClosedTemporarilyLabel = 'Cerrado temporalmente';
+const String kClosedPermanentlyLabel = 'Cerró definitivamente';
 
 /// Píldora "Cerrado temporalmente" para tarjetas y portadas (se lee sobre foto y sobre fondo claro).
 class PoiClosedBadge extends StatelessWidget {
   final bool small;
+  /// Cerró definitivamente (en vez de por ahora).
+  final bool permanent;
 
-  const PoiClosedBadge({super.key, this.small = false});
+  const PoiClosedBadge({super.key, this.small = false, this.permanent = false});
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +27,11 @@ class PoiClosedBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.pause_circle_filled_rounded, size: small ? 11 : 13, color: Colors.white),
+          Icon(permanent ? Icons.block_rounded : Icons.pause_circle_filled_rounded, size: small ? 11 : 13, color: Colors.white),
           SizedBox(width: small ? 4 : 5),
           Flexible(
             child: Text(
-              kClosedTemporarilyLabel,
+              permanent ? kClosedPermanentlyLabel : kClosedTemporarilyLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.inter(fontSize: small ? 10 : 11, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.1),
@@ -42,7 +45,10 @@ class PoiClosedBadge extends StatelessWidget {
 
 /// Aviso del detalle de un lugar cerrado por ahora: qué pasa y qué conviene hacer.
 class PoiClosedNotice extends StatelessWidget {
-  const PoiClosedNotice({super.key});
+  /// Cerró definitivamente (en vez de por ahora).
+  final bool permanent;
+
+  const PoiClosedNotice({super.key, this.permanent = false});
 
   @override
   Widget build(BuildContext context) {
@@ -68,11 +74,13 @@ class PoiClosedNotice extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(kClosedTemporarilyLabel,
+                Text(permanent ? kClosedPermanentlyLabel : kClosedTemporarilyLabel,
                     style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: OhtliColors.onyx)),
                 const SizedBox(height: 3),
                 Text(
-                  'Google reporta que este lugar no está abriendo por ahora. Confirma antes de ir o de sumarlo a una ruta.',
+                  permanent
+                      ? 'Este lugar ya no existe. Ya no lo proponemos en rutas; si está en tu viaje, cámbialo por otro.'
+                      : 'Google reporta que este lugar no está abriendo por ahora. Confirma antes de ir o de sumarlo a una ruta.',
                   style: OhtliUi.body(size: 13.5),
                 ),
               ],

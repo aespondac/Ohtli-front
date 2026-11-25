@@ -621,9 +621,9 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
                         ],
                       ),
                     ),
-                    if (poi.isClosedTemporarily) ...[
+                    if (poi.isClosedTemporarily || poi.isClosedPermanently) ...[
                       const SizedBox(width: 8),
-                      const Flexible(child: PoiClosedBadge()),
+                      Flexible(child: PoiClosedBadge(permanent: poi.isClosedPermanently)),
                     ],
                     const Spacer(),
                     if (photos.length > 1)
@@ -744,8 +744,8 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
     final vibes = poi.vibeTags.map((v) => v.startsWith('#') ? v.substring(1) : v).where((v) => v.trim().isNotEmpty).toList();
     final reviews = poi.reviewsSnippets.where((r) => r.trim().length > 12).take(6).toList();
     return [
-      if (poi.isClosedTemporarily) ...[
-        const PoiClosedNotice(),
+      if (poi.isClosedTemporarily || poi.isClosedPermanently) ...[
+        PoiClosedNotice(permanent: poi.isClosedPermanently),
         const SizedBox(height: 14),
       ],
       _buildQuickFacts(poi, isMobile),

@@ -341,7 +341,7 @@ class _PoiCardState extends State<PoiCard> {
                   runSpacing: 8,
                   children: [
                     _categoryChip(),
-                    if (poi.isClosedTemporarily) const PoiClosedBadge(),
+                    if (poi.isClosedTemporarily || poi.isClosedPermanently) PoiClosedBadge(permanent: poi.isClosedPermanently),
                     if (widget.affinity != null) _affinityBadge(),
                   ],
                 ),
@@ -527,7 +527,7 @@ class _PoiCardState extends State<PoiCard> {
                           runSpacing: 6,
                           children: [
                             _categoryChip(),
-                            if (poi.isClosedTemporarily) const PoiClosedBadge(),
+                            if (poi.isClosedTemporarily || poi.isClosedPermanently) PoiClosedBadge(permanent: poi.isClosedPermanently),
                           ],
                         ),
                       ),
@@ -718,8 +718,8 @@ class _PoiCardState extends State<PoiCard> {
                     ],
                   ),
                   const SizedBox(height: 3),
-                  if (poi.isClosedTemporarily)
-                    const PoiClosedBadge(small: true)
+                  if (poi.isClosedTemporarily || poi.isClosedPermanently)
+                    PoiClosedBadge(small: true, permanent: poi.isClosedPermanently)
                   else
                     Text(
                       _subtitleText,

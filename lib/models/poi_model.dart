@@ -244,7 +244,8 @@ class Poi {
       priceIsEstimate: priceSource == 'google_rango' ? false : data['price_is_estimate'] != false,
       priceRangeMxn: PoiPriceRange.tryParse(data['price_range_mxn']),
       priceSource: priceSource,
-      operationalStatus: rawStatus.isEmpty ? 'operational' : rawStatus,
+      // Un reporte aprobado de «Cerró definitivamente» cuenta igual que el estado de Google
+      operationalStatus: data['permanently_closed'] == true ? 'closed_permanently' : (rawStatus.isEmpty ? 'operational' : rawStatus),
       description: (data['description'] ?? '').toString(),
       editorialSummary: (data['editorial_summary'] ?? '').toString(),
       semanticDescription: (data['semantic_description'] ?? '').toString(),
@@ -423,8 +424,9 @@ class Poi {
 
   /// Determina si este POI corresponde a un recinto cultural/recreativo real
   /// y NO a un acceso físico perimetral (entrance=yes), puerta o nodo de infraestructura.
+  /// Los cerrados definitivamente no se muestran en listas ni se proponen.
   bool get isValidCulturalPlace {
-    return isValidPoiNameAndId(name, poiId, category);
+    return !isClosedPermanently && isValidPoiNameAndId(name, poiId, category);
   }
 
   /// El lugar tiene foto propia. Si no, [imageUrl] es una foto de referencia de su categoría
@@ -609,6 +611,7 @@ class Poi {
 
   /// Cerrado por ahora (según Google): conviene avisarlo en la tarjeta y en el detalle.
   bool get isClosedTemporarily => operationalStatus == 'closed_temporarily';
+  bool get isClosedPermanently => operationalStatus == 'closed_permanently';
 
   /// "$200–600 por persona" cuando hay rango; null si no lo hay.
   String? get priceRangeLabel {
