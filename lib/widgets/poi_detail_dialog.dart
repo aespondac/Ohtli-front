@@ -128,33 +128,18 @@ class _PoiDetailDialogState extends State<PoiDetailDialog> {
         expand: true,
       );
     }
-    // Un lugar que ya cerró no sirve de punto de partida
+    // Un lugar que ya cerró no sirve de punto de partida: en su lugar, avisar si volvió a abrir
     if (widget.poi.isClosedPermanently) {
-      return Semantics(
-        label: 'Este lugar cerró: no se puede crear una ruta desde aquí',
-        child: Container(
-          height: 52,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: OhtliColors.warning.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: OhtliColors.warning.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.block_rounded, size: 18, color: OhtliColors.warningText),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text('Cerró: no se puede crear ruta',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w700, color: OhtliColors.warningText)),
-              ),
-            ],
-          ),
-        ),
+      return OhtliSecondaryButton(
+        label: '¿Volvió a abrir? Repórtalo',
+        icon: Icons.storefront_rounded,
+        onPressed: () {
+          if (FirebaseAuth.instance.currentUser == null) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inicia sesión para avisarnos.')));
+            return;
+          }
+          showReportPlaceSheet(context, poi: widget.poi, startCase: 'closed', startOption: 'reabrio');
+        },
       );
     }
     return OhtliPrimaryButton(

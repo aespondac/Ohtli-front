@@ -19,8 +19,11 @@ import '../screens/trips/trip_traveler_tools.dart' deferred as tools;
 /// cada uno, con opciones cerradas, la corrección y cómo se vería. Cada «Siguiente» envía ese dato
 /// como un reporte aparte; se puede quitar un dato de la lista sin perder lo demás.
 class PlaceReportPage extends StatefulWidget {
-  const PlaceReportPage({super.key, required this.poi});
+  const PlaceReportPage({super.key, required this.poi, this.startCase, this.startOption});
   final Poi poi;
+  /// Abrir directo en un dato con una opción ya marcada (p. ej. «Ya volvió a abrir»).
+  final String? startCase;
+  final String? startOption;
 
   @override
   State<PlaceReportPage> createState() => _PlaceReportPageState();
@@ -129,6 +132,17 @@ class _PlaceReportPageState extends State<PlaceReportPage> {
   String? _current; // null = lista
   bool _sending = false;
   bool _wonTitle = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final start = widget.startCase;
+    if (start != null && _cases.any((c) => c.id == start)) {
+      _selected.add(start);
+      if (widget.startOption != null) _d(start).options.add(widget.startOption!);
+      _current = start;
+    }
+  }
 
   @override
   void dispose() {

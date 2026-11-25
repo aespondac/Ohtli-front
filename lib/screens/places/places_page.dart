@@ -84,9 +84,11 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
     return list;
   }
 
-  static List<Poi> _parsePois(List raw) => raw
+  /// [keepClosed]: los pedidos por id (guardados, paradas de un viaje) se conservan aunque hayan
+  /// cerrado, para mostrarlos en gris y marcados; en el catálogo general no aparecen.
+  static List<Poi> _parsePois(List raw, {bool keepClosed = false}) => raw
       .map((item) => Poi.fromMap(Map<String, dynamic>.from(item as Map)))
-      .where((p) => p.isValidCulturalPlace)
+      .where((p) => p.isValidCulturalPlace || (keepClosed && p.isClosedPermanently))
       .toList();
 
   /// Descarga del motor los lugares de [ids] que no están en la selección del catálogo.
@@ -103,7 +105,7 @@ class _PlacesPageState extends State<PlacesPage> with SingleTickerProviderStateM
       final response = await http.get(uri).timeout(const Duration(seconds: 60));
       if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      for (final poi in _parsePois((decoded as Map)['pois'] as List)) {
+      for (final poi in _parsePois((decoded as Map)['pois'] as List, keepClosed: true)) {
         _extraPois[poi.poiId] = poi;
       }
       return true;

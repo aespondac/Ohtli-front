@@ -91,6 +91,10 @@ function describePush(data) {
         body: (photo ? `Esta vez no usamos tu foto de ${place}` : `Revisamos tu reporte de ${place} y no hicimos cambios`) + (reason ? `: ${reason}.` : '.'),
       };
     }
+    case 'saved_place_closed':
+      return { title: 'Un lugar que guardaste cerró', body: `${str(d.poiName) || 'Un lugar de Mis lugares'} cerró definitivamente.` };
+    case 'saved_place_reopened':
+      return { title: 'Volvió a abrir', body: `${str(d.poiName) || 'Un lugar de Mis lugares'} volvió a abrir.` };
     case 'place_suggestion_approved': {
       const won = str(d.titleName) ? ` Ganaste el título ${str(d.titleName)}.` : '';
       return { title: 'Tu lugar ya está en Ohtli', body: `${str(d.poiName) || 'El lugar que sugeriste'} ya es parte de Ohtli.${won}` };

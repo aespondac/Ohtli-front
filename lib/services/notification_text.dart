@@ -153,6 +153,19 @@ NotificationLook describeNotification(Map<String, dynamic> data) {
             : (photo ? 'Esta vez no usamos tu foto de $place' : 'Revisamos tu reporte de $place y no hicimos cambios') +
                 (reason.isEmpty ? '.' : ': $reason.'),
       );
+    case 'saved_place_closed':
+    case 'saved_place_reopened':
+      final place = (data['poiName'] ?? 'Un lugar que guardaste').toString();
+      final closed = data['type'] == 'saved_place_closed';
+      return NotificationLook(
+        sender: 'Ohtli',
+        fromSystem: true,
+        icon: closed ? Icons.block_rounded : Icons.storefront_rounded,
+        color: closed ? OhtliColors.warningText : OhtliColors.stormyTeal,
+        message: closed
+            ? '$place, que tienes en Mis lugares, cerró definitivamente.'
+            : '$place, que tienes en Mis lugares, volvió a abrir.',
+      );
     case 'place_suggestion_approved':
       final titleName = (data['titleName'] ?? '').toString();
       return NotificationLook(

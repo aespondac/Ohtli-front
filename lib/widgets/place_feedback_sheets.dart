@@ -89,6 +89,7 @@ Future<void> donatePhotoNow(
 }
 
 /// Reportar un lugar: pantalla con un paso por cada dato marcado (place_report_page.dart).
-Future<void> showReportPlaceSheet(BuildContext context, {required Poi poi}) {
-  return Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlaceReportPage(poi: poi), fullscreenDialog: true));
+Future<void> showReportPlaceSheet(BuildContext context, {required Poi poi, String? startCase, String? startOption}) {
+  return Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PlaceReportPage(poi: poi, startCase: startCase, startOption: startOption), fullscreenDialog: true));
 }
